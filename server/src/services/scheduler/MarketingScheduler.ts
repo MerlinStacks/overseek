@@ -203,8 +203,9 @@ export class MarketingScheduler {
         for (const schedule of schedules) {
             await queue.add('generate-report', {
                 accountId: schedule.accountId,
-                scheduleId: schedule.id
-            });
+                scheduleId: schedule.id,
+                runAt: (schedule.nextRunAt || schedule.createdAt).toISOString(),
+            }, { jobId: `report-${schedule.id}-${(schedule.nextRunAt || schedule.createdAt).getTime()}` });
         }
 
         // Flush all nextRunAt updates in parallel.
@@ -212,8 +213,8 @@ export class MarketingScheduler {
         await Promise.all(
             schedules.map(schedule => {
                 const nextRun = this.calculateNextRun(schedule);
-                return prisma.reportSchedule.update({
-                    where: { id: schedule.id },
+                return prisma.reportSchedule.updateMany({
+                    where: { id: schedule.id, accountId: schedule.accountId, nextRunAt: schedule.nextRunAt },
                     data: { nextRunAt: nextRun }
                 });
             })

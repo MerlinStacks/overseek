@@ -1,103 +1,26 @@
-/**
- * BOMItemsTable - Renders the BOM items list with quantity and waste inputs.
- * Extracted from BOMPanel.tsx for modularity.
- */
-import { Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { reportMoney } from '../../analytics/useReportRequest';
+import { validBOMValues } from './bomValues';
 
 export interface BOMItem {
-    id?: string;
-    childProductId?: string;
-    childVariationId?: number;
-    internalProductId?: string;
-    supplierItemId?: string;
-    displayName: string;
-    quantity: number;
-    wasteFactor: number;
-    cost: number;
-    isInternal?: boolean;
+    id?: string; childProductId?: string; childVariationId?: number; internalProductId?: string; supplierItemId?: string;
+    displayName: string; quantity: number; wasteFactor: number; cost: number; isInternal?: boolean;
 }
-
-export interface BOMItemsTableProps {
-    items: BOMItem[];
-    selectedScope: number;
-    onItemsChange: (items: BOMItem[]) => void;
+export interface BOMItemsTableProps { items: BOMItem[]; selectedScope: number; onItemsChange: (items: BOMItem[]) => void; currency?: string; disabled?: boolean }
+function NumericDraft({ value, onChange, label }: { value: number; onChange: (value: number) => void; label: string }) {
+    const [draft, setDraft] = useState(Number.isFinite(value) ? String(value) : '');
+    return <input aria-label={label} type="number" min="0" step="any" value={draft} aria-invalid={!Number.isFinite(value) || value < 0 || (label.startsWith('Quantity') && value === 0)} className="w-24 border rounded p-1 bg-white dark:bg-slate-900" onChange={event => { const text = event.target.value; setDraft(text); onChange(text.trim() ? Number(text) : NaN); }} />;
 }
-
-/**
- * Renders the BOM items table with editable quantity and waste factor columns.
- */
-export function BOMItemsTable({ items, selectedScope, onItemsChange }: BOMItemsTableProps) {
-    const handleQuantityChange = (idx: number, value: number) => {
-        const newItems = [...items];
-        newItems[idx].quantity = value;
-        onItemsChange(newItems);
-    };
-
-    const handleWasteChange = (idx: number, value: number) => {
-        const newItems = [...items];
-        newItems[idx].wasteFactor = value;
-        onItemsChange(newItems);
-    };
-
-    const handleDelete = (idx: number) => {
-        onItemsChange(items.filter((_, i) => i !== idx));
-    };
-
-    return (
-        <table className="w-full">
-            <thead className="bg-gray-50/50 text-xs text-gray-500 uppercase">
-                <tr>
-                    <th className="p-3 text-left">Component</th>
-                    <th className="p-3 w-24">Qty</th>
-                    <th className="p-3 w-24">Waste %</th>
-                    <th className="p-3 text-right">Cost</th>
-                    <th className="p-3 w-10"></th>
-                </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-                {items.length === 0 ? (
-                    <tr>
-                        <td colSpan={5} className="p-6 text-center text-sm text-gray-400">
-                            No BOM items configured for this {selectedScope === 0 ? 'product' : 'variant'}.
-                        </td>
-                    </tr>
-                ) : (
-                    items.map((item, idx) => (
-                        <tr key={idx}>
-                            <td className="p-3">
-                                <div className="font-medium text-sm">{item.displayName}</div>
-                            </td>
-                            <td className="p-3">
-                                <input
-                                    type="number" min="0" step="any"
-                                    value={item.quantity}
-                                    onChange={e => handleQuantityChange(idx, Number(e.target.value))}
-                                    className="w-full border rounded-sm p-1 text-center text-sm"
-                                />
-                            </td>
-                            <td className="p-3">
-                                <input
-                                    type="number" min="0" step="0.01"
-                                    value={item.wasteFactor}
-                                    onChange={e => handleWasteChange(idx, Number(e.target.value))}
-                                    className="w-full border rounded-sm p-1 text-center text-sm"
-                                />
-                            </td>
-                            <td className="p-3 text-right text-sm">
-                                ${(Number(item.quantity) * Number(item.cost) * (1 + Number(item.wasteFactor))).toFixed(2)}
-                            </td>
-                            <td className="p-3">
-                                <button
-                                    onClick={() => handleDelete(idx)}
-                                    className="text-gray-400 hover:text-red-500"
-                                >
-                                    <Trash2 size={16} />
-                                </button>
-                            </td>
-                        </tr>
-                    ))
-                )}
-            </tbody>
-        </table>
-    );
+export function BOMItemsTable({ items, selectedScope, onItemsChange, currency, disabled = false }: BOMItemsTableProps) {
+    const update = (index: number, field: 'quantity' | 'wasteFactor', value: number) => onItemsChange(items.map((item, i) => i === index ? { ...item, [field]: value } : item));
+    return <fieldset disabled={disabled}><div className="overflow-x-auto"><table className="w-full text-slate-900 dark:text-slate-100"><thead><tr><th className="text-left p-3">Component</th><th>Qty</th><th>Waste %</th><th>Cost</th><th>Actions</th></tr></thead><tbody>
+        {!items.length && <tr><td colSpan={5} className="p-4">No BOM items configured for this {selectedScope === 0 ? 'product' : 'variant'}.</td></tr>}
+        {items.map((item, index) => <tr key={item.id || JSON.stringify([item.childProductId, item.childVariationId, item.internalProductId, item.supplierItemId])}>
+            <td className="p-3">{item.displayName}</td>
+            <td><NumericDraft value={item.quantity} label={`Quantity for ${item.displayName}`} onChange={value => update(index, 'quantity', value)} /></td>
+            <td><NumericDraft value={item.wasteFactor * 100} label={`Waste percentage for ${item.displayName}`} onChange={value => update(index, 'wasteFactor', value / 100)} /></td>
+            <td>{reportMoney(validBOMValues(item) && Number.isFinite(item.cost) && item.cost >= 0 ? item.quantity * item.cost * (1 + item.wasteFactor) : NaN, currency)}</td>
+            <td><button type="button" aria-label={`Remove ${item.displayName}`} onClick={() => onItemsChange(items.filter((_, i) => i !== index))}>Remove</button></td>
+        </tr>)}
+    </tbody></table></div></fieldset>;
 }

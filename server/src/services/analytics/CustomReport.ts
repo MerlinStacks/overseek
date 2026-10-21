@@ -53,7 +53,7 @@ export class CustomReportService {
      * Build and execute a custom analytics report.
      * Routes to appropriate handler based on dimension type.
      */
-    static async getCustomReport(accountId: string, config: CustomReportConfig): Promise<CustomReportResult[]> {
+    static async getCustomReport(accountId: string, config: CustomReportConfig, options?: { throwOnError?: boolean }): Promise<CustomReportResult[]> {
         try {
             Logger.debug('Custom Report config', { config });
 
@@ -69,6 +69,7 @@ export class CustomReportService {
 
         } catch (error) {
             Logger.error('Analytics Custom Report Error', { error });
+            if (options?.throwOnError) throw error;
             return [];
         }
     }

@@ -1,6 +1,10 @@
 import webpush, { PushSubscription as WebPushSubscription } from 'web-push';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
+import { z } from 'zod';
+
+const preferencesSchema = z.object({ notifyNewMessages: z.boolean().optional(), notifyNewOrders: z.boolean().optional(), notifyLowStock: z.boolean().optional(), notifyDailySummary: z.boolean().optional() });
+const subscriptionSchema = z.object({ endpoint: z.string().url().refine(value => { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password; }), keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }) });
 
 /**
  * Service for managing Web Push notifications.
@@ -9,8 +13,17 @@ import { Logger } from '../utils/logger';
  * Subscriptions are stored per-user/device in PushSubscription table.
  */
 export class PushNotificationService {
+    private static async canReceive(userId: string, accountId: string): Promise<boolean> {
+        if (!userId || !accountId) return false;
+        const user = await prisma.user.findFirst({ where: { id: userId, OR: [{ isSuperAdmin: true }, { accounts: { some: { accountId } } }] }, select: { id: true } });
+        return Boolean(user);
+    }
     private static vapidKeysCache: { publicKey: string; privateKey: string } | null = null;
     private static cacheExpiry: number = 0;
+    private static credentialVersion = 0;
+    static clearCredentialsCache(): void {
+        this.credentialVersion++; this.vapidKeysCache = null; this.cacheExpiry = 0;
+    }
     private static readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
     private static readonly TAGGED_NOTIFICATION_TYPES = new Set(['order', 'message', 'lowStock', 'dailySummary']);
 
@@ -68,6 +81,7 @@ export class PushNotificationService {
      * Retrieves VAPID keys from platform credentials with TTL caching.
      */
     private static async getVapidKeys(): Promise<{ publicKey: string; privateKey: string } | null> {
+        const version = this.credentialVersion;
         const now = Date.now();
         if (this.vapidKeysCache && now < this.cacheExpiry) {
             return this.vapidKeysCache;
@@ -77,6 +91,7 @@ export class PushNotificationService {
             const credential = await prisma.platformCredentials.findUnique({
                 where: { platform: 'WEB_PUSH_VAPID' }
             });
+            if (version !== this.credentialVersion) return this.getVapidKeys();
 
             if (!credential?.credentials) {
                 Logger.info('[PushNotificationService] No VAPID keys configured in platform credentials');
@@ -116,16 +131,20 @@ export class PushNotificationService {
         preferences: { notifyNewMessages?: boolean; notifyNewOrders?: boolean; notifyLowStock?: boolean; notifyDailySummary?: boolean } = {}
     ): Promise<{ success: boolean; id?: string; error?: string }> {
         try {
+            subscription = subscriptionSchema.parse(subscription);
+            preferences = preferencesSchema.parse(preferences);
+            if (!await this.canReceive(userId, accountId)) return { success: false, error: 'Account access required' };
             // Security: Ensure this endpoint is only associated with the current user
             // This prevents "leakage" where a shared device receives notifications for a previous user
-            await prisma.pushSubscription.deleteMany({
+            const result = await prisma.$transaction(async tx => {
+            await tx.pushSubscription.deleteMany({
                 where: {
                     endpoint: subscription.endpoint,
                     userId: { not: userId }
                 }
             });
 
-            const result = await prisma.pushSubscription.upsert({
+            return tx.pushSubscription.upsert({
                 where: {
                     userId_endpoint: {
                         userId,
@@ -136,10 +155,7 @@ export class PushNotificationService {
                     p256dh: subscription.keys.p256dh,
                     auth: subscription.keys.auth,
                     accountId,
-                    notifyNewMessages: preferences.notifyNewMessages ?? true,
-                    notifyNewOrders: preferences.notifyNewOrders ?? true,
-                    notifyLowStock: preferences.notifyLowStock ?? false,
-                    notifyDailySummary: preferences.notifyDailySummary ?? false,
+                    ...preferences,
                     updatedAt: new Date()
                 },
                 create: {
@@ -153,6 +169,7 @@ export class PushNotificationService {
                     notifyLowStock: preferences.notifyLowStock ?? false,
                     notifyDailySummary: preferences.notifyDailySummary ?? false
                 }
+            });
             });
 
             Logger.info('[PushNotificationService] Subscription saved', {
@@ -192,11 +209,14 @@ export class PushNotificationService {
     static async updatePreferences(
         userId: string,
         endpoint: string,
-        preferences: { notifyNewMessages?: boolean; notifyNewOrders?: boolean; notifyLowStock?: boolean; notifyDailySummary?: boolean }
+        preferences: { notifyNewMessages?: boolean; notifyNewOrders?: boolean; notifyLowStock?: boolean; notifyDailySummary?: boolean },
+        accountId: string
     ): Promise<boolean> {
         try {
-            await prisma.pushSubscription.updateMany({
-                where: { userId, endpoint },
+            preferences = preferencesSchema.parse(preferences);
+            if (!accountId || !userId || !endpoint) return false;
+            const result = await prisma.pushSubscription.updateMany({
+                where: { userId, endpoint, accountId },
                 data: {
                     ...(preferences.notifyNewMessages !== undefined && { notifyNewMessages: preferences.notifyNewMessages }),
                     ...(preferences.notifyNewOrders !== undefined && { notifyNewOrders: preferences.notifyNewOrders }),
@@ -204,7 +224,7 @@ export class PushNotificationService {
                     ...(preferences.notifyDailySummary !== undefined && { notifyDailySummary: preferences.notifyDailySummary })
                 }
             });
-            return true;
+            return result.count > 0;
         } catch (error) {
             Logger.error('[PushNotificationService] Update preferences failed', { error, userId });
             return false;
@@ -223,11 +243,10 @@ export class PushNotificationService {
     }> {
         try {
             // If endpoint provided, check for that specific device
+            if (!userId || !accountId) return { isSubscribed: false };
             if (endpoint) {
-                const sub = await prisma.pushSubscription.findUnique({
-                    where: {
-                        userId_endpoint: { userId, endpoint }
-                    }
+                const sub = await prisma.pushSubscription.findFirst({
+                    where: { userId, accountId, endpoint }
                 });
 
                 if (!sub) {
@@ -281,6 +300,7 @@ export class PushNotificationService {
         notification: { title: string; body: string; data?: Record<string, unknown> },
         type: 'message' | 'order' | 'lowStock' | 'dailySummary'
     ): Promise<{ sent: number; failed: number }> {
+        if (!accountId) throw new Error('Account required');
         const keys = await this.getVapidKeys();
         if (!keys) {
             Logger.info('[PushNotificationService] Skipping notification - No VAPID keys configured. Run generate-vapid-keys script.', { accountId, type });
@@ -361,6 +381,7 @@ export class PushNotificationService {
 
         for (const sub of subscriptions) {
             try {
+                if (!await this.canReceive(sub.userId, accountId)) { failed++; continue; }
                 const pushSubscription: WebPushSubscription = {
                     endpoint: sub.endpoint,
                     keys: {
@@ -371,7 +392,8 @@ export class PushNotificationService {
 
                 await webpush.sendNotification(
                     pushSubscription,
-                    JSON.stringify(payload)
+                    JSON.stringify(payload),
+                    { timeout: 10000 }
                 );
                 sent++;
             } catch (error: unknown) {
@@ -409,6 +431,7 @@ export class PushNotificationService {
         notification: { title: string; body: string; data?: Record<string, unknown> },
         type: 'message' | 'order' | 'lowStock' | 'dailySummary'
     ): Promise<{ sent: number; failed: number; diagnostics: Record<string, unknown> }> {
+        if (!accountId) throw new Error('Account required');
         const filterMap = {
             order: 'notifyNewOrders=true',
             message: 'notifyNewMessages=true',
@@ -462,12 +485,13 @@ export class PushNotificationService {
 
         for (const sub of subscriptions) {
             try {
+                if (!await this.canReceive(sub.userId, accountId)) { failed++; continue; }
                 const pushSubscription: WebPushSubscription = {
                     endpoint: sub.endpoint,
                     keys: { p256dh: sub.p256dh, auth: sub.auth }
                 };
 
-                await webpush.sendNotification(pushSubscription, JSON.stringify(payload));
+                await webpush.sendNotification(pushSubscription, JSON.stringify(payload), { timeout: 10000 });
                 sent++;
             } catch (error: unknown) {
                 failed++;
@@ -544,6 +568,7 @@ export class PushNotificationService {
 
         for (const sub of subscriptions) {
             try {
+                if (!await this.canReceive(sub.userId, accountId)) { failed++; continue; }
                 const pushSubscription: WebPushSubscription = {
                     endpoint: sub.endpoint,
                     keys: {
@@ -554,7 +579,8 @@ export class PushNotificationService {
 
                 await webpush.sendNotification(
                     pushSubscription,
-                    JSON.stringify(payload)
+                    JSON.stringify(payload),
+                    { timeout: 10000 }
                 );
                 sent++;
             } catch (error: unknown) {
@@ -607,7 +633,8 @@ export class PushNotificationService {
             try {
                 await webpush.sendNotification(
                     { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-                    JSON.stringify(payload)
+                    JSON.stringify(payload),
+                    { timeout: 10000 }
                 );
                 sent++;
             } catch (error) {
@@ -676,7 +703,8 @@ export class PushNotificationService {
 
                 await webpush.sendNotification(
                     pushSubscription,
-                    JSON.stringify(payload)
+                    JSON.stringify(payload),
+                    { timeout: 10000 }
                 );
                 sent++;
             } catch (error: unknown) {

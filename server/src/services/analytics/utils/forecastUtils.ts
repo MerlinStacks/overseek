@@ -275,7 +275,7 @@ function calculateConfidence(dataPoints: number, monthsCovered: number): number 
     const config = getForecastConfig();
 
     // Base confidence from data volume
-    let confidence = 0;
+    let confidence: number;
 
     if (dataPoints >= 365) {
         confidence = 90;  // Full year = high confidence

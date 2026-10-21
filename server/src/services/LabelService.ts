@@ -7,6 +7,9 @@
 
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
+import { z } from 'zod';
+
+const labelInput = z.object({ name: z.string().trim().min(1).max(50), color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional() });
 
 export interface CreateLabelInput {
     accountId: string;
@@ -24,7 +27,8 @@ export class LabelService {
      * Create a new label for an account.
      */
     async createLabel(input: CreateLabelInput) {
-        const { accountId, name, color } = input;
+        const { name, color } = labelInput.parse(input);
+        const accountId = z.string().trim().min(1).parse(input.accountId);
 
         Logger.debug('Creating label', { accountId, name });
 
@@ -41,6 +45,7 @@ export class LabelService {
      * Update an existing label.
      */
     async updateLabel(accountId: string, id: string, input: UpdateLabelInput) {
+        input = labelInput.partial().parse(input);
         Logger.debug('Updating label', { accountId, id, input });
 
         const existing = await prisma.conversationLabel.findFirst({
@@ -56,7 +61,7 @@ export class LabelService {
         return prisma.conversationLabel.update({
             where: { id: existing.id },
             data: {
-                ...(input.name && { name: input.name.trim() }),
+                ...(input.name !== undefined && { name: input.name }),
                 ...(input.color && { color: input.color }),
             },
         });
@@ -135,33 +140,34 @@ export class LabelService {
             throw error;
         }
 
-        // Use upsert to avoid duplicate errors
-        const assignment = await prisma.conversationLabelAssignment.upsert({
+        // The unique constraint atomically tells us whether this assignment is new.
+        const created = await prisma.conversationLabelAssignment.createMany({
+            data: [{ conversationId, labelId }], skipDuplicates: true,
+        });
+        const assignment = await prisma.conversationLabelAssignment.findUniqueOrThrow({
             where: {
                 conversationId_labelId: {
                     conversationId,
                     labelId,
                 },
             },
-            create: {
-                conversationId,
-                labelId,
-            },
-            update: {}, // No-op if already exists
             include: {
                 label: true,
                 conversation: { select: { accountId: true } }
             },
         });
 
-        // Trigger automation for tag added
-        const { AutomationEngine } = await import('./AutomationEngine');
-        const automationEngine = new AutomationEngine();
-        automationEngine.processTrigger(assignment.conversation.accountId, 'TAG_ADDED', {
-            conversationId,
-            labelId,
-            labelName: assignment.label.name
-        });
+        if (created.count === 1) {
+            try {
+                const { AutomationEngine } = await import('./AutomationEngine');
+                await new AutomationEngine().processTrigger(assignment.conversation.accountId, 'TAG_ADDED', {
+                    conversationId, labelId, labelName: assignment.label.name,
+                });
+            } catch (error) {
+                // A saved label must not be retried because downstream automation failed.
+                Logger.error('Label automation failed', { accountId, conversationId, labelId, error });
+            }
+        }
 
         return assignment;
     }

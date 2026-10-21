@@ -5,11 +5,6 @@
  * The expected shape is `Array<{ amount: number; note: string }>`.
  */
 
-interface MiscCostEntry {
-    amount: number;
-    note: string;
-}
-
 /**
  * Sums the `amount` values from a miscCosts JSON field.
  * Handles null, undefined, non-array, and malformed entries gracefully.

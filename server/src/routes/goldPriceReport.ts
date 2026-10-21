@@ -15,6 +15,7 @@ import {
     parseAccountGoldPrices
 } from '../utils/goldPriceCalculations';
 import { sumMiscCosts } from '../utils/miscCosts';
+import { goldSummaryMargin } from '../utils/goldSummaryMargin';
 
 /** Default and max page sizes for pagination */
 const DEFAULT_PAGE_SIZE = 50;
@@ -249,14 +250,15 @@ const goldPriceReportRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         let lowestMarginItems: { name: string; margin: number }[] = [];
+        let sampledCount = 0;
+        let unavailableCount = 0;
 
         if (account && totalCount > 0) {
-            const accountPrices = parseAccountGoldPrices(account);
-
             // Fetch limited items to calculate margins (optimization: only fetch what we might need)
             const products = await prisma.wooProduct.findMany({
                 where: { accountId, isGoldPriceApplied: true },
                 select: { name: true, price: true, weight: true, goldPriceType: true, miscCosts: true },
+                orderBy: { id: 'asc' },
                 take: 20
             });
 
@@ -270,15 +272,17 @@ const goldPriceReportRoutes: FastifyPluginAsync = async (fastify) => {
                     rawData: true,
                     product: { select: { name: true } }
                 },
+                orderBy: { id: 'asc' },
                 take: 20
             });
 
             const allItems: { name: string; margin: number }[] = [];
+            sampledCount = products.length + variations.length;
 
             for (const p of products) {
-                const goldCogs = calculateGoldCogs(Number(p.weight), p.goldPriceType, accountPrices) + sumMiscCosts(p.miscCosts);
-                const margin = calculateMargin(Number(p.price), goldCogs);
-                allItems.push({ name: p.name, margin });
+                const margin = goldSummaryMargin(p.price, p.weight, p.goldPriceType, p.miscCosts, account);
+                if (margin === null) unavailableCount++;
+                else allItems.push({ name: p.name, margin });
             }
 
             for (const v of variations) {
@@ -287,9 +291,9 @@ const goldPriceReportRoutes: FastifyPluginAsync = async (fastify) => {
                     ? `${v.product.name} - ${variantName}`
                     : v.product.name;
 
-                const goldCogs = calculateGoldCogs(Number(v.weight), v.goldPriceType, accountPrices) + sumMiscCosts(v.miscCosts);
-                const margin = calculateMargin(Number(v.price), goldCogs);
-                allItems.push({ name, margin });
+                const margin = goldSummaryMargin(v.price, v.weight, v.goldPriceType, v.miscCosts, account);
+                if (margin === null) unavailableCount++;
+                else allItems.push({ name, margin });
             }
 
             // Sort and take top 3 lowest
@@ -301,6 +305,8 @@ const goldPriceReportRoutes: FastifyPluginAsync = async (fastify) => {
             totalCount,
             productCount,
             variationCount,
+            sampledCount,
+            unavailableCount,
             lowestMarginItems
         });
     });

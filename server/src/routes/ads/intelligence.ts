@@ -89,6 +89,7 @@ const intelligenceRoutes: FastifyPluginAsync = async (fastify) => {
                 .length;
 
             return {
+                currency: correlation.currency,
                 overlapCount: correlation.summary.overlapCount,
                 organicOnlyCount: correlation.summary.organicOnlyCount,
                 estimatedWastedSpend: correlation.summary.estimatedTotalWastedSpend,
@@ -96,7 +97,7 @@ const intelligenceRoutes: FastifyPluginAsync = async (fastify) => {
                 cannibalizationCount,
                 negativeCandidates: negativeKw.summary.negativeCandidates,
                 estimatedMonthlySavings: negativeKw.summary.estimatedMonthlySavings,
-                hasData: correlation.overlap.length > 0 || negativeKw.hasData
+                hasData: correlation.overlap.length > 0 || correlation.organicOnly.length > 0 || negativeKw.hasData
             };
         } catch (error: any) {
             Logger.error('Failed to fetch intelligence summary', { error });

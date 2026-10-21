@@ -37,7 +37,7 @@ const COLORS: Record<string, { bg: string; hover: string; icon: string }> = {
  */
 export function DesignerSidebar({ onAddItem }: DesignerSidebarProps) {
     return (
-        <div className="w-72 bg-white/70 backdrop-blur-xs border-r border-slate-200/60 flex flex-col">
+        <div className="w-72 bg-white/70 dark:bg-slate-800/90 dark:text-slate-100 backdrop-blur-xs border-r border-slate-200/60 dark:border-slate-700 flex flex-col">
             {/* Header */}
             <div className="px-5 py-4 border-b border-slate-100">
                 <div className="flex items-center gap-2">
@@ -55,9 +55,10 @@ export function DesignerSidebar({ onAddItem }: DesignerSidebarProps) {
                         const colors = COLORS[item.type] || COLORS.text;
 
                         return (
-                            <div
+                            <button
+                                type="button"
                                 key={item.id}
-                                className={`flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl cursor-pointer shadow-xs hover:shadow-md ${colors.hover} transition-all duration-200 group active:scale-[0.98]`}
+                                className={`w-full text-left flex items-center gap-4 p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl cursor-pointer shadow-xs hover:shadow-md focus-visible:outline-2 focus-visible:outline-indigo-500 ${colors.hover} transition-all motion-reduce:transition-none duration-200 group active:scale-[0.98]`}
                                 onClick={() => onAddItem(item.type)}
                                 draggable={true}
                                 onDragStart={(e) => {
@@ -68,7 +69,7 @@ export function DesignerSidebar({ onAddItem }: DesignerSidebarProps) {
                                     <Icon size={20} className={colors.icon} />
                                 </div>
                                 <div className="flex-1">
-                                    <span className="text-sm font-semibold text-slate-700 block">{item.label}</span>
+                                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-100 block">{item.label}</span>
                                     <span className="text-xs text-slate-400">
                                         {item.type === 'row' && 'Group blocks side-by-side'}
                                         {item.type === 'header' && 'First page header'}
@@ -81,7 +82,7 @@ export function DesignerSidebar({ onAddItem }: DesignerSidebarProps) {
                                         {item.type === 'footer' && 'Last page footer'}
                                     </span>
                                 </div>
-                            </div>
+                            </button>
                         );
                     })}
                 </div>
@@ -99,4 +100,3 @@ export function DesignerSidebar({ onAddItem }: DesignerSidebarProps) {
         </div>
     );
 }
-

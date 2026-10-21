@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CustomerSync } from '../CustomerSync';
-import { IndexingService } from '../../search/IndexingService';
 import { esClient } from '../../../utils/elastic';
 
 const mockPrisma = vi.hoisted(() => ({

@@ -6,6 +6,8 @@
 import { Plus, Save, X, Zap } from 'lucide-react';
 import { RichTextEditor } from '../common/RichTextEditor';
 import { CannedResponseLabel } from './CannedResponseLabelManager';
+import { useId } from 'react';
+import { hasResponseText } from './cannedResponseValues';
 
 interface FormData {
     shortcut: string;
@@ -25,15 +27,18 @@ interface CannedResponseFormProps {
 export function CannedResponseForm({
     formData, labels, editingId, onFormChange, onSave, onCancel
 }: CannedResponseFormProps) {
+    const id = useId();
+    const valid = !!formData.shortcut.trim() && hasResponseText(formData.content) && (!formData.labelId || labels.some(label => label.id === formData.labelId));
     return (
-        <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-            <h3 className="text-sm font-medium text-gray-700 mb-3">
+        <div className="bg-gray-50 dark:bg-slate-800 rounded-xl p-4 border border-gray-200 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+            <h3 className="text-sm font-medium text-gray-700 dark:text-slate-200 mb-3">
                 {editingId ? 'Edit Response' : 'Add New Response'}
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
                 <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Shortcut</label>
+                    <label htmlFor={`${id}-shortcut`} className="block text-xs font-medium text-gray-600 dark:text-slate-300 mb-1">Shortcut</label>
                     <input
+                        id={`${id}-shortcut`}
                         type="text"
                         placeholder="e.g. hi, refund, shipping"
                         value={formData.shortcut}
@@ -42,8 +47,9 @@ export function CannedResponseForm({
                     />
                 </div>
                 <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Label</label>
+                    <label htmlFor={`${id}-label`} className="block text-xs font-medium text-gray-600 dark:text-slate-300 mb-1">Label</label>
                     <select
+                        id={`${id}-label`}
                         value={formData.labelId}
                         onChange={(e) => onFormChange({ ...formData, labelId: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
@@ -56,23 +62,24 @@ export function CannedResponseForm({
                 </div>
                 <div className="flex items-end gap-2">
                     <button
-                        onClick={onSave}
-                        disabled={!formData.shortcut.trim() || !formData.content.trim()}
+                        type="button" onClick={() => { if (valid) onSave(); }}
+                        disabled={!valid}
                         className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {editingId ? <Save size={14} /> : <Plus size={14} />}
                         {editingId ? 'Save' : 'Add'}
                     </button>
                     {editingId && (
-                        <button onClick={onCancel} className="flex items-center gap-1.5 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200">
+                        <button type="button" onClick={onCancel} className="flex items-center gap-1.5 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200">
                             <X size={14} />Cancel
                         </button>
                     )}
                 </div>
             </div>
             <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Content (Rich Text)</label>
+                <p className="block text-xs font-medium text-gray-600 dark:text-slate-300 mb-1">Content (Rich Text)</p>
                 <RichTextEditor
+                    ariaLabel="Response content"
                     value={formData.content}
                     onChange={(val) => onFormChange({ ...formData, content: val })}
                     placeholder="Type your response here... Use {{customer.firstName}} for placeholders."

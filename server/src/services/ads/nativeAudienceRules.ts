@@ -19,7 +19,7 @@ export interface LookalikeDefinition {
     percent: 1 | 3 | 5;
 }
 
-const validFragment = (value: unknown) => typeof value === 'string' && value.trim().length >= 2 && value.length <= 500 && !/[\r\n\x00]/.test(value);
+const validFragment = (value: unknown) => typeof value === 'string' && value.trim().length >= 2 && value.length <= 500 && !/[\r\n\x00]/.test(value); // eslint-disable-line no-control-regex -- Reject newlines and nulls from audience rule fragments.
 const validDays = (value: unknown, max: number) => typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= max;
 
 /** Whitelist and normalize user input before it can become platform rules. */

@@ -57,11 +57,12 @@ export async function restoreFromBackup(backupId: string): Promise<RestoreResult
         return { success: false, restoredTables: [], error: 'Backup not found' };
     }
 
-    // Mark as restoring
-    await prisma.storedBackup.update({
-        where: { id: backupId },
+    // Atomically claim this backup so duplicate requests cannot restore it concurrently.
+    const claim = await prisma.storedBackup.updateMany({
+        where: { id: backupId, status: 'COMPLETED' },
         data: { status: 'RESTORING' },
     });
+    if (claim.count !== 1) return { success: false, restoredTables: [], error: 'Backup is not available for restore' };
 
     try {
         // Read and decompress backup file

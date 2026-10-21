@@ -9,6 +9,7 @@ import { ProductVariant } from './variantTypes';
 import { BOMPanel, BOMPanelRef } from './BOMPanel';
 import { VariantVideoEditor } from './ProductVideoGallery';
 import { ProductionRangeFields, type ProductionRangeFieldsProps } from './ProductionRangeFields';
+import { reportMoney } from '../analytics/useReportRequest';
 
 interface VariantExpandedDetailsProps {
     variant: ProductVariant;
@@ -20,10 +21,12 @@ interface VariantExpandedDetailsProps {
     onSyncComplete?: (newStock: number) => void;
     onFieldChange: (field: keyof ProductVariant, value: ProductVariant[keyof ProductVariant]) => void;
     onMultiFieldChange: (updates: Partial<ProductVariant>) => void;
-    onBomCogsUpdate: (cogs: number, hasItems: boolean) => void;
+    onBomCogsUpdate: (cogs: number | null, hasItems: boolean) => void;
     canViewCogs: boolean;
     isGoldPriceEnabled: boolean;
     bomCogs: number | null;
+    hasBOM?: boolean;
+    currency?: string;
     bomCogsLoading: boolean;
     calculateGoldCogs: (variant: ProductVariant) => number | null;
     production?: Omit<ProductionRangeFieldsProps, 'label'>;
@@ -43,12 +46,14 @@ export function VariantExpandedDetails({
     canViewCogs,
     isGoldPriceEnabled,
     bomCogs,
+    hasBOM,
+    currency,
     bomCogsLoading,
     calculateGoldCogs,
     production
 }: VariantExpandedDetailsProps) {
     const goldCogs = calculateGoldCogs(v);
-    const hasBom = bomCogs !== null;
+    const hasBom = hasBOM || bomCogs !== null;
     const hasGold = goldCogs != null && goldCogs > 0;
     const inheritedSupplier = suppliers.find(supplier => supplier.id === parentSupplierId);
 
@@ -133,11 +138,11 @@ export function VariantExpandedDetails({
                                     <div className="w-full h-[34px] bg-gray-100 rounded-lg animate-pulse" />
                                 ) : hasBom ? (
                                     <div className="w-full text-sm px-3 py-1.5 bg-purple-50/50 border border-purple-200 rounded-lg text-purple-800 font-medium">
-                                        ${bomCogs!.toFixed(2)}
+                                        {reportMoney(bomCogs ?? NaN, currency)}
                                     </div>
                                 ) : hasGold ? (
                                     <div className="w-full text-sm px-3 py-1.5 bg-amber-50/50 border border-amber-200 rounded-lg text-amber-800 font-medium">
-                                        ${goldCogs!.toFixed(2)}
+                                        {reportMoney(goldCogs ?? NaN, currency)}
                                     </div>
                                 ) : (
                                     <input
@@ -192,7 +197,7 @@ export function VariantExpandedDetails({
                     </div>
 
                     {/* Profit Margin Calculator */}
-                    {canViewCogs && <ProfitMarginDisplay variant={v} bomCogs={bomCogs} goldCogs={goldCogs} />}
+                    {canViewCogs && <ProfitMarginDisplay variant={v} bomCogs={bomCogs} hasBOM={hasBOM} goldCogs={goldCogs} currency={currency} />}
 
                     <VariantVideoEditor productId={productWooId} variationId={v.id} />
 
@@ -219,21 +224,25 @@ export function VariantExpandedDetails({
 function ProfitMarginDisplay({
     variant: v,
     bomCogs,
-    goldCogs
+    goldCogs,
+    hasBOM,
+    currency
 }: {
     variant: ProductVariant;
     bomCogs: number | null;
     goldCogs: number | null;
+    hasBOM?: boolean;
+    currency?: string;
 }) {
     const sellingPrice = parseFloat(v.salePrice || '') || parseFloat(v.price || '') || 0;
-    const hasBom = bomCogs !== null;
+    const hasBom = hasBOM || bomCogs !== null;
     const hasGold = goldCogs != null && goldCogs > 0;
 
     let effectiveCogs: number;
     let cogsSource: 'bom' | 'gold' | 'manual' | 'none' = 'none';
 
     if (hasBom) {
-        effectiveCogs = bomCogs!;
+        effectiveCogs = bomCogs ?? NaN;
         cogsSource = 'bom';
     } else if (hasGold) {
         effectiveCogs = goldCogs!;
@@ -261,7 +270,7 @@ function ProfitMarginDisplay({
                 {hasCogs && hasPrice ? (
                     <div className="flex items-center gap-2">
                         <span className={`text-sm font-bold ${profitDollar >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            ${profitDollar.toFixed(2)}
+                            {reportMoney(profitDollar, currency)}
                         </span>
                         <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${profitPercent >= 0
                             ? 'bg-green-50 text-green-700 border border-green-200'
@@ -278,7 +287,7 @@ function ProfitMarginDisplay({
             </div>
             {hasCogs && hasPrice && (
                 <p className="text-[10px] text-gray-500 mt-1">
-                    Based on {v.salePrice && parseFloat(v.salePrice) > 0 ? 'sale' : 'regular'} price of ${sellingPrice.toFixed(2)}
+                    Based on {v.salePrice && parseFloat(v.salePrice) > 0 ? 'sale' : 'regular'} price of {reportMoney(sellingPrice, currency)}
                     {cogsSource === 'bom' && ' • BOM-calculated COGS'}
                     {cogsSource === 'gold' && ' • Gold price COGS'}
                 </p>

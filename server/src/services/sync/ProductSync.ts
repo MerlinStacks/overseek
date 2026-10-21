@@ -43,7 +43,6 @@ export class ProductSync extends BaseSync {
         while (hasMore) {
             const { data: rawProducts, totalPages } = await woo.getProducts({ page, after, per_page: 50 });
             if (!rawProducts.length) {
-                hasMore = false;
                 break;
             }
 

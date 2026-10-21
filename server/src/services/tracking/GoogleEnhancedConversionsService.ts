@@ -77,15 +77,33 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
             if (!response.ok || result.error) throw new Error(`Google configuration check failed (${response.status}). Check account access and API eligibility.`);
             return result.results || [];
         };
-        const rows = await query(`SELECT conversion_action.id, conversion_action.type, conversion_action.status FROM conversion_action WHERE conversion_action.id = ${actionId}`);
+        const rows = await query(`SELECT conversion_action.id, conversion_action.type, conversion_action.status, conversion_action.primary_for_goal, conversion_action.value_settings.always_use_default_value FROM conversion_action WHERE conversion_action.id = ${actionId}`);
         const action = rows[0]?.conversionAction;
         const expected = config.purchaseUploadActionId ? 'UPLOAD_CLICKS' : 'WEBPAGE';
         if (action?.type !== expected || action?.status !== 'ENABLED') throw new Error(`Purchase action must be ENABLED and type ${expected}; check the action ID and conversion-owning account`);
         const customers = await query('SELECT customer.conversion_tracking_setting.accepted_customer_data_terms FROM customer');
         if (customers[0]?.customer?.conversionTrackingSetting?.acceptedCustomerDataTerms !== true) throw new Error('Accept Google customer-data terms before sending customer identifiers');
-        return config.purchaseUploadActionId
+        const purchaseRows = await query("SELECT conversion_action.id, conversion_action.category, conversion_action.status, conversion_action.primary_for_goal FROM conversion_action WHERE conversion_action.category = 'PURCHASE' AND conversion_action.status = 'ENABLED'");
+        const actions = purchaseRows.map((row: any) => row.conversionAction);
+        const warnings: string[] = [];
+        if (!config.purchaseUploadActionId) {
+            warnings.push('No independent purchase import is configured: enhancements cannot recover a missing browser purchase.');
+        }
+        if (action.primaryForGoal === false) {
+            warnings.push('This action is Secondary. Its revenue is normally excluded from the Conversions value used for ROAS and bidding; validate it before making it Primary.');
+        }
+        const primaryPurchases = actions.filter((item: any) => item?.category === 'PURCHASE' && item.status === 'ENABLED' && item.primaryForGoal === true);
+        if (primaryPurchases.length > 1) {
+            warnings.push('Multiple enabled purchase actions are Primary. If they track the same orders, revenue can be double-counted. Keep exactly one purchase source for bidding.');
+        }
+        if (action.valueSettings?.alwaysUseDefaultValue === true) {
+            warnings.push('This action always uses a default conversion value instead of the order value. Review its value settings before trusting revenue or ROAS.');
+        }
+        const summary = config.purchaseUploadActionId
             ? 'Independent purchase import action and account access verified. No purchase was sent. Validate real orders in Google upload diagnostics; keep only one purchase action Primary.'
             : 'Website enhancement action and account access verified. This mode still requires a matching browser purchase. Configure an independent purchase import action for server-created purchases.';
+        return [summary, ...warnings.map(warning => `Warning: ${warning}`),
+            'ROAS uses Google Ads Conversions value, not All conversions value. Review campaign-specific/custom goals too; this check does not verify which goals each campaign uses.'].join('\n\n');
     }
 
     /**
@@ -125,14 +143,17 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
 
         const isPurchase = data.type === 'purchase';
         const isEnhancement = isPurchase && !independentPurchase;
-        const hasGclid = userData.clickPlatform === 'google' && userData.clickId;
+        // Keep this Google-only: other platforms continue using the existing click context.
+        const clickIdType = data.clickIdType ?? data.payload?.clickIdType ?? 'gclid';
+        const hasGoogleClickId = userData.clickPlatform === 'google' && !!userData.clickId
+            && ['gclid', 'gbraid', 'wbraid'].includes(clickIdType);
         const hasUserIdentifier = !!userData.email
             || !!normalizePhoneE164(userData.phone, userData.country)
             || (isEnhancement && !!(userData.firstName && userData.lastName && userData.country && userData.zip));
 
         // Purchase enhancements require hashed user data. Click conversions can
         // also be matched directly with a Google click ID.
-        if (data.consentState === 'denied' || (!hasUserIdentifier && (isEnhancement || !hasGclid))) {
+        if (data.consentState === 'denied' || (!hasUserIdentifier && (isEnhancement || !hasGoogleClickId))) {
             Logger.debug('[GoogleEnhanced] Skipping — no valid user identifier or gclid for matching', { accountId });
             return;
         }
@@ -155,7 +176,7 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
 
         const payload = isEnhancement
             ? this.buildEnhancementPayload(conversionActionId, customerId, eventId, data, userData)
-            : this.buildConversionPayload(conversionActionId, customerId, eventId, data, userData, !!hasGclid);
+            : this.buildConversionPayload(conversionActionId, customerId, eventId, data, userData, hasGoogleClickId ? clickIdType : undefined);
 
         const googleEventName = mapEventName(data.type, 'GOOGLE')!;
         const deliveryId = await this.logDelivery(accountId, googleEventName, eventId, payload);
@@ -380,7 +401,7 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         eventId: string,
         data: TrackingEventPayload,
         userData: ReturnType<typeof extractUserData>,
-        hasGclid: boolean,
+        clickIdType?: 'gclid' | 'gbraid' | 'wbraid',
     ): Record<string, any> {
         const conversionTime = resolveConversionEventDate(data.occurredAt, data.payload).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '+00:00');
         const cleanCustomerId = customerId.replace(/-/g, '');
@@ -393,9 +414,9 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
             userIdentifiers: [],
         };
 
-        // gclid is the strongest matching signal
-        if (hasGclid && userData.clickId) {
-            conversion.gclid = userData.clickId;
+        // Google accepts exactly one click ID, in its original field.
+        if (clickIdType && userData.clickId) {
+            conversion[clickIdType] = userData.clickId;
         }
 
         // Hashed email

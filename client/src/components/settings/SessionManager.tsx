@@ -1,151 +1,65 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Logger } from '../../utils/logger';
+import { useEffect, useState } from 'react';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { useScopedMutation } from '../../hooks/useScopedMutation';
+import { isRecord } from '../../utils/responseValidation';
+import { formatDateTimeSafe } from '../../utils/format';
 import './SessionManager.css';
 
-interface Session {
-    id: string;
-    createdAt: string;
-    expiresAt: string;
-    ipAddress: string | null;
-    userAgent: string | null;
-    isCurrent?: boolean;
+interface Session { id: string; createdAt: string; expiresAt: string; ipAddress: string | null; userAgent: string | null; isCurrent: boolean }
+function decodeSessions(value: unknown): Session[] {
+    if (!Array.isArray(value) || !value.every(item => isRecord(item) && typeof item.id === 'string' && typeof item.createdAt === 'string' && typeof item.expiresAt === 'string' && typeof item.isCurrent === 'boolean' && ['ipAddress', 'userAgent'].every(key => item[key] == null || typeof item[key] === 'string'))) throw new Error('Invalid sessions');
+    return value;
 }
-
-export const SessionManager: React.FC = () => {
-    const { token } = useAuth();
-    const [sessions, setSessions] = useState<Session[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [revoking, setRevoking] = useState<string | null>(null);
-
-    const fetchSessions = useCallback(async () => {
-        if (!token) return; // Don't fetch without auth token
-        try {
-            setLoading(true);
-            const data = await api.get<Session[]>('/api/sessions', token);
-            setSessions(data);
-        } catch (error) {
-            Logger.error('Failed to fetch sessions:', { error: error });
-        } finally {
-            setLoading(false);
-        }
-    }, [token]);
-
+function browserName(agent: string | null) {
+    if (!agent) return 'Unknown Device';
+    if (/Edg\//.test(agent)) return 'Edge Browser';
+    if (/OPR\//.test(agent)) return 'Opera Browser';
+    if (agent.includes('Firefox')) return 'Firefox Browser';
+    if (agent.includes('Chrome')) return 'Chrome Browser';
+    return agent.includes('Safari') ? 'Safari Browser' : 'Unknown Browser';
+}
+export function SessionManager() {
+    const { token, user } = useAuth();
+    if (!token || !user) return <p role="status">Sign in to manage sessions.</p>;
+    return <UserSessions key={JSON.stringify([user.id, token])} token={token} />;
+}
+function UserSessions({ token }: { token: string }) {
+    const [sessions, setSessions] = useState<Session[]>([]); const [loading, setLoading] = useState(true);
+    const [readError, setReadError] = useState(false); const [attempt, setAttempt] = useState(0);
+    const mutation = useScopedMutation();
     useEffect(() => {
-        fetchSessions();
-    }, [fetchSessions]); // Re-fetch when token becomes available
-
-    const revokeSession = async (id: string) => {
-        if (!token) return;
-        if (!confirm('Are you sure you want to revoke this session?')) return;
-
-        try {
-            setRevoking(id);
-            await api.delete(`/api/sessions/${id}`, token);
-            setSessions(prev => prev.filter(s => s.id !== id));
-        } catch (error) {
-            Logger.error('Failed to revoke session:', { error: error });
-        } finally {
-            setRevoking(null);
-        }
+        const controller = new AbortController(); let disposed = false;
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        queueMicrotask(() => {
+            if (disposed) return;
+            setLoading(true); setReadError(false);
+            void (async () => {
+                try {
+                    const data = decodeSessions(await api.request('/api/sessions', { method: 'GET', token, signal: controller.signal }));
+                    if (!disposed && !controller.signal.aborted) setSessions(data);
+                } catch { if (!disposed) setReadError(true); }
+                finally { clearTimeout(timeout); if (!disposed) setLoading(false); }
+            })();
+        });
+        return () => { disposed = true; clearTimeout(timeout); controller.abort(); };
+    }, [token, attempt]);
+    const revoke = async (id?: string) => {
+        if (mutation.isPending() || loading || readError) return;
+        if (id && !sessions.some(item => item.id === id && !item.isCurrent)) return;
+        if (!confirm(id ? 'Revoke this session?' : 'Sign out all other devices? Your current session will remain active.')) return;
+        const result = await mutation.run(signal => api.request(`/api/sessions${id ? `/${encodeURIComponent(id)}` : ''}`, { method: 'DELETE', token, signal }), 'Could not revoke sessions. Check their status before retrying.');
+        if (result.ok) { setSessions(previous => previous.filter(item => id ? item.id !== id : item.isCurrent)); setAttempt(value => value + 1); }
     };
-
-    const revokeAllSessions = async () => {
-        if (!token) return;
-        if (!confirm('This will sign you out of all other devices. Continue?')) return;
-
-        try {
-            setRevoking('all');
-            await api.delete('/api/sessions', token);
-            await fetchSessions();
-        } catch (error) {
-            Logger.error('Failed to revoke sessions:', { error: error });
-        } finally {
-            setRevoking(null);
-        }
-    };
-
-    const formatDate = (dateStr: string) => {
-        return new Date(dateStr).toLocaleString();
-    };
-
-    const parseUserAgent = (ua: string | null): string => {
-        if (!ua) return 'Unknown Device';
-
-        if (ua.includes('Chrome')) return 'Chrome Browser';
-        if (ua.includes('Firefox')) return 'Firefox Browser';
-        if (ua.includes('Safari')) return 'Safari Browser';
-        if (ua.includes('Edge')) return 'Edge Browser';
-
-        return 'Unknown Browser';
-    };
-
-    if (loading) {
-        return <div className="session-manager loading">Loading sessions...</div>;
-    }
-
-    return (
-        <div className="session-manager">
-            <div className="session-header">
-                <h3>Active Sessions</h3>
-                {sessions.length > 1 && (
-                    <button
-                        className="btn-danger"
-                        onClick={revokeAllSessions}
-                        disabled={revoking === 'all'}
-                    >
-                        {revoking === 'all' ? 'Revoking...' : 'Revoke All Sessions'}
-                    </button>
-                )}
-            </div>
-
-            <p className="session-description">
-                These are devices that are currently signed into your account.
-                Revoke any sessions you don't recognize.
-            </p>
-
-            <div className="session-list">
-                {sessions.length === 0 ? (
-                    <div className="no-sessions">No active sessions found</div>
-                ) : (
-                    sessions.map(session => (
-                        <div key={session.id} className={`session-item ${session.isCurrent ? 'session-current' : ''}`}>
-                            <div className="session-info">
-                                <div className="session-device">
-                                    <span className="device-icon">💻</span>
-                                    <span className="device-name">{parseUserAgent(session.userAgent)}</span>
-                                    {session.isCurrent && (
-                                        <span className="current-badge">Current Session</span>
-                                    )}
-                                </div>
-                                <div className="session-details">
-                                    <span className="session-ip">
-                                        IP: {session.ipAddress || 'Unknown'}
-                                    </span>
-                                    <span className="session-date">
-                                        Signed in: {formatDate(session.createdAt)}
-                                    </span>
-                                    <span className="session-expires">
-                                        Expires: {formatDate(session.expiresAt)}
-                                    </span>
-                                </div>
-                            </div>
-                            {!session.isCurrent && (
-                                <button
-                                    className="btn-revoke"
-                                    onClick={() => revokeSession(session.id)}
-                                    disabled={revoking === session.id}
-                                >
-                                    {revoking === session.id ? 'Revoking...' : 'Revoke'}
-                                </button>
-                            )}
-                        </div>
-                    ))
-                )}
-            </div>
-        </div>
-    );
-};
-
+    if (loading) return <p role="status">Loading sessions...</p>;
+    if (readError) return <p role="alert">Could not load active sessions. <button type="button" onClick={() => setAttempt(value => value + 1)}>Retry sessions</button></p>;
+    return <section aria-label="Active sessions" className="session-manager text-slate-900 dark:text-slate-100">
+        <h2 className="font-semibold">Active Sessions</h2><p>Revoke devices you do not recognize. Bulk revocation keeps your current session.</p>
+        {mutation.error && <p role="alert">{mutation.error}</p>}{mutation.busy && <p role="status">Revoking sessions...</p>}
+        <fieldset disabled={mutation.busy} className="space-y-4">
+            {sessions.some(item => !item.isCurrent) && <button type="button" onClick={() => void revoke()}>Revoke Other Sessions</button>}
+            {!sessions.length ? <p>No active sessions found.</p> : <ul className="session-list">{sessions.map(item => <li key={item.id} className="session-item"><div className="session-info"><p>{browserName(item.userAgent)} {item.isCurrent && <strong>· Current Session</strong>}</p><p>IP: {item.ipAddress || 'Unknown'}</p><p>Signed in: {formatDateTimeSafe(item.createdAt, 'Date unavailable')}</p><p>Expires: {formatDateTimeSafe(item.expiresAt, 'Date unavailable')}</p></div>{!item.isCurrent && <button type="button" aria-label={`Revoke session ${item.ipAddress || item.id}`} onClick={() => void revoke(item.id)}>Revoke</button>}</li>)}</ul>}
+        </fieldset>
+    </section>;
+}
 export default SessionManager;

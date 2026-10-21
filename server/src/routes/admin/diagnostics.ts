@@ -31,7 +31,7 @@ export const diagnosticsRoutes: FastifyPluginAsync = async (fastify) => {
                 const key = `${sub.account.name} (${sub.accountId.slice(0, 8)}...)`;
                 if (!byAccount[key]) byAccount[key] = [];
                 byAccount[key].push({
-                    id: sub.id.slice(0, 8),
+                    id: sub.id,
                     userId: sub.userId.slice(0, 8),
                     userEmail: sub.user.email,
                     userName: sub.user.fullName,

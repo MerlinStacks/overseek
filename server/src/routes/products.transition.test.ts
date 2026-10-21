@@ -136,7 +136,7 @@ describe('Woo product transition entry paths', () => {
         expect(db.productVariation.upsert).not.toHaveBeenCalled();
         expect(db.productVariation.deleteMany).toHaveBeenCalledWith({ where: { productId: 'p' } });
         expect(db.bOMItem.updateMany).toHaveBeenNthCalledWith(2, {
-            where: { bom: { productId: 'p', variationId: { not: 0 } } },
+            where: { bom: { productId: 'p', variationId: { not: 0 } }, OR: [{ isActive: true }, { deactivatedReason: null }, { deactivatedReason: { not: 'VARIATION_DELETED_IN_WOO' } }] },
             data: { isActive: false, deactivatedReason: 'VARIATION_DELETED_IN_WOO' }
         });
         expect(db.bOM.deleteMany).not.toHaveBeenCalled();
@@ -154,7 +154,7 @@ describe('Woo product transition entry paths', () => {
         await processWebhookPayload('a', topic, payload);
         expect(db.productVariation.deleteMany).toHaveBeenCalledTimes(2);
         expect(db.bOMItem.updateMany).toHaveBeenCalledWith({
-            where: { bom: { productId: 'p', variationId: { not: 0 } } },
+            where: { bom: { productId: 'p', variationId: { not: 0 } }, OR: [{ isActive: true }, { deactivatedReason: null }, { deactivatedReason: { not: 'VARIATION_DELETED_IN_WOO' } }] },
             data: { isActive: false, deactivatedReason: 'VARIATION_DELETED_IN_WOO' }
         });
         expect(db.bOM.deleteMany).not.toHaveBeenCalled();

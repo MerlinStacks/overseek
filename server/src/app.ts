@@ -172,7 +172,7 @@ async function build() {
 
     // Health check
     fastify.get('/health-fastify', async () => {
-        let esStatus = 'disconnected';
+        let esStatus: string;
         try {
             const health = await esClient.cluster.health();
             esStatus = health.status;

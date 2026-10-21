@@ -372,11 +372,12 @@ class AusPostShippingTrackingAdapter {
         const settings = await prisma.shippingCarrierAccount.findFirst({ where: { accountId, carrier: 'AUSPOST', isEnabled: true } });
         if (!settings?.credentialsEncrypted) throw new Error('AusPost credentials are not configured');
 
-        let decrypted: { apiKey?: string; apiSecret?: string } = {};
+        let decrypted: { apiKey?: string; apiSecret?: string };
         try {
             decrypted = JSON.parse(decrypt(settings.credentialsEncrypted));
-        } catch (parseError) {
-            Logger.warn('[AusPostAdapter] Failed to parse decrypted credentials', { error: parseError });
+        } catch (_parseError) {
+            Logger.warn('[AusPostAdapter] Failed to parse decrypted credentials', { accountId });
+            // eslint-disable-next-line preserve-caught-error -- JSON parser errors may contain snippets of decrypted credentials.
             throw new Error('AusPost credentials are corrupted');
         }
         if (!decrypted.apiKey) throw new Error('AusPost API key is not configured');
@@ -443,7 +444,7 @@ class AusPostShippingTrackingAdapter {
             }
             return parsed as T;
         } catch (error: any) {
-            if (error?.name === 'AbortError') throw new Error('AusPost API request timed out');
+            if (error?.name === 'AbortError') throw new Error('AusPost API request timed out', { cause: error });
             if (!String(error?.message || '').includes('AusPost API request failed')) {
                 Logger.error('[AusPostAdapter] Carrier request transport failure', {
                     environment: credentials.environment,

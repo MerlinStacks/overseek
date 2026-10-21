@@ -21,7 +21,6 @@ export class PageSync extends BaseSync {
         while (hasMore) {
             const { data: rawPages, totalPages } = await woo.getPages({ page, after, per_page: 50 });
             if (!rawPages.length) {
-                hasMore = false;
                 break;
             }
 

@@ -118,6 +118,7 @@ export interface SearchKeywordInsight {
  */
 const credentialsCache: Map<string, { data: any; expiry: number }> = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+let credentialVersion = 0;
 
 // Active sweep so expired entries don't hang around when nothing reads the
 // cache. The defensive sweep below only fires on a cache hit, which never
@@ -140,6 +141,7 @@ export type AdsPlatform = 'GOOGLE_ADS' | 'GOOGLE_SEARCH_CONSOLE' | 'META_ADS' | 
  * Call this when platform credentials are updated in Super Admin.
  */
 export function clearCredentialsCache(platform?: AdsPlatform): void {
+    credentialVersion++;
     if (platform) {
         credentialsCache.delete(platform);
         Logger.info(`Cleared credentials cache for ${platform}`);
@@ -155,6 +157,7 @@ export function clearCredentialsCache(platform?: AdsPlatform): void {
  * Falls back to environment variables for backwards compatibility.
  */
 export async function getCredentials(platform: AdsPlatform): Promise<Record<string, string> | null> {
+    const version = credentialVersion;
     // Build list of platforms to try (unified META first for Meta platforms)
     const platformsToTry: string[] = [];
     if (platform === 'META_ADS' || platform === 'META_MESSAGING') {
@@ -184,6 +187,7 @@ export async function getCredentials(platform: AdsPlatform): Promise<Record<stri
             const record = await prisma.platformCredentials.findUnique({
                 where: { platform: platformKey }
             });
+            if (version !== credentialVersion) return getCredentials(platform);
 
             if (record?.credentials) {
                 const creds = record.credentials as Record<string, string>;

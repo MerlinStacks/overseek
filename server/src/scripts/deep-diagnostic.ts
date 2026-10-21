@@ -1,61 +1,22 @@
+import type { PrismaClient } from '@prisma/client';
+import { operationalOptions, safeDestination, usage, type OperationalOptions } from './operationalSafety';
 
-import { createPrismaClient } from '../utils/prisma';
-
-const prisma = createPrismaClient();
-
-async function main() {
-    try {
-        console.log('--- DEEP DIAGNOSTIC FORENSICS ---');
-        console.log('Connecting to:', process.env.DATABASE_URL?.replace(/:[^:]+@/, ':***@')); // Hide password
-
-        // 1. List All Tables (Postgres specific)
-        const tables: any[] = await prisma.$queryRaw`
-      SELECT tablename 
-      FROM pg_catalog.pg_tables 
-      WHERE schemaname = 'public';
-    `;
-
-        console.log(`\nFound ${tables.length} tables in 'public' schema:`);
-
-        // 2. Count rows in each table
-        for (const t of tables) {
-            const tableName = t.tablename;
-            // SQL Injection warning: tableName comes from pg_catalogs, relatively safe here for dev script
-            // Prisma raw query doesn't allow dynamic table names easily in tagged template, so we use executeRawUnsafe for diagnostics
-            // or we just select count from specific expected tables if we want to be 100% safe.
-            // Let's stick to the key ones we care about to avoid complexity:
-            try {
-                const countResult: any[] = await prisma.$queryRawUnsafe(`SELECT COUNT(*) as c FROM "public"."${tableName}"`);
-                const count = countResult[0]?.c?.toString() || countResult[0]?.count?.toString() || '0';
-                console.log(` - ${tableName}: ${count} rows`);
-            } catch (err) {
-                console.log(` - ${tableName}: [Error counting]`);
-            }
-        }
-
-        console.log('\n--- DATA SAMPLING ---');
-        // 3. User Table Dump (Raw)
-        try {
-            const users: any[] = await prisma.$queryRaw`SELECT * FROM "public"."User" LIMIT 5`;
-            console.log(`User Table Sample (${users.length}):`);
-            console.dir(users, { depth: null });
-        } catch (e) {
-            console.log('Could not select from "User" table (maybe lower case "user"?):', (e as any).message.split('\n')[0]);
-            // Try lowercase
-            try {
-                const usersLower: any[] = await prisma.$queryRaw`SELECT * FROM "public"."user" LIMIT 5`;
-                console.log(`user (lowercase) Table Sample (${usersLower.length}):`);
-                console.dir(usersLower, { depth: null });
-            } catch (_e2) {
-                console.log('Could not select from "user" table either.');
-            }
-        }
-
-    } catch (e) {
-        console.error('Forensics failed:', e);
-    } finally {
-        await prisma.$disconnect();
-    }
+/** Aggregate-only diagnostics. Never dumps rows, tokens, hashes, URLs or raw errors. */
+export async function diagnose(options: OperationalOptions, db: PrismaClient) {
+    const where = options.accountId ? { accountId: options.accountId } : {};
+    const counts: Record<string, number> = {
+        accounts: await db.account.count({ where: options.accountId ? { id: options.accountId } : {} }),
+        orders: await db.wooOrder.count({ where }), products: await db.wooProduct.count({ where }),
+    };
+    if (options.all) { counts.users = await db.user.count(); counts.activeRefreshTokens = await db.refreshToken.count({ where: { revokedAt: null, expiresAt: { gt: new Date() } } }); }
+    return counts;
 }
-
-main();
+export async function main(args = process.argv.slice(2)) {
+    if (args.includes('--help')) { console.info(usage('deep-diagnostic')); return; }
+    (await import('dotenv')).config();
+    const options = operationalOptions('deep-diagnostic', args);
+    const { createPrismaClient } = await import('../utils/prisma'); const db = createPrismaClient();
+    try { console.info('Aggregate diagnostics', { destination: safeDestination(process.env.DATABASE_URL), counts: await diagnose(options, db) }); }
+    finally { await db.$disconnect(); }
+}
+if (require.main === module) void main().catch(() => { console.error('Diagnostics failed. No row samples or connection secrets were logged. Use --help to check options.'); process.exitCode = 1; });

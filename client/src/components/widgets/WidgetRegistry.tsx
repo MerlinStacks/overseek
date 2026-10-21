@@ -2,6 +2,8 @@ import { ReactNode, lazy, Suspense, ComponentType } from 'react';
 import { Loader2 } from 'lucide-react';
 import { WidgetErrorBoundary } from './WidgetErrorBoundary';
 import { widgetCardClass } from './widgetStyles';
+import { useAccount } from '../../context/AccountContext';
+import { useAuth } from '../../context/AuthContext';
 /* eslint-disable react-refresh/only-export-components */
 
 /**
@@ -112,11 +114,17 @@ export const WidgetRegistry: Record<string, {
  * Each widget loads its own chunk on-demand, deferring heavy deps like echarts.
  */
 export function renderWidget(key: string, props: WidgetProps): ReactNode {
+    return <ScopedWidget widgetKey={key} {...props} />;
+}
+
+function ScopedWidget({ widgetKey: key, ...props }: WidgetProps & { widgetKey: string }) {
+    const { token } = useAuth();
+    const { currentAccount } = useAccount();
     const entry = WidgetRegistry[key];
     if (!entry) return <div className="p-4 bg-red-50 text-red-500">Widget {key} not found</div>;
     const Component = entry.component;
     return (
-        <WidgetErrorBoundary widgetKey={key}>
+        <WidgetErrorBoundary key={JSON.stringify([key, token, currentAccount?.id])} widgetKey={key}>
             <Suspense fallback={<WidgetSkeleton />}>
                 <Component {...props} />
             </Suspense>

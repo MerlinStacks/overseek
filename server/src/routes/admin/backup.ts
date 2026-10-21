@@ -9,6 +9,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { validateFastify } from '../../middleware/validate';
 import { Logger } from '../../utils/logger';
+import { prisma } from '../../utils/prisma';
 
 const backupOptionsSchema = z.object({
     body: z.object({
@@ -225,9 +226,15 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
      * POST /admin/backups/:backupId/restore
      * Restore from a stored backup
      */
-    fastify.post<{ Params: { backupId: string } }>('/backups/:backupId/restore', async (request, reply) => {
+    fastify.post<{ Params: { backupId: string }; Body: { accountId: string; confirmAccountName: string } }>('/backups/:backupId/restore', async (request, reply) => {
         try {
             const { backupId } = request.params;
+            const confirmation = z.object({ accountId: z.string().min(1), confirmAccountName: z.string().min(1) }).safeParse(request.body);
+            if (!confirmation.success) return reply.code(400).send({ error: 'Account ID and account name confirmation required' });
+            const backup = await prisma.storedBackup.findUnique({ where: { id: backupId }, select: { accountId: true, status: true, account: { select: { name: true } } } });
+            if (!backup) return reply.code(404).send({ error: 'Backup not found' });
+            if (backup.accountId !== confirmation.data.accountId || backup.account.name !== confirmation.data.confirmAccountName) return reply.code(400).send({ error: 'Backup account confirmation does not match' });
+            if (backup.status !== 'COMPLETED') return reply.code(409).send({ error: 'Backup is not available for restore' });
             const { AccountBackupService } = await import('../../services/AccountBackupService');
 
             const result = await AccountBackupService.restoreFromBackup(backupId);

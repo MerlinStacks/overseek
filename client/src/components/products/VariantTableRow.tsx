@@ -1,183 +1,30 @@
-/**
- * VariantTableRow
- * 
- * Single variant row with inline editing for SKU, price, stock, and dimensions.
- */
 import { memo } from 'react';
-import { ChevronDown, ChevronRight, Package, Loader2 } from 'lucide-react';
-import { ProductVariant, getVariantImage } from './variantTypes';
+import { type ProductVariant, getVariantImage, parseVariantStock } from './variantTypes';
 
-interface VariantTableRowProps {
-    variant: ProductVariant;
-    isExpanded: boolean;
-    onToggleExpand: () => void;
+interface Props {
+    variant: ProductVariant; isExpanded: boolean; onToggleExpand: () => void;
     onFieldChange: (field: keyof ProductVariant, value: ProductVariant[keyof ProductVariant]) => void;
-    stockEditValue: string;
-    onStockEditChange: (value: string) => void;
-    onStockAdjust: (delta: number) => void;
-    onStockSave: () => void;
-    isSavingStock: boolean;
-    /** When true, stock is BOM-managed and cannot be manually edited */
-    hasBOM?: boolean;
+    stockEditValue: string; onStockEditChange: (value: string) => void; onStockAdjust: (delta: number) => void; onStockSave: () => void;
+    isSavingStock: boolean; hasBOM?: boolean; disabled?: boolean; stockUnavailable?: boolean; currency?: string;
 }
-
-export const VariantTableRow = memo(function VariantTableRow({
-    variant: v,
-    isExpanded,
-    onToggleExpand,
-    onFieldChange,
-    stockEditValue,
-    onStockEditChange,
-    onStockAdjust,
-    onStockSave,
-    isSavingStock,
-    hasBOM = false
-}: VariantTableRowProps) {
-    const imageUrl = getVariantImage(v);
-    const stockUnchanged = stockEditValue === (v.stockQuantity?.toString() ?? '');
-
-    return (
-        <tr className={`hover:bg-blue-50/30 transition-colors group ${isExpanded ? 'bg-blue-50/20' : ''}`}>
-            <td className="pl-4 text-gray-400 cursor-pointer" onClick={onToggleExpand}>
-                {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            </td>
-            <td className="px-2 py-2">
-                {imageUrl ? (
-                    <img src={imageUrl} alt="" className="w-12 h-12 object-cover rounded-lg border border-gray-100" loading="lazy" />
-                ) : (
-                    <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-gray-400">
-                        <Package size={16} />
-                    </div>
-                )}
-            </td>
-            <td className="px-4 py-2">
-                <div className="flex flex-wrap gap-1">
-                    {v.attributes?.length > 0 ? (
-                        v.attributes.map((attr, idx: number) => (
-                            <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">
-                                <span className="font-medium text-gray-500">{attr.name}:</span>
-                                <span className="ml-1">{attr.option}</span>
-                            </span>
-                        ))
-                    ) : (
-                        <span className="text-xs text-gray-400 font-mono">#{v.id}</span>
-                    )}
-                </div>
-            </td>
-            <td className="px-4 py-2">
-                <input
-                    type="text"
-                    value={v.sku || ''}
-                    onChange={(e) => onFieldChange('sku', e.target.value)}
-                    className="w-full font-mono text-sm px-2 py-1.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                    placeholder="SKU"
-                    onClick={(e) => e.stopPropagation()}
-                />
-            </td>
-            <td className="px-4 py-2">
-                <div className="relative">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                    <input
-                        type="number"
-                        step="0.01"
-                        value={v.price || ''}
-                        onChange={(e) => onFieldChange('price', e.target.value)}
-                        className="w-full text-sm pl-5 pr-2 py-1.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                        placeholder="0.00"
-                        onClick={(e) => e.stopPropagation()}
-                    />
-                </div>
-            </td>
-            <td className="px-4 py-2">
-                <div className="relative">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                    <input
-                        type="number"
-                        step="0.01"
-                        value={v.salePrice || ''}
-                        onChange={(e) => onFieldChange('salePrice', e.target.value)}
-                        className="w-full text-sm pl-5 pr-2 py-1.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                        placeholder="—"
-                        onClick={(e) => e.stopPropagation()}
-                    />
-                </div>
-            </td>
-            <td className="px-4 py-2">
-                <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={v.weight || ''}
-                    onChange={(e) => onFieldChange('weight', e.target.value)}
-                    className="w-full font-mono text-sm px-2 py-1.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                    placeholder="0.00"
-                    onClick={(e) => e.stopPropagation()}
-                />
-            </td>
-            <td className="px-4 py-2">
-                <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-                    <input
-                        type="number" step="0.01" min="0"
-                        value={v.dimensions?.length || ''}
-                        onChange={(e) => onFieldChange('dimensions', { ...v.dimensions, length: e.target.value })}
-                        className="w-12 font-mono text-xs px-1 py-1 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                        placeholder="L" title="Length"
-                    />
-                    <span className="text-gray-400 text-xs">×</span>
-                    <input
-                        type="number" step="0.01" min="0"
-                        value={v.dimensions?.width || ''}
-                        onChange={(e) => onFieldChange('dimensions', { ...v.dimensions, width: e.target.value })}
-                        className="w-12 font-mono text-xs px-1 py-1 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                        placeholder="W" title="Width"
-                    />
-                    <span className="text-gray-400 text-xs">×</span>
-                    <input
-                        type="number" step="0.01" min="0"
-                        value={v.dimensions?.height || ''}
-                        onChange={(e) => onFieldChange('dimensions', { ...v.dimensions, height: e.target.value })}
-                        className="w-12 font-mono text-xs px-1 py-1 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                        placeholder="H" title="Height"
-                    />
-                </div>
-            </td>
-            <td className="px-4 py-2">
-                {hasBOM ? (
-                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                        <span className="font-mono text-sm font-bold text-gray-900">{v.stockQuantity ?? '—'}</span>
-                        <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 text-[10px] font-medium rounded border border-purple-200">BOM</span>
-                    </div>
-                ) : v.manageStock ? (
-                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <button
-                            type="button"
-                            onClick={() => onStockAdjust(-1)}
-                            className="w-6 h-6 flex items-center justify-center bg-gray-100 border border-gray-200 rounded text-gray-600 hover:bg-gray-200 transition-colors text-xs font-bold"
-                        >−</button>
-                        <input
-                            type="number" min="0"
-                            value={stockEditValue}
-                            onChange={(e) => onStockEditChange(e.target.value)}
-                            className="w-14 px-1 py-1 text-center font-mono text-sm bg-white border border-gray-200 rounded focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                        />
-                        <button
-                            type="button"
-                            onClick={() => onStockAdjust(1)}
-                            className="w-6 h-6 flex items-center justify-center bg-gray-100 border border-gray-200 rounded text-gray-600 hover:bg-gray-200 transition-colors text-xs font-bold"
-                        >+</button>
-                        <button
-                            type="button"
-                            onClick={onStockSave}
-                            disabled={isSavingStock || stockUnchanged}
-                            className="ml-1 px-2 py-1 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                            {isSavingStock ? <Loader2 className="animate-spin" size={12} /> : 'Save'}
-                        </button>
-                    </div>
-                ) : (
-                    <span className="text-xs text-gray-400 italic">Not tracked</span>
-                )}
-            </td>
-        </tr>
-    );
+export const VariantTableRow = memo(function VariantTableRow({ variant: v, isExpanded, onToggleExpand, onFieldChange, stockEditValue, onStockEditChange, onStockAdjust, onStockSave, isSavingStock, hasBOM, disabled, stockUnavailable, currency }: Props) {
+    const locked = disabled || isSavingStock; const stock = parseVariantStock(stockEditValue);
+    const image = getVariantImage(v); const inputClass = 'w-full p-2 border rounded-lg bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 disabled:opacity-50';
+    return <tr className="text-slate-900 dark:text-slate-100">
+        <td className="p-2"><button type="button" disabled={locked} aria-label={`${isExpanded ? 'Collapse' : 'Expand'} variant ${v.id}`} aria-expanded={isExpanded} onClick={onToggleExpand}>{isExpanded ? '−' : '+'}</button></td>
+        <td>{image && <img src={image} alt="" className="w-12 h-12 object-cover rounded-lg" loading="lazy" />}</td>
+        <td className="p-2">{v.attributes?.map(attribute => `${attribute.name}: ${attribute.option}`).join(', ') || `#${v.id}`}</td>
+        {(['sku', 'price', 'salePrice', 'weight'] as const).map(field => <td className="p-2" key={field}>
+            {(field === 'price' || field === 'salePrice') && <span className="text-xs">{currency || 'Currency unavailable'}</span>}
+            <input className={inputClass} disabled={locked} aria-label={`${field === 'salePrice' ? 'Sale price' : field === 'sku' ? 'SKU' : field === 'price' ? 'Price' : 'Weight'} for variant ${v.id}`} type={field === 'sku' ? 'text' : 'number'} min={field === 'sku' ? undefined : '0'} step="any" value={v[field] ?? ''} onChange={event => onFieldChange(field, event.target.value)} />
+        </td>)}
+        <td className="p-2"><div className="flex gap-1">{(['length', 'width', 'height'] as const).map(field => <input key={field} className={`${inputClass} min-w-12`} disabled={locked} aria-label={`${field} for variant ${v.id}`} type="number" min="0" step="any" value={v.dimensions?.[field] ?? ''} onChange={event => onFieldChange('dimensions', { ...v.dimensions, [field]: event.target.value })} />)}</div></td>
+        <td className="p-2">{stockUnavailable ? <span>BOM status unavailable; stock editing locked</span> : hasBOM ? <span>{v.stockQuantity ?? 'Unavailable'} · BOM managed</span> : v.manageStock ? <div className="flex flex-wrap gap-1">
+            <button type="button" disabled={locked || stock === null || stock === 0} aria-label={`Decrease stock for variant ${v.id}`} onClick={() => onStockAdjust(-1)}>−</button>
+            <input aria-label={`Stock for variant ${v.id}`} aria-invalid={stock === null} className={`${inputClass} w-20`} type="text" inputMode="numeric" disabled={locked} value={stockEditValue} onChange={event => onStockEditChange(event.target.value)} />
+            <button type="button" disabled={locked || stock === null || stock === Number.MAX_SAFE_INTEGER} aria-label={`Increase stock for variant ${v.id}`} onClick={() => onStockAdjust(1)}>+</button>
+            <button type="button" aria-label={`Save stock for variant ${v.id}`} disabled={locked || stock === null || stock === v.stockQuantity} onClick={onStockSave}>{isSavingStock ? 'Saving...' : 'Save'}</button>
+            {stock === null && <span className="text-xs">Enter a nonnegative whole number.</span>}
+        </div> : <span>Not tracked</span>}</td>
+    </tr>;
 });

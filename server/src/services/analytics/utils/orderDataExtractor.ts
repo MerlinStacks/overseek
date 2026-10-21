@@ -30,20 +30,32 @@ export interface OrderLineItem {
     categoryName: string | null;
 }
 
+export function orderRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+const text = (value: unknown): string | null => typeof value === 'string' && value.trim() ? value.trim() : null;
+function identifier(value: unknown): number | null {
+    if (typeof value !== 'number' && !(typeof value === 'string' && /^\d+$/.test(value))) return null;
+    const number = Number(value);
+    return Number.isSafeInteger(number) && number > 0 ? number : null;
+}
+export function orderMoney(value: unknown): number {
+    if (typeof value !== 'number' && !(typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value))) throw new Error('Order money is unavailable or invalid');
+    const number = Number(value);
+    if (!Number.isFinite(number)) throw new Error('Invalid order money');
+    return number;
+}
+
 /**
  * Extract billing information from order rawData
  */
 export function extractBillingInfo(order: { rawData: unknown }): OrderBillingInfo {
-    const raw = order.rawData as Record<string, any> | null;
-    const billing = raw?.billing || {};
+    const billing = orderRecord(orderRecord(order?.rawData).billing);
 
     return {
-        email: billing.email?.toLowerCase() || null,
-        firstName: billing.first_name || null,
-        lastName: billing.last_name || null,
-        phone: billing.phone || null,
-        country: billing.country || null,
-        city: billing.city || null,
+        email: text(billing.email)?.toLowerCase() || null,
+        firstName: text(billing.first_name), lastName: text(billing.last_name), phone: text(billing.phone),
+        country: text(billing.country), city: text(billing.city),
     };
 }
 
@@ -51,26 +63,25 @@ export function extractBillingInfo(order: { rawData: unknown }): OrderBillingInf
  * Extract customer ID from order rawData
  */
 export function extractCustomerId(order: { rawData: unknown }): number | null {
-    const raw = order.rawData as Record<string, any> | null;
-    return raw?.customer_id || null;
+    return identifier(orderRecord(order?.rawData).customer_id);
 }
 
 /**
  * Extract line items from order rawData
  */
 export function extractLineItems(order: { rawData: unknown }): OrderLineItem[] {
-    const raw = order.rawData as Record<string, any> | null;
-    const items = raw?.line_items || [];
+    const items = orderRecord(order?.rawData).line_items;
+    if (!Array.isArray(items)) throw new Error('Order line items unavailable');
 
-    return items.map((item: any) => ({
-        productId: item.product_id || 0,
-        variationId: item.variation_id || null,
-        name: item.name || 'Unknown Product',
-        quantity: item.quantity || 0,
-        total: parseFloat(item.total) || 0,
-        sku: item.sku || null,
-        categoryName: extractItemCategory(item),
-    }));
+    return items.map(value => {
+        const item = orderRecord(value);
+        const productId = identifier(item.product_id);
+        const quantity = orderMoney(item.quantity);
+        if (!productId || quantity < 0 || !Number.isInteger(quantity)) throw new Error('Invalid order line identity/quantity');
+        if (item.variation_id != null && Number(item.variation_id) !== 0 && !identifier(item.variation_id)) throw new Error('Invalid order variation');
+        return { productId, variationId: identifier(item.variation_id), name: text(item.name) || 'Unknown Product', quantity,
+            total: orderMoney(item.total), sku: text(item.sku), categoryName: extractItemCategory(item) };
+    });
 }
 
 /**
@@ -78,11 +89,11 @@ export function extractLineItems(order: { rawData: unknown }): OrderLineItem[] {
  */
 function extractItemCategory(item: any): string | null {
     // Try direct category_name field
-    if (item.category_name) return item.category_name;
+    if (text(item.category_name)) return text(item.category_name);
 
     // Try meta_data
-    const categoryMeta = item.meta_data?.find((m: any) => m.key === 'category');
-    if (categoryMeta?.value) return categoryMeta.value;
+    const categoryMeta = Array.isArray(item.meta_data) ? item.meta_data.find((m: unknown) => orderRecord(m).key === 'category') : null;
+    if (text(categoryMeta?.value)) return text(categoryMeta.value);
 
     return null;
 }
@@ -97,8 +108,7 @@ export function getFirstProductCategory(order: { rawData: unknown }): string | n
         if (item.categoryName) return item.categoryName;
     }
 
-    // Return the first product name for category inference
-    return items[0]?.name || null;
+    return null;
 }
 
 /**

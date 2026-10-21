@@ -9,13 +9,20 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { SearchConsoleService } from './SearchConsoleService';
+import { z } from 'zod';
+const briefSchema = z.object({ suggestedTitle: z.string().trim().min(1).max(60), metaDescription: z.string().trim().min(1).max(155),
+    wordCount: z.number().int().min(100).max(20000), headingOutline: z.array(z.string().trim().min(1).max(300)).min(1).max(20),
+    keyTopics: z.array(z.string().trim().min(1).max(300)).min(1).max(20), internalLinkSuggestions: z.array(z.string().trim().min(1).max(300)).max(10),
+    contentType: z.enum(['blog post', 'guide', 'landing page', 'product page', 'comparison']), tone: z.enum(['informational', 'commercial', 'transactional', 'navigational']) });
 
 /** Content brief output */
 export interface ContentBrief {
     keyword: string;
     currentPosition: number | null;
-    currentClicks: number;
-    currentImpressions: number;
+    currentClicks: number | null;
+    currentImpressions: number | null;
+    provenance: 'ai' | 'template';
+    fallbackReason?: 'not-configured' | 'generation-failed';
     brief: {
         suggestedTitle: string;
         metaDescription: string;
@@ -40,6 +47,8 @@ export class ContentBriefService {
         keyword: string,
         _keywordId?: string
     ): Promise<ContentBrief> {
+        keyword = z.string().trim().min(1).max(200).parse(keyword).replace(/\s+/g, ' ');
+        if (_keywordId && !await prisma.trackedKeyword.findFirst({ where: { id: _keywordId, accountId, keyword: { equals: keyword, mode: 'insensitive' } } })) throw new Error('Tracked keyword not found in account');
         // Get current search data for context
         const analytics = await SearchConsoleService.getSearchAnalytics(accountId, { days: 28 });
         const kwData = analytics.find(q => q.query.toLowerCase() === keyword.toLowerCase());
@@ -57,8 +66,11 @@ export class ContentBriefService {
         });
 
         let brief: ContentBrief['brief'];
+        let provenance: ContentBrief['provenance'] = 'template';
+        let fallbackReason: ContentBrief['fallbackReason'] = 'not-configured';
 
         if (account?.openRouterApiKey) {
+            try {
             brief = await this.generateAIBrief(
                 account.openRouterApiKey,
                 account.aiModel || 'google/gemini-2.0-flash-001',
@@ -66,6 +78,11 @@ export class ContentBriefService {
                 kwData,
                 relatedQueries
             );
+            provenance = 'ai'; fallbackReason = undefined;
+            } catch {
+                Logger.warn('AI content brief generation failed; returning labelled template');
+                brief = this.generateTemplateBrief(keyword, kwData, relatedQueries); fallbackReason = 'generation-failed';
+            }
         } else {
             // Template-based fallback when no API key
             brief = this.generateTemplateBrief(keyword, kwData, relatedQueries);
@@ -73,9 +90,10 @@ export class ContentBriefService {
 
         return {
             keyword,
-            currentPosition: kwData?.position ?? null,
-            currentClicks: kwData?.clicks ?? 0,
-            currentImpressions: kwData?.impressions ?? 0,
+            currentPosition: Number.isFinite(kwData?.position) && kwData.position > 0 ? kwData.position : null,
+            currentClicks: Number.isFinite(kwData?.clicks) && kwData.clicks >= 0 ? kwData.clicks : null,
+            currentImpressions: Number.isFinite(kwData?.impressions) && kwData.impressions >= 0 ? kwData.impressions : null,
+            provenance, fallbackReason,
             brief,
             generatedAt: new Date().toISOString(),
         };
@@ -95,8 +113,8 @@ export class ContentBriefService {
 
 Target Keyword: "${keyword}"
 Current Position: ${kwData?.position ?? 'Not ranking'}
-Current Clicks: ${kwData?.clicks ?? 0}
-Current Impressions: ${kwData?.impressions ?? 0}
+Current Clicks: ${kwData?.clicks ?? 'Unavailable'}
+Current Impressions: ${kwData?.impressions ?? 'Unavailable'}
 Related Queries: ${relatedQueries.join(', ') || 'None found'}
 
 Generate a JSON response with these exact fields:
@@ -116,6 +134,7 @@ Return ONLY the JSON, no markdown formatting or explanation.`;
         try {
             const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
+                signal: AbortSignal.timeout(30000),
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${apiKey}`,
@@ -133,18 +152,18 @@ Return ONLY the JSON, no markdown formatting or explanation.`;
             }
 
             const data = await response.json();
-            const content = data.choices?.[0]?.message?.content || '';
+            const content = data.choices?.[0]?.message?.content;
+            if (typeof content !== 'string' || content.length > 30000) throw new Error('Invalid brief response');
 
             // Parse JSON from response (handle potential markdown wrapping)
             const jsonMatch = content.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
-                return JSON.parse(jsonMatch[0]);
+                return briefSchema.parse(JSON.parse(jsonMatch[0]));
             }
 
             throw new Error('No valid JSON in AI response');
         } catch (error) {
-            Logger.warn('AI content brief generation failed, using template', { error, keyword });
-            return this.generateTemplateBrief(keyword, kwData, relatedQueries);
+            throw new Error('AI content brief unavailable', { cause: error });
         }
     }
 
@@ -160,10 +179,8 @@ Return ONLY the JSON, no markdown formatting or explanation.`;
         const isCommercial = keyword.includes('buy') || keyword.includes('best') || keyword.includes('review');
 
         return {
-            suggestedTitle: isCommercial
-                ? `Best ${titleKeyword}: Complete Guide & Top Picks (${new Date().getFullYear()})`
-                : `${titleKeyword}: Everything You Need to Know (${new Date().getFullYear()})`,
-            metaDescription: `Discover everything about ${keyword}. Our comprehensive guide covers key topics, expert tips, and actionable advice to help you succeed.`,
+            suggestedTitle: `${titleKeyword}: ${isCommercial ? 'Comparison outline' : 'Guide outline'}`.slice(0, 60),
+            metaDescription: `Planning outline for ${keyword}. Review facts, topics and available internal links before publishing.`.slice(0, 155),
             wordCount: isCommercial ? 2000 : 1500,
             headingOutline: [
                 `H2: What is ${titleKeyword}?`,

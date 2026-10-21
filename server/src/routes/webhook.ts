@@ -134,7 +134,7 @@ export async function processWebhookPayload(
     }
 
     if (topic === 'order.created' || topic === 'order.updated') {
-        let previousStatus: string | null = null;
+        let previousStatus: string | null;
         let deliveryEstimateSnapshot: unknown = null;
 
         const orderStatus = normalizeOrderStatus((body as any).status);
@@ -300,7 +300,7 @@ export async function processWebhookPayload(
 
         // Why upsert first: indexing in ES without persisting to Postgres causes
         // data drift — ES shows data that the DB doesn't know about until next sync.
-        let persistedProduct: any = null;
+        let persistedProduct: any;
         try {
             persistedProduct = await persistWooProduct(body.type, {
                 where: { accountId_wooId: { accountId, wooId: body.id as number } },
@@ -355,7 +355,7 @@ export async function processWebhookPayload(
 
     // Handle Customer Events
     if (topic === 'customer.created' || topic === 'customer.updated') {
-        let persistedCustomer: { id: string; email: string } | null = null;
+        let persistedCustomer: { id: string; email: string } | null;
         let isNewCustomer = false;
         try {
             if (topic === 'customer.created') {

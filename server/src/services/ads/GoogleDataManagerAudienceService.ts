@@ -125,7 +125,10 @@ export class GoogleDataManagerAudienceService {
                     await prisma.audienceSync.updateMany({ where: { id: sync.id, accountId: sync.accountId, autoSyncEnabled: true }, data: { status: 'PROCESSING', lastError: null } });
                     return;
                 }
-                for (const row of rows) removing ? applied.delete(audienceIdentifierKey(row)) : applied.set(audienceIdentifierKey(row), row);
+                for (const row of rows) {
+                    if (removing) applied.delete(audienceIdentifierKey(row));
+                    else applied.set(audienceIdentifierKey(row), row);
+                }
                 if (removing) plan.removeOffset += rows.length; else plan.addOffset += rows.length;
                 plan.requestId = undefined; await save();
                 continue;

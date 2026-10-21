@@ -35,7 +35,7 @@ export function CannedResponseList({
     groups, editingId, isLoading, searchQuery, onEdit, onDelete
 }: CannedResponseListProps) {
     if (isLoading) {
-        return <div className="text-center py-8 text-gray-500">Loading...</div>;
+        return <div role="status" className="text-center py-8 text-gray-500 dark:text-slate-400">Loading...</div>;
     }
 
     if (groups.length === 0) {
@@ -49,14 +49,14 @@ export function CannedResponseList({
     return (
         <div className="space-y-6">
             {groups.map(({ name, label, items }) => (
-                <div key={name}>
+                <div key={label?.id ? `label:${label.id}` : 'uncategorized'}>
                     <div className="flex items-center gap-2 mb-2">
                         {label ? (
                             <div className="w-3 h-3 rounded-full" style={{ backgroundColor: label.color }} />
                         ) : (
                             <Tag size={14} className="text-gray-400" />
                         )}
-                        <h4 className="text-sm font-medium text-gray-700">{name}</h4>
+                        <h4 className="text-sm font-medium text-gray-700 dark:text-slate-200">{name}</h4>
                         <span className="text-xs text-gray-400">({items.length})</span>
                     </div>
                     <div className="space-y-2">
@@ -64,7 +64,7 @@ export function CannedResponseList({
                             <div
                                 key={response.id}
                                 className={cn(
-                                    "bg-white border border-gray-200 rounded-lg p-3 hover:border-gray-300 transition-colors",
+                                    "bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-3 hover:border-gray-300 transition-colors",
                                     editingId === response.id && "ring-2 ring-blue-500/20 border-blue-500"
                                 )}
                             >
@@ -84,7 +84,7 @@ export function CannedResponseList({
                                             )}
                                         </div>
                                         <div
-                                            className="text-sm text-gray-600 line-clamp-2 prose prose-sm max-w-none"
+                                            className="text-sm text-gray-600 dark:text-slate-300 line-clamp-2 prose prose-sm dark:prose-invert max-w-none"
                                             dangerouslySetInnerHTML={{
                                                 __html: DOMPurify.sanitize(response.content, {
                                                     ALLOWED_TAGS: ['b', 'i', 'u', 'strong', 'em', 'p', 'br', 'ul', 'ol', 'li', 'a'],
@@ -94,10 +94,10 @@ export function CannedResponseList({
                                         />
                                     </div>
                                     <div className="flex items-center gap-1 shrink-0">
-                                        <button onClick={() => onEdit(response)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="Edit">
+                                        <button type="button" aria-label={`Edit response /${response.shortcut}`} onClick={() => onEdit(response)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="Edit">
                                             <Edit2 size={14} />
                                         </button>
-                                        <button onClick={() => onDelete(response.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Delete">
+                                        <button type="button" aria-label={`Delete response /${response.shortcut}`} onClick={() => onDelete(response.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Delete">
                                             <Trash2 size={14} />
                                         </button>
                                     </div>

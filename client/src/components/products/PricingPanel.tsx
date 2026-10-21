@@ -1,142 +1,42 @@
-import * as React from 'react';
-import { DollarSign } from 'lucide-react';
-import { MiscCostsEditor, MiscCost } from './MiscCostsEditor';
+import { useId } from 'react';
+import { MiscCostsEditor, type MiscCost } from './MiscCostsEditor';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useAccount } from '../../context/AccountContext';
+import { nonnegativeNumber } from '../../utils/responseValidation';
+import { reportMoney } from '../analytics/useReportRequest';
 
-interface PricingPanelProps {
-    formData: {
-        price: string;
-        salePrice: string;
-        cogs: string;
-        miscCosts?: MiscCost[];
-    };
-    onChange?: (updates: Partial<PricingPanelProps['formData']>) => void;
+interface Props {
+    formData: { price: string; salePrice: string; cogs: string; miscCosts?: MiscCost[] };
+    onChange?: (updates: Partial<Props['formData']>) => void;
 }
 
-export const PricingPanel: React.FC<PricingPanelProps> = ({ formData, onChange }) => {
-    const { hasPermission } = usePermissions();
+export function PricingPanel({ formData, onChange }: Props) {
+    const { hasPermission } = usePermissions(); const { currentAccount } = useAccount(); const id = useId();
     const canViewCogs = hasPermission('view_cogs');
-
-    return (
-        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4 flex items-center gap-2">
-                <DollarSign size={16} className="text-blue-600" />
-                Pricing
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Regular Price</label>
-                    <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-                        <input
-                            type="number"
-                            step="0.01"
-                            value={formData.price}
-                            onChange={(e) => onChange && onChange({ price: e.target.value })}
-                            className="w-full pl-8 pr-4 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
-                            placeholder="0.00"
-                        />
-                    </div>
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Sale Price</label>
-                    <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-                        <input
-                            type="number"
-                            step="0.01"
-                            value={formData.salePrice}
-                            onChange={(e) => onChange && onChange({ salePrice: e.target.value })}
-                            className="w-full pl-8 pr-4 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
-                            placeholder="0.00"
-                        />
-                    </div>
-                </div>
-                {canViewCogs && (
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Cost of Goods (COGS)</label>
-                        <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-                            <input
-                                type="number"
-                                step="0.01"
-                                value={formData.cogs}
-                                onChange={(e) => {
-                                    // Limit input length to prevent performance issues
-                                    if (e.target.value.length <= 10) {
-                                        if (onChange) {
-                                            onChange({ cogs: e.target.value });
-                                        }
-                                    }
-                                }}
-                                className="w-full pl-8 pr-4 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
-                                placeholder="0.00"
-                            />
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {canViewCogs && (
-                <div className="mb-6">
-                    <MiscCostsEditor
-                        value={formData.miscCosts || []}
-                        onChange={(costs) => onChange && onChange({ miscCosts: costs })}
-                    />
-                </div>
-            )}
-
-            {/* Profit Margin Calculator - Only show when user can view COGS */}
-            {canViewCogs && (() => {
-                const sellingPrice = parseFloat(formData.salePrice) || parseFloat(formData.price) || 0;
-                const cogs = parseFloat(formData.cogs) || 0;
-                const miscTotal = (formData.miscCosts || []).reduce((sum: number, item: MiscCost) => sum + (Number(item.amount) || 0), 0);
-                const totalCost = cogs + miscTotal;
-
-                const profitDollar = sellingPrice - totalCost;
-                const profitPercent = sellingPrice > 0 ? ((profitDollar / sellingPrice) * 100) : 0;
-                const hasCogs = (formData.cogs && parseFloat(formData.cogs) > 0) || miscTotal > 0;
-                const hasPrice = sellingPrice > 0;
-
-                if (!hasPrice && !hasCogs) return null;
-
-                return (
-                    <div className="mt-6 pt-6 border-t border-gray-100/50">
-                        {hasCogs && (
-                            <div className="flex items-center justify-between mb-4">
-                                <span className="text-sm font-medium text-gray-700">Total COGS</span>
-                                <span className="text-sm font-bold text-gray-900">${totalCost.toFixed(2)}</span>
-                            </div>
-                        )}
-                        <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-gray-700">Profit Margin</span>
-                            {hasCogs && hasPrice ? (
-                                <div className="flex items-center gap-3">
-                                    <span className={`text-lg font-bold ${profitDollar >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                        ${profitDollar.toFixed(2)}
-                                    </span>
-                                    <span className={`px-2 py-0.5 rounded-full text-sm font-medium ${profitPercent >= 0
-                                        ? 'bg-green-50 text-green-700 border border-green-200'
-                                        : 'bg-red-50 text-red-700 border border-red-200'
-                                        }`}>
-                                        {profitPercent >= 0 ? '+' : ''}{profitPercent.toFixed(1)}%
-                                    </span>
-                                </div>
-                            ) : (
-                                <span className="text-sm text-gray-400 italic">
-                                    {!hasCogs ? 'Enter COGS to calculate' : 'Enter price to calculate'}
-                                </span>
-                            )}
-                        </div>
-                        {hasCogs && hasPrice && (
-                            <p className="text-xs text-gray-500 mt-1">
-                                Based on {formData.salePrice && parseFloat(formData.salePrice) > 0 ? 'sale' : 'regular'} price of ${sellingPrice.toFixed(2)}
-                            </p>
-                        )}
-                    </div>
-                );
-            })()}
-        </div>
-    );
-};
+    const currency = currentAccount?.currency;
+    const money = (amount: number) => reportMoney(amount, currency);
+    const saleSelected = formData.salePrice.trim() !== '';
+    const price = nonnegativeNumber(saleSelected ? formData.salePrice : formData.price);
+    const misc = formData.miscCosts ?? [];
+    const validMisc = misc.every(item => typeof item.amount === 'number' && Number.isFinite(item.amount));
+    const baseCost = formData.cogs.trim() === '' && misc.length ? 0 : nonnegativeNumber(formData.cogs);
+    const cost = baseCost !== null && validMisc ? baseCost + misc.reduce((total, item) => total + item.amount, 0) : null;
+    const profit = price !== null && cost !== null && Number.isFinite(cost) && Number.isFinite(price - cost) ? price - cost : null;
+    const margin = profit !== null && price !== null && price > 0 ? profit / price * 100 : null;
+    return <section aria-label="Product pricing" className="p-6 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 space-y-4">
+        <h2 className="font-semibold">Pricing {currency ? `(${currency})` : '(currency unavailable)'}</h2>
+        <fieldset disabled={!onChange} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{([
+                ['price', 'Regular Price'], ['salePrice', 'Sale Price'], ...(canViewCogs ? [['cogs', 'Cost of Goods (COGS)']] : [])
+            ] as Array<['price' | 'salePrice' | 'cogs', string]>).map(([key, label]) => <div key={key}><label htmlFor={`${id}-${key}`} className="block text-sm mb-1">{label}</label><input id={`${id}-${key}`} type="number" min="0" step="0.01" value={formData[key]} onChange={event => onChange?.({ [key]: event.target.value })} className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900" /></div>)}</div>
+            {canViewCogs && <MiscCostsEditor value={misc} currency={currency ?? ''} onChange={miscCosts => onChange?.({ miscCosts })} />}
+        </fieldset>
+        {canViewCogs && <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-2">
+            <h3 className="font-medium">Profit Margin</h3>
+            {profit === null ? <p role="status">Enter valid prices and COGS to calculate profit. Missing costs are not assumed to be zero.</p> : <>
+                <dl className="space-y-2"><div className="flex justify-between"><dt>Total COGS</dt><dd>{money(cost!)}</dd></div><div className="flex justify-between"><dt>Gross Profit</dt><dd>{money(profit)}</dd></div><div className="flex justify-between"><dt>Margin</dt><dd>{margin !== null && Number.isFinite(margin) ? `${margin.toFixed(1)}%` : 'Unavailable for a zero selling price'}</dd></div></dl>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Based on {saleSelected ? 'sale' : 'regular'} price of {money(price!)}.</p>
+            </>}
+        </div>}
+    </section>;
+}

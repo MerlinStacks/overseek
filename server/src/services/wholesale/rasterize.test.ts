@@ -57,10 +57,14 @@ describe('wholesale PDF rasterization', () => {
             const child = new EventEmitter() as any;
             child.stderr = new EventEmitter();
             child.kill = vi.fn();
-            spawnMock.mockReturnValue(child);
-            const result = rasterizePdf('/private/catalog.pdf', pages, thumbnails, Date.now() + 100);
+            let started!: () => void;
+            const spawned = new Promise<void>(resolve => { started = resolve; });
+            spawnMock.mockImplementation(() => { started(); return child; });
+            const result = rasterizePdf('/private/catalog.pdf', pages, thumbnails, Date.now() + 1000);
             const rejection = expect(result).rejects.toThrow('PDF rasterization timed out');
-            await vi.advanceTimersByTimeAsync(101);
+            // The async directory setup must finish before advancing the process timer.
+            await spawned;
+            await vi.advanceTimersByTimeAsync(1001);
             await rejection;
             expect(child.kill).toHaveBeenCalledWith('SIGKILL');
             expect(fs.existsSync(pages)).toBe(false);

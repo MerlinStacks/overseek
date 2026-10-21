@@ -1,154 +1,58 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Logger } from '../../utils/logger';
-import { Lightbulb, Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+import { isRecord } from '../../utils/responseValidation';
 
-interface AdContextModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    onSaved?: () => void;
+interface AdContextModalProps { isOpen: boolean; onClose: () => void; onSaved?: () => void }
+const endpoint = '/api/dashboard/ad-suggestions/context';
+function decodeContext(value: unknown): string {
+    if (!isRecord(value) || (value.context != null && typeof value.context !== 'string')) throw new Error('Invalid context');
+    return typeof value.context === 'string' ? value.context : '';
 }
 
-/**
- * Modal for providing additional business context to AI ad suggestions.
- * Context is saved per-account and used by the AdOptimizer.
- */
-export function AdContextModal({ isOpen, onClose, onSaved }: AdContextModalProps) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const [context, setContext] = useState('');
-    const [loading, setLoading] = useState(true);
+export function AdContextModal({ isOpen, ...props }: AdContextModalProps) {
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    if (!isOpen) return null;
+    return <Modal isOpen onClose={props.onClose} title="Add Business Context" maxWidth="max-w-lg">
+        {token && currentAccount ? <ContextEditor key={JSON.stringify([token, currentAccount.id])} {...props} accountId={currentAccount.id} token={token} /> : <p role="status">Select an account to edit business context.</p>}
+    </Modal>;
+}
+
+function ContextEditor({ accountId, token, onClose, onSaved }: Omit<AdContextModalProps, 'isOpen'> & { accountId: string; token: string }) {
+    const { data, loading, error, retry } = useScopedRequest(endpoint, accountId, token, decodeContext);
+    const [draft, setDraft] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-
-    const fetchContext = useCallback(async () => {
-        setLoading(true);
-        setError(null);
+    const [saveError, setSaveError] = useState(false);
+    const request = useRef<AbortController | null>(null); const pending = useRef(false);
+    const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const active = useRef(true);
+    useEffect(() => { active.current = true; return () => { active.current = false; request.current?.abort(); if (saveTimer.current) clearTimeout(saveTimer.current); }; }, []);
+    const context = draft ?? data ?? '';
+    const save = async () => {
+        if (pending.current || loading || error || data === null) return;
+        pending.current = true; setSaving(true); setSaveError(false);
+        const controller = new AbortController(); request.current = controller;
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        saveTimer.current = timeout;
         try {
-            const res = await fetch('/api/dashboard/ad-suggestions/context', {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || ''
-                }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setContext(data.context || '');
-            }
-        } catch (err) {
-            Logger.error('Failed to fetch context', { error: err });
-        } finally {
-            setLoading(false);
-        }
-    }, [currentAccount?.id, token]);
-
-    useEffect(() => {
-        if (isOpen && currentAccount) {
-            fetchContext();
-        }
-    }, [isOpen, currentAccount, fetchContext]);
-
-    async function handleSave() {
-        setSaving(true);
-        setError(null);
-        try {
-            const res = await fetch('/api/dashboard/ad-suggestions/context', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || ''
-                },
-                body: JSON.stringify({ context })
-            });
-
-            if (res.ok) {
-                onSaved?.();
+            const response = await fetch(endpoint, { method: 'POST', signal: controller.signal, headers: { Authorization: `Bearer ${token}`, 'x-account-id': accountId, 'Content-Type': 'application/json' }, body: JSON.stringify({ context }) });
+            if (!response.ok || controller.signal.aborted) throw new Error('Save failed');
+            if (active.current) {
+                try { void Promise.resolve(onSaved?.()).catch(() => {}); } catch { /* The context was already saved. */ }
                 onClose();
-            } else {
-                const data = await res.json();
-                setError(data.error || 'Failed to save');
             }
-        } catch (err) {
-            setError('Failed to save context');
-        } finally {
-            setSaving(false);
-        }
-    }
-
-    return (
-        <Modal
-            isOpen={isOpen}
-            onClose={onClose}
-            title={
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-purple-500 rounded-lg">
-                        <Lightbulb size={20} className="text-white" />
-                    </div>
-                    <div>
-                        <div className="font-semibold text-gray-900">Add Business Context</div>
-                        <p className="text-sm text-gray-500 font-normal">Help AI give smarter suggestions</p>
-                    </div>
-                </div>
-            }
-            maxWidth="max-w-lg"
-        >
-            {loading ? (
-                <div className="flex justify-center py-8">
-                    <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
-                </div>
-            ) : (
-                <>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Your Notes & Context
-                    </label>
-                    <textarea
-                        value={context}
-                        onChange={(e) => setContext(e.target.value)}
-                        placeholder="E.g., We're running a 30% off sale next week on summer products. Focus on our new arrivals. Our best margin is on jewelry..."
-                        className="w-full h-40 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none text-gray-800 placeholder:text-gray-400"
-                        maxLength={1000}
-                    />
-                    <p className="text-xs text-gray-400 mt-2 text-right">
-                        {context.length}/1000 characters
-                    </p>
-
-                    <div className="mt-4 p-4 bg-purple-50 rounded-lg border border-purple-100">
-                        <h4 className="text-sm font-medium text-purple-800 mb-2">💡 Tips for better suggestions</h4>
-                        <ul className="text-sm text-purple-700 space-y-1">
-                            <li>• Mention upcoming sales or promotions</li>
-                            <li>• Note seasonal priorities (e.g., "Push winter coats")</li>
-                            <li>• Share margin preferences ("Focus on high-margin items")</li>
-                            <li>• Flag products to avoid ("Don't promote discontinued line")</li>
-                        </ul>
-                    </div>
-
-                    {error && (
-                        <p className="mt-4 text-sm text-red-600">{error}</p>
-                    )}
-                </>
-            )}
-
-            {/* Footer */}
-            <div className="flex justify-end gap-3 pt-4 mt-4 border-t">
-                <button
-                    onClick={onClose}
-                    className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    disabled={saving}
-                >
-                    Cancel
-                </button>
-                <button
-                    onClick={handleSave}
-                    disabled={loading || saving}
-                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                    {saving && <Loader2 size={16} className="animate-spin" />}
-                    Save Context
-                </button>
-            </div>
-        </Modal>
-    );
+        } catch { if (active.current) setSaveError(true); }
+        finally { clearTimeout(timeout); saveTimer.current = null; pending.current = false; if (active.current) setSaving(false); }
+    };
+    if (loading) return <p role="status">Loading business context...</p>;
+    if (error) return <p role="alert">Could not load business context. <button type="button" onClick={retry}>Retry context</button></p>;
+    return <div className="space-y-4 text-slate-900 dark:text-slate-100">
+        <label className="block text-sm font-medium">Your Notes &amp; Context<textarea value={context} disabled={saving} maxLength={1000} onChange={event => setDraft(event.target.value)} className="mt-2 w-full h-40 p-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800" /></label>
+        <p className="text-xs text-slate-500 dark:text-slate-400 text-right">{context.length}/1000 characters</p>
+        <p className="text-sm">Mention upcoming promotions, seasonal priorities, margin preferences, or products to avoid.</p>
+        {saveError && <p role="alert">Could not save business context. Your notes are retained; check their status before retrying.</p>}
+        <div className="flex justify-end gap-3"><button type="button" onClick={onClose}>Cancel</button><button type="button" disabled={saving || context.length > 1000} onClick={() => void save()} className="px-4 py-2 rounded-lg bg-indigo-600 text-white disabled:opacity-50">{saving ? 'Saving...' : 'Save Context'}</button></div>
+    </div>;
 }

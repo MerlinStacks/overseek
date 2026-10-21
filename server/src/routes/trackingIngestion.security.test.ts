@@ -72,6 +72,23 @@ describe('tracking ingestion auth', () => {
         }));
     });
 
+    it.each(['/events', '/e'])('preserves Google click identifier type and GA stream context through %s', async url => {
+        const payload = { orderId: 123, total: 49.95, gaSessionIds: { STREAM: '1770000123' }, fbc: 'fb.1.click', fbp: 'fb.1.browser' };
+        const res = await app.inject({
+            method: 'POST', url, headers: { authorization: 'Bearer valid-secret' },
+            payload: {
+                accountId: ACCOUNT_ID, visitorId: 'visitor-1', type: 'purchase',
+                clickId: 'privacy-click', clickPlatform: 'google', clickIdType: 'wbraid',
+                eventId: 'original-purchase', consentState: 'granted', payload,
+            },
+        });
+        expect(res.statusCode).toBe(200);
+        expect(TrackingService.processEvent).toHaveBeenCalledWith(expect.objectContaining({
+            clickId: 'privacy-click', clickPlatform: 'google', clickIdType: 'wbraid',
+            eventId: 'original-purchase', consentState: 'granted', payload,
+        }));
+    });
+
     it('rejects unsigned conversion events without an order ID', async () => {
         const res = await app.inject({
             method: 'POST',

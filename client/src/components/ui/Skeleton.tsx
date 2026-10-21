@@ -1,5 +1,7 @@
 import { cn } from '../../utils/cn';
 
+const count = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(100, Math.floor(value))) : 0;
+
 interface SkeletonProps {
     /** Additional CSS classes */
     className?: string;
@@ -34,8 +36,9 @@ export function Skeleton({
 
     return (
         <div
+            aria-hidden="true"
             className={cn(
-                "animate-pulse bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 dark:from-slate-700 dark:via-slate-600 dark:to-slate-700 bg-[length:200%_100%]",
+                "animate-pulse motion-reduce:animate-none bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 dark:from-slate-700 dark:via-slate-600 dark:to-slate-700 bg-[length:200%_100%]",
                 roundedClasses[rounded],
                 className
             )}
@@ -58,8 +61,8 @@ export function SkeletonText({
     className?: string;
 }) {
     return (
-        <div className={cn("space-y-2", className)}>
-            {Array.from({ length: lines }).map((_, i) => (
+        <div aria-hidden="true" className={cn("space-y-2", className)}>
+            {Array.from({ length: count(lines) }).map((_, i) => (
                 <Skeleton
                     key={i}
                     className={cn(
@@ -110,8 +113,8 @@ export function TableRowSkeleton({
     showAvatar?: boolean;
 }) {
     return (
-        <tr className={cn("animate-pulse", className)}>
-            {Array.from({ length: columns }).map((_, i) => (
+        <tr aria-hidden="true" className={cn("animate-pulse motion-reduce:animate-none", className)}>
+            {Array.from({ length: count(columns) }).map((_, i) => (
                 <td key={i} className="px-6 py-4">
                     {i === 0 && showAvatar ? (
                         <div className="flex items-center gap-3">
@@ -147,7 +150,7 @@ export function TableSkeleton({
 }) {
     return (
         <>
-            {Array.from({ length: rows }).map((_, i) => (
+            {Array.from({ length: count(rows) }).map((_, i) => (
                 <TableRowSkeleton
                     key={i}
                     columns={columns}
@@ -163,8 +166,8 @@ export function TableSkeleton({
  */
 export function CardSkeleton({ className }: { className?: string }) {
     return (
-        <div className={cn(
-            "bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/80 dark:border-slate-700/50 p-6 animate-pulse",
+        <div aria-hidden="true" className={cn(
+            "bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/80 dark:border-slate-700/50 p-6 animate-pulse motion-reduce:animate-none",
             "shadow-[0_1px_3px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)]",
             className
         )}>

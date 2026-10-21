@@ -93,6 +93,27 @@ class OverSeek_Tracking_Payload_Utils
             $payload[$payload_key] = sanitize_text_field((string) $_COOKIE[$cookie_name]);
         }
 
+        // Stream-specific GA sessions. Do not confuse Overseek visits with GA sessions,
+        // or use a different stream's cookie on stores with multiple Google tags.
+        $ga_sessions = array();
+        foreach ($_COOKIE as $cookie_name => $cookie_value) {
+            if (!preg_match('/^_ga_([A-Za-z0-9]+)$/', (string) $cookie_name, $stream) || !is_string($cookie_value)) {
+                continue;
+            }
+            $session_id = '';
+            if (preg_match('/^GS1\.\d+\.(\d+)\./', $cookie_value, $match)) {
+                $session_id = $match[1];
+            } elseif (preg_match('/^GS2\.\d+\.(.*)$/', $cookie_value, $parts) && preg_match('/(?:^|\$)s(\d+)(?:\$|$)/', $parts[1], $match)) {
+                $session_id = $match[1];
+            }
+            if ($session_id !== '' && ctype_digit($session_id) && (int) $session_id > 0) {
+                $ga_sessions[$stream[1]] = $session_id;
+            }
+        }
+        if ($ga_sessions !== array()) {
+            $payload['gaSessionIds'] = $ga_sessions;
+        }
+
         return $payload;
     }
 

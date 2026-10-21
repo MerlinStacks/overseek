@@ -29,7 +29,6 @@ export class CustomerSync extends BaseSync {
             // customer objects with heavy metadata can OOM at 100/page).
             const { data: rawCustomers, totalPages } = await woo.getCustomers({ page, after, per_page: 50 });
             if (!rawCustomers.length) {
-                hasMore = false;
                 break;
             }
 

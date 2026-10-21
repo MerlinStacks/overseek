@@ -1,4 +1,4 @@
-
+import { abortable, abortableDelay } from '../utils/abortable';
 /** Why: Timezone never changes during a session; computing it per-request was wasteful. */
 const USER_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Australia/Sydney';
 
@@ -82,20 +82,23 @@ const RATE_LIMIT_BASE_DELAY_MS = 1_000;
 function parseRetryAfter(response: Response): number | null {
     const header = response.headers.get('retry-after');
     if (!header) return null;
-    const seconds = parseInt(header, 10);
-    if (!isNaN(seconds)) return seconds * 1_000;
+    const seconds = /^\d+$/.test(header.trim()) ? Number(header) : NaN;
+    if (Number.isFinite(seconds)) return Math.min(seconds * 1_000, 300000);
     const date = Date.parse(header);
-    if (!isNaN(date)) return Math.max(0, date - Date.now());
+    if (!isNaN(date)) return Math.min(300000, Math.max(0, date - Date.now()));
     return null;
 }
 
-async function parseJsonResponse<T>(response: Response): Promise<T> {
-    const text = await response.text();
+async function parseJsonResponse<T>(response: Response, signal?: AbortSignal | null): Promise<T> {
+    const text = await abortable(response.text(), signal);
+    signal?.throwIfAborted();
     if (!text) return undefined as unknown as T;
     return JSON.parse(text) as T;
 }
 
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+    const signal = options.signal;
+    signal?.throwIfAborted();
     const { token, accountId, headers, body, ...customConfig } = options;
     const sessionUser = getStoredAuthUserId();
     const version = sessionVersion;
@@ -120,14 +123,17 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     let requestToken = requestHeaders.get('Authorization')?.match(/^Bearer (.+)$/i)?.[1];
 
     for (let attempt = 0; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
-        const response = await fetch(endpoint, config);
+        signal?.throwIfAborted();
+        const response = await abortable(fetch(endpoint, config), signal);
+        signal?.throwIfAborted();
 
         if (!response.ok) {
             if (response.status === 401 && requestToken && !authRetried && sessionUnchanged()) {
                 const latestToken = localStorage.getItem('token');
                 const result = latestToken && latestToken !== requestToken
                     ? 'success'
-                    : await refreshSession?.();
+                    : await abortable(Promise.resolve(refreshSession?.()), signal);
+                signal?.throwIfAborted();
                 if (!sessionUnchanged() || result === 'superseded') {
                     throw new ApiError(401, 'Session changed. Please retry.', 'SESSION_CHANGED', true);
                 }
@@ -148,7 +154,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
             // Retry on 429 with exponential backoff before exhausting attempts
             if (response.status === 429 && attempt < RATE_LIMIT_MAX_RETRIES) {
                 const delay = parseRetryAfter(response) ?? RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt);
-                await new Promise(r => setTimeout(r, delay));
+                await abortableDelay(delay, signal);
                 continue;
             }
 
@@ -157,15 +163,17 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
             let isRecoverable = false;
 
             try {
-                const errorData = await parseJsonResponse<{ message?: string; error?: string; code?: string; isRecoverable?: boolean } | undefined>(response);
+                const errorData = await parseJsonResponse<{ message?: string; error?: string; code?: string; isRecoverable?: boolean } | undefined>(response, signal);
                 errorMessage = errorData?.message || errorData?.error || errorMessage;
                 errorCode = errorData?.code || errorCode;
                 isRecoverable = errorData?.isRecoverable || false;
             } catch {
+                signal?.throwIfAborted();
                 // Only use status text if JSON parsing fails
                 errorMessage = response.statusText;
             }
 
+            signal?.throwIfAborted();
             // Handle auth errors globally - auto logout and redirect
             if (response.status === 401 && requestToken && sessionUnchanged() &&
                 localStorage.getItem('token') === requestToken) {
@@ -181,7 +189,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
             return undefined as unknown as T;
         }
 
-        return parseJsonResponse<T>(response);
+        return parseJsonResponse<T>(response, signal);
     }
 
     // Unreachable in practice — the loop always returns or throws

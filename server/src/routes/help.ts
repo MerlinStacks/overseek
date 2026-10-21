@@ -1,191 +1,73 @@
-/**
- * Help Route - Fastify Plugin
- */
-
-import { FastifyPluginAsync } from 'fastify';
+import { type FastifyPluginAsync, type FastifyReply } from 'fastify';
+import { z } from 'zod';
 import { prisma } from '../utils/prisma';
-import { Logger } from '../utils/logger';
 import { requireAuthFastify, requireSuperAdminFastify } from '../middleware/auth';
 
-interface CollectionBody {
-    title: string;
-    slug: string;
-    description?: string;
-    icon?: string;
-    order?: number;
+const idSchema = z.string().trim().min(1).max(128);
+const slugSchema = z.string().trim().min(1).max(200).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+const collectionSchema = z.object({ title: z.string().trim().min(1).max(200), slug: slugSchema, description: z.string().max(2000).optional(), icon: z.string().max(100).optional(), order: z.number().int().min(0).max(1000000).optional() }).strict();
+const articleSchema = z.object({ collectionId: idSchema, title: z.string().trim().min(1).max(200), slug: slugSchema, content: z.string().trim().min(1).max(500000), excerpt: z.string().max(2000).optional(), isPublished: z.boolean().optional(), order: z.number().int().min(0).max(1000000).optional() }).strict();
+function failure(reply: FastifyReply, error: unknown) {
+    const code = (error as { code?: string })?.code;
+    return code === 'P2025' ? reply.code(404).send({ error: 'Help resource not found' }) : code === 'P2002' ? reply.code(409).send({ error: 'This slug is already in use' }) : code === 'P2003' ? reply.code(400).send({ error: 'Invalid collection reference' }) : reply.code(500).send({ error: 'Help operation failed' });
 }
-
-interface ArticleBody {
-    collectionId: string;
-    title: string;
-    slug: string;
-    content: string;
-    excerpt?: string;
-    isPublished?: boolean;
-    order?: number;
-}
-
-const helpRoutes: FastifyPluginAsync = async (fastify) => {
-    // PUBLIC READ ROUTES
-
-    // Get all collections with articles
+const helpRoutes: FastifyPluginAsync = async fastify => {
     fastify.get('/collections', async (_request, reply) => {
-        try {
-            const collections = await prisma.helpCollection.findMany({
-                include: {
-                    articles: {
-                        select: { id: true, title: true, slug: true, excerpt: true, order: true },
-                        where: { isPublished: true },
-                        orderBy: { order: 'asc' }
-                    }
-                },
-                orderBy: { order: 'asc' }
-            });
-            return collections;
-        } catch (error) {
-            Logger.error('Get Help Collections error', { error });
-            return reply.code(500).send({ error: 'Internal server error' });
-        }
+        try { return await prisma.helpCollection.findMany({ include: { articles: { select: { id: true, title: true, slug: true, excerpt: true, order: true }, where: { isPublished: true }, orderBy: [{ order: 'asc' }, { id: 'asc' }] } }, orderBy: [{ order: 'asc' }, { id: 'asc' }] }); }
+        catch (error) { return failure(reply, error); }
     });
-
-    // Search Articles
     fastify.get('/search', async (request, reply) => {
-        try {
-            const { q } = request.query as { q?: string };
-            if (!q || typeof q !== 'string') return [];
-
-            const articles = await prisma.helpArticle.findMany({
-                where: {
-                    isPublished: true,
-                    OR: [
-                        { title: { contains: q, mode: 'insensitive' } },
-                        { content: { contains: q, mode: 'insensitive' } },
-                        { excerpt: { contains: q, mode: 'insensitive' } }
-                    ]
-                },
-                select: {
-                    id: true,
-                    title: true,
-                    slug: true,
-                    excerpt: true,
-                    collection: { select: { title: true, slug: true } }
-                },
-                take: 10
-            });
-
-            return articles;
-        } catch (error) {
-            Logger.error('Search Help error', { error });
-            return reply.code(500).send({ error: 'Internal server error' });
-        }
+        const parsed = z.object({ q: z.string().trim().max(200).optional() }).strict().safeParse(request.query);
+        if (!parsed.success) return reply.code(400).send({ error: 'Search query must be at most 200 characters' });
+        const q = parsed.data.q;
+        if (!q) return [];
+        try { return await prisma.helpArticle.findMany({ where: { isPublished: true, OR: [{ title: { contains: q, mode: 'insensitive' } }, { content: { contains: q, mode: 'insensitive' } }, { excerpt: { contains: q, mode: 'insensitive' } }] }, select: { id: true, title: true, slug: true, excerpt: true, collection: { select: { title: true, slug: true } } }, orderBy: [{ order: 'asc' }, { id: 'asc' }], take: 10 }); }
+        catch (error) { return failure(reply, error); }
     });
-
-    // Get single article
     fastify.get<{ Params: { slug: string } }>('/articles/:slug', async (request, reply) => {
+        const parsed = slugSchema.safeParse(request.params.slug);
+        if (!parsed.success) return reply.code(400).send({ error: 'Invalid article slug' });
         try {
-            const { slug } = request.params;
-            const article = await prisma.helpArticle.findUnique({
-                where: { slug },
-                include: {
-                    collection: {
-                        select: { id: true, title: true, slug: true }
-                    }
-                }
-            });
-
-            if (!article) return reply.code(404).send({ error: 'Article not found' });
-            if (!article.isPublished) {
-                return reply.code(404).send({ error: 'Article not found' });
-            }
-
-            // Increment view count (fire and forget)
-            prisma.helpArticle.update({
-                where: { id: article.id },
-                data: { viewCount: { increment: 1 } }
-            }).catch(err => Logger.error('Failed to update view count', { error: err }));
-
+            const article = await prisma.helpArticle.findUnique({ where: { slug: parsed.data }, include: { collection: { select: { id: true, title: true, slug: true } } } });
+            if (!article?.isPublished) return reply.code(404).send({ error: 'Article not found' });
+            void prisma.helpArticle.update({ where: { id: article.id }, data: { viewCount: { increment: 1 } } }).catch(() => {});
             return article;
-        } catch (error) {
-            Logger.error('Get Article error', { error });
-            return reply.code(500).send({ error: 'Internal server error' });
-        }
+        } catch (error) { return failure(reply, error); }
     });
-
-    // ADMIN WRITE ROUTES
-
-    fastify.post<{ Body: CollectionBody }>('/collections', { preHandler: [requireAuthFastify, requireSuperAdminFastify] }, async (request, reply) => {
-        try {
-            const { title, slug, description, icon, order } = request.body;
-            const collection = await prisma.helpCollection.create({
-                data: { title, slug, description, icon, order: order || 0 }
-            });
-            return collection;
-        } catch (e) {
-            Logger.error('Create collection error', { error: e });
-            return reply.code(500).send({ error: 'Failed to create collection' });
-        }
+    const admin = { preHandler: [requireAuthFastify, requireSuperAdminFastify] };
+    fastify.post('/collections', admin, async (request, reply) => {
+        const parsed = collectionSchema.safeParse(request.body);
+        if (!parsed.success) return reply.code(400).send({ error: 'Invalid collection fields' });
+        try { return await prisma.helpCollection.create({ data: { ...parsed.data, order: parsed.data.order ?? 0 } }); }
+        catch (error) { return failure(reply, error); }
     });
-
-    fastify.put<{ Params: { id: string }; Body: CollectionBody }>('/collections/:id', { preHandler: [requireAuthFastify, requireSuperAdminFastify] }, async (request, reply) => {
-        try {
-            const { id } = request.params;
-            const { title, slug, description, icon, order } = request.body;
-            const collection = await prisma.helpCollection.update({
-                where: { id },
-                data: { title, slug, description, icon, order }
-            });
-            return collection;
-        } catch (e) {
-            return reply.code(500).send({ error: 'Failed to update collection' });
-        }
+    fastify.put<{ Params: { id: string } }>('/collections/:id', admin, async (request, reply) => {
+        const parsed = collectionSchema.safeParse(request.body);
+        if (!parsed.success || !idSchema.safeParse(request.params.id).success) return reply.code(400).send({ error: 'Invalid collection fields' });
+        try { return await prisma.helpCollection.update({ where: { id: request.params.id }, data: parsed.data }); }
+        catch (error) { return failure(reply, error); }
     });
-
-    fastify.delete<{ Params: { id: string } }>('/collections/:id', { preHandler: [requireAuthFastify, requireSuperAdminFastify] }, async (request, reply) => {
-        try {
-            const { id } = request.params;
-            await prisma.helpCollection.delete({ where: { id } });
-            return { success: true };
-        } catch (e) {
-            return reply.code(500).send({ error: 'Failed to delete collection' });
-        }
+    fastify.delete<{ Params: { id: string } }>('/collections/:id', admin, async (request, reply) => {
+        if (!idSchema.safeParse(request.params.id).success) return reply.code(400).send({ error: 'Invalid collection ID' });
+        try { await prisma.helpCollection.delete({ where: { id: request.params.id } }); return { success: true }; }
+        catch (error) { return failure(reply, error); }
     });
-
-    fastify.post<{ Body: ArticleBody }>('/articles', { preHandler: [requireAuthFastify, requireSuperAdminFastify] }, async (request, reply) => {
-        try {
-            const { collectionId, title, slug, content, excerpt, isPublished, order } = request.body;
-            const article = await prisma.helpArticle.create({
-                data: { collectionId, title, slug, content, excerpt, isPublished: isPublished ?? true, order: order || 0 }
-            });
-            return article;
-        } catch (e) {
-            Logger.error('Create article error', { error: e });
-            return reply.code(500).send({ error: 'Failed to create article' });
-        }
+    fastify.post('/articles', { ...admin, bodyLimit: 600000 }, async (request, reply) => {
+        const parsed = articleSchema.safeParse(request.body);
+        if (!parsed.success) return reply.code(400).send({ error: 'Invalid article fields' });
+        try { return await prisma.helpArticle.create({ data: { ...parsed.data, isPublished: parsed.data.isPublished ?? false, order: parsed.data.order ?? 0 } }); }
+        catch (error) { return failure(reply, error); }
     });
-
-    fastify.put<{ Params: { id: string }; Body: ArticleBody }>('/articles/:id', { preHandler: [requireAuthFastify, requireSuperAdminFastify] }, async (request, reply) => {
-        try {
-            const { id } = request.params;
-            const { collectionId, title, slug, content, excerpt, isPublished, order } = request.body;
-            const article = await prisma.helpArticle.update({
-                where: { id },
-                data: { collectionId, title, slug, content, excerpt, isPublished, order }
-            });
-            return article;
-        } catch (e) {
-            return reply.code(500).send({ error: 'Failed to update article' });
-        }
+    fastify.put<{ Params: { id: string } }>('/articles/:id', { ...admin, bodyLimit: 600000 }, async (request, reply) => {
+        const parsed = articleSchema.safeParse(request.body);
+        if (!parsed.success || !idSchema.safeParse(request.params.id).success) return reply.code(400).send({ error: 'Invalid article fields' });
+        try { return await prisma.helpArticle.update({ where: { id: request.params.id }, data: parsed.data }); }
+        catch (error) { return failure(reply, error); }
     });
-
-    fastify.delete<{ Params: { id: string } }>('/articles/:id', { preHandler: [requireAuthFastify, requireSuperAdminFastify] }, async (request, reply) => {
-        try {
-            const { id } = request.params;
-            await prisma.helpArticle.delete({ where: { id } });
-            return { success: true };
-        } catch (e) {
-            return reply.code(500).send({ error: 'Failed to delete article' });
-        }
+    fastify.delete<{ Params: { id: string } }>('/articles/:id', admin, async (request, reply) => {
+        if (!idSchema.safeParse(request.params.id).success) return reply.code(400).send({ error: 'Invalid article ID' });
+        try { await prisma.helpArticle.delete({ where: { id: request.params.id } }); return { success: true }; }
+        catch (error) { return failure(reply, error); }
     });
 };
-
 export default helpRoutes;

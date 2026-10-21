@@ -112,17 +112,13 @@ export async function getOrderCOGS(
         const quantity: number = item.quantity || 0;
         const revenue = item.total;
 
-        let unitCOGS = 0;
-        let sku = '';
-        let miscCostsSource: unknown = null;
-
         const variation = variationMap.get(`${pid}:${vid}`);
         const product = productMap.get(pid);
         // Zero is an explicit override. Only missing variation costs inherit the parent.
         const source = variation?.cogs != null ? variation : product;
-        unitCOGS = source?.cogs == null ? 0 : finite(Number(source.cogs));
-        sku = variation?.sku || product?.sku || '';
-        miscCostsSource = variation && Array.isArray(variation.miscCosts) && variation.miscCosts.length ? variation.miscCosts : source?.miscCosts;
+        let unitCOGS = source?.cogs == null ? 0 : finite(Number(source.cogs));
+        const sku = variation?.sku || product?.sku || '';
+        const miscCostsSource = variation && Array.isArray(variation.miscCosts) && variation.miscCosts.length ? variation.miscCosts : source?.miscCosts;
         unitCOGS = finite(unitCOGS + sumMiscCosts(miscCostsSource));
 
         const lineCOGS = finite(unitCOGS * quantity);

@@ -26,6 +26,7 @@ export class PicklistService {
         limit?: number;
     }) {
         const status = options.status || 'processing';
+        if (!accountId || !['processing', 'on-hold', 'pending', 'completed'].includes(status) || options.limit !== undefined && (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 500)) throw new Error('Invalid picklist scope or options');
 
         // 1. Fetch Orders
         const orders = await prisma.wooOrder.findMany({
@@ -33,7 +34,7 @@ export class PicklistService {
                 accountId,
                 status: status
             },
-            orderBy: { dateCreated: 'asc' },
+            orderBy: [{ dateCreated: 'asc' }, { id: 'asc' }],
             take: options.limit || 50,
             include: {
                 // We need rawData to get line items because WooOrder schema stores them in rawData json usually, 
@@ -48,7 +49,8 @@ export class PicklistService {
         const allProductIds = new Set<number>();
         for (const order of orders) {
             const raw = order.rawData as any;
-            const lineItems = raw.line_items || [];
+            const lineItems = raw?.line_items;
+            if (!Array.isArray(lineItems)) throw new Error(`Picklist incomplete: order ${order.number} has no valid line items`);
             for (const item of lineItems) {
                 if (item.product_id) allProductIds.add(item.product_id);
             }
@@ -58,10 +60,11 @@ export class PicklistService {
 
         // 3. Aggregate Items
         const itemMap = new Map<string, PicklistItem>(); // Key: ProductID (or VariantID)
+        const budget = { remaining: 100000 };
 
         for (const order of orders) {
             const raw = order.rawData as any;
-            const lineItems = raw.line_items || [];
+            const lineItems = raw.line_items;
             const orderNumber = order.number;
             const wooOrderId = order.wooId;
 
@@ -74,9 +77,8 @@ export class PicklistService {
 
                 await this.processLineItem(accountId, productId, variationId, quantity, orderNumber, wooOrderId, productCache, innerItem => {
                     // Skip products that don't have inventory tracking enabled
-                    if (!innerItem.manageStock) {
-                        return;
-                    }
+                    if (!innerItem.manageStock) throw new Error(`Picklist incomplete: inventory tracking unavailable for ${innerItem.name}`);
+                    if (!['instock', 'onbackorder'].includes(innerItem.stockStatus)) throw new Error(`Picklist incomplete: ${innerItem.name} stock is ${innerItem.stockStatus || 'unknown'}`);
 
                     const key = `${innerItem.productId}`;
 
@@ -101,7 +103,8 @@ export class PicklistService {
                         wooOrderId
                     });
                     entry.totalQuantity += innerItem.quantity;
-                });
+                    if (!Number.isFinite(entry.totalQuantity) || entry.totalQuantity > 1e9) throw new Error('Picklist quantity overflow');
+                }, new Set(), budget);
             }
         }
 
@@ -131,6 +134,7 @@ export class PicklistService {
         const fetchedIds = new Set<number>();
 
         while (idsToFetch.size > 0) {
+            if (fetchedIds.size > 10000) throw new Error('Picklist component traversal exceeds limit');
             const batchIds = Array.from(idsToFetch).filter(id => !fetchedIds.has(id));
             if (batchIds.length === 0) break;
 
@@ -188,51 +192,24 @@ export class PicklistService {
         orderContext: string,
         wooOrderId: number,
         productCache: Map<number, any>,
-        callback: (item: { productId: number, sku: string, name: string, quantity: number, binLocation: string | null, stockStatus: string | null, image: any, manageStock: boolean }) => void
+        callback: (item: { productId: number, sku: string, name: string, quantity: number, binLocation: string | null, stockStatus: string | null, image: any, manageStock: boolean }) => void,
+        ancestors: Set<string> = new Set(),
+        budget = { remaining: 100000 }
     ) {
+        if (--budget.remaining < 0) throw new Error('Picklist incomplete: component expansion limit exceeded');
+        if (!Number.isSafeInteger(productId) || productId <= 0 || !Number.isSafeInteger(variationId) || variationId < 0 || typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0 || quantity > 1e9) throw new Error('Picklist incomplete: invalid item identity or quantity');
+        const identity = `${productId}:${variationId}`;
+        if (ancestors.has(identity) || ancestors.size >= 32) throw new Error('Picklist incomplete: cyclic or excessively deep BOM');
+        const path = new Set(ancestors).add(identity);
         // Check if this product/variant has a BOM
         // Prisma BOM model: productId (String UUID) -> we have wooId (Int).
         // Need to find internal internal ID first.
 
         // 1. Find internal Product
-        let product = productCache.get(productId);
+        const product = productCache.get(productId);
 
         if (!product) {
-            // Fallback: try fetching if missing (edge case or race condition)
-            product = await prisma.wooProduct.findFirst({
-                where: { accountId, wooId: productId },
-                include: {
-                    boms: {
-                        include: {
-                            items: {
-                                include: {
-                                    childProduct: true
-                                }
-                            }
-                        }
-                    },
-                    variations: {
-                        where: { wooId: variationId !== 0 ? variationId : undefined }
-                    }
-                }
-            });
-        }
-
-        if (!product) {
-            // Product not synced? Just return as is with basic BOM fallback if possible (impossible without sync)
-            // Or just skip?
-            // Best effort: treat as raw item - skip as we can't determine if it manages stock
-            callback({
-                productId,
-                sku: 'UNKNOWN',
-                name: `Unknown Product #${productId}`,
-                quantity,
-                binLocation: '',
-                stockStatus: 'unknown',
-                image: null,
-                manageStock: false // Unknown products don't get added
-            });
-            return;
+            throw new Error(`Picklist incomplete: product ${productId} is not synced`);
         }
 
         // 2. Check for BOM matching variant or parent
@@ -253,30 +230,26 @@ export class PicklistService {
                 if (component.childProduct) {
                     // Recursive call for component
                     // component.quantity is per unit.
-                    const componentQty = Number(component.quantity) * quantity;
+                    if (component.isActive === false) throw new Error('Picklist incomplete: inactive BOM component');
+                    const waste = Number(component.wasteFactor ?? 0);
+                    const units = Number(component.quantity);
+                    if (!Number.isFinite(waste) || waste < 0 || waste > 1 || !Number.isFinite(units) || units <= 0) throw new Error('Picklist incomplete: invalid component quantity/waste');
+                    const componentQty = units * quantity * (1 + waste);
 
                     await this.processLineItem(
                         accountId,
                         component.childProduct.wooId,
-                        0, // Components typically tracked as main products or specific variants? 
-                        // Our BOMItem links to childProduct (WooProduct). 
-                        // WooProduct stores a single specific variant sometimes? 
-                        // Actually WooProduct is 1:1 with Woo ID. If it's a variant, it has its own WooProduct row if we sync variants as products?
-                        // Wait, our schema: WooProduct has `wooId`. If variants are synced as separate rows, then ok.
-                        // If variants are inside the same row, we have a problem.
-                        // Assumption: Variants are synced as separate WooProduct rows or we only link main products?
-                        // Let's assume childProduct gives us the correct entity.
+                        component.childVariationId ?? 0,
                         componentQty,
                         orderContext,
                         wooOrderId,
                         productCache,
-                        callback
+                        callback,
+                        path,
+                        budget
                     );
                 } else {
-                    // Supplier item (raw material without WooProduct)? OR just missing link?
-                    // If it's purely internal, we might want to list it?
-                    // "List the component products".
-                    // If no childProduct, maybe skip or list as raw material?
+                    throw new Error('Picklist incomplete: internal/supplier or unresolved component requires a material picklist');
                 }
             }
         } else {
@@ -286,6 +259,7 @@ export class PicklistService {
             // Resolve Variation Logic
             let finalBinLocation = product.binLocation;
             let manageStock = raw?.manage_stock === true;
+            let stockStatus = product.stockStatus;
 
             // If we have a variation ID and we fetched variations, check if we have a match
             if (variationId !== 0 && product.variations && product.variations.length > 0) {
@@ -297,9 +271,12 @@ export class PicklistService {
                     }
                     // Use variant's manage_stock flag — parent may not manage stock on variable products
                     const variantRaw = variant.rawData as any;
-                    manageStock = variant.manageStock || variantRaw?.manage_stock === true;
+                    manageStock = variant.manageStock === true || variantRaw?.manage_stock === true;
+                    stockStatus = variant.stockStatus;
                 }
+                else throw new Error('Picklist incomplete: variation not synced');
             }
+            else if (variationId !== 0) throw new Error('Picklist incomplete: variation not synced');
 
             callback({
                 productId: variationId !== 0 ? variationId : product.wooId,
@@ -307,7 +284,7 @@ export class PicklistService {
                 name: product.name,
                 quantity,
                 binLocation: finalBinLocation,
-                stockStatus: product.stockStatus,
+                stockStatus,
                 image: product.images ? (product.images as any)[0] : null,
                 manageStock
             });

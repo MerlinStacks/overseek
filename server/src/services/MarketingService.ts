@@ -262,7 +262,7 @@ export class MarketingService {
         });
         const storeUrl = account?.wooUrl || account?.domain || '';
 
-        let totalRecipients = 0;
+        let totalRecipients: number;
 
         if ((campaign as any).listId) {
             totalRecipients = await prisma.emailListMember.count({

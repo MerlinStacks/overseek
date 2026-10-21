@@ -39,7 +39,6 @@ export async function backfillOrderDenormalizedFields(): Promise<{ updated: numb
         });
 
         if (orders.length === 0) {
-            hasMore = false;
             break;
         }
 

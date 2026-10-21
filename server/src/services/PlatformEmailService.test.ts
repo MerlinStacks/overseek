@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ config: vi.fn(), transport: vi.fn(), send: vi.fn(), close: vi.fn() }));
+const mocks = vi.hoisted(() => ({ config: vi.fn(), transport: vi.fn(), send: vi.fn(), close: vi.fn(), verify: vi.fn() }));
 vi.mock('../utils/prisma', () => ({ prisma: { platformCredentials: { findUnique: mocks.config } } }));
 vi.mock('../utils/logger', () => ({ Logger: { info: vi.fn(), error: vi.fn() } }));
 vi.mock('nodemailer', () => ({ default: { createTransport: mocks.transport } }));
@@ -10,7 +10,7 @@ describe('platform email delivery', () => {
     beforeEach(() => {
         vi.resetAllMocks();
         mocks.config.mockResolvedValue({ credentials: { host: 'smtp.test', username: 'user', password: 'pass', fromEmail: 'security@test.com' } });
-        mocks.transport.mockReturnValue({ sendMail: mocks.send, close: mocks.close });
+        mocks.transport.mockReturnValue({ sendMail: mocks.send, close: mocks.close, verify: mocks.verify });
     });
     it('uses the admin SMTP configuration with bounded connection timeouts', async () => {
         mocks.send.mockResolvedValue({ messageId: 'message' });
@@ -28,5 +28,10 @@ describe('platform email delivery', () => {
         mocks.send.mockResolvedValue({ messageId: 'message' });
         mocks.close.mockImplementation(() => { throw new Error('Close failed'); });
         expect(await new PlatformEmailService().sendPlatformEmail('customer@test.com', 'Reset', '<p>Reset</p>')).toMatchObject({ success: true });
+    });
+    it('bounds SMTP tests, requires STARTTLS when appropriate and closes rejected transports', async () => {
+        mocks.verify.mockRejectedValue(new Error('Provider included private details'));
+        expect(await new PlatformEmailService().testConnection({ host: 'smtp.test', port: 587, username: 'user', password: 'private-password', secure: false })).toEqual({ success: false, error: 'Connection failed' });
+        expect(mocks.transport).toHaveBeenCalledWith(expect.objectContaining({ connectionTimeout: 10000, socketTimeout: 30000, requireTLS: true })); expect(mocks.close).toHaveBeenCalledOnce();
     });
 });

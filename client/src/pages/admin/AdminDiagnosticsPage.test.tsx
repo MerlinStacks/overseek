@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ state: {} as Record<string, unknown>, toggle: vi.fn(), remove: vi.fn(), select: vi.fn() }));
 vi.mock('./useDiagnostics', () => ({ useDiagnostics: () => mocks.state }));
+vi.mock('../../context/AuthContext', () => ({ useAuth: () => ({ token: 'token', user: { id: 'admin', isSuperAdmin: true } }) }));
 import { AdminDiagnosticsPage } from './AdminDiagnosticsPage';
 beforeEach(() => {
     vi.clearAllMocks();

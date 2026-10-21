@@ -1,300 +1,57 @@
-/**
- * Email Step
- * 
- * Third step in onboarding: Configure default email account for notifications.
- * Simplified SMTP setup with test functionality.
- */
-
-import { useState } from 'react';
-import { Mail, ArrowRight, ArrowLeft, SkipForward, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
-import { OnboardingStepProps } from '../types';
+import { useLayoutEffect, useRef, useState } from 'react';
+import { type OnboardingStepProps, type EmailData } from '../types';
 import { useAuth } from '../../../context/AuthContext';
 import { useAccount } from '../../../context/AccountContext';
-import { Logger } from '../../../utils/logger';
+import { useScopedMutation } from '../../../hooks/useScopedMutation';
+import { isRecord } from '../../../utils/responseValidation';
 
-/**
- * Handles email configuration with SMTP settings and test functionality.
- */
-export function EmailStep({ draft, setDraft, onNext, onBack, onSkip, isSubmitting }: OnboardingStepProps) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const [testStatus, setTestStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-    const [testError, setTestError] = useState<string | null>(null);
-
-    const handleChange = (field: keyof typeof draft.email, value: string | number | boolean) => {
-        setDraft(prev => ({
-            ...prev,
-            email: { ...prev.email, [field]: value }
-        }));
-        // Reset test status when settings change
-        if (field !== 'enabled' && field !== 'verified') {
-            setTestStatus('idle');
-            setTestError(null);
-        }
+export function EmailStep(props: OnboardingStepProps) {
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount || props.draft.store.accountId !== currentAccount.id) return <p role="alert">Verify this store account before configuring email.</p>;
+    return <ScopedEmailStep key={JSON.stringify([token, currentAccount.id])} {...props} token={token} accountId={currentAccount.id} />;
+}
+function ScopedEmailStep({ draft, setDraft, onNext, onBack, onSkip, isSubmitting, token, accountId }: OnboardingStepProps & { token: string; accountId: string }) {
+    const mutation = useScopedMutation(); const [message, setMessage] = useState('');
+    const [port, setPort] = useState(String(draft.email.smtpPort));
+    const email = draft.email; const locked = mutation.busy || isSubmitting;
+    const latest = useRef(email); useLayoutEffect(() => { latest.current = email; }, [email]);
+    const change = (field: keyof EmailData, value: string | number | boolean) => {
+        if (mutation.isPending() || isSubmitting) return;
+        setMessage('');
+        setDraft(current => ({ ...current, email: { ...current.email, [field]: value, verified: false, configured: false, verifiedAccountId: undefined } }));
     };
-
-    const toggleEnabled = () => {
-        const newEnabled = !draft.email.enabled;
-        handleChange('enabled', newEnabled);
-        if (!newEnabled) {
-            // Reset verification when disabling
-            handleChange('verified', false);
-        }
-    };
-
-    const testSmtp = async () => {
-        setTestStatus('loading');
-        setTestError(null);
-
-        try {
-            const res = await fetch('/api/email/test', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount?.id || ''
-                },
-                body: JSON.stringify({
-                    protocol: 'SMTP',
-                    host: draft.email.smtpHost,
-                    port: draft.email.smtpPort,
-                    username: draft.email.smtpUsername,
-                    password: draft.email.smtpPassword,
-                    isSecure: draft.email.smtpSecure
-                })
+    const valid = email.enabled && !!email.smtpHost.trim() && !!email.smtpUsername.trim() && (!!email.smtpPassword || !!email.savedEmailId) && Number.isInteger(email.smtpPort) && email.smtpPort >= 1 && email.smtpPort <= 65535;
+    const send = async (save: boolean) => {
+        if (!valid || mutation.isPending() || isSubmitting) return;
+        if (save && (!email.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.email))) return;
+        const snapshot = JSON.stringify(email);
+        const result = await mutation.run(async signal => {
+            const headers = { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId, 'Content-Type': 'application/json' };
+            const response = await fetch(save ? `/api/email/accounts${email.savedEmailId ? `/${encodeURIComponent(email.savedEmailId)}` : ''}` : '/api/email/test', {
+                method: save && email.savedEmailId ? 'PUT' : 'POST', headers, signal,
+                body: JSON.stringify(save ? { name: email.name.trim(), email: email.email.trim(), smtpEnabled: true, smtpHost: email.smtpHost.trim(), smtpPort: email.smtpPort, smtpUsername: email.smtpUsername.trim(), ...(email.smtpPassword ? { smtpPassword: email.smtpPassword } : {}), smtpSecure: email.smtpSecure } : { id: email.savedEmailId, protocol: 'SMTP', host: email.smtpHost.trim(), port: email.smtpPort, username: email.smtpUsername.trim(), password: email.smtpPassword || '••••••••', isSecure: email.smtpSecure }),
             });
-
-            const data = await res.json();
-
-            if (res.ok && data.success) {
-                setTestStatus('success');
-                handleChange('verified', true);
-            } else {
-                setTestStatus('error');
-                setTestError(data.error || 'Could not connect to SMTP server');
-            }
-        } catch (error) {
-            Logger.error('SMTP test failed', { error });
-            setTestStatus('error');
-            setTestError('Failed to test SMTP connection');
-        }
+            const data: unknown = await response.json();
+            if (!response.ok || !isRecord(data) || (save ? typeof data.id !== 'string' || !data.id : data.success !== true)) throw new Error('Email operation unconfirmed');
+            return save ? data.id as string : null;
+        }, save ? 'Could not confirm saving email. Check Settings → Email before creating another account.' : 'SMTP connection test failed. Check your settings and retry.');
+        if (!result.ok || JSON.stringify(latest.current) !== snapshot) return;
+        setDraft(current => JSON.stringify(current.email) === snapshot ? { ...current, email: { ...current.email, verifiedAccountId: accountId, ...(save ? { savedEmailId: result.value!, configured: true } : { verified: true }) } } : current);
+        setMessage(save ? 'Sending account saved. Default sender selection can be changed in Settings → Email.' : 'Connection test passed. This does not save a sending account or verify delivery.');
     };
-
-    const canTest = draft.email.smtpHost.trim() &&
-        draft.email.smtpUsername.trim() &&
-        draft.email.smtpPassword.trim() &&
-        !!currentAccount?.id;
-
-    return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="text-center pb-4 border-b border-gray-100">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-100 text-amber-600 mb-4">
-                    <Mail size={32} />
-                </div>
-                <h2 className="text-2xl font-bold text-gray-900">Email Setup</h2>
-                <p className="text-gray-500 mt-2">
-                    Configure outbound email for notifications and customer communication
-                </p>
-            </div>
-
-            {/* Enable Toggle */}
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200">
-                <div>
-                    <h3 className="text-sm font-semibold text-gray-900">Enable Email Integration</h3>
-                    <p className="text-xs text-gray-500 mt-0.5">Set up SMTP to send emails from OverSeek</p>
-                </div>
-                <button
-                    type="button"
-                    onClick={toggleEnabled}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${draft.email.enabled ? 'bg-blue-600' : 'bg-gray-300'
-                        }`}
-                >
-                    <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${draft.email.enabled ? 'translate-x-6' : 'translate-x-1'
-                            }`}
-                    />
-                </button>
-            </div>
-
-            {/* Email Configuration */}
-            {draft.email.enabled && (
-                <div className="space-y-5 animate-in fade-in duration-200">
-                    {/* Basic Info */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                Display Name
-                            </label>
-                            <input
-                                type="text"
-                                value={draft.email.name}
-                                onChange={(e) => handleChange('name', e.target.value)}
-                                placeholder="My Store Support"
-                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                Email Address
-                            </label>
-                            <input
-                                type="email"
-                                value={draft.email.email}
-                                onChange={(e) => handleChange('email', e.target.value)}
-                                placeholder="support@mystore.com"
-                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
-                            />
-                        </div>
-                    </div>
-
-                    {/* SMTP Settings */}
-                    <div className="bg-slate-50 rounded-xl p-5 border border-slate-200">
-                        <h3 className="text-sm font-semibold text-gray-900 mb-4">SMTP Settings</h3>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                    SMTP Host <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={draft.email.smtpHost}
-                                    onChange={(e) => handleChange('smtpHost', e.target.value)}
-                                    placeholder="smtp.gmail.com"
-                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                    Port
-                                </label>
-                                <input
-                                    type="number"
-                                    value={draft.email.smtpPort}
-                                    onChange={(e) => handleChange('smtpPort', parseInt(e.target.value) || 587)}
-                                    placeholder="587"
-                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                    Username <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={draft.email.smtpUsername}
-                                    onChange={(e) => handleChange('smtpUsername', e.target.value)}
-                                    placeholder="your-email@gmail.com"
-                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                    Password <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="password"
-                                    value={draft.email.smtpPassword}
-                                    onChange={(e) => handleChange('smtpPassword', e.target.value)}
-                                    placeholder="••••••••"
-                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
-                                />
-                            </div>
-                        </div>
-
-                        {/* Secure Toggle */}
-                        <div className="flex items-center gap-3 mt-4">
-                            <input
-                                type="checkbox"
-                                id="smtpSecure"
-                                checked={draft.email.smtpSecure}
-                                onChange={(e) => handleChange('smtpSecure', e.target.checked)}
-                                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                            />
-                            <label htmlFor="smtpSecure" className="text-sm text-gray-700">
-                                Use TLS/SSL encryption
-                            </label>
-                        </div>
-
-                        {/* Test Button */}
-                        <div className="mt-5 pt-4 border-t border-slate-200">
-                            <button
-                                type="button"
-                                onClick={testSmtp}
-                                disabled={!canTest || testStatus === 'loading'}
-                                className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                            >
-                                {testStatus === 'loading' ? (
-                                    <Loader2 size={16} className="animate-spin" />
-                                ) : testStatus === 'success' ? (
-                                    <CheckCircle size={16} className="text-green-400" />
-                                ) : (
-                                    <Mail size={16} />
-                                )}
-                                {testStatus === 'loading' ? 'Testing...' :
-                                    testStatus === 'success' ? 'Connection Verified' :
-                                        'Test SMTP Connection'}
-                            </button>
-
-                            {testStatus === 'success' && (
-                                <p className="mt-2 text-sm text-green-600 flex items-center gap-1.5">
-                                    <CheckCircle size={14} />
-                                    SMTP connection successful!
-                                </p>
-                            )}
-
-                            {testStatus === 'error' && testError && (
-                                <p className="mt-2 text-sm text-red-600 flex items-center gap-1.5">
-                                    <AlertCircle size={14} />
-                                    {testError}
-                                </p>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Skip Message */}
-            {!draft.email.enabled && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
-                    <p>
-                        You can skip email setup for now and configure it later in Settings → Email.
-                    </p>
-                </div>
-            )}
-
-            {/* Navigation */}
-            <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                <button
-                    type="button"
-                    onClick={onBack}
-                    className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors font-medium"
-                >
-                    <ArrowLeft size={18} />
-                    Back
-                </button>
-
-                <div className="flex items-center gap-3">
-                    <button
-                        type="button"
-                        onClick={onSkip}
-                        className="flex items-center gap-2 px-4 py-2 text-gray-500 hover:text-gray-700 transition-colors text-sm"
-                    >
-                        <SkipForward size={16} />
-                        Skip for now
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onNext}
-                        disabled={isSubmitting}
-                        className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-semibold shadow-lg shadow-blue-500/25"
-                    >
-                        Continue
-                        <ArrowRight size={18} />
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
+    const inputClass = 'block w-full p-2 border rounded-lg bg-white dark:bg-slate-900';
+    return <section className="space-y-5 text-slate-900 dark:text-slate-100"><h2 className="text-2xl font-bold">Email Setup</h2>
+        <fieldset disabled={locked} className="space-y-4">
+            <label className="flex gap-2"><input type="checkbox" checked={email.enabled} onChange={event => change('enabled', event.target.checked)} />Enable email integration</label>
+            {email.enabled && <>
+                {([['name', 'Display Name'], ['email', 'Email Address'], ['smtpHost', 'SMTP Host'], ['smtpUsername', 'Username'], ['smtpPassword', 'Password']] as const).map(([field, label]) => <label className="block" key={field}>{label}<input className={inputClass} type={field === 'smtpPassword' ? 'password' : field === 'email' ? 'email' : 'text'} autoComplete={field === 'smtpPassword' ? 'new-password' : 'off'} value={email[field]} onChange={event => change(field, event.target.value)} /></label>)}
+                <label className="block">Port<input className={inputClass} type="number" min="1" max="65535" step="1" value={port} onChange={event => { setPort(event.target.value); change('smtpPort', event.target.value.trim() ? Number(event.target.value) : NaN); }} /></label>
+                <label className="flex gap-2"><input type="checkbox" checked={email.smtpSecure} onChange={event => change('smtpSecure', event.target.checked)} />Use implicit TLS (typically port 465; otherwise SMTP STARTTLS)</label>
+                <div className="flex flex-wrap gap-4"><button type="button" disabled={!valid} onClick={() => void send(false)}>Test SMTP Connection</button><button type="button" disabled={!valid || !email.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.email) || !email.verified || email.verifiedAccountId !== accountId} onClick={() => void send(true)}>Save email configuration</button></div>
+            </>}
+        </fieldset>
+        {mutation.busy && <p role="status">Working...</p>}{mutation.error && <p role="alert">{mutation.error}</p>}{message && <p role="status">{message}</p>}
+        {!email.enabled && <p>Email is optional. Configure it later in Settings → Email.</p>}
+        <div className="flex flex-wrap justify-between gap-4"><button type="button" disabled={locked} onClick={onBack}>Back</button><button type="button" disabled={locked} onClick={onSkip}>Skip for now</button><button type="button" disabled={locked || (email.enabled && (!email.configured || email.verifiedAccountId !== accountId))} onClick={onNext}>Continue</button></div>
+    </section>;
 }

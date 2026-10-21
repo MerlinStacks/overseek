@@ -38,6 +38,7 @@ export function ReportConfigPanel({
     onGenerate,
     onSaveOpen
 }: ReportConfigPanelProps) {
+    const id = React.useId();
 
     const toggleMetric = (m: string) => {
         if (metrics.includes(m)) {
@@ -58,15 +59,16 @@ export function ReportConfigPanel({
     const conversionMetrics = METRIC_OPTIONS.filter(m => m.category === 'conversion');
 
     return (
-        <div className="w-full md:w-80 shrink-0 space-y-5 border-r border-gray-100 pr-6">
+        <fieldset disabled={isLoading} className="w-full md:w-80 shrink-0 space-y-5 border-r border-slate-200 dark:border-slate-700 pr-6 text-slate-900 dark:text-slate-100">
             <div className="animate-in fade-in slide-in-from-left-2 space-y-5">
 
                 {/* Header */}
                 <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-bold text-gray-900">
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100">
                         Report Builder
                     </h3>
                     <button
+                        type="button" disabled={!metrics.length}
                         onClick={onSaveOpen}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-all"
                     >
@@ -75,11 +77,12 @@ export function ReportConfigPanel({
                 </div>
 
                 {/* Time Range */}
-                <div className="bg-white/60 backdrop-blur-xs rounded-xl p-4 border border-gray-100/60 shadow-xs">
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xs rounded-xl p-4 border border-gray-100/60 dark:border-slate-700 shadow-xs">
+                    <label htmlFor={`${id}-range`} className="block text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wide mb-2">
                         Time Range
                     </label>
                     <select
+                        id={`${id}-range`}
                         value={dateRange}
                         onChange={(e) => setDateRange(e.target.value)}
                         className="w-full bg-gray-50/80 border border-gray-200/80 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-700 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all outline-hidden"
@@ -94,11 +97,12 @@ export function ReportConfigPanel({
                 </div>
 
                 {/* Group By Dimension */}
-                <div className="bg-white/60 backdrop-blur-xs rounded-xl p-4 border border-gray-100/60 shadow-xs">
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xs rounded-xl p-4 border border-gray-100/60 dark:border-slate-700 shadow-xs">
+                    <label htmlFor={`${id}-dimension`} className="block text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wide mb-2">
                         Group By
                     </label>
                     <select
+                        id={`${id}-dimension`}
                         value={dimension}
                         onChange={(e) => setDimension(e.target.value)}
                         className="w-full bg-gray-50/80 border border-gray-200/80 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-700 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all outline-hidden"
@@ -122,7 +126,7 @@ export function ReportConfigPanel({
                 </div>
 
                 {/* Metrics Selection */}
-                <div className="bg-white/60 backdrop-blur-xs rounded-xl p-4 border border-gray-100/60 shadow-xs">
+                <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xs rounded-xl p-4 border border-gray-100/60 dark:border-slate-700 shadow-xs">
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
                         Metrics
                     </label>
@@ -145,7 +149,7 @@ export function ReportConfigPanel({
                                         type="checkbox"
                                         checked={metrics.includes(m.value)}
                                         onChange={() => toggleMetric(m.value)}
-                                        className="sr-only"
+                                        className="w-4 h-4 accent-indigo-600 focus-visible:outline-2 focus-visible:outline-indigo-600"
                                     />
                                     <span className="opacity-60">{METRIC_ICONS[m.value]}</span>
                                     <span className="font-medium text-xs">{m.label}</span>
@@ -172,7 +176,7 @@ export function ReportConfigPanel({
                                         type="checkbox"
                                         checked={metrics.includes(m.value)}
                                         onChange={() => toggleMetric(m.value)}
-                                        className="sr-only"
+                                        className="w-4 h-4 accent-indigo-600 focus-visible:outline-2 focus-visible:outline-indigo-600"
                                     />
                                     <span className="opacity-60">{METRIC_ICONS[m.value]}</span>
                                     <span className="font-medium text-xs">{m.label}</span>
@@ -199,7 +203,7 @@ export function ReportConfigPanel({
                                         type="checkbox"
                                         checked={metrics.includes(m.value)}
                                         onChange={() => toggleMetric(m.value)}
-                                        className="sr-only"
+                                        className="w-4 h-4 accent-indigo-600 focus-visible:outline-2 focus-visible:outline-indigo-600"
                                     />
                                     <span className="opacity-60">{METRIC_ICONS[m.value]}</span>
                                     <span className="font-medium text-xs">{m.label}</span>
@@ -211,6 +215,7 @@ export function ReportConfigPanel({
 
                 {/* Generate Button */}
                 <button
+                    type="button"
                     onClick={onGenerate}
                     disabled={isLoading || metrics.length === 0}
                     className="w-full bg-linear-to-r from-blue-600 to-blue-700 text-white py-3 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-sm shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30"
@@ -223,6 +228,6 @@ export function ReportConfigPanel({
                     ) : 'Generate Report'}
                 </button>
             </div>
-        </div>
+        </fieldset>
     );
 }

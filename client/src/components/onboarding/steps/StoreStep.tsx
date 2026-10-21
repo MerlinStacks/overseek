@@ -21,12 +21,18 @@ import { Logger } from '../../../utils/logger';
 export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingStepProps) {
     const { token, logout } = useAuth();
     const { refreshAccounts, currentAccount, setCurrentAccount } = useAccount();
-    const [testStatus, setTestStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+    const [testStatus, setTestStatus] = useState<'idle' | 'loading' | 'success' | 'error'>(() => draft.store.connectionVerified && !!currentAccount?.id && draft.store.accountId === currentAccount.id ? 'success' : 'idle');
     const [testError, setTestError] = useState<string | null>(null);
     const [isCreatingAccount, setIsCreatingAccount] = useState(false);
     // True only when the wizard store/account has been successfully created.
-    const [accountCreated, setAccountCreated] = useState(() => Boolean(draft.store.connectionVerified && currentAccount?.id));
+    const [accountCreated, setAccountCreated] = useState(() => Boolean(draft.store.connectionVerified && currentAccount?.id && draft.store.accountId === currentAccount.id));
     const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lifecycle = useRef<AbortController | null>(null);
+    const pending = useRef(false);
+    useEffect(() => {
+        const controller = new AbortController(); lifecycle.current = controller;
+        return () => controller.abort();
+    }, []);
 
     // Auto-advance to next step after successful test + account creation
     useEffect(() => {
@@ -43,7 +49,7 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
     const handleChange = (field: keyof typeof draft.store, value: string | boolean) => {
         setDraft(prev => ({
             ...prev,
-            store: { ...prev.store, [field]: value }
+            store: { ...prev.store, [field]: value, ...(['wooUrl', 'wooConsumerKey', 'wooConsumerSecret'].includes(field) ? { connectionVerified: false, accountId: undefined } : {}) }
         }));
         // Reset test status when credentials change
         if (['wooUrl', 'wooConsumerKey', 'wooConsumerSecret'].includes(field as string)) {
@@ -58,12 +64,16 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
      * creates the account immediately to ensure valid accountId for plugin config.
      */
     const testConnection = async () => {
+        const signal = lifecycle.current?.signal;
+        if (!signal || signal.aborted || pending.current) return;
+        pending.current = true;
         setTestStatus('loading');
         setTestError(null);
 
         try {
             const res = await fetch('/api/woocommerce/test', {
                 method: 'POST',
+                signal,
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
@@ -76,6 +86,7 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
             });
 
             const data = await res.json();
+            if (signal.aborted) return;
 
             if (res.ok && data.success) {
                 // Ensure this wizard flow has an actual persisted account before continuing.
@@ -83,7 +94,7 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
                     await createAccountEarly();
                 } else {
                     setTestStatus('success');
-                    handleChange('connectionVerified', true);
+                    setDraft(prev => ({ ...prev, store: { ...prev.store, connectionVerified: true, accountId: currentAccount?.id } }));
                     setAccountCreated(true);
                 }
             } else {
@@ -91,9 +102,12 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
                 setTestError(data.error || 'Could not connect to WooCommerce store');
             }
         } catch (error) {
+            if (signal.aborted) return;
             Logger.error('WooCommerce connection test failed', { error });
             setTestStatus('error');
             setTestError('Failed to test connection. Please check the URL and try again.');
+        } finally {
+            pending.current = false;
         }
     };
 
@@ -103,10 +117,13 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
      * Previously, accountId was incorrectly set to store name or 'pending' causing API failures.
      */
     const createAccountEarly = async () => {
+        const signal = lifecycle.current?.signal;
+        if (!signal || signal.aborted) return;
         setIsCreatingAccount(true);
         try {
             const res = await fetch('/api/accounts', {
                 method: 'POST',
+                signal,
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
@@ -119,6 +136,7 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
                     wooConsumerSecret: draft.store.wooConsumerSecret
                 })
             });
+            if (signal.aborted) return;
 
             if (res.status === 401) {
                 logout();
@@ -131,25 +149,29 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
             }
 
             const createdAccount = await res.json();
+            if (signal.aborted) return;
+            if (typeof createdAccount?.id !== 'string' || !createdAccount.id) throw new Error('Account creation returned no account ID');
 
             // Refresh account list and explicitly switch context to the newly created account.
             await refreshAccounts();
+            if (signal.aborted) return;
             if (createdAccount?.id) {
                 setCurrentAccount(createdAccount);
             }
 
             setTestStatus('success');
-            handleChange('connectionVerified', true);
+            setDraft(prev => ({ ...prev, store: { ...prev.store, connectionVerified: true, accountId: createdAccount.id } }));
             setAccountCreated(true);
             Logger.info('Account created early in wizard flow');
         } catch (error) {
+            if (signal.aborted) return;
             Logger.error('Early account creation failed', { error });
             // Fatal for this step: plugin/config steps need a real account id.
             setTestStatus('error');
             handleChange('connectionVerified', false);
             setTestError('Account setup incomplete. Please try again.');
         } finally {
-            setIsCreatingAccount(false);
+            if (!signal.aborted) setIsCreatingAccount(false);
         }
     };
 
@@ -162,7 +184,7 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
     const connectionVerified = testStatus === 'success' && accountCreated;
 
     // Stricter Continue gate: require account to actually exist before proceeding
-    const canContinue = canProceed && accountCreated && !isCreatingAccount;
+    const canContinue = (canProceed || connectionVerified) && accountCreated && !isCreatingAccount;
 
     return (
         <div className="space-y-6">

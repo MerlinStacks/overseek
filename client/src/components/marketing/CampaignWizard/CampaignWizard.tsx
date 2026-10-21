@@ -1,7 +1,7 @@
 /**
  * Campaign Wizard
  * 
- * Multi-step modal for creating Google Ads campaigns with AI assistance.
+ * Multi-step guided setup for creating Google Ads campaigns.
  * Guides users through goal selection, product selection, ad copy, and budget.
  */
 
@@ -15,6 +15,8 @@ import { StepBudgetReview } from './steps/StepBudgetReview';
 import { useAuth } from '../../../context/AuthContext';
 import { useAccount } from '../../../context/AccountContext';
 import { Logger } from '../../../utils/logger';
+import { useScopedMutation } from '../../../hooks/useScopedMutation';
+import { isRecord } from '../../../utils/responseValidation';
 import {
     CampaignDraft,
     WIZARD_STEPS,
@@ -35,15 +37,22 @@ interface CampaignWizardProps {
  * Provides a 4-step guided flow for creating Google Ads campaigns:
  * 1. Goal & Type selection
  * 2. Product selection (optional)
- * 3. AI-generated ad copy (editable)
+ * 3. Manual ad copy with optional starter templates
  * 4. Budget & final review
  */
-export function CampaignWizard({ isOpen, onClose, onSuccess }: CampaignWizardProps) {
+export function CampaignWizard(props: CampaignWizardProps) {
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    if (!props.isOpen) return null;
+    if (!token || !currentAccount) return <div role="alert">Select an account before creating a campaign. <button type="button" onClick={props.onClose}>Close</button></div>;
+    return <ScopedCampaignWizard key={JSON.stringify([token, currentAccount.id])} {...props} />;
+}
+function ScopedCampaignWizard({ isOpen, onClose, onSuccess }: CampaignWizardProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [currentStep, setCurrentStep] = useState<number>(WIZARD_STEPS.GOAL);
     const [draft, setDraft] = useState<CampaignDraft>(createInitialDraft);
-    const [loading, setLoading] = useState(false);
+    const mutation = useScopedMutation(); const loading = mutation.busy;
+    const [created, setCreated] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     // Navigation handlers with validation
@@ -64,14 +73,16 @@ export function CampaignWizard({ isOpen, onClose, onSuccess }: CampaignWizardPro
 
     // Reset wizard state when closing
     const handleClose = useCallback(() => {
+        if (mutation.isPending()) return;
         setCurrentStep(WIZARD_STEPS.GOAL);
         setDraft(createInitialDraft());
         setError(null);
         onClose();
-    }, [onClose]);
+    }, [onClose, mutation]);
 
     // Launch campaign via API
     const handleLaunch = useCallback(async () => {
+        if (mutation.isPending() || created) return;
         if (!token || !currentAccount) {
             setError('Authentication required');
             return;
@@ -87,10 +98,13 @@ export function CampaignWizard({ isOpen, onClose, onSuccess }: CampaignWizardPro
             }
         }
 
-        setLoading(true);
         setError(null);
 
-        try {
+        const result = await mutation.run(async signal => {
+            const accountResponse = await fetch('/api/ads', { signal, headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': currentAccount.id } });
+            const accounts: unknown = await accountResponse.json();
+            const google = Array.isArray(accounts) ? accounts.find(account => isRecord(account) && account.platform === 'GOOGLE') : null;
+            if (!accountResponse.ok || !isRecord(google) || typeof google.currency !== 'string' || !/^[A-Z]{3}$/i.test(google.currency)) throw new Error('Google Ads account currency unavailable');
             Logger.info('[CampaignWizard] Launching campaign', {
                 name: draft.name,
                 type: draft.type
@@ -105,6 +119,7 @@ export function CampaignWizard({ isOpen, onClose, onSuccess }: CampaignWizardPro
                 }));
 
             const res = await fetch('/api/ads/create-campaign', {
+                signal,
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -125,19 +140,16 @@ export function CampaignWizard({ isOpen, onClose, onSuccess }: CampaignWizardPro
                 const errData = await res.json();
                 throw new Error(errData.error || 'Failed to create campaign');
             }
+            const confirmation: unknown = await res.json();
+            if (!isRecord(confirmation) || confirmation.success !== true || typeof confirmation.campaignResource !== 'string' || !confirmation.campaignResource) throw new Error('Invalid campaign confirmation');
 
-            Logger.info('[CampaignWizard] Campaign created successfully', { name: draft.name });
-            onSuccess?.(draft.name);
-            handleClose();
-
-        } catch (e: unknown) {
-            const message = e instanceof Error ? e.message : 'An unexpected error occurred';
-            Logger.error('[CampaignWizard] Failed to launch campaign', { error: message });
-            setError(message);
-        } finally {
-            setLoading(false);
+        }, 'Could not confirm campaign creation. Check Google Ads before retrying.');
+        if (result.ok) {
+            setCreated(true);
+            try { onSuccess?.(draft.name); onClose(); }
+            catch { setError('Campaign created, but the view could not refresh. Check Google Ads; do not launch again.'); }
         }
-    }, [token, currentAccount, draft, onSuccess, handleClose]);
+    }, [token, currentAccount, draft, onSuccess, onClose, mutation, created]);
 
     // Don't render if not open
     if (!isOpen) return null;
@@ -166,9 +178,10 @@ export function CampaignWizard({ isOpen, onClose, onSuccess }: CampaignWizardPro
                 <div className="px-8 py-5 border-b border-gray-100 flex items-center justify-between bg-white z-10">
                     <div>
                         <h2 className="text-xl font-bold text-gray-900">Create New Campaign</h2>
-                        <p className="text-sm text-gray-500">AI-Powered Setup</p>
+                        <p className="text-sm text-gray-500">Guided Setup</p>
                     </div>
                     <button
+                        type="button" disabled={loading}
                         onClick={handleClose}
                         className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-400 hover:text-gray-600"
                         aria-label="Close wizard"
@@ -186,20 +199,21 @@ export function CampaignWizard({ isOpen, onClose, onSuccess }: CampaignWizardPro
 
                     {/* Content */}
                     <div className="flex-1 overflow-y-auto p-8 relative">
-                        {error && (
+                        {(error || mutation.error) && (
                             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
-                                {error}
+                                {error || mutation.error}
                             </div>
                         )}
-                        {renderStepContent()}
+                        <fieldset disabled={loading}>{renderStepContent()}</fieldset>
                     </div>
                 </div>
 
                 {/* Footer */}
                 <div className="px-8 py-5 border-t border-gray-100 bg-white flex justify-between items-center">
                     <button
+                        type="button"
                         onClick={handleBack}
-                        disabled={currentStep === WIZARD_STEPS.GOAL}
+                        disabled={loading || currentStep === WIZARD_STEPS.GOAL}
                         className="px-6 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         Back
@@ -207,6 +221,7 @@ export function CampaignWizard({ isOpen, onClose, onSuccess }: CampaignWizardPro
 
                     {currentStep < WIZARD_STEPS.TOTAL ? (
                         <button
+                            type="button"
                             onClick={handleNext}
                             className="flex items-center gap-2 px-6 py-2.5 bg-gray-900 text-white font-medium rounded-xl hover:bg-gray-800 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
                         >
@@ -215,8 +230,9 @@ export function CampaignWizard({ isOpen, onClose, onSuccess }: CampaignWizardPro
                         </button>
                     ) : (
                         <button
+                            type="button"
                             onClick={handleLaunch}
-                            disabled={loading}
+                            disabled={loading || created}
                             className="flex items-center gap-2 px-8 py-2.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-all shadow-lg shadow-green-500/30 hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed"
                         >
                             {loading ? (

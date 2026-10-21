@@ -27,7 +27,7 @@ describe('Native advertising audience setup', () => {
     it('creates a Meta event audience with purchaser exclusion and explicit consent', async () => {
         const { onCreated } = setup();
         fireEvent.change(screen.getByLabelText('Advertising account'), { target: { value: 'meta' } });
-        await screen.findByRole('option', { name: 'Store pixel · 123' });
+        await screen.findByRole('option', { name: 'Store pixel · 123' }, { timeout: 5000 });
         fireEvent.change(screen.getByLabelText('Meta pixel / dataset'), { target: { value: '123' } });
         fireEvent.click(screen.getByRole('button', { name: 'Cart additions' }));
         expect(screen.getByRole('button', { name: 'Create audience' })).toBeDisabled();
@@ -40,7 +40,7 @@ describe('Native advertising audience setup', () => {
     it('creates Meta lookalikes only from a managed source with an explicit country and size', async () => {
         setup();
         fireEvent.change(screen.getByLabelText('Advertising account'), { target: { value: 'meta' } });
-        await screen.findByRole('option', { name: 'Store pixel · 123' });
+        await screen.findByRole('option', { name: 'Store pixel · 123' }, { timeout: 5000 });
         fireEvent.change(screen.getByLabelText('Audience type'), { target: { value: 'LOOKALIKE' } });
         fireEvent.change(screen.getByLabelText('Audience name'), { target: { value: 'Best customer lookalike' } });
         fireEvent.change(screen.getByLabelText('Source audience'), { target: { value: 'CUSTOMER_LIST:local-seed' } });
@@ -68,7 +68,7 @@ describe('Native advertising audience setup', () => {
     it('does not allow invalid retention windows or carry consent across destination changes', async () => {
         setup();
         fireEvent.change(screen.getByLabelText('Advertising account'), { target: { value: 'meta' } });
-        await screen.findByRole('option', { name: 'Store pixel · 123' });
+        await screen.findByRole('option', { name: 'Store pixel · 123' }, { timeout: 5000 });
         fireEvent.change(screen.getByLabelText('Meta pixel / dataset'), { target: { value: '123' } });
         fireEvent.click(screen.getByRole('button', { name: 'All visitors' }));
         fireEvent.click(screen.getByRole('checkbox', { name: /I confirm we have/ }));

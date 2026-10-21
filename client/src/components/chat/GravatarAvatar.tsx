@@ -1,130 +1,32 @@
-/**
- * GravatarAvatar - Avatar component with Gravatar support and fallback to initials.
- * Uses MD5 hash of email to fetch Gravatar images, with initials fallback.
- */
-import { useState, useEffect, memo } from 'react';
+import { useEffect, useState, memo } from 'react';
 import { cn } from '../../utils/cn';
 
-interface GravatarAvatarProps {
-    email?: string;
-    name: string;
-    size?: 'sm' | 'md' | 'lg';
-    className?: string;
-    variant?: 'blue' | 'gray' | 'amber';
-}
-
-/**
- * Converts a string to MD5 hash using SubtleCrypto API.
- * Falls back to a simple hash if unavailable.
- */
-async function md5Hash(str: string): Promise<string> {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(str.toLowerCase().trim());
-
-    // crypto.subtle is only available in secure contexts (HTTPS or localhost)
-    // Check existence before use to avoid TypeError in HTTP contexts
-    if (typeof crypto !== 'undefined' && crypto.subtle) {
-        try {
-            // Use SubtleCrypto for modern browsers (but it doesn't support MD5)
-            // Gravatar also accepts SHA256, let's use that as primary
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        } catch {
-            // Fall through to simple hash
-        }
-    }
-
-    // Simple fallback hash for older browsers or non-secure contexts
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-        const char = str.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash;
-    }
-    return Math.abs(hash).toString(16);
-}
-
-const sizeClasses = {
-    sm: 'w-8 h-8 text-xs',
-    md: 'w-10 h-10 text-sm',
-    lg: 'w-12 h-12 text-base'
-};
-
-const variantClasses = {
-    blue: 'bg-blue-600',
-    gray: 'bg-gray-500',
-    amber: 'bg-amber-600'
-};
-
-export const GravatarAvatar = memo(function GravatarAvatar({
-    email,
-    name,
-    size = 'sm',
-    className,
-    variant = 'gray'
-}: GravatarAvatarProps) {
-    const [gravatarUrl, setGravatarUrl] = useState<string | null>(null);
-    const [imageError, setImageError] = useState(false);
-
-    const initial = name?.charAt(0).toUpperCase() || '?';
-    const pixelSize = size === 'sm' ? 32 : size === 'md' ? 40 : 48;
-
-    useEffect(() => {
-        let cancelled = false;
-
-        if (!email) {
-            // Defer to avoid cascading renders
-            const timeoutId = setTimeout(() => {
-                if (!cancelled) setGravatarUrl(null);
-            }, 0);
-            return () => {
-                cancelled = true;
-                clearTimeout(timeoutId);
-            };
-        }
-
-        // Defer the error reset to avoid cascading renders
-        const resetTimeout = setTimeout(() => {
-            if (!cancelled) setImageError(false);
-        }, 0);
-
-        // Generate Gravatar URL
-        md5Hash(email).then(hash => {
-            if (!cancelled) {
-                // Use a transparent fallback to avoid noisy 404s in the browser console.
-                setGravatarUrl(`https://www.gravatar.com/avatar/${hash}?s=${pixelSize * 2}&d=blank`);
-            }
-        });
-
-        return () => {
-            cancelled = true;
-            clearTimeout(resetTimeout);
-        };
-    }, [email, pixelSize]);
-
-    const showImage = gravatarUrl && !imageError;
-
-    return (
-        <div
-            className={cn(
-                "rounded-full flex items-center justify-center font-medium shrink-0 overflow-hidden relative",
-                sizeClasses[size],
-                variantClasses[variant],
-                "text-white",
-                className
-            )}
-        >
-            {initial}
-            {showImage ? (
-                <img
-                    src={gravatarUrl}
-                    alt={name}
-                    className="absolute inset-0 w-full h-full object-cover"
-                    onError={() => setImageError(true)}
-                    loading="lazy"
-                />
-            ) : null}
-        </div>
-    );
+interface Props { email?: string; name: string; size?: 'sm' | 'md' | 'lg'; className?: string; variant?: 'blue' | 'gray' | 'amber' }
+const sizes = { sm: 'w-8 h-8 text-xs', md: 'w-10 h-10 text-sm', lg: 'w-12 h-12 text-base' };
+const variants = { blue: 'bg-blue-600', gray: 'bg-gray-500', amber: 'bg-amber-600' };
+export const GravatarAvatar = memo(function GravatarAvatar({ email, name, size = 'sm', className, variant = 'gray' }: Props) {
+    const normalized = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    return <AvatarImage key={JSON.stringify([normalized, size])} email={normalized} name={name} size={size} className={className} variant={variant} />;
 });
+function AvatarImage({ email, name, size = 'sm', className, variant = 'gray' }: Props) {
+    const [url, setUrl] = useState<string | null>(null); const [failed, setFailed] = useState(false);
+    const pixels = size === 'sm' ? 32 : size === 'md' ? 40 : 48;
+    useEffect(() => {
+        let disposed = false;
+        if (email && globalThis.crypto?.subtle) {
+            void (async () => {
+                try {
+                    const buffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(email));
+                    if (disposed) return;
+                    const hash = Array.from(new Uint8Array(buffer), byte => byte.toString(16).padStart(2, '0')).join('');
+                    if (/^[a-f0-9]{64}$/.test(hash)) setUrl(`https://www.gravatar.com/avatar/${hash}?s=${pixels * 2}&d=blank`);
+                } catch { /* Initials are the fallback when a valid digest is unavailable. */ }
+            })();
+        }
+        return () => { disposed = true; };
+    }, [email, pixels]);
+    return <div role="img" aria-label={name || 'Customer'} className={cn('rounded-full flex items-center justify-center font-medium shrink-0 overflow-hidden relative text-white', sizes[size], variants[variant], className)}>
+        <span aria-hidden="true">{name?.charAt(0).toUpperCase() || '?'}</span>
+        {url && !failed && <img src={url} alt="" aria-hidden="true" referrerPolicy="no-referrer" loading="lazy" className="absolute inset-0 w-full h-full object-cover" onError={() => setFailed(true)} />}
+    </div>;
+}

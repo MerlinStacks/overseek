@@ -1,159 +1,35 @@
-/**
- * Gold Price Margin Widget
- * 
- * Displays a summary of gold-priced products and their profit margins.
- * Links to the full Gold Price Margin Report page.
- */
-
-import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Gem, ArrowRight, TrendingDown, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Logger } from '../../utils/logger';
-import { WidgetProps } from './WidgetRegistry';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+import { isRecord } from '../../utils/responseValidation';
+import type { WidgetProps } from './WidgetRegistry';
+import { WidgetErrorState, WidgetLoadingState } from './WidgetState';
+import { widgetCardClass, widgetTitleClass } from './widgetStyles';
 
-// Margin thresholds for color coding (aligned with report page)
-const MARGIN_THRESHOLD_LOW = 20;
-const MARGIN_THRESHOLD_MEDIUM = 40;
-
-interface GoldPriceSummary {
-    totalCount: number;
-    productCount: number;
-    variationCount: number;
-    lowestMarginItems: { name: string; margin: number }[];
+interface Summary { totalCount: number; productCount: number; variationCount: number; sampledCount: number; unavailableCount: number; lowestMarginItems: Array<{ name: string; margin: number }> }
+function decode(value: unknown): Summary {
+    if (!isRecord(value) || !['totalCount', 'productCount', 'variationCount', 'sampledCount', 'unavailableCount'].every(key => typeof value[key] === 'number' && Number.isSafeInteger(value[key]) && (value[key] as number) >= 0) || !Array.isArray(value.lowestMarginItems) || !value.lowestMarginItems.every(item => isRecord(item) && typeof item.name === 'string' && typeof item.margin === 'number' && Number.isFinite(item.margin))) throw new Error('Invalid gold summary');
+    const data = value as unknown as Summary;
+    if (data.totalCount !== data.productCount + data.variationCount || data.sampledCount > data.totalCount || data.unavailableCount > data.sampledCount || data.lowestMarginItems.length > data.sampledCount - data.unavailableCount) throw new Error('Inconsistent gold summary');
+    return data;
 }
-
-/**
- * Dashboard widget showing gold price product margin summary.
- * Clickable to navigate to full report.
- */
-export function GoldPriceMarginWidget({ className }: WidgetProps) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const accountId = currentAccount?.id;
-    const navigate = useNavigate();
-    const [summary, setSummary] = useState<GoldPriceSummary | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    const fetchSummary = useCallback(async () => {
-        if (!accountId || !token) return;
-
-        setError(null);
-        try {
-            const res = await fetch('/api/reports/gold-price/summary', {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': accountId
-                }
-            });
-            if (!res.ok) {
-                throw new Error(`HTTP ${res.status}`);
-            }
-            setSummary(await res.json());
-        } catch (err) {
-            const message = err instanceof Error ? err.message : 'Failed to load';
-            Logger.error('Failed to load gold price summary', { error: err });
-            setError(message);
-        } finally {
-            setLoading(false);
-        }
-    }, [accountId, token]);
-
-    useEffect(() => {
-        fetchSummary();
-    }, [fetchSummary]);
-
-    if (loading) {
-        return (
-            <div className="h-full flex items-center justify-center">
-                <Loader2 className="animate-spin text-amber-500" size={20} />
-            </div>
-        );
-    }
-
-    if (error) {
-        return (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-4">
-                <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-full mb-2">
-                    <AlertTriangle className="w-5 h-5 text-red-400" />
-                </div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">Failed to Load</p>
-                <button
-                    onClick={() => { setLoading(true); fetchSummary(); }}
-                    className="text-xs text-amber-600 hover:text-amber-700 flex items-center gap-1"
-                >
-                    <RefreshCw size={12} />
-                    Retry
-                </button>
-            </div>
-        );
-    }
-
-    if (!summary || summary.totalCount === 0) {
-        return (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-4">
-                <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-full mb-2">
-                    <Gem className="w-5 h-5 text-amber-400" />
-                </div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-300">No Gold Products</p>
-                <p className="text-xs text-center">Enable gold pricing on products to see margin analysis.</p>
-            </div>
-        );
-    }
-
-    return (
-        <div
-            className={`flex flex-col h-full cursor-pointer group ${className || ''}`}
-            onClick={() => navigate('/reports/gold-price-margin')}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && navigate('/reports/gold-price-margin')}
-        >
-            {/* Header */}
-            <div className="flex items-center justify-between mb-3 px-1">
-                <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                    <Gem size={16} className="text-amber-500" />
-                    Gold Price Margins
-                </h3>
-                <span className="text-xs font-mono bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full">
-                    {summary.totalCount} Items
-                </span>
-            </div>
-
-            {/* Lowest Margins */}
-            <div className="flex-1 overflow-hidden">
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 px-1 flex items-center gap-1">
-                    <TrendingDown size={12} />
-                    Lowest Margins
-                </p>
-                <div className="space-y-2">
-                    {summary.lowestMarginItems.map((item, idx) => (
-                        <div
-                            key={idx}
-                            className="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-slate-800/50 border border-transparent group-hover:border-amber-200 dark:group-hover:border-amber-500/30 transition-colors"
-                        >
-                            <span className="text-sm text-gray-800 dark:text-gray-200 truncate flex-1 mr-2">
-                                {item.name}
-                            </span>
-                            <span className={`text-xs font-mono font-bold ${item.margin < MARGIN_THRESHOLD_LOW ? 'text-red-600 dark:text-red-400' :
-                                item.margin < MARGIN_THRESHOLD_MEDIUM ? 'text-amber-600 dark:text-amber-400' :
-                                    'text-green-600 dark:text-green-400'
-                                }`}>
-                                {item.margin.toFixed(1)}%
-                            </span>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Footer Link */}
-            <div className="mt-3 pt-2 border-t border-gray-100 dark:border-slate-700">
-                <span className="flex items-center justify-center gap-1 text-xs font-medium text-amber-600 group-hover:text-amber-700 transition-colors">
-                    View Full Report <ArrowRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
-                </span>
-            </div>
-        </div>
-    );
+export function GoldPriceMarginWidget(props: WidgetProps) {
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p role="status">Select an account to view gold margins.</p>;
+    return <AccountGold key={JSON.stringify([token, currentAccount.id])} accountId={currentAccount.id} token={token} className={props.className} />;
+}
+function AccountGold({ accountId, token, className = '' }: { accountId: string; token: string; className?: string }) {
+    const read = useScopedRequest('/api/reports/gold-price/summary', accountId, token, decode);
+    return <section aria-label="Gold price margins" className={`${widgetCardClass} p-4 h-full text-slate-900 dark:text-white space-y-3 ${className}`}>
+        <h3 className={widgetTitleClass}>Gold Price Margins</h3>
+        {read.loading ? <WidgetLoadingState message="Loading gold margins..." /> : read.error || !read.data ? <WidgetErrorState message="Could not load gold margins." onRetry={read.retry} /> : read.data.totalCount === 0 ? <p>No Gold Products</p> : <>
+            <p>{read.data.totalCount} items · {read.data.sampledCount} sampled</p>
+            <p className="text-xs">Lowest known margins in sample, not a store-wide ranking.</p>
+            {read.data.unavailableCount > 0 && <p>{read.data.unavailableCount} sampled margins unavailable (missing or invalid inputs).</p>}
+            {!read.data.lowestMarginItems.length && <p>No calculable margins in sample.</p>}
+            <ul>{read.data.lowestMarginItems.map((item, index) => <li key={index} className="flex justify-between gap-3 p-2 bg-slate-50 dark:bg-slate-700 rounded-lg"><span>{item.name}</span><span className={item.margin < 20 ? 'text-red-600 dark:text-red-400' : item.margin < 40 ? 'text-amber-700 dark:text-amber-400' : 'text-green-700 dark:text-green-400'}>{item.margin.toFixed(1)}%</span></li>)}</ul>
+        </>}
+        <Link to="/reports/gold-price-margin" className="text-indigo-600 dark:text-indigo-400">View Full Report</Link>
+    </section>;
 }

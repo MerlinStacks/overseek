@@ -34,8 +34,9 @@ const labels: Record<string, string> = {
 
 export function ProductStockMovements({ productId }: { productId: string }) {
     const { currentAccount } = useAccount();
-    // Remount pagination and cancel requests whenever the product/account changes.
-    return <MovementHistory key={`${currentAccount?.id}:${productId}`} productId={productId} />;
+    const { token } = useAuth();
+    // Remount pagination and cancel requests whenever the product/account/auth scope changes.
+    return <MovementHistory key={JSON.stringify([currentAccount?.id, token, productId])} productId={productId} />;
 }
 
 function MovementHistory({ productId }: { productId: string }) {
@@ -51,8 +52,6 @@ function MovementHistory({ productId }: { productId: string }) {
     useEffect(() => {
         if (!accountId || !token) return;
         const controller = new AbortController();
-        setLoading(true);
-        setError(false);
         const load = async () => {
             try {
                 const query = new URLSearchParams({ productId, page: String(page), limit: '15' });
@@ -86,7 +85,7 @@ function MovementHistory({ productId }: { productId: string }) {
             ) : error ? (
                 <div role="alert" className="p-8 text-center text-gray-600 dark:text-gray-300">
                     <p>Unable to load stock movements.</p>
-                    <button onClick={() => setAttempt(value => value + 1)} className="mt-3 text-indigo-600 dark:text-indigo-400 underline">Try again</button>
+                    <button onClick={() => { setLoading(true); setError(false); setAttempt(value => value + 1); }} className="mt-3 text-indigo-600 dark:text-indigo-400 underline">Try again</button>
                 </div>
             ) : !data?.movements.length ? (
                 <div className="p-8 text-center text-gray-500 dark:text-gray-400">No recorded stock movements for this product yet.</div>
@@ -102,7 +101,7 @@ function MovementHistory({ productId }: { productId: string }) {
                                     <tr key={movement.id}>
                                         <td className="px-4 py-3 whitespace-nowrap">{format(new Date(movement.createdAt), 'MMM d, yyyy')}<span className="block text-xs text-gray-500">{format(new Date(movement.createdAt), 'h:mm a')}</span></td>
                                         <td className="px-4 py-3">{movement.productName}{movement.sku && <span className="block text-xs text-gray-500">{movement.sku}</span>}</td>
-                                        <td className="px-4 py-3">{labels[movement.type] || movement.type.replaceAll('_', ' ')}{movement.reason && <span className="block text-xs text-gray-500 dark:text-gray-400 mt-1">{movement.reason}</span>}</td>
+                                        <td className="px-4 py-3">{labels[movement.type] || movement.type.replace(/_/g, ' ')}{movement.reason && <span className="block text-xs text-gray-500 dark:text-gray-400 mt-1">{movement.reason}</span>}</td>
                                         <td className={`px-4 py-3 font-semibold ${movement.quantity > 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{movement.quantity > 0 ? '+' : ''}{movement.quantity}</td>
                                         <td className="px-4 py-3">{movement.previousStock ?? '—'}</td>
                                         <td className="px-4 py-3">{movement.newStock ?? '—'}</td>
@@ -115,8 +114,8 @@ function MovementHistory({ productId }: { productId: string }) {
                     {data.totalPages > 1 && <div className="px-6 py-4 border-t border-gray-100 dark:border-slate-700 flex items-center justify-between text-gray-600 dark:text-gray-300">
                         <span className="text-sm">Page {data.page} of {data.totalPages}</span>
                         <div className="flex gap-2">
-                            <button aria-label="Previous page" disabled={page <= 1} onClick={() => setPage(value => value - 1)} className="p-2 border rounded-lg disabled:opacity-40"><ChevronLeft size={16} /></button>
-                            <button aria-label="Next page" disabled={page >= data.totalPages} onClick={() => setPage(value => value + 1)} className="p-2 border rounded-lg disabled:opacity-40"><ChevronRight size={16} /></button>
+                            <button aria-label="Previous page" disabled={page <= 1} onClick={() => { setLoading(true); setError(false); setPage(value => value - 1); }} className="p-2 border rounded-lg disabled:opacity-40"><ChevronLeft size={16} /></button>
+                            <button aria-label="Next page" disabled={page >= data.totalPages} onClick={() => { setLoading(true); setError(false); setPage(value => value + 1); }} className="p-2 border rounded-lg disabled:opacity-40"><ChevronRight size={16} /></button>
                         </div>
                     </div>}
                 </>

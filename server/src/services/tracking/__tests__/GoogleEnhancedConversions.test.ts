@@ -168,6 +168,32 @@ describe('GoogleEnhancedConversionsService', () => {
         expect(body.conversions[0].gclid).toBe('gclid-abc123');
     });
 
+    it.each(['gclid', 'gbraid', 'wbraid'])('uploads %s in its own field without changing the event or Meta identifiers', async clickIdType => {
+        const data = {
+            ...purchaseData, clickId: 'original-click', clickPlatform: 'google', clickIdType,
+            payload: { ...purchaseData.payload, email: undefined, fbc: 'fb.1.original', fbp: 'fb.1.browser' },
+        };
+        const original = structuredClone(data);
+        await service.sendEvent(accountId, { ...config, purchaseUploadActionId: '987' }, data, null);
+        const conversion = JSON.parse((global.fetch as any).mock.calls[0][1].body).conversions[0];
+        for (const field of ['gclid', 'gbraid', 'wbraid']) {
+            expect(conversion[field]).toBe(field === clickIdType ? 'original-click' : undefined);
+        }
+        expect(data).toEqual(original);
+    });
+
+    it('preserves a nested braid type and never treats an unsupported click type as gclid', async () => {
+        await service.sendEvent(accountId, { ...config, purchaseUploadActionId: '987' }, {
+            ...purchaseData, payload: { ...purchaseData.payload, clickIdType: 'wbraid' },
+        }, session);
+        expect(JSON.parse((global.fetch as any).mock.calls[0][1].body).conversions[0].wbraid).toBe('gclid-abc123');
+        vi.mocked(global.fetch).mockClear();
+        await service.sendEvent(accountId, { ...config, purchaseUploadActionId: '987' }, {
+            ...purchaseData, clickIdType: 'dclid', payload: { ...purchaseData.payload, email: undefined },
+        }, null);
+        expect(global.fetch).not.toHaveBeenCalled();
+    });
+
     it('does not upload an explicitly denied purchase', async () => {
         await service.sendEvent(accountId, { ...config, purchaseUploadActionId: '987' }, { ...purchaseData, consentState: 'denied' }, session);
         expect(global.fetch).not.toHaveBeenCalled();
@@ -190,8 +216,9 @@ describe('GoogleEnhancedConversionsService', () => {
 
     it('checks independent action configuration without submitting any purchases', async () => {
         (global.fetch as any)
-            .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ conversionAction: { type: 'UPLOAD_CLICKS', status: 'ENABLED' } }] }) })
-            .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ customer: { conversionTrackingSetting: { acceptedCustomerDataTerms: true } } }] }) });
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ conversionAction: { id: '987', type: 'UPLOAD_CLICKS', status: 'ENABLED' } }] }) })
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ customer: { conversionTrackingSetting: { acceptedCustomerDataTerms: true } } }] }) })
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [] }) });
         const message = await service.validateConfiguration(accountId, { ...config, purchaseUploadActionId: '987' });
         expect(message).toContain('No purchase was sent');
         expect((global.fetch as any).mock.calls.every((call: any[]) => call[0].endsWith('/googleAds:search'))).toBe(true);
@@ -199,9 +226,36 @@ describe('GoogleEnhancedConversionsService', () => {
     });
 
     it('rejects a website action for independent purchases', async () => {
-        (global.fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ conversionAction: { type: 'WEBPAGE', status: 'ENABLED' } }] }) });
+        (global.fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ conversionAction: { id: '987', type: 'WEBPAGE', status: 'ENABLED' } }] }) });
         await expect(service.validateConfiguration(accountId, { ...config, purchaseUploadActionId: '987' })).rejects.toThrow('UPLOAD_CLICKS');
         expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('warns about secondary purchase revenue and default values without mutating remote goals', async () => {
+        vi.mocked(global.fetch)
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ conversionAction: {
+                id: '987', type: 'UPLOAD_CLICKS', status: 'ENABLED', category: 'PURCHASE', primaryForGoal: false,
+                valueSettings: { alwaysUseDefaultValue: true },
+            } }] }) } as any)
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ customer: { conversionTrackingSetting: { acceptedCustomerDataTerms: true } } }] }) } as any)
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [] }) } as any);
+        const message = await service.validateConfiguration(accountId, { ...config, purchaseUploadActionId: '987' });
+        expect(message).toContain('Secondary');
+        expect(message).toContain('default conversion value');
+        expect(message).toContain('campaign-specific/custom goals');
+        expect(vi.mocked(global.fetch).mock.calls.every(call => String(call[0]).endsWith('/googleAds:search'))).toBe(true);
+    });
+
+    it('warns about browser dependency and duplicate Primary purchase sources', async () => {
+        vi.mocked(global.fetch)
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ conversionAction: { id: '123', type: 'WEBPAGE', status: 'ENABLED', primaryForGoal: true } }] }) } as any)
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ customer: { conversionTrackingSetting: { acceptedCustomerDataTerms: true } } }] }) } as any)
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ results: ['123', '456'].map(id => ({ conversionAction: {
+                id, status: 'ENABLED', category: 'PURCHASE', primaryForGoal: true,
+            } })) }) } as any);
+        const message = await service.validateConfiguration(accountId, { ...config, conversionActionId: '123' });
+        expect(message).toContain('cannot recover a missing browser purchase');
+        expect(message).toContain('Multiple enabled purchase actions are Primary');
     });
 
     it('should normalize customerId (strip dashes) for DB lookup', async () => {

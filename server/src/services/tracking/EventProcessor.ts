@@ -7,7 +7,7 @@
  * FIXES APPLIED (May 2026):
  * - Passes session referrer to CAPI services (enables page_referrer in GA4)
  * - Passes consent state through payload for platform-specific consent handling
- * - Includes session start timestamp for GA4 session_id generation
+ * - Keeps Google browser session context in the event payload for GA4 attribution
  */
 
 import { prisma } from '../../utils/prisma';
@@ -51,6 +51,7 @@ export interface TrackingEventPayload {
     // Ad platform click IDs (gclid, fbclid, msclkid, etc.)
     clickId?: string;      // The raw click ID value
     clickPlatform?: string; // Platform: 'google', 'facebook', 'microsoft', 'tiktok', 'twitter', 'linkedin', 'pinterest'
+    clickIdType?: string; // Original parameter name; Google gclid/gbraid/wbraid are not interchangeable.
 
     // Landing page referrer (persisted original external referrer)
     landingReferrer?: string;
@@ -557,7 +558,7 @@ async function processEventOnce(data: TrackingEventPayload) {
             userAgent: data.userAgent,
             country: session.country,
             referrer: session.referrer,
-            // FIX: sessionStartAt enables GA4 session_id generation
+            // Overseek visit timing only; GA4 uses its own stream cookie from data.payload.
             sessionStartAt: currentVisit.startedAt
                 ? Math.floor(new Date(currentVisit.startedAt).getTime() / 1000)
                 : null,

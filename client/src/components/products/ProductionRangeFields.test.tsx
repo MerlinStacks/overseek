@@ -49,7 +49,7 @@ describe('controlled production fields', () => {
         const props = { product: { id: 'local', wooId: 10, type: 'variable' }, variants: [{ id: 82, sku: '', price: '', attributes: [] }] };
         const production = { parent: { min: '0', max: '0' }, values: {}, onChange };
         const { rerender } = render(<VariationsPanel {...props} production={{ ...production, loading: true }} />);
-        fireEvent.click(screen.getByText('#82').closest('tr')!.querySelector('td')!);
+        fireEvent.click(screen.getByRole('button', { name: 'Expand variant 82' }));
         expect(await screen.findByText('Loading production range…')).toBeInTheDocument();
         expect(screen.getByLabelText('Minimum days')).toBeDisabled();
         rerender(<VariationsPanel {...props} production={{ ...production, values: { 82: { min: '', max: '' } }, disabled: true }} />);
@@ -77,7 +77,7 @@ describe('controlled production fields', () => {
         render(<VariationsPanel product={{ id: 'local', wooId: 10, type: 'variable' }}
             variants={[{ id: 82, sku: '', price: '', attributes: [] }]}
             production={{ parent: { min: '', max: '' }, values: {}, onChange: vi.fn(), error: 'Load failed', onRetry }} />);
-        fireEvent.click(screen.getByText('#82').closest('tr')!.querySelector('td')!);
+        fireEvent.click(screen.getByRole('button', { name: 'Expand variant 82' }));
         expect(await screen.findByRole('alert')).toHaveTextContent('Load failed');
         expect(screen.getByLabelText('Minimum days')).toBeDisabled();
         fireEvent.click(screen.getByRole('button', { name: /Retry loading production range/ }));
@@ -137,7 +137,7 @@ describe('controlled production fields', () => {
             </>;
         }
         render(<Editor />);
-        const expand = (id: number) => fireEvent.click(screen.getByText(`#${id}`).closest('tr')!.querySelector('td')!);
+        const expand = (id: number) => fireEvent.click(screen.getByRole('button', { name: `Expand variant ${id}` }));
         expand(945);
         const group = await screen.findByRole('group', { name: 'Variant #945 production range' });
         expect(group.closest('tbody')).not.toBeNull();

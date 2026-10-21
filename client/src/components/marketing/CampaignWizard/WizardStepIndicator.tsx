@@ -1,90 +1,18 @@
-/**
- * Wizard Step Indicator
- * 
- * Visual progress tracker for the campaign creation wizard.
- * Shows completed, active, and pending steps.
- */
-
-import { LayoutGrid, ShoppingBag, Type, Banknote, LucideIcon } from 'lucide-react';
 import { WIZARD_STEPS } from './types';
 
-interface WizardStepIndicatorProps {
-    currentStep: number;
-}
-
-interface StepConfig {
-    id: number;
-    label: string;
-    icon: LucideIcon;
-}
-
-/** Step configuration with icons and labels */
-const STEPS: StepConfig[] = [
-    { id: WIZARD_STEPS.GOAL, label: 'Goal & Type', icon: LayoutGrid },
-    { id: WIZARD_STEPS.PRODUCTS, label: 'Products', icon: ShoppingBag },
-    { id: WIZARD_STEPS.AD_COPY, label: 'Ad Copy', icon: Type },
-    { id: WIZARD_STEPS.BUDGET, label: 'Budget & Review', icon: Banknote },
+const steps = [
+    { id: WIZARD_STEPS.GOAL, label: 'Goal & Type' }, { id: WIZARD_STEPS.PRODUCTS, label: 'Products' },
+    { id: WIZARD_STEPS.AD_COPY, label: 'Ad Copy' }, { id: WIZARD_STEPS.BUDGET, label: 'Budget & Review' },
 ];
-
-/**
- * Displays vertical step progress indicator.
- * Shows icons, labels, and connector lines between steps.
- */
-export function WizardStepIndicator({ currentStep }: WizardStepIndicatorProps) {
-    return (
-        <div className="space-y-6">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
-                Setup Progress
-            </h3>
-            <div className="space-y-4">
-                {STEPS.map((step, index) => {
-                    const isActive = step.id === currentStep;
-                    const isCompleted = step.id < currentStep;
-                    const isLast = index === STEPS.length - 1;
-                    const Icon = step.icon;
-
-                    return (
-                        <div key={step.id} className="relative flex items-center gap-4 group">
-                            {/* Connector Line */}
-                            {!isLast && (
-                                <div
-                                    className={`absolute left-[19px] top-10 w-0.5 h-10 -ml-px transition-colors ${isCompleted ? 'bg-green-500' : 'bg-gray-200'
-                                        }`}
-                                    aria-hidden="true"
-                                />
-                            )}
-
-                            {/* Step Icon */}
-                            <div
-                                className={`relative z-10 flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-300 ${isActive
-                                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 scale-110'
-                                        : isCompleted
-                                            ? 'bg-green-100 text-green-600'
-                                            : 'bg-white border border-gray-200 text-gray-400'
-                                    }`}
-                                aria-current={isActive ? 'step' : undefined}
-                            >
-                                <Icon size={isActive ? 20 : 18} />
-                            </div>
-
-                            {/* Step Label */}
-                            <div className="flex flex-col">
-                                <span
-                                    className={`text-sm font-semibold transition-colors ${isActive || isCompleted ? 'text-gray-900' : 'text-gray-400'
-                                        }`}
-                                >
-                                    {step.label}
-                                </span>
-                                {isActive && (
-                                    <span className="text-xs text-blue-600 font-medium animate-pulse">
-                                        In Progress
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
+export function WizardStepIndicator({ currentStep }: { currentStep: number }) {
+    if (!steps.some(step => step.id === currentStep)) return <p role="status">Campaign progress unavailable.</p>;
+    return <section aria-label="Campaign setup progress" className="space-y-4"><h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Setup Progress</h3>
+        <ol className="space-y-4">{steps.map(step => {
+            const state = step.id < currentStep ? 'Completed' : step.id === currentStep ? 'In Progress' : 'Not started';
+            return <li key={step.id} aria-current={step.id === currentStep ? 'step' : undefined} className="flex items-center gap-3">
+                <span aria-hidden="true" className={`flex h-10 w-10 items-center justify-center rounded-xl ${step.id === currentStep ? 'bg-indigo-600 text-white' : step.id < currentStep ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>{step.id}</span>
+                <div><p className="font-semibold text-sm text-slate-900 dark:text-slate-100">{step.label}</p><p className="text-xs text-slate-500 dark:text-slate-400">{state}</p></div>
+            </li>;
+        })}</ol>
+    </section>;
 }

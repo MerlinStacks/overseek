@@ -21,7 +21,7 @@ vi.mock('../services/analytics/behaviour', () => ({ BehaviourAnalytics: {} }));
 vi.mock('../services/analytics/customer', () => ({ CustomerAnalytics: {} }));
 vi.mock('../services/analytics/roadblock', () => ({ RoadblockAnalytics: {} }));
 vi.mock('../services/analytics/ProductRankingService', () => ({ ProductRankingService: {} }));
-vi.mock('../services/ads', () => ({ AdsService: {} }));
+vi.mock('../services/ads', () => ({ AdsService: { getAdAccounts: vi.fn(), getMetaInsights: vi.fn(), getGoogleInsights: vi.fn() } }));
 vi.mock('../services/AnalyticsService', () => ({
     AnalyticsService: {
         getChannelBreakdown: vi.fn(),
@@ -47,6 +47,7 @@ import analyticsRoutes from './analytics';
 import { PermissionService } from '../services/PermissionService';
 import { AnalyticsService } from '../services/AnalyticsService';
 import { aovService } from '../services/analytics/AOVService';
+import { AdsService } from '../services/ads';
 
 describe('analytics route permissions', () => {
     let app: ReturnType<typeof Fastify>;
@@ -60,6 +61,26 @@ describe('analytics route permissions', () => {
     afterEach(async () => {
         await app.close();
         vi.clearAllMocks();
+    });
+
+    it('passes requested dates to both ad providers and refuses partial totals', async () => {
+        vi.mocked(PermissionService.hasAnyPermission).mockResolvedValue(true);
+        vi.mocked(AdsService.getAdAccounts).mockResolvedValue([{ id: 'meta', platform: 'META' }, { id: 'google', platform: 'GOOGLE' }] as any);
+        const range = { startDate: '2026-10-01', endDate: '2026-10-17' };
+        const metric = { accountId: 'meta', spend: 10, roas: 2, clicks: 4, impressions: 10, currency: 'EUR', date_start: range.startDate, date_stop: range.endDate };
+        vi.mocked(AdsService.getMetaInsights).mockResolvedValue(metric); vi.mocked(AdsService.getGoogleInsights).mockResolvedValue(null);
+        const response = await app.inject({ url: '/api/analytics/ads-summary?startDate=2026-10-01&endDate=2026-10-17', headers: { 'x-account-id': 'acct-1' } });
+        expect(response.statusCode).toBe(500); expect(response.json()).not.toHaveProperty('spend');
+        expect(AdsService.getMetaInsights).toHaveBeenCalledWith('meta', range); expect(AdsService.getGoogleInsights).toHaveBeenCalledWith('google', range);
+        vi.mocked(AdsService.getGoogleInsights).mockResolvedValue({ ...metric, accountId: 'google' });
+        const complete = await app.inject({ url: '/api/analytics/ads-summary?startDate=2026-10-01&endDate=2026-10-17', headers: { 'x-account-id': 'acct-1' } });
+        expect(complete.json()).toMatchObject({ hasData: true, spend: 20, roas: 2, currency: 'EUR', period: range });
+    });
+
+    it('rejects invalid dates before contacting ad services', async () => {
+        vi.mocked(PermissionService.hasAnyPermission).mockResolvedValue(true);
+        const response = await app.inject({ url: '/api/analytics/ads-summary?startDate=2026-02-31&endDate=2026-10-17', headers: { 'x-account-id': 'acct-1' } });
+        expect(response.statusCode).toBe(400); expect(AdsService.getAdAccounts).not.toHaveBeenCalled();
     });
 
     it.each([-1, 1, 7, 30, 90, 365])('preserves AOV preset %i and timezone on both endpoints', async days => {

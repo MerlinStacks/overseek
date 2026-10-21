@@ -153,6 +153,7 @@ describe('socket failure isolation', () => {
             userId: 'user-1', name: 'Alex', avatarUrl: undefined, connectedAt: expect.any(Number)
         });
         expect(broadcast.emit).toHaveBeenCalledWith('viewers:sync', []);
+        expect(broadcast.emit).toHaveBeenCalledWith('conversation:viewers', { conversationId: 'conv-1', viewers: [] });
         await invoke('typing:start', { conversationId: 'conv-1' });
         expect(broadcast.emit).toHaveBeenCalledWith('typing:start', { conversationId: 'conv-1' });
         await invoke('agent:draft:start', { conversationId: 'conv-1', user: { id: 'user-1' } });

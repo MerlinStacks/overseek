@@ -14,7 +14,7 @@ afterEach(cleanup);
 const suppliers = [{ id: 'parent', name: 'Parent Supply' }, { id: 'override', name: 'Variant Supply' }];
 const variant = { id: 101, sku: 'SKU', price: '10', attributes: [], supplierId: null };
 const props = { product: { id: 'product', wooId: 10, type: 'variable' }, variants: [variant], suppliers, parentSupplierId: 'parent' };
-const expand = () => fireEvent.click(screen.getByText('#101').closest('tr')!.querySelector('td')!);
+const expand = () => fireEvent.click(screen.getByRole('button', { name: 'Expand variant 101' }));
 
 describe('variant suppliers', () => {
     it('shows inheritance, selects an override, and explicitly clears it to null', () => {

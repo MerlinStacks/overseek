@@ -176,8 +176,10 @@ const crawlerRoutes: FastifyPluginAsync = async (fastify) => {
 
                 return {
                     crawlers,
-                    totalHits24h: stats.totalHits24h,
-                    totalBlockedHits24h: stats.totalBlockedHits24h ?? 0,
+                    totalHitsToday: stats.totalHitsToday,
+                    totalRuleMatchedHitsToday: stats.totalRuleMatchedHitsToday,
+                    timeBasis: stats.timeBasis,
+                    hitBasis: stats.hitBasis,
                     uniqueCrawlers: stats.uniqueCrawlers,
                     blockedCount: stats.blockedCount,
                 };
@@ -197,7 +199,10 @@ const crawlerRoutes: FastifyPluginAsync = async (fastify) => {
             try {
                 const stats = await CrawlerService.getCrawlerStats(accountId, 30);
                 return {
-                    totalHits24h: stats.totalHits24h,
+                    totalHitsToday: stats.totalHitsToday,
+                    totalRuleMatchedHitsToday: stats.totalRuleMatchedHitsToday,
+                    timeBasis: stats.timeBasis,
+                    hitBasis: stats.hitBasis,
                     uniqueCrawlers: stats.uniqueCrawlers,
                     blockedCount: stats.blockedCount,
                     topCrawlers: stats.crawlers.slice(0, 5).map(c => ({

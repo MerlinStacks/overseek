@@ -21,7 +21,6 @@ export class BlogPostSync extends BaseSync {
         while (hasMore) {
             const { data: rawPosts, totalPages } = await woo.getPosts({ page, after, per_page: 50 });
             if (!rawPosts.length) {
-                hasMore = false;
                 break;
             }
 

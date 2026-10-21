@@ -9,6 +9,7 @@ import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { AdMetric, CampaignInsight, DailyTrend, getCredentials, formatDateISO } from './types';
 import { META_AUDIENCE_SCHEMA } from './audienceIdentifiers';
+import { insightRange } from './insightSummary';
 
 /** Current Meta Graph API version */
 const API_VERSION = 'v24.0';
@@ -85,7 +86,8 @@ export class MetaAdsService {
      * Fetch Meta Ads insights for the last 30 days.
      * Uses Facebook Graph API to retrieve spend, impressions, clicks, and ROAS.
      */
-    static async getInsights(adAccountId: string): Promise<AdMetric | null> {
+    static async getInsights(adAccountId: string, range?: { startDate: string; endDate: string }): Promise<AdMetric | null> {
+        range = insightRange(range ?? {});
         const adAccount = await prisma.adAccount.findUnique({
             where: { id: adAccountId }
         });
@@ -95,8 +97,8 @@ export class MetaAdsService {
         }
 
         const actId = adAccount.externalId.startsWith('act_') ? adAccount.externalId : `act_${adAccount.externalId}`;
-        const fields = 'spend,impressions,clicks,purchase_roas,action_values';
-        const url = buildMetaUrl(`${actId}/insights`, { fields, date_preset: 'last_30d' });
+        const fields = 'spend,impressions,clicks,purchase_roas,action_values,account_currency';
+        const url = buildMetaUrl(`${actId}/insights`, { fields, ...(range ? { time_range: JSON.stringify({ since: range.startDate, until: range.endDate }) } : { date_preset: 'last_30d' }) });
 
         try {
             Logger.info('[MetaAds] Fetching insights', { actId, hasToken: !!adAccount.accessToken });
@@ -139,7 +141,7 @@ export class MetaAdsService {
                 impressions: parseInt(insights.impressions || '0'),
                 clicks: parseInt(insights.clicks || '0'),
                 roas,
-                currency: adAccount.currency || 'USD',
+                currency: insights.account_currency || adAccount.currency || '',
                 date_start: insights.date_start,
                 date_stop: insights.date_stop
             };

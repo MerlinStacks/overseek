@@ -1,260 +1,103 @@
-/**
- * AdAccountSettings
- * 
- * Settings panel for managing ad account connections.
- * Includes edit functionality to fix broken connections without removing/re-adding.
- */
-import { useEffect, useState, useCallback } from 'react';
-import { Logger } from '../../utils/logger';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useAccountFeature } from '../../hooks/useAccountFeature';
-import { Plus, Loader2 } from 'lucide-react';
-import { AdAccountCard, AdAccount, AdInsightError, AdInsights } from './AdAccountCard';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+import { useScopedMutation } from '../../hooks/useScopedMutation';
+import { isRecord } from '../../utils/responseValidation';
+import { navigateToSafeUrl } from '../../utils/url';
+import { AdAccountCard, type AdAccount, type AdInsights } from './AdAccountCard';
 import { EditAdAccountModal, PendingSetupModal } from './AdAccountModals';
 import { AdConnectForm } from './AdConnectForm';
-import { Toast, ToastType } from '../ui/Toast';
-import { navigateToSafeUrl } from '../../utils/url';
+import { validAdAccountId } from './adAccountValues';
 
+function decodeAccounts(value: unknown): AdAccount[] {
+    if (!Array.isArray(value) || !value.every(item => isRecord(item) && ['id', 'name', 'externalId'].every(key => typeof item[key] === 'string') && ['GOOGLE', 'META'].includes(String(item.platform)))) throw new Error('Invalid ad accounts');
+    return value as AdAccount[];
+}
+function decodeInsights(value: unknown): { data?: AdInsights; error?: { message: string; code?: string; isRecoverable?: boolean } } {
+    if (!isRecord(value)) throw new Error('Invalid insights');
+    if (typeof value.error === 'string') return { error: { message: value.error, code: typeof value.code === 'string' ? value.code : undefined, isRecoverable: value.isRecoverable === true } };
+    if (!['spend', 'impressions', 'clicks', 'roas'].every(key => typeof value[key] === 'number' && Number.isFinite(value[key])) || typeof value.currency !== 'string' || !/^[A-Z]{3}$/i.test(value.currency)) throw new Error('Invalid insights');
+    return { data: value as unknown as AdInsights };
+}
 export function AdAccountSettings() {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const isMetaEnabled = useAccountFeature('META_ADS');
-    const isGoogleEnabled = useAccountFeature('GOOGLE_ADS');
-
-    const [accounts, setAccounts] = useState<AdAccount[]>([]);
-    const [insights, setInsights] = useState<Record<string, AdInsights>>({});
-    const [loadingInsights, setLoadingInsights] = useState<Record<string, boolean>>({});
-    const [insightErrors, setInsightErrors] = useState<Record<string, AdInsightError | undefined>>({});
-    const [isLoading, setIsLoading] = useState(true);
-    const [showConnect, setShowConnect] = useState(false);
-    const [formPlatform, setFormPlatform] = useState('META');
-
-    const [editingAccount, setEditingAccount] = useState<AdAccount | null>(null);
-    const [editForm, setEditForm] = useState({ name: '', externalId: '', accessToken: '', refreshToken: '' });
-    const [isSavingEdit, setIsSavingEdit] = useState(false);
-
-    const [pendingSetup, setPendingSetup] = useState({ show: false, pendingId: '', customerId: '', isSubmitting: false });
-
-    const [toastMessage, setToastMessage] = useState('');
-    const [toastVisible, setToastVisible] = useState(false);
-    const [toastType, setToastType] = useState<ToastType>('error');
-    const showToast = useCallback((message: string, type: ToastType = 'error') => {
-        setToastMessage(message); setToastType(type); setToastVisible(true);
-    }, []);
-
-    const fetchInsights = useCallback(async (adAccountId: string) => {
-        setLoadingInsights(prev => ({ ...prev, [adAccountId]: true }));
-        setInsightErrors(prev => ({ ...prev, [adAccountId]: undefined }));
-        try {
-            const res = await fetch(`/api/ads/${adAccountId}/insights`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount?.id || '' }
-            });
-            const data = await res.json().catch(() => ({}));
-            if (res.ok && !data.error) setInsights(prev => ({ ...prev, [adAccountId]: data }));
-            else setInsightErrors(prev => ({
-                ...prev,
-                [adAccountId]: {
-                    message: data.error || `Failed to load insights (${res.status})`,
-                    code: data.code,
-                    isRecoverable: data.isRecoverable,
-                }
-            }));
-        } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Connection error';
-            setInsightErrors(prev => ({ ...prev, [adAccountId]: { message } }));
-        } finally {
-            setLoadingInsights(prev => ({ ...prev, [adAccountId]: false }));
-        }
-    }, [token, currentAccount?.id]);
-
-    const fetchAccounts = useCallback(async () => {
-        if (!currentAccount) return;
-        try {
-            const res = await fetch('/api/ads', { headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id } });
-            const data = await res.json();
-            setAccounts(data);
-            if (Array.isArray(data)) {
-                data.forEach((acc: AdAccount) => { if (acc.externalId !== 'PENDING_SETUP') fetchInsights(acc.id); });
-            }
-        } catch (err) {
-            Logger.error('An error occurred', { error: err });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [currentAccount, token, fetchInsights]);
-
-    useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
-
-    async function handleGoogleOAuth(existingAccountId?: string) {
-        if (!currentAccount) return;
-        try {
-            const params = new URLSearchParams({ redirect: '/settings?tab=ads', ...(existingAccountId && { reconnectId: existingAccountId }) });
-            const res = await fetch(`/api/oauth/google/authorize?${params.toString()}`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
-            });
-            const data = await res.json();
-            if (data.authUrl && navigateToSafeUrl(data.authUrl)) return;
-            if (data.authUrl) showToast('Invalid Google OAuth redirect URL');
-            else showToast('Failed to initiate Google OAuth');
-        } catch { showToast('Error initiating Google OAuth'); }
-    }
-
-    async function handleMetaOAuth(existingAccountId?: string) {
-        if (!currentAccount) return;
-        try {
-            const params = new URLSearchParams({ redirect: '/settings?tab=ads', ...(existingAccountId && { reconnectId: existingAccountId }) });
-            const res = await fetch(`/api/oauth/meta/ads/authorize?${params.toString()}`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
-            });
-            const data = await res.json();
-            if (data.authUrl && navigateToSafeUrl(data.authUrl)) return;
-            if (data.authUrl) showToast('Invalid Meta OAuth redirect URL');
-            else showToast('Failed to initiate Meta OAuth');
-        } catch { showToast('Error initiating Meta OAuth'); }
-    }
-
-    async function handleDisconnect(adAccountId: string) {
-        if (!confirm('Are you sure you want to disconnect this ad account?')) return;
-        try {
-            const res = await fetch(`/api/ads/${adAccountId}`, {
-                method: 'DELETE', headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount?.id || '' }
-            });
-            if (res.ok) { fetchAccounts(); showToast('Account disconnected', 'success'); } else showToast('Failed to disconnect');
-        } catch { showToast('Error disconnecting account'); }
-    }
-
-    function openEditModal(account: AdAccount) {
-        setEditingAccount(account);
-        setEditForm({ name: account.name || '', externalId: account.externalId || '', accessToken: '', refreshToken: '' });
-    }
-
-    async function handleSaveEdit() {
-        if (!editingAccount || !currentAccount) return;
-        setIsSavingEdit(true);
-        try {
-            const payload: Record<string, string> = {};
-            if (editForm.name && editForm.name !== editingAccount.name) payload.name = editForm.name;
-            if (editForm.externalId && editForm.externalId !== editingAccount.externalId) payload.externalId = editForm.externalId;
-            if (editForm.accessToken) payload.accessToken = editForm.accessToken;
-            if (editForm.refreshToken) payload.refreshToken = editForm.refreshToken;
-            if (Object.keys(payload).length === 0) { setEditingAccount(null); return; }
-
-            const res = await fetch(`/api/ads/${editingAccount.id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id },
-                body: JSON.stringify(payload)
-            });
-            if (res.ok) { setEditingAccount(null); fetchAccounts(); showToast('Account updated', 'success'); }
-            else { const err = await res.json(); showToast(err.error || 'Failed to update'); }
-        } catch { showToast('Error updating account'); }
-        finally { setIsSavingEdit(false); }
-    }
-
-    async function handleCompletePendingSetup() {
-        if (!currentAccount || !pendingSetup.customerId.trim()) return;
-        setPendingSetup(prev => ({ ...prev, isSubmitting: true }));
-        try {
-            const res = await fetch(`/api/ads/${pendingSetup.pendingId}/complete-setup`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id },
-                body: JSON.stringify({ customerId: pendingSetup.customerId.trim() })
-            });
-            if (res.ok) {
-                showToast('Google Ads account configured successfully!', 'success');
-                setPendingSetup({ show: false, pendingId: '', customerId: '', isSubmitting: false });
-                fetchAccounts();
-            } else { const err = await res.json(); showToast(err.error || 'Failed to complete setup'); }
-        } catch { showToast('Error completing setup'); }
-        finally { setPendingSetup(prev => ({ ...prev, isSubmitting: false })); }
-    }
-
-    // Handle OAuth callback
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p role="status">Select an account to manage ad connections.</p>;
+    return <ScopedAccounts key={JSON.stringify([token, currentAccount.id])} token={token} accountId={currentAccount.id} />;
+}
+function ScopedAccounts({ token, accountId }: { token: string; accountId: string }) {
+    const request = useScopedRequest('/api/ads', accountId, token, decodeAccounts);
+    const mutation = useScopedMutation(); const { isActive } = mutation;
+    const isMetaEnabled = useAccountFeature('META_ADS'); const isGoogleEnabled = useAccountFeature('GOOGLE_ADS');
+    const [showConnect, setShowConnect] = useState(false); const [platform, setPlatform] = useState('META');
+    const [editing, setEditing] = useState<AdAccount | null>(null);
+    const [form, setForm] = useState({ name: '', externalId: '', accessToken: '', refreshToken: '' });
+    const [pending, setPending] = useState(''); const [customerId, setCustomerId] = useState(''); const [notice, setNotice] = useState('');
+    const [insightsVersion, setInsightsVersion] = useState(0);
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        const success = params.get('success');
-        if (success === 'google_connected') { showToast('Google Ads account connected successfully!', 'success'); window.history.replaceState({}, '', '/settings?tab=ads'); fetchAccounts(); }
-        else if (success === 'google_reconnected') { showToast('Google Ads account reconnected successfully!', 'success'); window.history.replaceState({}, '', '/settings?tab=ads'); fetchAccounts(); }
-        else if (success === 'meta_ads_connected') { showToast('Meta Ads account connected successfully!', 'success'); window.history.replaceState({}, '', '/settings?tab=ads'); fetchAccounts(); }
-        else if (success === 'meta_ads_reconnected') { showToast('Meta Ads account reconnected successfully!', 'success'); window.history.replaceState({}, '', '/settings?tab=ads'); fetchAccounts(); }
-        else if (success === 'google_pending') {
-            const pendingId = params.get('pendingId') || '';
-            setPendingSetup({ show: true, pendingId, customerId: '', isSubmitting: false });
-            window.history.replaceState({}, '', '/settings?tab=ads'); fetchAccounts();
-        } else if (params.get('error')) {
-            showToast(`OAuth Error: ${params.get('error')}${params.get('message') ? ` - ${params.get('message')}` : ''}`);
-            window.history.replaceState({}, '', '/settings?tab=ads');
-        }
-    }, [fetchAccounts, showToast]);
-
-    return (
-        <div className="space-y-6">
-            <EditAdAccountModal
-                account={editingAccount}
-                form={editForm}
-                onFormChange={setEditForm}
-                onClose={() => setEditingAccount(null)}
-                onSave={handleSaveEdit}
-                isSaving={isSavingEdit}
-            />
-            <PendingSetupModal
-                isOpen={pendingSetup.show}
-                pendingId={pendingSetup.pendingId}
-                customerId={pendingSetup.customerId}
-                isSubmitting={pendingSetup.isSubmitting}
-                onCustomerIdChange={(v) => setPendingSetup(prev => ({ ...prev, customerId: v }))}
-                onClose={() => setPendingSetup({ show: false, pendingId: '', customerId: '', isSubmitting: false })}
-                onComplete={handleCompletePendingSetup}
-                onCancel={() => { handleDisconnect(pendingSetup.pendingId); setPendingSetup({ show: false, pendingId: '', customerId: '', isSubmitting: false }); }}
-            />
-
-            <div className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-lg font-semibold text-gray-900">Connected Ad Accounts</h2>
-                    <p className="text-sm text-gray-500">Manage your Meta and Google Ads integrations</p>
-                </div>
-                <button onClick={() => setShowConnect(!showConnect)} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm">
-                    <Plus size={16} />Connect Account
-                </button>
-            </div>
-
-            {showConnect && (
-                <AdConnectForm
-                    platform={formPlatform}
-                    onPlatformChange={setFormPlatform}
-                    isMetaEnabled={isMetaEnabled}
-                    isGoogleEnabled={isGoogleEnabled}
-                    onGoogleOAuth={() => handleGoogleOAuth()}
-                    onMetaOAuth={() => handleMetaOAuth()}
-                />
-            )}
-
-            <div className="space-y-4">
-                {isLoading ? (
-                    <div className="text-center py-12"><Loader2 className="animate-spin inline text-gray-400" /></div>
-                ) : accounts.length === 0 ? (
-                    <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-                        No ad accounts connected. Click "Connect Account" to get started.
-                    </div>
-                ) : (
-                    accounts.map(acc => (
-                        <AdAccountCard
-                            key={acc.id}
-                            account={acc}
-                            insights={insights[acc.id]}
-                            isLoadingInsights={loadingInsights[acc.id] || false}
-                            error={insightErrors[acc.id]}
-                            onRefresh={() => fetchInsights(acc.id)}
-                            onEdit={() => openEditModal(acc)}
-                            onDisconnect={() => handleDisconnect(acc.id)}
-                            onCompleteSetup={() => setPendingSetup({ show: true, pendingId: acc.id, customerId: '', isSubmitting: false })}
-                            onReconnect={() => acc.platform === 'GOOGLE' ? handleGoogleOAuth(acc.id) : handleMetaOAuth(acc.id)}
-                        />
-                    ))
-                )}
-            </div>
-
-            <Toast message={toastMessage} isVisible={toastVisible} onClose={() => setToastVisible(false)} type={toastType} />
-        </div>
-    );
+        const status = params.get('success'); const error = params.get('error');
+        if (!status && !error) return;
+        let disposed = false;
+        queueMicrotask(() => {
+            if (disposed || !isActive()) return;
+            if (status === 'google_pending' && params.get('pendingId')) { setPending(params.get('pendingId')!); setCustomerId(''); }
+            setNotice(error ? 'OAuth authorization did not complete. Check the connection and retry.' : 'Authorization returned. Verify the connection in the account list.');
+            params.delete('success'); params.delete('pendingId'); params.delete('error'); params.delete('message');
+            window.history.replaceState({}, '', `${window.location.pathname}${params.size ? `?${params}` : ''}${window.location.hash}`);
+        });
+        return () => { disposed = true; };
+    }, [isActive]);
+    const headers = { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId, 'Content-Type': 'application/json' };
+    const refresh = () => { request.retry(); setInsightsVersion(value => value + 1); };
+    const oauth = async (kind: string, reconnectId?: string) => {
+        if (mutation.isPending()) return;
+        const result = await mutation.run(async signal => {
+            const params = new URLSearchParams({ redirect: '/settings?tab=ads', ...(reconnectId ? { reconnectId } : {}) });
+            const response = await fetch(`/api/oauth/${kind === 'GOOGLE' ? 'google' : 'meta/ads'}/authorize?${params}`, { headers, signal });
+            const data: unknown = await response.json();
+            if (!response.ok || !isRecord(data) || typeof data.authUrl !== 'string') throw new Error('Authorization unavailable');
+            return data.authUrl;
+        }, 'Could not start authorization. Check the connection before retrying.');
+        if (result.ok && !navigateToSafeUrl(result.value)) setNotice('Invalid OAuth redirect URL.');
+    };
+    const disconnect = async (id: string) => {
+        if (mutation.isPending() || !request.data?.some(account => account.id === id) || !confirm('Disconnect this ad account? This removes its saved connection.')) return;
+        const result = await mutation.run(async signal => { const response = await fetch(`/api/ads/${encodeURIComponent(id)}`, { method: 'DELETE', headers, signal }); if (!response.ok) throw new Error('Disconnect rejected'); }, 'Could not confirm disconnect. Check the connection before retrying.');
+        if (result.ok) { if (pending === id) setPending(''); setNotice('Account disconnected.'); refresh(); }
+    };
+    const save = async () => {
+        if (mutation.isPending() || !editing || !form.name.trim() || !validAdAccountId(editing.platform, form.externalId)) return;
+        const result = await mutation.run(async signal => {
+            const response = await fetch(`/api/ads/${encodeURIComponent(editing.id)}`, { method: 'PATCH', headers, signal, body: JSON.stringify({ name: form.name.trim(), externalId: form.externalId.trim(), ...(form.accessToken ? { accessToken: form.accessToken } : {}), ...(form.refreshToken && editing.platform === 'GOOGLE' ? { refreshToken: form.refreshToken } : {}) }) });
+            const data: unknown = await response.json();
+            if (!response.ok || !isRecord(data) || data.id !== editing.id) throw new Error('Unconfirmed edit');
+        }, 'Could not confirm saving the connection. Input retained; check the account before retrying.');
+        if (result.ok) { setEditing(null); setForm({ name: '', externalId: '', accessToken: '', refreshToken: '' }); setNotice('Account updated.'); refresh(); }
+    };
+    const complete = async () => {
+        if (mutation.isPending() || !validAdAccountId('GOOGLE', customerId) || !request.data?.some(account => account.id === pending && account.platform === 'GOOGLE' && account.externalId === 'PENDING_SETUP')) return;
+        const result = await mutation.run(async signal => {
+            const response = await fetch(`/api/ads/${encodeURIComponent(pending)}/complete-setup`, { method: 'PATCH', headers, signal, body: JSON.stringify({ customerId: customerId.trim() }) });
+            const data: unknown = await response.json();
+            if (!response.ok || !isRecord(data) || data.success !== true) throw new Error('Setup unconfirmed');
+        }, 'Could not confirm setup. Check the connection before retrying.');
+        if (result.ok) { setPending(''); setCustomerId(''); setNotice('Google Ads setup confirmed.'); refresh(); }
+    };
+    const pendingExists = request.data?.some(account => account.id === pending && account.platform === 'GOOGLE' && account.externalId === 'PENDING_SETUP');
+    return <section className="space-y-5 text-slate-900 dark:text-slate-100"><h2>Connected Ad Accounts</h2>
+        <EditAdAccountModal account={editing} form={form} onFormChange={setForm} onClose={() => { if (!mutation.isPending()) { setEditing(null); setForm({ name: '', externalId: '', accessToken: '', refreshToken: '' }); } }} onSave={() => void save()} isSaving={mutation.busy} error={mutation.error} />
+        <PendingSetupModal isOpen={!!pending} pendingId={pendingExists ? pending : ''} customerId={customerId} onCustomerIdChange={setCustomerId} isSubmitting={mutation.busy} onClose={() => { if (!mutation.isPending()) setPending(''); }} onCancel={() => void disconnect(pending)} onComplete={() => void complete()} error={mutation.error || (!request.loading && !pendingExists ? 'Pending connection unavailable for this account. Close this dialog and refresh the account list.' : null)} />
+        {notice && <p role="status">{notice}</p>}{mutation.error && !pending && !editing && <p role="alert">{mutation.error}</p>}{mutation.busy && <p role="status">Working...</p>}
+        <fieldset disabled={mutation.busy || !!editing || !!pending} inert={mutation.busy || !!editing || !!pending} className="space-y-4">
+            <button type="button" aria-expanded={showConnect} onClick={() => setShowConnect(value => !value)}>Connect Account</button>
+            {showConnect && <AdConnectForm platform={platform} onPlatformChange={setPlatform} isMetaEnabled={isMetaEnabled} isGoogleEnabled={isGoogleEnabled} onGoogleOAuth={() => void oauth('GOOGLE')} onMetaOAuth={() => void oauth('META')} />}
+            {request.loading ? <p role="status">Loading ad accounts...</p> : request.error ? <p role="alert">Ad accounts unavailable. <button type="button" onClick={request.retry}>Retry accounts</button></p> : !request.data?.length ? <p>No ad accounts connected.</p> : request.data.map(account => <AccountInsights key={`${account.id}:${insightsVersion}`} account={account} token={token} accountId={accountId} onEdit={() => { setEditing(account); setForm({ name: account.name, externalId: account.externalId, accessToken: '', refreshToken: '' }); }} onDisconnect={() => void disconnect(account.id)} onCompleteSetup={() => { setPending(account.id); setCustomerId(''); }} onReconnect={() => void oauth(account.platform, account.id)} />)}
+        </fieldset>
+    </section>;
+}
+function AccountInsights(props: { account: AdAccount; token: string; accountId: string; onEdit: () => void; onDisconnect: () => void; onCompleteSetup: () => void; onReconnect: () => void }) {
+    const request = useScopedRequest(props.account.externalId === 'PENDING_SETUP' ? null : `/api/ads/${encodeURIComponent(props.account.id)}/insights`, props.accountId, props.token, decodeInsights);
+    return <AdAccountCard {...props} insights={!request.loading && !request.error ? request.data?.data : undefined} isLoadingInsights={request.loading} error={request.error ? { message: 'Insights unavailable. Retry or reauthorize the connection.' } : request.data?.error} onRefresh={request.retry} />;
 }

@@ -21,5 +21,5 @@ declare module 'web-push' {
 
     export function generateVAPIDKeys(): { publicKey: string; privateKey: string };
     export function setVapidDetails(subject: string, publicKey: string, privateKey: string): void;
-    export function sendNotification(subscription: PushSubscription, payload?: string | Buffer): Promise<SendResult>;
+    export function sendNotification(subscription: PushSubscription, payload?: string | Buffer, options?: { timeout?: number }): Promise<SendResult>;
 }

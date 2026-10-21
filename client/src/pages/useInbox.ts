@@ -419,21 +419,22 @@ export function useInbox() {
 
     const handleBlock = useMemo(() => {
         if (!recipientEmail) return undefined;
-        return async () => {
-            if (!selectedId || !token || !currentAccount) return;
+        return async (signal?: AbortSignal) => {
+            if (!selectedId || !token || !currentAccount) throw new Error('Select an account and conversation first');
             const conversationId = selectedId;
             const accountId = currentAccount.id;
             const res = await fetch(`/api/chat/${conversationId}/block`, {
                 method: 'POST',
+                signal,
                 headers: buildHeaders(token, currentAccount.id, true),
                 body: JSON.stringify({ reason: 'Blocked from inbox' }),
             });
-            if (selectedIdRef.current !== conversationId || accountIdRef.current !== accountId) return;
+            if (signal?.aborted || selectedIdRef.current !== conversationId || accountIdRef.current !== accountId) return;
             if (res.ok) {
                 dismissConversation(conversationId);
                 await fetchConversations();
             } else {
-                Logger.warn('Failed to block contact', { email: recipientEmail });
+                throw new Error('Failed to block contact');
             }
         };
     }, [dismissConversation, fetchConversations, recipientEmail, selectedId, token, currentAccount]);

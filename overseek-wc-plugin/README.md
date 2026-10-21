@@ -2,7 +2,7 @@
 
 A WordPress plugin that connects your WooCommerce store to your self-hosted OverSeek server.
 
-Current version: **2.25.8**.
+Current version: **2.25.9**.
 
 ### Simple delivery estimate setup
 
@@ -163,6 +163,13 @@ revalidation before reactivation. See `docs/companion-2.23.1-release.md` for the
 candidate validation gate and upgrade sequence.
 
 ## Changelog
+
+### 2.25.9 - 2026-10-21
+
+- Preserve Google `gclid`, `gbraid` and `wbraid` identifier types in server events.
+- Capture stream-specific GA4 session IDs from both GS1 and GS2 cookies for accurate server-side session matching.
+- Keep Meta matching cookies, purchase values and browser/server event IDs unchanged.
+- Deploy the matching Overseek server update before updating the plugin.
 
 ### 2.25.8 - 2026-10-20
 

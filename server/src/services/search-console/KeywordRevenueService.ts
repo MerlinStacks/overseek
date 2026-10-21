@@ -84,7 +84,7 @@ export class KeywordRevenueService {
                 if (pageviews.length === 0) continue;
 
                 // Check if this session's landing page matches the keyword's target URL
-                let isMatch = false;
+                let isMatch: boolean;
 
                 if (kw.targetUrl) {
                     // Extract path from targetUrl for comparison

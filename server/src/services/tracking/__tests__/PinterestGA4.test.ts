@@ -153,6 +153,7 @@ describe('GA4MeasurementService', () => {
             tax: 18.18,
             shipping: 10.00,
             gaClientId: 'GA1.1.1234567890.9876543210',
+            gaSessionIds: { ABCDEF: '1770000123', OTHERSTREAM: '1770000999' },
             customerId: 42,
             items: [{ id: '5', sku: 'PROD-5', name: 'Gadget', quantity: 1, price: 171.81 }],
         },
@@ -244,6 +245,7 @@ describe('GA4MeasurementService', () => {
         const event = body.events[0];
         expect(typeof event.params.session_id).toBe('number');
         expect(event.params.session_id).toBeGreaterThan(0);
+        expect(event.params.session_id).toBe(1770000123);
     });
 
     it('should include timestamp_micros in root payload', async () => {
@@ -306,9 +308,17 @@ describe('GA4MeasurementService', () => {
         expect(event.params.page_referrer).toBe('https://google.com');
     });
 
-    it('should omit session_id when service-level session timing is missing', async () => {
-        const sessionWithoutStart = { ...session, sessionStartAt: null };
-        await service.sendEvent(accountId, config, purchaseData, sessionWithoutStart);
+    it('uses the Google session even when service-level timing is missing', async () => {
+        await service.sendEvent(accountId, config, purchaseData, { ...session, sessionStartAt: null });
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        expect(body.events[0].params.session_id).toBe(1770000123);
+    });
+
+    it.each([undefined, { OTHERSTREAM: '1770000999' }, { ABCDEF: 'invalid' }, { ABCDEF: '-1' }, { ABCDEF: 0 }, { ABCDEF: true }, { ABCDEF: '99999999999999999' }])('never substitutes an Overseek visit or another stream for missing/invalid Google sessions (%j)', async gaSessionIds => {
+        await service.sendEvent(accountId, config, {
+            ...purchaseData, payload: { ...purchaseData.payload, gaSessionIds },
+        }, session);
 
         const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
         expect(body.events[0].params.session_id).toBeUndefined();

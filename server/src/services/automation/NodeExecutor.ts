@@ -42,7 +42,7 @@ export class NodeExecutor {
         }
 
         if (type === 'ACTION') {
-            const actionResult = await this.executeAction(config, enrollment);
+            const actionResult = await this.executeAction(config, enrollment, node.id);
             return actionResult || { action: 'NEXT' };
         }
 
@@ -64,7 +64,7 @@ export class NodeExecutor {
     /**
      * Execute action nodes (email, invoice, inbox actions, etc.)
      */
-    private async executeAction(config: any, enrollment: any): Promise<NodeExecutionResult | void> {
+    private async executeAction(config: any, enrollment: any, nodeId?: string): Promise<NodeExecutionResult | void> {
         const actionType = config?.actionType || 'SEND_EMAIL';
 
         if (actionType === 'SEND_EMAIL') {
@@ -101,7 +101,7 @@ export class NodeExecutor {
         }
 
         if (actionType === 'GENERATE_COUPON') {
-            await this.executeGenerateCoupon(config, enrollment);
+            await this.executeGenerateCoupon(config, enrollment, nodeId);
         }
 
         if (actionType === 'ADD_ORDER_NOTE') {
@@ -712,12 +712,13 @@ export class NodeExecutor {
         }
     }
 
-    private async executeGenerateCoupon(config: any, enrollment: any): Promise<void> {
+    private async executeGenerateCoupon(config: any, enrollment: any, nodeId: string): Promise<void> {
         try {
             const coupon = await automationCouponService.generateCoupon({
                 accountId: enrollment.automation.accountId,
                 automationId: enrollment.automationId,
                 enrollmentId: enrollment.id,
+                nodeId,
                 email: enrollment.email,
                 config: {
                     codePrefix: config.codePrefix,
@@ -747,6 +748,7 @@ export class NodeExecutor {
                 enrollmentId: enrollment.id,
                 error
             });
+            throw error;
         }
     }
 

@@ -1,365 +1,67 @@
-/**
- * BulkActionToolbar
- * 
- * Floating toolbar that appears when conversations are selected.
- * Provides bulk actions: Close, Assign, Add Label, Merge.
- */
-
-import { useState, useEffect } from 'react';
-import { Logger } from '../../utils/logger';
-import { X, UserPlus, Tag, Loader2, XCircle, FolderOpen, Merge } from 'lucide-react';
-import { cn } from '../../utils/cn';
+import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { useClickOutside } from '../../hooks/useClickOutside';
+import { useScopedMutation } from '../../hooks/useScopedMutation';
+import { api } from '../../services/api';
+import { isRecord } from '../../utils/responseValidation';
+import { Modal } from '../ui/Modal';
 
-interface BulkActionToolbarProps {
-    selectedIds: string[];
-    onClearSelection: () => void;
-    onActionComplete: () => void;
+interface Props {
+    selectedIds: string[]; onClearSelection: () => void; onActionComplete: () => void;
     users?: { id: string; fullName: string }[];
     labels?: { id: string; name: string; color: string }[];
 }
-
-type BulkAction = 'close' | 'open' | 'assign' | 'addLabel';
-
-export function BulkActionToolbar({
-    selectedIds,
-    onClearSelection,
-    onActionComplete,
-    users = [],
-    labels = [],
-}: BulkActionToolbarProps) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const [isLoading, setIsLoading] = useState(false);
-    const [showAssignDropdown, setShowAssignDropdown] = useState(false);
-    const [showLabelDropdown, setShowLabelDropdown] = useState(false);
-    const [showMergeConfirm, setShowMergeConfirm] = useState(false);
-    const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
-
-    // Click-outside refs for dropdowns
-    const assignDropdownRef = useClickOutside<HTMLDivElement>(() => setShowAssignDropdown(false));
-    const labelDropdownRef = useClickOutside<HTMLDivElement>(() => setShowLabelDropdown(false));
-
-    // Escape key to close merge confirm modal
-    useEffect(() => {
-        if (!showMergeConfirm) return;
-        const handleKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                setShowMergeConfirm(false);
-                setMergeTargetId(null);
-            }
-        };
-        document.addEventListener('keydown', handleKey);
-        return () => document.removeEventListener('keydown', handleKey);
-    }, [showMergeConfirm]);
-
-    const performBulkAction = async (
-        action: BulkAction,
-        options?: { labelId?: string; assignToUserId?: string }
-    ) => {
-        setIsLoading(true);
-        try {
-            const res = await fetch('/api/chat/conversations/bulk', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || '',
-                },
-                body: JSON.stringify({
-                    conversationIds: selectedIds,
-                    action,
-                    ...options,
-                }),
+export function BulkActionToolbar(props: Props) {
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    const ids = [...new Set(props.selectedIds)].sort();
+    if (!ids.length) return null;
+    if (!token || !currentAccount || !ids.every(id => typeof id === 'string' && id.trim())) return <p role="alert">Select an account and valid conversations before applying bulk actions.</p>;
+    return <ScopedToolbar key={JSON.stringify([token, currentAccount.id, ids])} {...props} selectedIds={ids} token={token} accountId={currentAccount.id} />;
+}
+function ScopedToolbar({ selectedIds, onClearSelection, onActionComplete, users = [], labels = [], token, accountId }: Props & { token: string; accountId: string }) {
+    const mutation = useScopedMutation(); const [mergeTarget, setMergeTarget] = useState<string | null>(null);
+    const [assignee, setAssignee] = useState(''); const [label, setLabel] = useState('');
+    const [confirmed, setConfirmed] = useState(false); const [feedback, setFeedback] = useState('');
+    const run = async (action: 'close' | 'open' | 'assign' | 'addLabel' | 'merge') => {
+        if (mutation.isPending() || confirmed || !mutation.isActive()) return;
+        if (action === 'assign' && !users.some(user => user.id === assignee)) return;
+        if (action === 'addLabel' && !labels.some(item => item.id === label)) return;
+        if (action === 'merge' && (!mergeTarget || !selectedIds.includes(mergeTarget) || selectedIds.length < 2)) return;
+        const expected = action === 'merge' ? selectedIds.length - 1 : selectedIds.length;
+        const result = await mutation.run(async signal => {
+            const data: unknown = await api.request(`/api/chat/conversations/${action === 'merge' ? 'bulk-merge' : 'bulk'}`, {
+                method: 'POST', token, accountId, signal,
+                body: JSON.stringify(action === 'merge' ? { targetId: mergeTarget, sourceIds: selectedIds.filter(id => id !== mergeTarget) } : { conversationIds: selectedIds, action, ...(action === 'assign' ? { assignToUserId: assignee } : {}), ...(action === 'addLabel' ? { labelId: label } : {}) }),
             });
-
-            if (res.ok) {
-                onActionComplete();
-                onClearSelection();
-            } else {
-                const data = await res.json();
-                Logger.error('Bulk action failed', { error: data.error });
-            }
-        } catch (error) {
-            Logger.error('Bulk action error:', { error: error });
-        } finally {
-            setIsLoading(false);
-            setShowAssignDropdown(false);
-            setShowLabelDropdown(false);
+            const count = isRecord(data) ? data[action === 'merge' ? 'mergedCount' : 'updated'] : undefined;
+            if (!isRecord(data) || data.success !== true || typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0 || count > expected) throw new Error('Invalid bulk confirmation');
+            return count;
+        }, 'Could not confirm the bulk operation. It may have completed. Your selection is retained; refresh and check before retrying.');
+        if (!result.ok) return;
+        setConfirmed(true); setMergeTarget(null);
+        setFeedback(result.value === expected ? 'Bulk operation confirmed.' : `Confirmed ${result.value} of ${expected} updates. Selection retained; review the refreshed list.`);
+        try {
+            await onActionComplete();
+            if (mutation.isActive() && result.value === expected) onClearSelection();
+        } catch {
+            if (mutation.isActive()) setFeedback('Operation confirmed, but the list could not be refreshed. Do not repeat the operation; refresh the inbox.');
         }
     };
-
-    const performBulkMerge = async () => {
-        if (!mergeTargetId) return;
-
-        setIsLoading(true);
-        try {
-            const sourceIds = selectedIds.filter(id => id !== mergeTargetId);
-            const res = await fetch('/api/chat/conversations/bulk-merge', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || '',
-                },
-                body: JSON.stringify({
-                    targetId: mergeTargetId,
-                    sourceIds,
-                }),
-            });
-
-            if (res.ok) {
-                onActionComplete();
-                onClearSelection();
-            } else {
-                const data = await res.json();
-                Logger.error('Bulk merge failed', { error: data.error });
-            }
-        } catch (error) {
-            Logger.error('Bulk merge error:', { error: error });
-        } finally {
-            setIsLoading(false);
-            setShowMergeConfirm(false);
-            setMergeTargetId(null);
-        }
-    };
-
-    if (selectedIds.length === 0) return null;
-
-    return (
-        <>
-            <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50">
-                <div className="flex items-center gap-2 px-4 py-3 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl">
-                    {/* Selection Count */}
-                    <div className="flex items-center gap-2 pr-3 border-r border-gray-700">
-                        <span className="text-sm font-medium text-white">
-                            {selectedIds.length} selected
-                        </span>
-                        <button
-                            onClick={onClearSelection}
-                            className="p-1 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700 transition-colors"
-                            aria-label="Clear selection"
-                        >
-                            <X className="w-4 h-4" />
-                        </button>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex items-center gap-1">
-                        {/* Close */}
-                        <button
-                            onClick={() => performBulkAction('close')}
-                            disabled={isLoading}
-                            className={cn(
-                                'flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium',
-                                'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors',
-                                'disabled:opacity-50 disabled:cursor-not-allowed'
-                            )}
-                        >
-                            {isLoading ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                                <XCircle className="w-4 h-4" />
-                            )}
-                            Close
-                        </button>
-
-                        {/* Reopen */}
-                        <button
-                            onClick={() => performBulkAction('open')}
-                            disabled={isLoading}
-                            className={cn(
-                                'flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium',
-                                'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors',
-                                'disabled:opacity-50 disabled:cursor-not-allowed'
-                            )}
-                        >
-                            <FolderOpen className="w-4 h-4" />
-                            Reopen
-                        </button>
-
-                        {/* Merge - only show when 2+ selected */}
-                        {selectedIds.length >= 2 && (
-                            <button
-                                onClick={() => {
-                                    setMergeTargetId(selectedIds[0]);
-                                    setShowMergeConfirm(true);
-                                }}
-                                disabled={isLoading}
-                                className={cn(
-                                    'flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium',
-                                    'bg-indigo-700 text-white hover:bg-indigo-600 transition-colors',
-                                    'disabled:opacity-50 disabled:cursor-not-allowed'
-                                )}
-                            >
-                                <Merge className="w-4 h-4" />
-                                Merge
-                            </button>
-                        )}
-
-                        {/* Assign */}
-                        <div className="relative" ref={assignDropdownRef}>
-                            <button
-                                onClick={() => {
-                                    setShowAssignDropdown(!showAssignDropdown);
-                                    setShowLabelDropdown(false);
-                                }}
-                                disabled={isLoading}
-                                className={cn(
-                                    'flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium',
-                                    'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors',
-                                    'disabled:opacity-50 disabled:cursor-not-allowed',
-                                    showAssignDropdown && 'bg-gray-700 text-white'
-                                )}
-                            >
-                                <UserPlus className="w-4 h-4" />
-                                Assign
-                            </button>
-
-                            {/* Assign Dropdown */}
-                            {showAssignDropdown && (
-                                <div className="absolute bottom-full left-0 mb-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1">
-                                    {users.length === 0 ? (
-                                        <div className="px-3 py-2 text-sm text-gray-500">No users available</div>
-                                    ) : (
-                                        users.map((user) => (
-                                            <button
-                                                key={user.id}
-                                                onClick={() => performBulkAction('assign', { assignToUserId: user.id })}
-                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-gray-200 hover:bg-gray-700 transition-colors"
-                                            >
-                                                <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-xs text-white">
-                                                    {user.fullName?.charAt(0) || '?'}
-                                                </div>
-                                                {user.fullName || 'Unknown'}
-                                            </button>
-                                        ))
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Add Label */}
-                        <div className="relative" ref={labelDropdownRef}>
-                            <button
-                                onClick={() => {
-                                    setShowLabelDropdown(!showLabelDropdown);
-                                    setShowAssignDropdown(false);
-                                }}
-                                disabled={isLoading}
-                                className={cn(
-                                    'flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium',
-                                    'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors',
-                                    'disabled:opacity-50 disabled:cursor-not-allowed',
-                                    showLabelDropdown && 'bg-gray-700 text-white'
-                                )}
-                            >
-                                <Tag className="w-4 h-4" />
-                                Label
-                            </button>
-
-                            {/* Label Dropdown */}
-                            {showLabelDropdown && (
-                                <div className="absolute bottom-full left-0 mb-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1">
-                                    {labels.length === 0 ? (
-                                        <div className="px-3 py-2 text-sm text-gray-500">No labels created</div>
-                                    ) : (
-                                        labels.map((label) => (
-                                            <button
-                                                key={label.id}
-                                                onClick={() => performBulkAction('addLabel', { labelId: label.id })}
-                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-gray-200 hover:bg-gray-700 transition-colors"
-                                            >
-                                                <span
-                                                    className="w-3 h-3 rounded-full"
-                                                    style={{ backgroundColor: label.color }}
-                                                />
-                                                {label.name}
-                                            </button>
-                                        ))
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Merge Confirmation Modal */}
-            {showMergeConfirm && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-                    <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4">
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="p-2 bg-indigo-100 rounded-lg">
-                                <Merge className="w-5 h-5 text-indigo-600" />
-                            </div>
-                            <h3 className="text-lg font-semibold text-gray-900">Merge Conversations</h3>
-                        </div>
-
-                        <p className="text-sm text-gray-600 mb-4">
-                            Select the target conversation. All messages from the other {selectedIds.length - 1} conversation(s)
-                            will be moved into the target.
-                        </p>
-
-                        <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded-lg mb-4">
-                            ⚠️ This action cannot be undone. The source conversations will be closed.
-                        </p>
-
-                        <div className="space-y-2 max-h-48 overflow-y-auto mb-4">
-                            {selectedIds.map((id, index) => (
-                                <label
-                                    key={id}
-                                    className={cn(
-                                        "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
-                                        mergeTargetId === id
-                                            ? "border-indigo-500 bg-indigo-50"
-                                            : "border-gray-200 hover:border-gray-300"
-                                    )}
-                                >
-                                    <input
-                                        type="radio"
-                                        name="mergeTarget"
-                                        checked={mergeTargetId === id}
-                                        onChange={() => setMergeTargetId(id)}
-                                        className="text-indigo-600"
-                                    />
-                                    <span className="text-sm text-gray-700">
-                                        Conversation #{index + 1}
-                                        {mergeTargetId === id && (
-                                            <span className="ml-2 text-xs text-indigo-600 font-medium">(Target)</span>
-                                        )}
-                                    </span>
-                                </label>
-                            ))}
-                        </div>
-
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => {
-                                    setShowMergeConfirm(false);
-                                    setMergeTargetId(null);
-                                }}
-                                className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={performBulkMerge}
-                                disabled={!mergeTargetId || isLoading}
-                                className={cn(
-                                    "flex-1 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors",
-                                    "bg-indigo-600 hover:bg-indigo-700",
-                                    "disabled:opacity-50 disabled:cursor-not-allowed"
-                                )}
-                            >
-                                {isLoading ? 'Merging...' : 'Merge Conversations'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </>
-    );
+    const locked = mutation.busy || confirmed;
+    return <aside aria-label="Bulk conversation actions" className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] max-w-3xl p-4 space-y-3 rounded-xl bg-slate-900 text-white border border-slate-700 shadow-xl">
+        <div className="flex justify-between gap-3"><p>{selectedIds.length} selected</p><button type="button" disabled={mutation.busy} onClick={onClearSelection}>Clear selection</button></div>
+        {mutation.error && <p role="alert">{mutation.error}</p>}{feedback && <p role="status">{feedback}</p>}{mutation.busy && <p role="status">Applying bulk operation...</p>}
+        <fieldset disabled={locked} className="flex flex-wrap items-end gap-3">
+            <button type="button" onClick={() => void run('close')}>Close</button><button type="button" onClick={() => void run('open')}>Reopen</button>
+            <label>Assignee<select value={assignee} onChange={event => setAssignee(event.target.value)} className="block bg-slate-800 p-2 rounded-lg"><option value="">Choose team member</option>{users.map(user => <option key={user.id} value={user.id}>{user.fullName || 'Unknown'}</option>)}</select></label><button type="button" disabled={!assignee} onClick={() => void run('assign')}>Assign</button>
+            <label>Label<select value={label} onChange={event => setLabel(event.target.value)} className="block bg-slate-800 p-2 rounded-lg"><option value="">Choose label</option>{labels.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><button type="button" disabled={!label} onClick={() => void run('addLabel')}>Add label</button>
+            {selectedIds.length > 1 && <button type="button" onClick={() => setMergeTarget(selectedIds[0])}>Merge</button>}
+        </fieldset>
+        <Modal isOpen={mergeTarget !== null} onClose={mutation.busy ? undefined : () => setMergeTarget(null)} title="Merge Conversations">
+            <p>This cannot be undone. Messages will move into the selected target; source conversations will be closed.</p>
+            {mutation.error && <p role="alert">{mutation.error}</p>}
+            <fieldset disabled={mutation.busy} className="space-y-3 my-4"><legend>Target conversation</legend>{selectedIds.map(id => <label key={id} className="flex gap-2"><input type="radio" name="merge-target" value={id} checked={mergeTarget === id} onChange={() => setMergeTarget(id)} />Conversation {id}</label>)}</fieldset>
+            <button type="button" disabled={locked || !mergeTarget} onClick={() => void run('merge')}>{mutation.busy ? 'Merging...' : 'Merge Conversations'}</button>
+        </Modal>
+    </aside>;
 }

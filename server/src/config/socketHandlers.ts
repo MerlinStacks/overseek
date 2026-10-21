@@ -80,7 +80,9 @@ export function setupSocketHandlers(io: Server): void {
                 const { CollaborationService } = await import('../services/CollaborationService');
                 await CollaborationService.joinDocument(`conv:${conversationId}`, socket.id, userInfo);
                 const viewers = await CollaborationService.getPresence(`conv:${conversationId}`);
+                // Keep the old array event for already-open clients during deployment.
                 io.to(`conversation:${conversationId}`).emit('viewers:sync', viewers);
+                io.to(`conversation:${conversationId}`).emit('conversation:viewers', { conversationId, viewers });
             }
         });
 
@@ -91,6 +93,7 @@ export function setupSocketHandlers(io: Server): void {
                 await CollaborationService.leaveDocument(`conv:${conversationId}`, socket.id);
                 const viewers = await CollaborationService.getPresence(`conv:${conversationId}`);
                 io.to(`conversation:${conversationId}`).emit('viewers:sync', viewers);
+                io.to(`conversation:${conversationId}`).emit('conversation:viewers', { conversationId, viewers });
             }
         });
 
@@ -169,6 +172,7 @@ export function setupSocketHandlers(io: Server): void {
                 await CollaborationService.leaveDocument(`conv:${conversationId}`, socket.id);
                 const viewers = await CollaborationService.getPresence(`conv:${conversationId}`);
                 io.to(room).emit('viewers:sync', viewers);
+                io.to(room).emit('conversation:viewers', { conversationId, viewers });
             }
 
             // Clean up document presence

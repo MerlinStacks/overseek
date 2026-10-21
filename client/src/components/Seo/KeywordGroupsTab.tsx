@@ -204,7 +204,7 @@ function KeywordGroupsContent() {
                                 </div>
                                 <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-2">
                                     <p className="text-xs text-slate-500 dark:text-slate-400">Clicks</p>
-                                    <p className="text-lg font-bold text-slate-900 dark:text-slate-100">{group.totalClicks}</p>
+                                    <p className="text-lg font-bold text-slate-900 dark:text-slate-100">{group.totalClicks ?? 'Unavailable'}</p>
                                 </div>
                             </div>
                         </div>

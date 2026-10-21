@@ -120,6 +120,7 @@ export function HealthTab() {
 
                 {activeBrief && (
                     <div className="glass-panel rounded-2xl p-6 space-y-5 animate-fade-slide-up">
+                        <p className="text-xs text-slate-500">{activeBrief.provenance === 'ai' ? 'AI-generated draft. Verify facts and links before publishing.' : 'Template outline, not AI-generated. Verify facts and links before publishing.'}</p>
                         <div className="flex items-center justify-between">
                             <h4 className="font-semibold text-slate-900 dark:text-slate-100">Brief: <span className="text-gradient">{activeBrief.keyword}</span></h4>
                             <div className="flex gap-2 text-xs text-slate-400">

@@ -295,7 +295,7 @@ function ProductEditPageContent({
                                     variants={[]}
                                     fixedVariationId={0}
                                     onSaveComplete={() => fetchProduct(true)}
-                                    onCOGSUpdate={(cogs) => updateFormData({ cogs: cogs.toFixed(2) })}
+                                    onCOGSUpdate={(cogs) => updateFormData({ cogs: cogs == null ? '' : cogs.toFixed(2) })}
                                 />
                             </div>
                         )}
@@ -353,7 +353,7 @@ function ProductEditPageContent({
                         <div className="space-y-6">
                             <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-md rounded-xl shadow-xs border border-white/50 dark:border-slate-700/40 p-6">
                                 <h3 className="text-sm font-bold text-gray-900 dark:text-slate-100 uppercase tracking-wide mb-4">Merchant Center Status</h3>
-                                <MerchantCenterPanel score={product.merchantCenterScore || 0} issues={(product.merchantCenterIssues as MerchantIssue[]) || []} />
+                                <MerchantCenterPanel score={product.merchantCenterScore} issues={product.merchantCenterIssues as MerchantIssue[] | null | undefined} />
                             </div>
                         </div>
                     </div>

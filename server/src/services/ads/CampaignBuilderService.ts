@@ -240,6 +240,7 @@ export class CampaignBuilderService {
                 error: error.message,
                 campaignName: name
             });
+            // eslint-disable-next-line preserve-caught-error -- Full Google Ads gRPC causes retain huge protobuf descriptors.
             throw new Error(`Campaign Creation Failed: ${error.message}`);
         }
     }

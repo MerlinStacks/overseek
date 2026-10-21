@@ -217,7 +217,7 @@ export function normalizeWholesaleSnapshot(input: {
         validUntil: input.validUntil.toISOString(),
         categories: [...grouped.values()]
             .sort((a, b) => a.sortOrder - b.sortOrder || a.firstSeen - b.firstSeen)
-            .map(({ sortOrder, firstSeen, ...category }) => ({
+            .map(({ sortOrder: _sortOrder, firstSeen: _firstSeen, ...category }) => ({
                 ...category,
                 products: category.products.sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' })),
             })),

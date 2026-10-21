@@ -5,11 +5,12 @@
  * Guides users through store connection, plugin setup, email, and ad accounts.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Logger } from '../utils/logger';
+import { useScopedMutation } from '../hooks/useScopedMutation';
 
 // Onboarding components
 import { OnboardingStepIndicator } from '../components/onboarding/OnboardingStepIndicator';
@@ -30,18 +31,29 @@ import {
  * Manages step navigation, validation, persistence, and account creation.
  */
 export function SetupWizard() {
+    const { user, token, isLoading } = useAuth();
+    const [params] = useSearchParams();
+    if (isLoading) return <p role="status">Loading setup...</p>;
+    if (!user || !token) return <Navigate to="/login" replace />;
+    return <SetupWizardContent key={JSON.stringify([user.id, token, params.get('addNew') === 'true'])} userId={user.id} />;
+}
+
+function SetupWizardContent({ userId }: { userId: string }) {
     // State - use explicit number type for step to allow any step value
     const [currentStep, setCurrentStep] = useState<number>(ONBOARDING_STEPS.STORE);
     const [draft, setDraft] = useState<OnboardingDraft>(createInitialDraft);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const finalize = useScopedMutation();
     const [error, setError] = useState<string | null>(null);
+    const [draftLoaded, setDraftLoaded] = useState(false);
     // Tracks whether an account was created within this wizard session,
     // so the redirect-to-dashboard guard doesn't fire prematurely.
     const createdInSession = useRef(false);
 
     // Hooks
-    const { token, logout, isLoading: authLoading } = useAuth();
+    const { token, isLoading: authLoading } = useAuth();
     const { refreshAccounts, accounts, isLoading: accountsLoading, currentAccount } = useAccount();
+    const activeAccountId = useRef(currentAccount?.id); useLayoutEffect(() => { activeAccountId.current = currentAccount?.id; }, [currentAccount?.id]);
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const isAddingNew = searchParams.get('addNew') === 'true';
@@ -60,46 +72,54 @@ export function SetupWizard() {
     // Mark this as a wizard-created session only after store/account creation
     // has been successfully verified in this flow.
     useEffect(() => {
-        if (draft.store.connectionVerified) {
+        if (draft.store.connectionVerified && draft.store.accountId === currentAccount?.id) {
             createdInSession.current = true;
         }
-    }, [draft.store.connectionVerified]);
+    }, [draft.store.connectionVerified, draft.store.accountId, currentAccount?.id]);
 
     // Redirect to dashboard if user already has accounts (unless adding new
     // or the account was just created within this wizard session).
     useEffect(() => {
-        if (!accountsLoading && accounts.length > 0 && !isAddingNew && !createdInSession.current) {
+        if (draftLoaded && !accountsLoading && accounts.length > 0 && !isAddingNew && !createdInSession.current) {
             Logger.debug('SetupWizard: User has accounts, redirecting to dashboard');
             navigate('/dashboard');
         }
-    }, [accounts, accountsLoading, navigate, isAddingNew]);
+    }, [accounts, accountsLoading, navigate, isAddingNew, draftLoaded]);
 
     // Load saved draft from localStorage on mount
     useEffect(() => {
-        const saved = loadDraftFromStorage();
-        if (saved && !isAddingNew) {
-            Logger.debug('SetupWizard: Resuming from saved draft', { step: saved.currentStep });
-            setDraft(saved.draft);
-            setCurrentStep(saved.currentStep);
-            // Preserve wizard-created session across reloads if store was already verified.
-            if (saved.wizardSessionActive && saved.draft?.store?.connectionVerified) {
-                createdInSession.current = true;
+        if (accountsLoading || draftLoaded) return;
+        let disposed = false;
+        queueMicrotask(() => {
+            if (disposed) return;
+            const saved = loadDraftFromStorage({ userId, mode: isAddingNew ? 'add' : 'setup', accountId: currentAccount?.id });
+            if (saved && !isAddingNew) {
+                Logger.debug('SetupWizard: Resuming from saved draft', { step: saved.currentStep });
+                setDraft(saved.draft);
+                setCurrentStep(saved.currentStep);
+                // Preserve wizard-created session only for the matching account.
+                if (saved.wizardSessionActive && saved.draft.store.connectionVerified) {
+                    createdInSession.current = true;
+                }
             }
-        }
-    }, [isAddingNew]);
+            setDraftLoaded(true);
+        });
+        return () => { disposed = true; };
+    }, [isAddingNew, userId, currentAccount?.id, accountsLoading, draftLoaded]);
 
     // Save draft to localStorage on changes
     useEffect(() => {
-        if (draft.store.name || draft.completedSteps.length > 0) {
-            saveDraftToStorage(draft, currentStep);
+        if (draftLoaded && (draft.store.name || draft.completedSteps.length > 0)) {
+            saveDraftToStorage(draft, currentStep, { userId, mode: isAddingNew ? 'add' : 'setup', accountId: currentAccount?.id });
         }
-    }, [draft, currentStep]);
+    }, [draft, currentStep, userId, isAddingNew, currentAccount?.id, draftLoaded]);
 
     // ─────────────────────────────────────────────────────────────────────────
     // Navigation Handlers
     // ─────────────────────────────────────────────────────────────────────────
 
     const handleNext = () => {
+        if (finalize.isPending()) return;
         // Validate current step
         const validation = validateStep(currentStep, draft);
         if (!validation.isValid) {
@@ -113,7 +133,7 @@ export function SetupWizard() {
         if (!draft.completedSteps.includes(currentStep)) {
             setDraft(prev => ({
                 ...prev,
-                completedSteps: [...prev.completedSteps, currentStep]
+                completedSteps: [...prev.completedSteps, currentStep], skippedSteps: prev.skippedSteps.filter(step => step !== currentStep)
             }));
         }
 
@@ -126,20 +146,22 @@ export function SetupWizard() {
     };
 
     const handleBack = useCallback(() => {
+        if (finalize.isPending()) return;
         if (currentStep > ONBOARDING_STEPS.STORE) {
             setCurrentStep(prev => prev - 1);
             setError(null);
         }
-    }, [currentStep]);
+    }, [currentStep, finalize]);
 
     const handleSkip = useCallback(() => {
+        if (finalize.isPending()) return;
         // Mark step as skipped (only for skippable steps)
         const stepConfig = STEP_CONFIG.find(s => s.id === currentStep);
         if (stepConfig?.skippable) {
             if (!draft.skippedSteps.includes(currentStep)) {
                 setDraft(prev => ({
                     ...prev,
-                    skippedSteps: [...prev.skippedSteps, currentStep]
+                    skippedSteps: [...prev.skippedSteps, currentStep], completedSteps: prev.completedSteps.filter(step => step !== currentStep)
                 }));
             }
         }
@@ -150,10 +172,11 @@ export function SetupWizard() {
         if (currentStep < ONBOARDING_STEPS.TOTAL) {
             setCurrentStep(prev => prev + 1);
         }
-    }, [currentStep, draft]);
+    }, [currentStep, draft, finalize]);
 
     /** Navigate directly to a previously completed or skipped step */
     const goToStep = useCallback((stepId: number) => {
+        if (finalize.isPending()) return;
         // Only allow navigating to completed, skipped, or the current step
         const canNavigate = draft.completedSteps.includes(stepId)
             || draft.skippedSteps.includes(stepId)
@@ -162,97 +185,29 @@ export function SetupWizard() {
             setCurrentStep(stepId);
             setError(null);
         }
-    }, [draft.completedSteps, draft.skippedSteps, currentStep]);
+    }, [draft.completedSteps, draft.skippedSteps, currentStep, finalize]);
 
     // ─────────────────────────────────────────────────────────────────────────
     // Finalization
     // ─────────────────────────────────────────────────────────────────────────
 
     const handleFinalize = useCallback(async () => {
+        if (finalize.isPending()) return;
+        if (!draft.store.connectionVerified || !currentAccount?.id || draft.store.accountId !== currentAccount.id) { setError('Verify this store account before completing setup.'); return; }
+        if (!draft.skippedSteps.includes(ONBOARDING_STEPS.EMAIL)) {
+            const validation = validateStep(ONBOARDING_STEPS.EMAIL, draft);
+            if (!validation.isValid) { setError(validation.error || 'Save email configuration or skip email setup'); return; }
+        }
         setIsSubmitting(true);
         setError(null);
 
-        try {
-            // If this wizard already created/verified the account, avoid duplicate creation.
-            if (currentAccount?.id && createdInSession.current && draft.store.connectionVerified) {
-                // Account exists - just update additional settings if needed
-                Logger.info('SetupWizard: Account already exists, skipping creation', { accountId: currentAccount.id });
-
-                // Could add PATCH to update email/ads settings here if needed
-                // For now, just clear draft and navigate
-                clearDraftFromStorage();
-                await refreshAccounts();
-                navigate('/dashboard');
-                return;
-            }
-
-            // Fallback: Create account if it wasn't created in StoreStep
-            // This handles edge cases where early creation failed
-            let res = await fetch('/api/accounts', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    name: draft.store.name,
-                    domain: draft.store.domain || draft.store.wooUrl,
-                    wooUrl: draft.store.wooUrl,
-                    wooConsumerKey: draft.store.wooConsumerKey,
-                    wooConsumerSecret: draft.store.wooConsumerSecret,
-                    // Optional fields based on what was configured
-                    pluginVerified: draft.plugin.verified,
-                    emailConfigured: draft.email.enabled && draft.email.verified,
-                    adsConfigured: draft.ads.googleConnected || draft.ads.metaConnected
-                })
-            });
-
-            if (res.status === 401) {
-                const latestToken = localStorage.getItem('token');
-                if (latestToken && latestToken !== token) {
-                    res = await fetch('/api/accounts', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${latestToken}`
-                        },
-                        body: JSON.stringify({
-                            name: draft.store.name,
-                            domain: draft.store.domain || draft.store.wooUrl,
-                            wooUrl: draft.store.wooUrl,
-                            wooConsumerKey: draft.store.wooConsumerKey,
-                            wooConsumerSecret: draft.store.wooConsumerSecret,
-                            pluginVerified: draft.plugin.verified,
-                            emailConfigured: draft.email.enabled && draft.email.verified,
-                            adsConfigured: draft.ads.googleConnected || draft.ads.metaConnected
-                        })
-                    });
-                }
-
-                if (res.status === 401) {
-                    logout();
-                    return;
-                }
-            }
-
-            if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.error || 'Failed to create account');
-            }
-
-            // Clear saved draft
-            clearDraftFromStorage();
-
-            // Refresh accounts and navigate
-            await refreshAccounts();
+        const result = await finalize.run(async () => { await refreshAccounts(); }, 'Could not refresh accounts. Your saved setup is retained; retry completion.');
+        if (result.ok && activeAccountId.current === draft.store.accountId) {
+            clearDraftFromStorage({ userId, mode: isAddingNew ? 'add' : 'setup' });
             navigate('/dashboard');
-        } catch (err) {
-            Logger.error('SetupWizard: Account creation failed', { error: err });
-            setError(err instanceof Error ? err.message : 'Failed to create account');
-        } finally {
-            setIsSubmitting(false);
         }
-    }, [draft, token, logout, refreshAccounts, navigate, currentAccount]);
+        if (finalize.isActive()) { setIsSubmitting(false); if (!result.ok) setError('Could not complete setup. Your saved configuration is retained.'); }
+    }, [draft, refreshAccounts, navigate, currentAccount, userId, isAddingNew, finalize]);
 
     // ─────────────────────────────────────────────────────────────────────────
     // Render
@@ -274,6 +229,8 @@ export function SetupWizard() {
     if (!token) {
         return null;
     }
+    if (!draftLoaded) return <p role="status">Loading saved setup...</p>;
+    if (draft.store.connectionVerified && draft.store.accountId !== currentAccount?.id) return <p role="alert">This setup belongs to another account. Switch back to that account before continuing.</p>;
 
     // Step props passed to all step components
     const stepProps = {
@@ -336,6 +293,7 @@ export function SetupWizard() {
                                 completedSteps={draft.completedSteps}
                                 skippedSteps={draft.skippedSteps}
                                 onStepClick={goToStep}
+                                disabled={isSubmitting}
                             />
                         </div>
                     </div>

@@ -230,7 +230,7 @@ export class TikTokMessagingService {
         }
 
         // Build message content
-        let content = '';
+        let content: string;
         const msg = event.message!;
 
         switch (msg.type) {

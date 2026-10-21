@@ -1,101 +1,41 @@
-/**
- * QuickProductsWidget - Fast local product search using Hot Tier.
- *
- * Provides instant search results from IndexedDB cache.
- */
-
 import { useState, useEffect } from 'react';
-import { Logger } from '../../utils/logger';
-import { Search, Package, ExternalLink } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAccount } from '../../context/AccountContext';
-import { searchProductsLocal, CachedProduct } from '../../services/db';
-import { WidgetProps } from './WidgetRegistry';
-import { widgetCardClass, widgetTitleClass, widgetHeaderRowClass, widgetListRowClass, widgetMicroLabelClass } from './widgetStyles';
+import { useAuth } from '../../context/AuthContext';
+import { searchProductsLocal, type CachedProduct } from '../../services/db';
+import type { WidgetProps } from './WidgetRegistry';
+import { widgetCardClass, widgetTitleClass } from './widgetStyles';
 
-export function QuickProductsWidget({ className }: WidgetProps) {
-    const { currentAccount } = useAccount();
-    const navigate = useNavigate();
-    const [query, setQuery] = useState('');
-    const [results, setResults] = useState<CachedProduct[]>([]);
-    const [searching, setSearching] = useState(false);
-
-    useEffect(() => {
-        if (!currentAccount?.id || !query.trim()) {
-            setResults([]);
-            return;
-        }
-
-        const search = async () => {
-            setSearching(true);
-            try {
-                const found = await searchProductsLocal(currentAccount.id, query);
-                setResults(found.slice(0, 5));
-            } catch (error) {
-                Logger.error('Local search failed', { error });
-            } finally {
-                setSearching(false);
-            }
-        };
-
-        const timer = setTimeout(search, 150);
-        return () => clearTimeout(timer);
-    }, [query, currentAccount?.id]);
-
-    return (
-        <div className={`${widgetCardClass} p-4 h-full flex flex-col ${className || ''}`}>
-            <div className={`${widgetHeaderRowClass} gap-2`}>
-                <Package className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                <h3 className={widgetTitleClass}>Quick Products</h3>
-                <span className="text-xs text-slate-400 dark:text-slate-500 ml-auto">Instant</span>
-            </div>
-
-            <div className="relative mb-3">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
-                <input
-                    type="text"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search cached products..."
-                    className="w-full pl-9 pr-4 py-2 border border-slate-200 dark:border-slate-600 bg-transparent rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden"
-                />
-            </div>
-
-            <div className="flex-1 overflow-y-auto space-y-1">
-                {query && results.length === 0 && !searching && (
-                    <p className="text-xs text-slate-500 dark:text-slate-400 text-center py-4">
-                        No cached products match "{query}"
-                    </p>
-                )}
-
-                {results.map((product) => (
-                    <div
-                        key={product.id}
-                        onClick={() => navigate(`/inventory/product/${product.id}`)}
-                        className={`flex items-center gap-3 ${widgetListRowClass} hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer group`}
-                    >
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
-                                {product.name}
-                            </p>
-                            {product.sku && (
-                                <p className={`${widgetMicroLabelClass} truncate`}>
-                                    SKU: {product.sku}
-                                </p>
-                            )}
-                        </div>
-                        <ExternalLink className="w-4 h-4 text-slate-400 dark:text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
-                ))}
-
-                {!query && (
-                    <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-4">
-                        Type to search locally cached products
-                    </p>
-                )}
-            </div>
-        </div>
-    );
+export function QuickProductsWidget(props: WidgetProps) {
+    const { currentAccount } = useAccount(); const { token } = useAuth();
+    if (!currentAccount || !token) return <p role="status">Select an account to search products.</p>;
+    return <AccountProducts key={JSON.stringify([currentAccount.id, token])} accountId={currentAccount.id} className={props.className} />;
 }
-
+function AccountProducts({ accountId, className = '' }: { accountId: string; className?: string }) {
+    const [query, setQuery] = useState('');
+    return <section aria-label="Quick products" className={`${widgetCardClass} p-4 h-full text-slate-900 dark:text-white ${className}`}>
+        <h3 className={widgetTitleClass}>Quick Products</h3>
+        <label className="block my-3 text-sm">Search cached products<input type="search" value={query} onChange={event => setQuery(event.target.value)} className="block w-full p-2 border rounded-lg dark:border-slate-600 bg-transparent" /></label>
+        {query.trim() ? <Results key={query} query={query.trim()} accountId={accountId} /> : <p>Type to search locally cached products.</p>}
+    </section>;
+}
+function Results({ accountId, query }: { accountId: string; query: string }) {
+    const [results, setResults] = useState<CachedProduct[] | null>(null); const [error, setError] = useState(false); const [attempt, setAttempt] = useState(0);
+    useEffect(() => {
+        let disposed = false;
+        const timer = setTimeout(() => {
+            setResults(null); setError(false);
+            void searchProductsLocal(accountId, query).then(found => {
+                if (disposed) return;
+                if (!found.every(item => item.accountId === accountId && typeof item.id === 'string' && typeof item.name === 'string' && typeof item.sku === 'string')) throw new Error('Invalid cached products');
+                setResults(found.slice(0, 5));
+            }).catch(() => { if (!disposed) setError(true); });
+        }, 150);
+        return () => { disposed = true; clearTimeout(timer); };
+    }, [accountId, query, attempt]);
+    if (error) return <p role="alert">Local search unavailable. <button type="button" onClick={() => setAttempt(value => value + 1)}>Retry search</button></p>;
+    if (!results) return <p role="status">Searching cached products...</p>;
+    if (!results.length) return <p role="status">No cached products match “{query}”.</p>;
+    return <ul>{results.map(product => <li key={product.id}><Link to={`/inventory/product/${encodeURIComponent(product.id)}`} className="block p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700"><span className="block font-medium">{product.name}</span><span className="text-xs">{product.sku}</span></Link></li>)}</ul>;
+}
 export default QuickProductsWidget;

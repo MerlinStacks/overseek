@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useDiagnostics } from './useDiagnostics';
+import { useAuth } from '../../context/AuthContext';
 
 /**
  * AdminDiagnosticsPage — presentational shell.
@@ -12,6 +13,11 @@ import { useDiagnostics } from './useDiagnostics';
  * This component only renders UI.
  */
 export function AdminDiagnosticsPage() {
+    const { token, user } = useAuth();
+    if (!token || !user?.isSuperAdmin) return <p role="status">Sign in as a super admin to view diagnostics.</p>;
+    return <Diagnostics key={JSON.stringify([token, user.id])} />;
+}
+function Diagnostics() {
     const {
         loading,
         subscriptions,
@@ -32,6 +38,7 @@ export function AdminDiagnosticsPage() {
         deleteSubscription,
         deleteAllSubscriptions,
         toggleAccount,
+        healthError, subscriptionsError, accountsError,
     } = useDiagnostics();
 
     return (
@@ -52,6 +59,7 @@ export function AdminDiagnosticsPage() {
             )}
 
             {/* System Health Section */}
+            {healthError && <p role="alert">System health: {healthError}</p>}
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 p-6">
                 <div className="flex flex-wrap gap-3 items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
@@ -165,6 +173,7 @@ export function AdminDiagnosticsPage() {
             </div>
 
             {/* Push Subscriptions Section */}
+            {subscriptionsError && <p role="alert">Subscriptions: {subscriptionsError}</p>}
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 p-6">
                 <div className="flex flex-wrap gap-3 items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
@@ -198,8 +207,8 @@ export function AdminDiagnosticsPage() {
                 {subscriptions && (
                     <div className="space-y-4">
                         <div className="flex gap-4 text-sm text-slate-600 dark:text-slate-300">
-                            <span>Total: <strong>{subscriptions.totalSubscriptions}</strong></span>
-                            <span>Accounts: <strong>{subscriptions.uniqueAccounts}</strong></span>
+                            <span>Listed subscriptions: <strong>{subscriptions.totalSubscriptions}</strong> (up to 100)</span>
+                            <span>Accounts in list: <strong>{subscriptions.uniqueAccounts}</strong></span>
                         </div>
 
                         {Object.entries(subscriptions.byAccount).map(([accountKey, subs]) => (
@@ -252,6 +261,7 @@ export function AdminDiagnosticsPage() {
             </div>
 
             {/* Test Push Section */}
+            {accountsError && <p role="alert">Accounts: {accountsError} <button type="button" onClick={() => void fetchAccounts()}>Retry accounts</button></p>}
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 p-6">
                 <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2 mb-4">
                     <Send size={20} />

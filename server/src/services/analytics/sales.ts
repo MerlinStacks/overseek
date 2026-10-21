@@ -182,7 +182,7 @@ export class SalesAnalytics {
     /**
      * Get Top Selling Products (Terms Aggregation)
      */
-    static async getTopProducts(accountId: string, startDate?: string, endDate?: string, limit: number = 5) {
+    static async getTopProducts(accountId: string, startDate?: string, endDate?: string, limit: number = 5, options?: { throwOnError?: boolean }) {
         try {
             const must: any[] = [
                 { term: { accountId } }
@@ -236,6 +236,7 @@ export class SalesAnalytics {
 
         } catch (error) {
             Logger.error('Analytics Top Products Error', { error });
+            if (options?.throwOnError) throw error;
             return [];
         }
     }
@@ -254,7 +255,7 @@ export class SalesAnalytics {
     /**
      * Get Custom Report - delegates to CustomReportService
      */
-    static async getCustomReport(accountId: string, config: CustomReportConfig) {
-        return CustomReportService.getCustomReport(accountId, config);
+    static async getCustomReport(accountId: string, config: CustomReportConfig, options?: { throwOnError?: boolean }) {
+        return CustomReportService.getCustomReport(accountId, config, options);
     }
 }

@@ -155,8 +155,8 @@ const normalizePdfText = (value: unknown): string => {
         .replace(/[\u2013\u2014]/g, '-')
         .replace(/\u2026/g, '...')
         // PDFKit cannot reliably embed color emoji fonts; strip them to avoid bad glyph substitutions.
-        .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\u{1F1E6}-\u{1F1FF}\u{1F3FB}-\u{1F3FF}\uFE0F\u200D\u20E3]/gu, '')
-        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+        .replace(/\p{Extended_Pictographic}|\p{Emoji_Presentation}|[\u{1F1E6}-\u{1F1FF}]|[\u{1F3FB}-\u{1F3FF}]|\uFE0F|\u200D|\u20E3/gu, '')
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '') // eslint-disable-line no-control-regex -- Strip unsafe control characters from PDF text.
         .replace(/[ \t\f\v]+/g, ' ')
         .replace(/\r\n/g, '\n')
         .trimEnd()
@@ -593,7 +593,6 @@ export class InvoiceService {
             );
             const localeSettings = settings.locale;
             const complianceSettings = settings.compliance;
-            const paymentSettings = settings.payment;
             const brandingSettings = settings.branding;
 
             Logger.info('Template layout extracted', {
@@ -718,28 +717,6 @@ export class InvoiceService {
                 : DESIGN_WIDTH_PX;
             const fitScaleX = Math.max(1, Math.min(2.5, DESIGN_WIDTH_PX / contentWidthPx));
             const contentOffsetPx = Number.isFinite(contentBoundsPx.minX) ? contentBoundsPx.minX : 0;
-
-            const footerStartByPage = new Map<number, number>();
-            sortedGrid.forEach((gridItem: any) => {
-                const itemConfig = getItemConfig(gridItem.i);
-                if (!itemConfig || itemConfig.type !== 'footer') return;
-                const normalizedGridItem = normalizeGridItem(gridItem, itemConfig.type);
-                const bounds = toItemBounds(normalizedGridItem);
-                const normalizedY = Math.max(0, bounds.y - marginTop);
-                const pageIndex = Math.floor(normalizedY / usablePageHeight);
-                const footerY = marginTop + (normalizedY - (pageIndex * usablePageHeight));
-                const current = footerStartByPage.get(pageIndex);
-                if (current === undefined || footerY < current) {
-                    footerStartByPage.set(pageIndex, footerY);
-                }
-            });
-
-            const defaultBottomReserve = 80;
-            const getPageContentLimitY = (pageIndex: number) => {
-                const footerStart = footerStartByPage.get(pageIndex);
-                if (typeof footerStart === 'number') return Math.max(marginTop + 40, footerStart - 10);
-                return marginTop + pageHeight - defaultBottomReserve;
-            };
 
             let currentPageIndex = 0;
             const pageFlowOffset = new Map<number, number>();

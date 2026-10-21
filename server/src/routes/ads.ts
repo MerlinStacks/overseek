@@ -10,7 +10,6 @@ import { AdsService } from '../services/ads';
 import { MetaAdsService } from '../services/ads/MetaAdsService';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
-import { prisma } from '../utils/prisma';
 import { adsActionsRoutes } from './ads/actions';
 import { adCopyRoutes } from './ads/copy';
 import intelligenceRoutes from './ads/intelligence';

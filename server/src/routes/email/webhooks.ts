@@ -3,68 +3,39 @@ import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { normalizeDeliveryWebhookEntries, authenticateRelayEmailAccount, applyDeliveryEventToLog } from './helpers';
 
-const emailWebhookRoutes: FastifyPluginAsync = async (fastify) => {
-    fastify.post('/delivery-events', async (request, reply) => {
+const emailWebhookRoutes: FastifyPluginAsync = async fastify => {
+    fastify.post('/delivery-events', { bodyLimit: 256 * 1024 }, async (request, reply) => {
+        const relayKey = request.headers['x-relay-key'];
+        if (typeof relayKey !== 'string' || !relayKey || relayKey.length > 8000) return reply.code(401).send({ error: 'Relay authentication required' });
+        let entries: ReturnType<typeof normalizeDeliveryWebhookEntries>;
+        try { entries = normalizeDeliveryWebhookEntries(request.body); }
+        catch { return reply.code(400).send({ error: 'Invalid or oversized delivery event batch' }); }
+        if (!entries.length || entries.some(entry => !entry.emailAccountId || !entry.messageId && !entry.trackingId)) return reply.code(400).send({ error: 'Each event requires an emailAccountId and a messageId or trackingId; recipient-only correlation is not supported' });
         try {
-            const relayKeyHeader = request.headers['x-relay-key'];
-            const relayKey = Array.isArray(relayKeyHeader) ? relayKeyHeader[0] : relayKeyHeader;
-            const entries = normalizeDeliveryWebhookEntries(request.body);
-            if (entries.length === 0) {
-                return reply.code(400).send({ error: 'No supported delivery events found in payload' });
+            // Validate the entire batch before applying events; never scan all tenant credentials.
+            const accounts = new Map<string, Awaited<ReturnType<typeof authenticateRelayEmailAccount>>>();
+            for (const entry of entries) if (!accounts.has(entry.emailAccountId)) {
+                const account = await authenticateRelayEmailAccount(relayKey, entry.emailAccountId);
+                if (!account) return reply.code(401).send({ error: 'Invalid relay credentials for batch' });
+                accounts.set(entry.emailAccountId, account);
             }
-
             const results: Array<Record<string, unknown>> = [];
             for (const entry of entries) {
-                const emailAccount = await authenticateRelayEmailAccount(relayKey, entry.emailAccountId);
-                if (!emailAccount) {
-                    results.push({ success: false, reason: 'INVALID_RELAY_CREDENTIALS', recipientEmail: entry.recipientEmail || null, eventType: entry.eventType });
-                    continue;
-                }
-
-                const matchClauses = [
-                    entry.messageId ? { messageId: entry.messageId } : null,
-                    entry.trackingId ? { trackingId: entry.trackingId } : null
-                ].filter(Boolean) as Array<Record<string, string>>;
-                if (entry.recipientEmail) matchClauses.push({ to: entry.recipientEmail });
-                if (matchClauses.length === 0) {
-                    results.push({ success: false, reason: 'NO_MATCH_KEYS', accountId: emailAccount.accountId, eventType: entry.eventType });
-                    continue;
-                }
-
-                const emailLog = await prisma.emailLog.findFirst({
-                    where: { accountId: emailAccount.accountId, emailAccountId: emailAccount.id, OR: matchClauses },
-                    orderBy: { createdAt: 'desc' }
-                });
-                if (!emailLog) {
-                    results.push({ success: false, reason: 'EMAIL_LOG_NOT_FOUND', accountId: emailAccount.accountId, recipientEmail: entry.recipientEmail || null, eventType: entry.eventType });
-                    continue;
-                }
-
-                const updatedLog = await applyDeliveryEventToLog({
-                    logId: emailLog.id,
-                    accountId: emailAccount.accountId,
-                    eventType: entry.eventType,
-                    reason: entry.reason
-                });
-
-                Logger.info('Recorded webhook delivery event', {
-                    accountId: emailAccount.accountId,
-                    emailAccountId: emailAccount.id,
-                    emailLogId: emailLog.id,
-                    recipientEmail: emailLog.to,
-                    eventType: entry.eventType
-                });
-
-                results.push({ success: true, accountId: emailAccount.accountId, emailAccountId: emailAccount.id, emailLogId: emailLog.id, recipientEmail: emailLog.to, eventType: entry.eventType, status: updatedLog?.status || null });
+                const account = accounts.get(entry.emailAccountId)!;
+                const logs = await prisma.emailLog.findMany({ where: { accountId: account.accountId, emailAccountId: account.id,
+                    ...(entry.messageId ? { messageId: entry.messageId } : {}), ...(entry.trackingId ? { trackingId: entry.trackingId } : {}),
+                    ...(entry.recipientEmail ? { to: { equals: entry.recipientEmail, mode: 'insensitive' } } : {}) }, take: 2 });
+                if (logs.length !== 1) { results.push({ success: false, reason: logs.length ? 'AMBIGUOUS_MESSAGE' : 'EMAIL_LOG_NOT_FOUND', eventType: entry.eventType }); continue; }
+                const outcome = await applyDeliveryEventToLog({ logId: logs[0].id, accountId: account.accountId, eventType: entry.eventType, reason: entry.reason });
+                results.push({ success: outcome?.deliveryEventApplied === true, emailLogId: logs[0].id, eventType: entry.eventType,
+                    reason: outcome?.deliveryEventReason || 'EMAIL_LOG_NOT_FOUND', status: outcome?.status || null });
             }
-
-            const processedCount = results.filter((r) => r.success).length;
+            const processedCount = results.filter(result => result.success).length;
             return { success: processedCount > 0, processedCount, totalEvents: entries.length, results };
-        } catch (error: any) {
+        } catch (error) {
             Logger.error('Failed to process delivery webhook event', { error });
-            return reply.code(500).send({ error: 'Failed to process delivery webhook event' });
+            return reply.code(500).send({ error: 'Delivery batch could not be fully confirmed; safe duplicate processing is supported' });
         }
     });
 };
-
 export default emailWebhookRoutes;

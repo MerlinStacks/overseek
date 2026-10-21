@@ -11,6 +11,7 @@ import { CustomerAnalytics } from '../services/analytics/customer';
 import { RoadblockAnalytics } from '../services/analytics/roadblock';
 import { ProductRankingService } from '../services/analytics/ProductRankingService';
 import { AdsService } from '../services/ads';
+import { insightRange, summarizeInsights } from '../services/ads/insightSummary';
 import { requireAuthFastify } from '../middleware/auth';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
@@ -226,38 +227,20 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/ads-summary', async (request, reply) => {
         try {
             const accountId = request.accountId!;
-            const account = await prisma.account.findUnique({ where: { id: accountId } });
-            const currency = account?.currency || 'USD';
+            const range = insightRange(request.query as { startDate?: unknown; endDate?: unknown });
             const adAccounts = await AdsService.getAdAccounts(accountId);
-
-            if (!adAccounts.length) return { spend: 0, roas: 0, clicks: 0, impressions: 0, currency };
-
-            /** Why Promise.allSettled: ad account fetches are independent; one failure shouldn't block the rest */
-            const results = await Promise.allSettled(
+            const results = await Promise.all(
                 adAccounts.map(async (adAccount) => {
-                    if (adAccount.platform === 'META') return AdsService.getMetaInsights(adAccount.id);
-                    if (adAccount.platform === 'GOOGLE') return AdsService.getGoogleInsights(adAccount.id);
+                    if (adAccount.platform === 'META') return AdsService.getMetaInsights(adAccount.id, range);
+                    if (adAccount.platform === 'GOOGLE') return AdsService.getGoogleInsights(adAccount.id, range);
                     return null;
                 })
             );
-
-            let totalSpend = 0, totalClicks = 0, totalImpressions = 0, totalRevenue = 0;
-
-            for (let i = 0; i < results.length; i++) {
-                const result = results[i];
-                if (result.status === 'fulfilled' && result.value) {
-                    const metrics = result.value;
-                    totalSpend += metrics.spend;
-                    totalClicks += metrics.clicks;
-                    totalImpressions += metrics.impressions;
-                    totalRevenue += metrics.spend * metrics.roas;
-                } else if (result.status === 'rejected') {
-                    Logger.warn('Failed to fetch insights', { adAccountId: adAccounts[i].id });
-                }
-            }
-
-            return { spend: totalSpend, roas: totalSpend > 0 ? totalRevenue / totalSpend : 0, clicks: totalClicks, impressions: totalImpressions, currency };
-        } catch (error) { Logger.error('Error fetching ad summary', { error }); return reply.code(500).send({ error: 'Failed' }); }
+            return summarizeInsights(results, range);
+        } catch (error) {
+            Logger.error('Error fetching ad summary', { error });
+            return reply.code((error as { statusCode?: number }).statusCode === 400 ? 400 : 500).send({ error: 'Complete ad summary unavailable for the requested dates and currency' });
+        }
     });
 
 

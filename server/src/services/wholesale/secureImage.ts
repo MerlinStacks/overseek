@@ -50,7 +50,7 @@ export function cachePrivateImage(key: string, buffer: Buffer, now = Date.now())
 export function imageDimensions(image: Buffer): { width: number; height: number; type: 'jpeg' | 'png' | 'webp' } {
     let width = 0;
     let height = 0;
-    let type: 'jpeg' | 'png' | 'webp' | null = null;
+    let type: 'jpeg' | 'png' | 'webp';
     if (image.length >= 24 && image.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
         type = 'png'; width = image.readUInt32BE(16); height = image.readUInt32BE(20);
     } else if (image.length >= 12 && image.subarray(0, 4).toString('ascii') === 'RIFF' && image.subarray(8, 12).toString('ascii') === 'WEBP') {

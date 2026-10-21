@@ -261,6 +261,7 @@ export class WooService {
         } catch (error: any) {
             if (isMaintenanceMode(error)) {
                 const retryAfterSeconds = getRetryAfterSeconds(error);
+                // eslint-disable-next-line preserve-caught-error -- Axios causes retain credential-bearing request URLs/configuration.
                 throw new Error(
                     retryAfterSeconds
                         ? `WooCommerce store is in maintenance mode. Retry after ${retryAfterSeconds}s.`
@@ -271,6 +272,7 @@ export class WooService {
             // Detect credential revocation and mark account
             if (isCredentialError(error)) {
                 await this.markNeedsReconnection();
+                // eslint-disable-next-line preserve-caught-error -- Do not propagate credential-bearing Axios request configuration.
                 throw new Error(`WooCommerce credentials revoked or invalid. Please reconnect your store.`);
             }
             throw error;
@@ -471,7 +473,7 @@ export class WooService {
                 });
                 response.on('end', () => {
                     const text = Buffer.concat(chunks).toString('utf8');
-                    let data: any = {};
+                    let data: any;
                     try { data = text ? JSON.parse(text) : {}; } catch { data = { message: text }; }
                     const status = response.statusCode || 500;
                     if (status >= 200 && status < 300) {
@@ -589,6 +591,7 @@ export class WooService {
         } catch (error: any) {
             if (isMaintenanceMode(error)) {
                 const retryAfterSeconds = getRetryAfterSeconds(error);
+                // eslint-disable-next-line preserve-caught-error -- Axios causes retain credential-bearing request URLs/configuration.
                 throw new Error(
                     retryAfterSeconds
                         ? `WordPress content API is in maintenance mode. Retry after ${retryAfterSeconds}s.`
@@ -604,9 +607,11 @@ export class WooService {
                         status: error?.response?.status || error?.status,
                         error: error?.response?.data || error?.message || error
                     });
+                    // eslint-disable-next-line preserve-caught-error -- Do not propagate credential-bearing Axios request configuration.
                     throw new Error('Overseek WordPress plugin authorization failed. Please verify the plugin route permissions and that the stored WooCommerce API key belongs to a user with store management access.');
                 }
                 await this.markNeedsReconnection();
+                // eslint-disable-next-line preserve-caught-error -- Do not propagate credential-bearing Axios request configuration.
                 throw new Error('WordPress credentials revoked or invalid. Please reconnect your store.');
             }
             throw error;

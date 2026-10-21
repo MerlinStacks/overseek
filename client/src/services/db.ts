@@ -67,23 +67,20 @@ const hotTierDB = new HotTierDB();
 async function getLastSyncTime(table: 'orders' | 'products' | 'customers', accountId: string): Promise<number | null> {
     const key = `lastSync:${table}:${accountId}`;
     const meta = await hotTierDB.meta.get(key);
-    return typeof meta?.value === 'number' ? meta.value : null;
+    return typeof meta?.value === 'number' && Number.isFinite(meta.value) && meta.value >= 0 ? meta.value : null;
 }
 
 /**
  * Clear all cache for an account
  */
 export async function clearAccountCache(accountId: string): Promise<void> {
-    await hotTierDB.orders.where('accountId').equals(accountId).delete();
-    await hotTierDB.products.where('accountId').equals(accountId).delete();
-    await hotTierDB.customers.where('accountId').equals(accountId).delete();
-
-    // Clear meta keys for this account
-    const metaKeys = await hotTierDB.meta
-        .filter(m => m.key.includes(accountId))
-        .toArray();
-
-    await hotTierDB.meta.bulkDelete(metaKeys.map(m => m.key));
+    if (!accountId) throw new Error('Account required');
+    await hotTierDB.transaction('rw', [hotTierDB.orders, hotTierDB.products, hotTierDB.customers, hotTierDB.meta], async () => {
+        await hotTierDB.orders.where('accountId').equals(accountId).delete();
+        await hotTierDB.products.where('accountId').equals(accountId).delete();
+        await hotTierDB.customers.where('accountId').equals(accountId).delete();
+        await hotTierDB.meta.bulkDelete(['orders', 'products', 'customers'].map(table => `lastSync:${table}:${accountId}`));
+    });
 }
 
 /**

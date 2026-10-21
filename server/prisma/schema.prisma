@@ -2373,6 +2373,8 @@ model GeneratedCoupon {
   accountId    String
   automationId String
   enrollmentId String
+  nodeId       String?
+  creationClaimed Boolean @default(false)
 
   wooCouponId   Int?
   code          String
@@ -2392,6 +2394,7 @@ model GeneratedCoupon {
   updatedAt DateTime @updatedAt
 
   @@unique([accountId, code])
+  @@unique([accountId, enrollmentId, nodeId])
   @@index([accountId, automationId, createdAt])
   @@index([accountId, enrollmentId, createdAt])
 }

@@ -90,7 +90,6 @@ export class ReviewSync extends BaseSync {
         while (hasMore) {
             const { data: rawReviews, totalPages } = await woo.getReviews({ page, after, per_page: 50, status: 'all' });
             if (!rawReviews.length) {
-                hasMore = false;
                 break;
             }
 

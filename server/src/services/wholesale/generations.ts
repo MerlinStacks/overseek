@@ -12,7 +12,7 @@ import { reconcileEligibility } from './eligibility';
 const ACTIVE_STATUSES = ['QUEUED', 'RENDERING'];
 
 function publicGeneration(generation: any) {
-    const { masterFilePath, basePagesPath, inputSnapshot, ...safe } = generation;
+    const { masterFilePath, basePagesPath: _basePagesPath, inputSnapshot: _inputSnapshot, ...safe } = generation;
     return {
         ...safe,
         downloadable: !!masterFilePath && ['AWAITING_APPROVAL', 'APPROVED'].includes(generation.status),

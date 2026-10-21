@@ -27,6 +27,7 @@ export interface SerpPositionResult {
 /** Cached credentials to avoid repeated DB lookups */
 let cachedCredentials: { apiKey: string; searchEngineId: string } | null = null;
 let credentialsCacheExpiry = 0;
+let credentialVersion = 0;
 const CRED_CACHE_TTL_MS = 10 * 60 * 1000;
 
 /** In-memory result cache to avoid duplicate queries within a refresh cycle */
@@ -121,6 +122,7 @@ export class SerpCheckService {
      * Clear the in-memory result cache — useful for manual refresh.
      */
     static clearCache(): void {
+        credentialVersion++;
         resultCache.clear();
         cachedCredentials = null;
         credentialsCacheExpiry = 0;
@@ -184,6 +186,7 @@ export class SerpCheckService {
      * Caches for 10 minutes to avoid repeated DB lookups.
      */
     private static async getCredentials(): Promise<{ apiKey: string; searchEngineId: string } | null> {
+        const version = credentialVersion;
         if (cachedCredentials && credentialsCacheExpiry > Date.now()) {
             return cachedCredentials;
         }
@@ -192,6 +195,7 @@ export class SerpCheckService {
             const record = await prisma.platformCredentials.findUnique({
                 where: { platform: 'GOOGLE_CUSTOM_SEARCH' }
             });
+            if (version !== credentialVersion) return this.getCredentials();
 
             if (!record?.credentials) {
                 // Fallback to environment variables

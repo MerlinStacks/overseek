@@ -118,7 +118,7 @@ class OverSeek_Tracking_Attribution_Utils
      * Get persisted click ID data from URL or cookie.
      *
      * @param array<string, string> $click_id_params
-     * @return array{id: string, platform: string}|array<string, never>
+     * @return array{id: string, platform: string, param?: string}|array<string, never>
      */
     public static function get_click_data(array $click_id_params): array
     {
@@ -130,6 +130,7 @@ class OverSeek_Tracking_Attribution_Utils
             return array(
                 'id' => sanitize_text_field(wp_unslash((string) $_GET[$param])),
                 'platform' => $platform,
+                'param' => $param,
             );
         }
 
@@ -138,6 +139,7 @@ class OverSeek_Tracking_Attribution_Utils
             return array(
                 'id' => sanitize_text_field((string) $click_data['id']),
                 'platform' => isset($click_data['platform']) ? sanitize_text_field((string) $click_data['platform']) : 'unknown',
+                'param' => isset($click_data['param']) ? sanitize_text_field((string) $click_data['param']) : '',
             );
         }
 

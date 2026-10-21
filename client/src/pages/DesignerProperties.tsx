@@ -1,6 +1,9 @@
 import { useState, useRef } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { X, Trash2, Copy, Type, Image as ImageIcon, Table, DollarSign, Settings, Upload, Loader2, CheckCircle, AlertCircle, User, LayoutTemplate, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Heading, FileText, QrCode } from 'lucide-react';
+import { useScopedMutation } from '../hooks/useScopedMutation';
+import { isRecord } from '../utils/responseValidation';
+import { abortable } from '../utils/abortable';
 
 interface DesignerItemStyle {
     fontSize?: string;
@@ -29,6 +32,7 @@ interface DesignerPropertiesProps {
     onClose: () => void;
     token?: string;
     accountId?: string;
+    templateId?: string | null;
 }
 
 
@@ -48,10 +52,15 @@ const TYPE_CONFIG: Record<string, { icon: LucideIcon; label: string; color: stri
  * DesignerProperties - Property editor panel for selected canvas items.
  * Allows editing content and deleting items.
  */
-export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteItem, onDuplicateItem, onClose, token, accountId }: DesignerPropertiesProps) {
+export function DesignerProperties(props: DesignerPropertiesProps) {
+    return <ScopedDesignerProperties key={JSON.stringify([props.selectedId, props.accountId, props.token, props.templateId])} {...props} />;
+}
+
+function ScopedDesignerProperties({ items, selectedId, onUpdateItem, onDeleteItem, onDuplicateItem, onClose, token, accountId }: DesignerPropertiesProps) {
     const selectedItem = items.find(i => i.id === selectedId);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const [isUploading, setIsUploading] = useState(false);
+    const mutation = useScopedMutation();
+    const isUploading = mutation.busy;
     const [uploadError, setUploadError] = useState<string | null>(null);
     const [isDragging, setIsDragging] = useState(false);
 
@@ -66,6 +75,7 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
      * @param updateField - The item field to update with the uploaded URL ('content' for images, 'logo' for header logos)
      */
     const handleImageUpload = async (file: File, updateField: 'content' | 'logo' = 'content') => {
+        if (mutation.isPending()) return;
         if (!token || !accountId) {
             setUploadError('Authentication required');
             return;
@@ -79,40 +89,36 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
         }
 
         // Validate file size (max 5MB)
-        if (file.size > 5 * 1024 * 1024) {
+        if (file.size === 0 || file.size > 5 * 1024 * 1024) {
             setUploadError('File too large. Maximum size is 5MB.');
             return;
         }
 
-        setIsUploading(true);
         setUploadError(null);
 
-        try {
+        const result = await mutation.run(async signal => {
             const formData = new FormData();
             formData.append('file', file);
 
-            const response = await fetch('/api/invoices/templates/upload-image', {
+            const response = await abortable(fetch('/api/invoices/templates/upload-image', {
                 method: 'POST',
+                signal,
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'X-Account-ID': accountId
                 },
                 body: formData
-            });
+            }), signal);
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Upload failed');
+                throw new Error('Upload failed');
             }
 
-            const result = await response.json();
-            onUpdateItem({ [updateField]: result.url });
-        } catch (error: unknown) {
-            const message = error instanceof Error ? error.message : 'Failed to upload image';
-            setUploadError(message);
-        } finally {
-            setIsUploading(false);
-        }
+            const data: unknown = await abortable(response.json(), signal);
+            if (!isRecord(data) || data.success !== true || typeof data.url !== 'string' || !/^\/uploads\/invoices\/[a-zA-Z0-9._-]+$/.test(data.url)) throw new Error('Invalid image confirmation');
+            return data.url;
+        }, 'Could not confirm the image upload. Your existing image is unchanged.');
+        if (result.ok) onUpdateItem({ [updateField]: result.value });
     };
 
     const updateStyle = (key: keyof DesignerItemStyle, value: string | boolean) => {
@@ -127,6 +133,7 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
+        e.target.value = '';
         if (file) handleImageUpload(file);
     };
 
@@ -151,6 +158,7 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                     </div>
                 </div>
                 <button
+                    type="button" aria-label="Close properties"
                     onClick={onClose}
                     className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
                 >
@@ -160,7 +168,9 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
 
             {/* Content Editor */}
             <div className="flex-1 overflow-y-auto p-5">
-                <div className="space-y-5">
+                <fieldset disabled={isUploading} className="space-y-5">
+                    {(uploadError || mutation.error) && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{uploadError || mutation.error}</p>}
+                    {isUploading && <p role="status">Uploading image...</p>}
                     {/* Settings Section */}
                     <div>
                         <div className="flex items-center gap-2 mb-3">
@@ -177,7 +187,6 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                                         className={`relative border-2 border-dashed rounded-xl p-4 text-center transition-all cursor-pointer
                                             ${isDragging ? 'border-purple-500 bg-purple-50' : 'border-slate-200 hover:border-purple-400 hover:bg-purple-50/50'}
                                             ${isUploading ? 'opacity-60 pointer-events-none' : ''}`}
-                                        onClick={() => fileInputRef.current?.click()}
                                         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                                         onDragLeave={() => setIsDragging(false)}
                                         onDrop={(e) => {
@@ -194,9 +203,11 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                                             className="hidden"
                                             onChange={(e) => {
                                                 const file = e.target.files?.[0];
+                                                e.target.value = '';
                                                 if (file) handleImageUpload(file, 'logo');
                                             }}
                                         />
+                                        <button type="button" onClick={() => fileInputRef.current?.click()} className="text-sm text-indigo-600">Choose logo image</button>
                                         {isUploading ? (
                                             <div className="flex flex-col items-center gap-1">
                                                 <Loader2 size={20} className="text-purple-500 animate-spin" />
@@ -225,7 +236,7 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                                 {/* Business Details */}
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-600 mb-2">Business Details</label>
-                                    <textarea
+                                    <textarea aria-label="Business Details"
                                         className="w-full text-sm border border-slate-200 rounded-xl shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 p-3 resize-none transition-all"
                                         rows={5}
                                         placeholder={"Company Name\n123 Street Address\nCity, State ZIP\nABN: 12 345 678 901\nPh: (02) 1234 5678"}
@@ -251,7 +262,7 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                             <div className="space-y-4">
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-600 mb-2">Content</label>
-                                    <textarea
+                                    <textarea aria-label="Text content"
                                         className="w-full text-sm border border-slate-200 rounded-xl shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 p-3 resize-none transition-all"
                                         rows={6}
                                         placeholder="Enter your text content..."
@@ -263,7 +274,7 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-600 mb-2">Typography</label>
                                     <div className="flex items-center gap-2 mb-2">
-                                        <select
+                                        <select aria-label="Font size"
                                             className="flex-1 text-sm border border-slate-200 rounded-lg p-2"
                                             value={selectedItem.style?.fontSize || '14px'}
                                             onChange={(e) => updateStyle('fontSize', e.target.value)}
@@ -291,6 +302,7 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                                     </label>
                                     <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg w-fit">
                                         <button
+                                            type="button" aria-pressed={selectedItem.style?.fontWeight === 'bold'}
                                             onClick={() => updateStyle('fontWeight', selectedItem.style?.fontWeight === 'bold' ? 'normal' : 'bold')}
                                             className={`p-1.5 rounded-md transition-all ${selectedItem.style?.fontWeight === 'bold' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
                                             title="Bold"
@@ -298,6 +310,7 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                                             <Bold size={16} />
                                         </button>
                                         <button
+                                            type="button" aria-pressed={selectedItem.style?.fontStyle === 'italic'}
                                             onClick={() => updateStyle('fontStyle', selectedItem.style?.fontStyle === 'italic' ? 'normal' : 'italic')}
                                             className={`p-1.5 rounded-md transition-all ${selectedItem.style?.fontStyle === 'italic' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
                                             title="Italic"
@@ -306,6 +319,7 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                                         </button>
                                         <div className="w-px h-4 bg-slate-300 mx-1" />
                                         <button
+                                            type="button" aria-pressed={!selectedItem.style?.textAlign || selectedItem.style.textAlign === 'left'}
                                             onClick={() => updateStyle('textAlign', 'left')}
                                             className={`p-1.5 rounded-md transition-all ${(!selectedItem.style?.textAlign || selectedItem.style?.textAlign === 'left') ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
                                             title="Align Left"
@@ -313,6 +327,7 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                                             <AlignLeft size={16} />
                                         </button>
                                         <button
+                                            type="button" aria-pressed={selectedItem.style?.textAlign === 'center'}
                                             onClick={() => updateStyle('textAlign', 'center')}
                                             className={`p-1.5 rounded-md transition-all ${selectedItem.style?.textAlign === 'center' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
                                             title="Align Center"
@@ -320,6 +335,7 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                                             <AlignCenter size={16} />
                                         </button>
                                         <button
+                                            type="button" aria-pressed={selectedItem.style?.textAlign === 'right'}
                                             onClick={() => updateStyle('textAlign', 'right')}
                                             className={`p-1.5 rounded-md transition-all ${selectedItem.style?.textAlign === 'right' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
                                             title="Align Right"
@@ -340,7 +356,6 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                                         className={`relative border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer
                                             ${isDragging ? 'border-purple-500 bg-purple-50' : 'border-slate-200 hover:border-purple-400 hover:bg-purple-50/50'}
                                             ${isUploading ? 'opacity-60 pointer-events-none' : ''}`}
-                                        onClick={() => fileInputRef.current?.click()}
                                         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                                         onDragLeave={() => setIsDragging(false)}
                                         onDrop={handleDrop}
@@ -352,6 +367,7 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                                             className="hidden"
                                             onChange={handleFileSelect}
                                         />
+                                        <button type="button" onClick={() => fileInputRef.current?.click()} className="text-sm text-indigo-600">Choose image</button>
                                         {isUploading ? (
                                             <div className="flex flex-col items-center gap-2">
                                                 <Loader2 size={24} className="text-purple-500 animate-spin" />
@@ -433,7 +449,7 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                             <div className="space-y-3">
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-600 mb-2">Pay URL (supports placeholders)</label>
-                                    <input
+                                    <input aria-label="Pay URL"
                                         className="w-full text-sm border border-slate-200 rounded-xl shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 p-3 transition-all"
                                         placeholder="https://pay.example.com/invoice/{{invoice.number}}"
                                         value={selectedItem.content || ''}
@@ -459,7 +475,7 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                             <div className="space-y-3">
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-600 mb-2">Footer Content</label>
-                                    <textarea
+                                    <textarea aria-label="Footer content"
                                         className="w-full text-sm border border-slate-200 rounded-xl shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 p-3 resize-none transition-all"
                                         rows={4}
                                         placeholder="Enter footer text (e.g., Thank you for your business)..."
@@ -473,13 +489,14 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                             </div>
                         )}
                     </div>
-                </div>
+                </fieldset>
             </div>
 
             {/* Actions Footer */}
             <div className="p-4 border-t border-slate-100 bg-slate-50/50 space-y-2">
                 {onDuplicateItem && (
                     <button
+                        type="button" disabled={isUploading}
                         onClick={onDuplicateItem}
                         className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 text-sm font-semibold transition-all border border-indigo-100 hover:border-indigo-200"
                     >
@@ -489,6 +506,7 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                     </button>
                 )}
                 <button
+                    type="button" disabled={isUploading}
                     onClick={onDeleteItem}
                     className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 text-sm font-semibold transition-all border border-red-100 hover:border-red-200"
                 >

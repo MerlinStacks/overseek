@@ -1,191 +1,45 @@
-import { ExternalLink, Package, X } from 'lucide-react';
-import { Logger } from '../../utils/logger';
-import { formatDate, formatCurrency } from '../../utils/format';
-import { Modal } from '../ui/Modal';
 import { useNavigate } from 'react-router-dom';
-import { useCallback, useEffect, useState } from 'react';
+import { Modal } from '../ui/Modal';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+import { isRecord } from '../../utils/responseValidation';
+import { formatDateSafe } from '../../utils/format';
+import { reportMoney } from '../analytics/useReportRequest';
 
-interface OrderPreviewModalProps {
-    orderId: number | null;
-    isOpen: boolean;
-    onClose: () => void;
+interface Props { orderId: number | null; isOpen: boolean; onClose: () => void }
+interface Item { id: number | string; name: string; quantity: number; price: number; total: number }
+interface Order { status: string; date_created: string; currency?: string; billing?: { first_name?: string; last_name?: string; email?: string }; line_items?: Item[]; total: number }
+function numberValue(value: unknown): number {
+    if (typeof value !== 'number' && (typeof value !== 'string' || !/^-?\d+(?:\.\d+)?$/.test(value.trim()))) throw new Error('Invalid order amount');
+    const result = Number(value); if (!Number.isFinite(result)) throw new Error('Invalid order amount'); return result;
 }
-
-interface OrderPreviewItem {
-    id: number | string;
-    name: string;
-    quantity: number;
-    price: number | string;
-    total: number | string;
+function decodeOrder(value: unknown): Order {
+    if (!isRecord(value) || typeof value.status !== 'string' || typeof value.date_created !== 'string' || (value.currency != null && (typeof value.currency !== 'string' || !/^[A-Z]{3}$/i.test(value.currency))) || (value.billing != null && (!isRecord(value.billing) || !['first_name', 'last_name', 'email'].every(key => value.billing && ((value.billing as Record<string, unknown>)[key] == null || typeof (value.billing as Record<string, unknown>)[key] === 'string')))) || (value.line_items != null && !Array.isArray(value.line_items))) throw new Error('Invalid order response');
+    const items = (value.line_items ?? []) as unknown[];
+    const line_items = items.map(item => {
+        if (!isRecord(item) || !['string', 'number'].includes(typeof item.id) || typeof item.name !== 'string' || typeof item.quantity !== 'number' || !Number.isFinite(item.quantity)) throw new Error('Invalid order item');
+        return { id: item.id, name: item.name, quantity: item.quantity, price: numberValue(item.price), total: numberValue(item.total) } as Item;
+    });
+    return { ...value, total: numberValue(value.total), line_items } as unknown as Order;
 }
-
-interface OrderPreview {
-    status: string;
-    date_created: string;
-    billing?: {
-        first_name?: string;
-        last_name?: string;
-        email?: string;
-    };
-    line_items?: OrderPreviewItem[];
-    total: number | string;
-    currency?: string;
+export function OrderPreviewModal({ isOpen, orderId, onClose }: Props) {
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    if (!isOpen) return null;
+    return <Modal isOpen onClose={onClose} title={`Order #${orderId ?? 'unavailable'}`} maxWidth="max-w-lg">
+        {token && currentAccount && orderId ? <OrderPreview key={JSON.stringify([token, currentAccount.id, orderId])} orderId={orderId} token={token} accountId={currentAccount.id} onClose={onClose} /> : <p role="status">Select an account and order to preview.</p>}
+    </Modal>;
 }
-
-export function OrderPreviewModal({ orderId, isOpen, onClose }: OrderPreviewModalProps) {
-    const navigate = useNavigate();
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const accountId = currentAccount?.id;
-    const [order, setOrder] = useState<OrderPreview | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
-
-    const fetchOrderDetails = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const res = await fetch(`/api/orders/${orderId}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': accountId || ''
-                }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setOrder(data);
-            }
-        } catch (error) {
-            Logger.error('Failed to load order', { error: error });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [accountId, orderId, token]);
-
-    useEffect(() => {
-        if (isOpen && orderId && accountId && token) {
-            fetchOrderDetails();
-        } else {
-            setOrder(null);
-        }
-    }, [isOpen, orderId, accountId, token, fetchOrderDetails]);
-
-    return (
-        <Modal
-            isOpen={isOpen}
-            onClose={onClose}
-            title={
-                <div>
-                    <div className="text-xl font-bold text-gray-900">Order #{orderId}</div>
-                    <p className="text-sm text-gray-500 font-normal">Quick Preview</p>
-                </div>
-            }
-            maxWidth="max-w-lg"
-        >
-            <div className="space-y-5">
-                {isLoading ? (
-                    <div className="py-12 text-center">
-                        <div className="inline-block w-8 h-8 border-2 border-gray-200 border-t-blue-600 rounded-full animate-spin mb-3"></div>
-                        <p className="text-gray-500 text-sm">Loading order details...</p>
-                    </div>
-                ) : order ? (
-                    <>
-                        {/* Status & Date Row */}
-                        <div className="flex items-center justify-between">
-                            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wide
-                                ${order.status === 'completed' ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' :
-                                    order.status === 'processing' ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200' :
-                                        order.status === 'pending' ? 'bg-orange-50 text-orange-700 ring-1 ring-orange-200' :
-                                            order.status === 'on-hold' ? 'bg-purple-50 text-purple-700 ring-1 ring-purple-200' :
-                                                order.status === 'cancelled' || order.status === 'failed' ? 'bg-red-50 text-red-700 ring-1 ring-red-200' :
-                                                    order.status === 'refunded' ? 'bg-slate-50 text-slate-700 ring-1 ring-slate-200' :
-                                                        'bg-gray-50 text-gray-700 ring-1 ring-gray-200'}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full 
-                                    ${order.status === 'completed' ? 'bg-emerald-500' :
-                                        order.status === 'processing' ? 'bg-amber-500' :
-                                            order.status === 'pending' ? 'bg-orange-500' :
-                                                order.status === 'on-hold' ? 'bg-purple-500' :
-                                                    order.status === 'cancelled' || order.status === 'failed' ? 'bg-red-500' :
-                                                        order.status === 'refunded' ? 'bg-slate-500' :
-                                                            'bg-gray-500'}`}></span>
-                                {order.status}
-                            </span>
-                            <span className="text-sm text-gray-500 font-medium">{formatDate(order.date_created)}</span>
-                        </div>
-
-                        {/* Customer Card */}
-                        <div className="bg-linear-to-br from-slate-50 to-gray-50 rounded-xl p-4 border border-gray-200/80 shadow-xs">
-                            <div className="flex items-center gap-3 mb-3">
-                                <div className="w-10 h-10 bg-linear-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-xs">
-                                    {order.billing?.first_name?.charAt(0) || ''}{order.billing?.last_name?.charAt(0) || ''}
-                                </div>
-                                <div>
-                                    <div className="font-semibold text-gray-900">{order.billing?.first_name} {order.billing?.last_name}</div>
-                                    <div className="text-sm text-gray-500 truncate max-w-[200px]">{order.billing?.email}</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Items Section */}
-                        <div className="rounded-xl border border-gray-200/80 overflow-hidden shadow-xs">
-                            <div className="px-4 py-3 bg-linear-to-r from-gray-50 to-slate-50 border-b border-gray-200/80 flex items-center justify-between">
-                                <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Order Items</span>
-                                <span className="text-xs font-medium text-gray-400 bg-gray-200/60 px-2 py-0.5 rounded-full">{order.line_items?.length || 0} item{order.line_items?.length !== 1 ? 's' : ''}</span>
-                            </div>
-                            <div className="divide-y divide-gray-100 bg-white max-h-48 overflow-y-auto">
-                                {order.line_items?.map((item) => (
-                                    <div key={item.id} className="p-3.5 flex justify-between items-start gap-3 hover:bg-gray-50/50 transition-colors">
-                                        <div className="flex items-start gap-3 flex-1 min-w-0">
-                                            <div className="w-9 h-9 bg-linear-to-br from-gray-100 to-gray-50 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 shrink-0">
-                                                <Package size={16} />
-                                            </div>
-                                            <div className="min-w-0 flex-1">
-                                                <div className="font-medium text-gray-900 text-sm leading-tight line-clamp-2">{item.name}</div>
-                                                <div className="text-xs text-gray-500 mt-1">
-                                                    {item.quantity} × {formatCurrency(Number(item.price), order.currency)}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="font-semibold text-gray-900 text-sm shrink-0">
-                                            {formatCurrency(Number(item.total), order.currency)}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Total Row */}
-                            <div className="px-4 py-3.5 bg-linear-to-r from-gray-800 to-slate-900 flex items-center justify-between">
-                                <span className="text-sm font-medium text-gray-300 uppercase tracking-wide">Total</span>
-                                <span className="text-xl font-bold text-white">
-                                    {formatCurrency(Number(order.total), order.currency || 'USD')}
-                                </span>
-                            </div>
-                        </div>
-                    </>
-                ) : (
-                    <div className="text-center py-8">
-                        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                            <X size={24} className="text-red-500" />
-                        </div>
-                        <p className="text-gray-600 font-medium">Failed to load order data</p>
-                        <p className="text-sm text-gray-400 mt-1">Please try again later</p>
-                    </div>
-                )}
-            </div>
-
-            {/* Footer Actions */}
-            <div className="pt-5 mt-5 border-t border-gray-100 flex justify-end gap-3 -mx-6 px-6">
-                <button onClick={onClose} className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-200 rounded-lg transition-colors">
-                    Close
-                </button>
-                <button
-                    onClick={() => navigate(`/orders/${orderId}`)}
-                    className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-xs shadow-blue-200 transition-all hover:shadow-md"
-                >
-                    View Full Details
-                    <ExternalLink size={16} />
-                </button>
-            </div>
-        </Modal>
-    );
+function OrderPreview({ orderId, token, accountId, onClose }: { orderId: number; token: string; accountId: string; onClose: () => void }) {
+    const navigate = useNavigate(); const { data, loading, error, retry } = useScopedRequest(`/api/orders/${orderId}`, accountId, token, decodeOrder);
+    const money = (amount: number) => reportMoney(amount, data?.currency);
+    return <div className="space-y-4 text-slate-900 dark:text-slate-100">
+        {loading ? <p role="status">Loading order details...</p> : error || !data ? <p role="alert">Could not load order data. <button type="button" onClick={retry}>Retry order preview</button></p> : <>
+            <div className="flex flex-wrap gap-3 justify-between"><span className="capitalize font-semibold">{data.status}</span><span>{formatDateSafe(data.date_created, 'Date unavailable')}</span></div>
+            <div className="p-4 rounded-lg bg-slate-100 dark:bg-slate-900"><p className="font-medium">{data.billing?.first_name} {data.billing?.last_name}</p><p className="text-sm break-all">{data.billing?.email}</p></div>
+            <h3 className="font-semibold">Order Items</h3><ul className="space-y-3">{data.line_items?.map(item => <li key={item.id} className="flex justify-between gap-3"><div>{item.name}<p className="text-sm text-slate-500 dark:text-slate-400">{item.quantity} × {money(item.price)}</p></div><span>{money(item.total)}</span></li>)}</ul>
+            <div className="flex justify-between font-semibold border-t border-slate-200 dark:border-slate-700 pt-3"><span>Total</span><span>{money(data.total)}</span></div>
+        </>}
+        <div className="flex flex-wrap justify-end gap-3"><button type="button" onClick={onClose}>Close preview</button><button type="button" onClick={() => { onClose(); navigate(`/orders/${orderId}`); }} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">View Full Details</button></div>
+    </div>;
 }

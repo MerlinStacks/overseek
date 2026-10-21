@@ -5,7 +5,7 @@ function validDraft(): CampaignDraft {
     return { ...createInitialDraft(), name: 'Summer', adCopy: { headlines: ['One', 'Two', 'Three'], descriptions: ['First', 'Second'], finalUrl: 'https://example.com' } };
 }
 describe('campaign step validation', () => {
-    it.each(['SEARCH', 'PMAX'] as const)('preserves optional product selection for %s', type => {
+    it.each(['SEARCH'] as const)('preserves optional product selection for %s', type => {
         const draft = { ...validDraft(), type };
         for (let step = 1; step <= 4; step++) expect(validateStep(step, draft).isValid).toBe(true);
     });

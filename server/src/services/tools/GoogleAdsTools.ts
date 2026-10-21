@@ -8,6 +8,9 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { AdsService } from '../ads';
+function validateRows(rows: unknown): asserts rows is any[] {
+    if (!Array.isArray(rows) || rows.some(row => !row || !['spend', 'clicks', 'impressions', 'conversions', 'conversionsValue', 'roas'].every(key => typeof row[key] === 'number' && Number.isFinite(row[key]) && row[key] >= 0) || typeof row.currency !== 'string' || !/^[A-Z]{3}$/.test(row.currency))) throw new Error('Complete valid advertising metrics/currency unavailable');
+}
 
 export class GoogleAdsTools {
 
@@ -18,6 +21,7 @@ export class GoogleAdsTools {
      */
     static async analyzeGoogleAdsCampaigns(accountId: string, days: number = 30) {
         try {
+            if (typeof accountId !== 'string' || !accountId.trim() || !Number.isInteger(days) || days < 1 || days > 365) throw new Error('Invalid account or advertising date range');
             const adAccounts = await prisma.adAccount.findMany({
                 where: { accountId, platform: 'GOOGLE' },
                 select: { id: true, name: true, externalId: true }
@@ -30,10 +34,13 @@ export class GoogleAdsTools {
             const allCampaigns: any[] = [];
             const allProducts: any[] = [];
             const allKeywords: any[] = [];
+            const coverage: Array<{ accountId: string; section: string; status: string; rowLimit?: number }> = [];
 
             for (const adAccount of adAccounts) {
                 try {
-                    const campaigns = await AdsService.getGoogleCampaignInsights(adAccount.id, days);
+                    const campaigns = await AdsService.getGoogleCampaignInsights(adAccount.id, days, { strict: true });
+                    validateRows(campaigns);
+                    coverage.push({ accountId: adAccount.id, section: 'campaigns', status: 'available' });
                     campaigns.forEach((c: any) => {
                         allCampaigns.push({
                             account: adAccount.name || adAccount.externalId,
@@ -43,7 +50,9 @@ export class GoogleAdsTools {
 
                     // Also fetch shopping product data
                     try {
-                        const products = await AdsService.getGoogleShoppingProducts(adAccount.id, days, 100);
+                        const products = await AdsService.getGoogleShoppingProducts(adAccount.id, days, 100, { strict: true });
+                        validateRows(products);
+                        coverage.push({ accountId: adAccount.id, section: 'shopping', status: products.length >= 100 ? 'possibly-truncated' : 'available', rowLimit: 100 });
                         products.forEach((p: any) => {
                             allProducts.push({
                                 account: adAccount.name || adAccount.externalId,
@@ -51,12 +60,15 @@ export class GoogleAdsTools {
                             });
                         });
                     } catch (err) {
+                        coverage.push({ accountId: adAccount.id, section: 'shopping', status: 'unavailable' });
                         Logger.debug(`No shopping data for ${adAccount.id}`, { error: (err as Error).message });
                     }
 
                     // Also fetch search keyword data
                     try {
-                        const keywords = await AdsService.getGoogleSearchKeywords(adAccount.id, days, 500);
+                        const keywords = await AdsService.getGoogleSearchKeywords(adAccount.id, days, 500, { strict: true });
+                        validateRows(keywords);
+                        coverage.push({ accountId: adAccount.id, section: 'keywords', status: keywords.length >= 500 ? 'possibly-truncated' : 'available', rowLimit: 500 });
                         keywords.forEach((k: any) => {
                             allKeywords.push({
                                 account: adAccount.name || adAccount.externalId,
@@ -64,9 +76,11 @@ export class GoogleAdsTools {
                             });
                         });
                     } catch (err) {
+                        coverage.push({ accountId: adAccount.id, section: 'keywords', status: 'unavailable' });
                         Logger.debug(`No keyword data for ${adAccount.id}`, { error: (err as Error).message });
                     }
                 } catch (err) {
+                    coverage.push({ accountId: adAccount.id, section: 'all', status: 'unavailable' });
                     Logger.warn(`Failed to fetch campaigns for ${adAccount.id}`, { error: (err as Error).message });
                 }
             }
@@ -76,6 +90,10 @@ export class GoogleAdsTools {
             }
 
             const totals = this.calculateTotals(allCampaigns);
+            if (Object.values(totals).some(value => !Number.isFinite(value))) throw new Error('Advertising aggregate overflow');
+            const currencies = new Set([...allCampaigns, ...allProducts, ...allKeywords].map(row => row.currency));
+            if (currencies.size !== 1) return 'Advertising analysis unavailable: mixed currencies cannot be aggregated.';
+            const currency = allCampaigns[0].currency;
             const bySpend = [...allCampaigns].sort((a, b) => b.spend - a.spend);
             const byRoas = [...allCampaigns].filter(c => c.spend > 0).sort((a, b) => b.roas - a.roas);
 
@@ -93,39 +111,45 @@ export class GoogleAdsTools {
             const searchAnalysis = this.analyzeSearchKeywords(allKeywords);
 
             return {
+                coverage,
+                partial_data: coverage.some(section => section.status !== 'available'),
+                currency,
+                methodology: 'Enabled campaigns and capped product/keyword samples. ROAS thresholds are review heuristics, not profit or breakeven evidence.',
                 summary: {
                     total_campaigns: allCampaigns.length,
-                    total_spend: `$${totals.spend.toFixed(2)}`,
+                    total_spend: `${currency} ${totals.spend.toFixed(2)}`,
                     total_clicks: totals.clicks,
                     total_impressions: totals.impressions,
-                    total_conversions: totals.conversions.toFixed(0),
+                    total_conversions: totals.conversions,
                     overall_roas: totals.spend > 0 ? `${(totals.conversionsValue / totals.spend).toFixed(2)}x` : 'N/A',
                     overall_ctr: totals.impressions > 0 ? `${((totals.clicks / totals.impressions) * 100).toFixed(2)}%` : 'N/A',
-                    period: `Last ${days} days`
+                    period: `Requested ${days}-day lookback; provider uses inclusive dates`,
+                    dateStart: allCampaigns[0].dateStart ?? null,
+                    dateStop: allCampaigns[0].dateStop ?? null,
                 },
                 top_spenders: bySpend.slice(0, 5).map(c => ({
                     campaign: c.campaignName,
-                    spend: `$${c.spend.toFixed(2)}`,
+                    spend: `${c.currency} ${c.spend.toFixed(2)}`,
                     roas: `${c.roas.toFixed(2)}x`,
                     status: c.status
                 })),
                 highest_roas: byRoas.slice(0, 5).map(c => ({
                     campaign: c.campaignName,
                     roas: `${c.roas.toFixed(2)}x`,
-                    spend: `$${c.spend.toFixed(2)}`,
-                    conversions: c.conversions.toFixed(0)
+                    spend: `${c.currency} ${c.spend.toFixed(2)}`,
+                    conversions: c.conversions
                 })),
                 underperformers: underperformers.map(c => ({
                     campaign: c.campaignName,
-                    spend: `$${c.spend.toFixed(2)}`,
+                    spend: `${c.currency} ${c.spend.toFixed(2)}`,
                     roas: `${c.roas.toFixed(2)}x`,
-                    issue: c.roas < 0.5 ? 'Very low ROAS - consider pausing' : 'Below breakeven - needs optimization'
+                    issue: 'Low reported ROAS; review attribution, margins and conversion lag before acting'
                 })),
                 high_performers: highPerformers.map(c => ({
                     campaign: c.campaignName,
                     roas: `${c.roas.toFixed(2)}x`,
-                    revenue: `$${c.conversionsValue.toFixed(2)}`,
-                    suggestion: 'Consider increasing budget'
+                    revenue: `${c.currency} ${c.conversionsValue.toFixed(2)}`,
+                    suggestion: 'Review margin, attribution and volume before considering budget changes'
                 })),
                 shopping_products: shoppingAnalysis,
                 search_analysis: searchAnalysis,
@@ -135,11 +159,11 @@ export class GoogleAdsTools {
                     campaignName: c.campaignName,
                     platform: 'google' as const,
                     spend: c.spend,
-                    revenue: c.conversionsValue || 0,
+                    revenue: c.conversionsValue,
                     roas: c.roas,
-                    ctr: c.ctr || (c.impressions > 0 ? (c.clicks / c.impressions) * 100 : 0),
-                    cpc: c.cpc || (c.clicks > 0 ? c.spend / c.clicks : 0),
-                    cpa: c.cpa || (c.conversions > 0 ? c.spend / c.conversions : 0),
+                    ctr: c.impressions > 0 ? (c.clicks / c.impressions) * 100 : null,
+                    cpc: c.clicks > 0 ? c.spend / c.clicks : null,
+                    cpa: c.conversions > 0 ? c.spend / c.conversions : null,
                     conversions: c.conversions,
                     impressions: c.impressions,
                     clicks: c.clicks
@@ -185,11 +209,7 @@ export class GoogleAdsTools {
             .sort((a, b) => b.clicks - a.clicks)
             .slice(0, 5);
 
-        const productsByCampaign = allProducts.reduce((acc: Record<string, any[]>, p) => {
-            if (!acc[p.campaignName]) acc[p.campaignName] = [];
-            acc[p.campaignName].push(p);
-            return acc;
-        }, {});
+        const productsByCampaign = new Set(allProducts.map(product => `${product.account}:${product.campaignName}`));
 
         return {
             total_products_analyzed: allProducts.length,
@@ -198,15 +218,15 @@ export class GoogleAdsTools {
                 product_id: p.productId,
                 campaign: p.campaignName,
                 roas: `${p.roas.toFixed(2)}x`,
-                spend: `$${p.spend.toFixed(2)}`,
-                conversions: p.conversions.toFixed(0)
+                spend: `${p.currency} ${p.spend.toFixed(2)}`,
+                conversions: p.conversions
             })),
             underperforming_products: underperformingProducts.map(p => ({
                 product: p.productTitle,
                 product_id: p.productId,
                 campaign: p.campaignName,
                 roas: `${p.roas.toFixed(2)}x`,
-                spend: `$${p.spend.toFixed(2)}`,
+                spend: `${p.currency} ${p.spend.toFixed(2)}`,
                 issue: p.conversions === 0 ? 'No conversions - consider excluding' : 'Very low ROAS - review pricing/landing page'
             })),
             high_click_low_conversion: highClickLowConversion.map(p => ({
@@ -214,10 +234,11 @@ export class GoogleAdsTools {
                 product_id: p.productId,
                 campaign: p.campaignName,
                 clicks: p.clicks,
-                conversions: p.conversions.toFixed(0),
+                conversions: p.conversions,
                 issue: 'High traffic but no sales - check landing page, price, or stock'
             })),
-            campaigns_with_products: Object.keys(productsByCampaign).length,
+            campaigns_with_products: productsByCampaign.size,
+            coverage: 'capped performance sample; absence does not prove a product is not advertised',
             // Return raw set of active product IDs (SKUs or IDs depending on feed setup)
             active_ad_product_ids: Array.from(new Set(allProducts.map(p => p.productId ? String(p.productId) : '')))
         };
@@ -248,21 +269,21 @@ export class GoogleAdsTools {
                 campaign: k.campaignName,
                 match_type: k.matchType,
                 roas: `${k.roas.toFixed(2)}x`,
-                spend: `$${k.spend.toFixed(2)}`,
-                conversions: k.conversions.toFixed(0)
+                spend: `${k.currency} ${k.spend.toFixed(2)}`,
+                conversions: k.conversions
             })),
             negative_opportunities: negativeOpportunities.map(k => ({
                 keyword: k.keywordText,
                 campaign: k.campaignName,
                 match_type: k.matchType,
-                spend: `$${k.spend.toFixed(2)}`,
+                spend: `${k.currency} ${k.spend.toFixed(2)}`,
                 clicks: k.clicks,
                 issue: 'High spend with zero conversions - consider adding as negative keyword'
             })),
             low_ctr_keywords: highSpendLowCtr.map(k => ({
                 keyword: k.keywordText,
                 campaign: k.campaignName,
-                ctr: `${k.ctr.toFixed(2)}%`,
+                ctr: typeof k.ctr === 'number' && Number.isFinite(k.ctr) ? `${k.ctr.toFixed(2)}%` : 'Unavailable',
                 impressions: k.impressions,
                 issue: 'Low CTR - ad copy or keyword relevance may need review'
             }))

@@ -1,165 +1,31 @@
-/**
- * Campaign Products Panel
- * 
- * Displays products for an expanded campaign row.
- * Fetches products on demand when campaign is expanded.
- */
-
-import { useCallback, useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Loader2, Package, TrendingUp, TrendingDown } from 'lucide-react';
-import { formatCurrency, formatCompact } from '../../utils/format';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+import { finiteFields, isRecord } from '../../utils/responseValidation';
+import { formatCompact } from '../../utils/format';
+import { reportMoney } from '../analytics/useReportRequest';
 
-interface ShoppingProduct {
-    campaignId: string;
-    campaignName: string;
-    productId: string;
-    productTitle: string;
-    productBrand: string;
-    productCategory: string;
-    spend: number;
-    impressions: number;
-    clicks: number;
-    conversions: number;
-    conversionsValue: number;
-    roas: number;
-    ctr: number;
-    cpc: number;
-    currency: string;
+interface ShoppingProduct { productId: string; productTitle: string; productBrand: string; spend: number; clicks: number; conversions: number; roas: number; currency: string }
+interface Props { adAccountId: string; campaignId: string; days: number }
+function decodeProducts(value: unknown): ShoppingProduct[] {
+    if (!Array.isArray(value) || !value.every(item => isRecord(item) && typeof item.productId === 'string' && typeof item.productTitle === 'string' && (item.productBrand == null || typeof item.productBrand === 'string') && typeof item.currency === 'string' && /^[A-Z]{3}$/i.test(item.currency) && finiteFields(item, ['spend', 'clicks', 'conversions', 'roas']))) throw new Error('Invalid campaign products');
+    return value;
 }
-
-interface CampaignProductsPanelProps {
-    adAccountId: string;
-    campaignId: string;
-    days: number;
+export function CampaignProductsPanel(props: Props) {
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount || !props.adAccountId || !props.campaignId || !Number.isInteger(props.days) || props.days < 1) return <p role="status">Select an account, campaign and valid reporting period.</p>;
+    return <CampaignProducts key={JSON.stringify([token, currentAccount.id, props.adAccountId, props.campaignId, props.days])} {...props} token={token} accountId={currentAccount.id} />;
 }
-
-export function CampaignProductsPanel({ adAccountId, campaignId, days }: CampaignProductsPanelProps) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const [products, setProducts] = useState<ShoppingProduct[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    const fetchProducts = useCallback(async () => {
-        setIsLoading(true);
-        setError(null);
-        try {
-            const headers = {
-                'Authorization': `Bearer ${token}`,
-                'X-Account-ID': currentAccount?.id || ''
-            };
-            const res = await fetch(
-                `/api/ads/${adAccountId}/campaigns/${campaignId}/products?days=${days}`,
-                { headers }
-            );
-            if (!res.ok) {
-                const err = await res.json();
-                throw new Error(err.error || 'Failed to load products');
-            }
-            const data = await res.json();
-            setProducts(data);
-        } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Failed to load products';
-            setError(message);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [adAccountId, campaignId, currentAccount?.id, days, token]);
-
-    useEffect(() => {
-        fetchProducts();
-    }, [fetchProducts]);
-
-    const formatNumber = (v: number) =>
-        formatCompact(v);
-
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center py-6 bg-gray-50">
-                <Loader2 className="w-5 h-5 animate-spin text-blue-500 mr-2" />
-                <span className="text-sm text-gray-500">Loading products...</span>
-            </div>
-        );
-    }
-
-    if (error) {
-        return (
-            <div className="py-4 px-6 bg-red-50 text-red-600 text-sm">
-                {error}
-            </div>
-        );
-    }
-
-    if (products.length === 0) {
-        return (
-            <div className="py-6 px-6 bg-gray-50 text-center">
-                <Package className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">No products in this campaign</p>
-                <p className="text-xs text-gray-400 mt-1">
-                    This may be a non-Shopping campaign or no product data is available.
-                </p>
-            </div>
-        );
-    }
-
-    // Sort by spend descending
-    const sortedProducts = [...products].sort((a, b) => b.spend - a.spend);
-
-    return (
-        <div className="bg-gray-50 border-t">
-            <div className="px-6 py-3 border-b bg-gray-100">
-                <span className="text-sm font-medium text-gray-700">
-                    {products.length} Product{products.length !== 1 ? 's' : ''} in Campaign
-                </span>
-            </div>
-            <div className="divide-y divide-gray-200">
-                {sortedProducts.slice(0, 10).map((product, idx) => (
-                    <div key={`${product.productId}-${idx}`} className="px-6 py-3 flex items-center justify-between hover:bg-gray-100 transition-colors">
-                        <div className="flex-1 min-w-0">
-                            <p className="font-medium text-gray-900 truncate" title={product.productTitle}>
-                                {product.productTitle}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                                {product.productBrand && `${product.productBrand} • `}
-                                ID: {product.productId}
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-6 text-sm">
-                            <div className="text-right">
-                                <p className="text-gray-900 font-medium">
-                                    {formatCurrency(product.spend, product.currency)}
-                                </p>
-                                <p className="text-xs text-gray-500">Spend</p>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-gray-700">{formatNumber(product.clicks)}</p>
-                                <p className="text-xs text-gray-500">Clicks</p>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-gray-700">{product.conversions.toFixed(0)}</p>
-                                <p className="text-xs text-gray-500">Conv.</p>
-                            </div>
-                            <div className="text-right w-16">
-                                <p className={`font-medium flex items-center justify-end gap-1 ${product.roas >= 3 ? 'text-green-600' :
-                                    product.roas >= 1 ? 'text-yellow-600' : 'text-red-600'
-                                    }`}>
-                                    {product.roas >= 3 ? <TrendingUp size={12} /> :
-                                        product.roas < 1 ? <TrendingDown size={12} /> : null}
-                                    {product.roas.toFixed(2)}x
-                                </p>
-                                <p className="text-xs text-gray-500">ROAS</p>
-                            </div>
-                        </div>
-                    </div>
-                ))}
-                {products.length > 10 && (
-                    <div className="px-6 py-2 text-center text-xs text-gray-500 bg-gray-100">
-                        Showing top 10 of {products.length} products
-                    </div>
-                )}
-            </div>
-        </div>
-    );
+function CampaignProducts({ token, accountId, adAccountId, campaignId, days }: Props & { token: string; accountId: string }) {
+    const url = `/api/ads/${encodeURIComponent(adAccountId)}/campaigns/${encodeURIComponent(campaignId)}/products?days=${days}`;
+    const { data, loading, error, retry } = useScopedRequest(url, accountId, token, decodeProducts);
+    if (loading) return <p role="status" className="p-6">Loading products...</p>;
+    if (error || !data) return <p role="alert" className="p-6">Could not load campaign products. <button type="button" onClick={retry}>Retry products</button></p>;
+    if (!data.length) return <p className="p-6">No products available for this campaign. It may not be a Shopping campaign.</p>;
+    return <section aria-label="Campaign products" className="p-4 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+        <p className="font-medium mb-3">{data.length} products in campaign</p>
+        <div className="overflow-x-auto"><table className="w-full text-sm text-left"><caption className="sr-only">Campaign product performance, sorted by spend</caption><thead><tr>{['Product', 'Spend', 'Clicks', 'Conversions', 'ROAS'].map(label => <th scope="col" key={label} className="p-2">{label}</th>)}</tr></thead><tbody>
+            {[...data].sort((a, b) => b.spend - a.spend).slice(0, 10).map((item, index) => <tr key={`${item.productId}-${index}`}><th scope="row" className="p-2 font-medium">{item.productTitle}<span className="block text-xs text-slate-500 dark:text-slate-400">{item.productBrand} {item.productId}</span></th><td className="p-2">{reportMoney(item.spend, item.currency)}</td><td className="p-2">{formatCompact(item.clicks)}</td><td className="p-2">{formatCompact(item.conversions)}</td><td className="p-2">{item.roas.toFixed(2)}x</td></tr>)}
+        </tbody></table></div>{data.length > 10 && <p className="text-xs mt-2">Showing top 10 of {data.length} products by spend.</p>}
+    </section>;
 }

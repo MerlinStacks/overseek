@@ -13,6 +13,9 @@ export const siteConfig = {
     supportEmail: import.meta.env.VITE_SUPPORT_EMAIL?.trim() || 'support@localhost',
     legalEmail: import.meta.env.VITE_LEGAL_EMAIL?.trim() || 'legal@localhost',
     privacyEmail: import.meta.env.VITE_PRIVACY_EMAIL?.trim() || 'privacy@localhost',
+    // Supplied by the operator when the published policy is actually revised.
+    privacyPolicyUpdatedAt: import.meta.env.VITE_PRIVACY_POLICY_UPDATED_AT?.trim() || '',
+    termsUpdatedAt: import.meta.env.VITE_TERMS_UPDATED_AT?.trim() || '',
 
     // URLs
     apiUrl: import.meta.env.VITE_API_URL?.trim() || '',

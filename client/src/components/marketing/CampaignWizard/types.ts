@@ -53,7 +53,7 @@ export type MatchType = 'BROAD' | 'PHRASE' | 'EXACT';
 export interface WizardProduct {
     id: string;
     name: string;
-    price: number;
+    price: number | null;
     image?: string;
     sku?: string;
 }
@@ -98,7 +98,7 @@ export interface WizardStepProps {
 export function validateStep(step: number, draft: CampaignDraft): { isValid: boolean; error?: string } {
     switch (step) {
         case WIZARD_STEPS.GOAL:
-            if (draft.type !== 'SEARCH' && draft.type !== 'PMAX') {
+            if (draft.type !== 'SEARCH') {
                 return { isValid: false, error: 'Select a supported campaign type' };
             }
             if (!draft.name.trim()) {

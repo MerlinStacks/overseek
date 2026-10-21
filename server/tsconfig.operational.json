@@ -1,0 +1,12 @@
+{
+    "extends": "./tsconfig.json",
+    "include": [
+        "src/scripts/deep-diagnostic.ts",
+        "src/scripts/reindex-orders.ts",
+        "src/scripts/reindex-products.ts",
+        "src/scripts/revoke-all-sessions.ts",
+        "src/scripts/operationalSafety.ts",
+        "src/types/**/*.d.ts"
+    ],
+    "exclude": ["dist"]
+}

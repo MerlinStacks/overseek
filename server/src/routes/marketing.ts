@@ -439,7 +439,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             }
             if (orderId !== undefined && orderId !== null && (
                 typeof orderId !== 'string' || !orderId.length || orderId.length > 128
-                || orderId.trim() !== orderId || /[\u0000-\u001f\u007f]/.test(orderId)
+                || orderId.trim() !== orderId || /[\u0000-\u001f\u007f]/.test(orderId) // eslint-disable-line no-control-regex -- Reject control characters in identifiers.
             )) {
                 return reply.code(400).send({ error: 'orderId must be null or a nonempty internal order ID of at most 128 characters' });
             }

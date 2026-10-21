@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
     shareFind: vi.fn(), transaction: vi.fn(), defaultEmail: vi.fn(), sendEmail: vi.fn(), sessionUpdate: vi.fn(), shareUpdate: vi.fn(), shareUpdateMany: vi.fn(), log: vi.fn(),
@@ -16,7 +16,8 @@ vi.mock('./shareSecurity', () => ({
 import { WholesaleShareService } from './shares';
 
 describe('wholesale standalone resend', () => {
-    beforeEach(() => vi.clearAllMocks());
+    beforeEach(() => { vi.resetAllMocks(); vi.useFakeTimers(); vi.setSystemTime(new Date('2026-08-07T00:00:00Z')); });
+    afterEach(() => vi.useRealTimers());
 
     it('uses activation rotation semantics and revokes every existing live session', async () => {
         const updatedAt = new Date('2026-08-07T00:00:00Z');
@@ -30,12 +31,12 @@ describe('wholesale standalone resend', () => {
         mocks.defaultEmail.mockResolvedValue({ id: 'email-account-1' });
         mocks.sendEmail.mockResolvedValue({ success: true });
         const tx = {
-            $queryRawUnsafe: vi.fn(), wholesaleCatalogShare: { findFirst: vi.fn().mockResolvedValue(locked), update: mocks.shareUpdate },
+            $executeRawUnsafe: vi.fn(), wholesaleCatalogShare: { findFirst: vi.fn().mockResolvedValue(locked), update: mocks.shareUpdate },
             wholesaleCatalogViewerSession: { updateMany: mocks.sessionUpdate },
         };
         mocks.transaction.mockImplementation((callback: any) => callback(tx));
         const result = await WholesaleShareService.resend('account-1', 'user-1', 'share-1', {});
-        expect(tx.$queryRawUnsafe).toHaveBeenCalled();
+        expect(tx.$executeRawUnsafe).toHaveBeenCalledWith('SELECT pg_advisory_xact_lock(hashtext($1))', 'wholesale-share:share-1');
         expect(mocks.sessionUpdate).toHaveBeenCalledWith({ where: { shareId: 'share-1', revokedAt: null }, data: { revokedAt: expect.any(Date) } });
         expect(mocks.shareUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ tokenHash: 'hash:new-raw-token', passwordHash: 'password-hash', failedAttempts: 0, lockedUntil: expect.any(Date), emailedAt: expect.any(Date) }) }));
         expect(result).toEqual({ url: expect.stringContaining('/catalog-view/new-raw-token'), password: 'alpha-bravo-charlie-delta' });
@@ -49,7 +50,7 @@ describe('wholesale standalone resend', () => {
         mocks.sendEmail.mockRejectedValue(new Error('provider timeout'));
         let transactionCommitted = false;
         const tx = {
-            $queryRawUnsafe: vi.fn(),
+            $executeRawUnsafe: vi.fn(),
             wholesaleCatalogShare: { findFirst: vi.fn().mockResolvedValue({
                 id: 'share-1', updatedAt, artifactStatus: 'READY', revokedAt: null, expiresAt: new Date('2026-09-01'), activatedAt: null,
                 generation: { status: 'APPROVED', staleAt: null, validUntil: new Date('2026-08-30'), validityArtifactStatus: 'CURRENT' },
@@ -70,7 +71,7 @@ describe('wholesale standalone resend', () => {
 
     it('rotates active share credentials and sessions without sending email', async () => {
         const tx = {
-            $queryRawUnsafe: vi.fn(),
+            $executeRawUnsafe: vi.fn(),
             wholesaleCatalogShare: {
                 findFirst: vi.fn().mockResolvedValue({ artifactStatus: 'READY', activatedAt: new Date(), revokedAt: null, expiresAt: new Date(Date.now() + 60_000) }),
                 update: mocks.shareUpdate,

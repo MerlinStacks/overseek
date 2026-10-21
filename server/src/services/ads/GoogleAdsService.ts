@@ -10,6 +10,7 @@ import { Logger } from '../../utils/logger';
 import { AdMetric, CampaignInsight, DailyTrend, ShoppingProductInsight, SearchKeywordInsight, formatDateISO, formatDateGAQL } from './types';
 import { createGoogleAdsClient, createGoogleAdsRestConfig, parseGoogleAdsError, recordGrpcFailure, extractGrpcErrorMessage, isGoogleAdsTransportError } from './GoogleAdsClient';
 import { GoogleAdsAuth } from './GoogleAdsAuth';
+import { insightRange } from './insightSummary';
 
 function requireGoogleAdsNumericId(value: string, label: string): string {
     if (!/^\d+$/.test(String(value))) {
@@ -63,11 +64,12 @@ export class GoogleAdsService {
     /**
      * Fetch Google Ads insights for the last 30 days.
      */
-    static async getInsights(adAccountId: string): Promise<AdMetric | null> {
+    static async getInsights(adAccountId: string, range?: { startDate: string; endDate: string }): Promise<AdMetric | null> {
+        range = insightRange(range ?? {});
         try {
             const endDate = new Date();
             const startDate = new Date();
-            startDate.setDate(startDate.getDate() - 30);
+            if (!range) startDate.setDate(startDate.getDate() - 30);
 
             const query = `
                 SELECT
@@ -77,7 +79,7 @@ export class GoogleAdsService {
                     metrics.conversions_value,
                     customer.currency_code
                 FROM customer
-                WHERE segments.date BETWEEN '${formatDateGAQL(startDate)}' AND '${formatDateGAQL(endDate)}'
+                WHERE segments.date BETWEEN '${range?.startDate || formatDateGAQL(startDate)}' AND '${range?.endDate || formatDateGAQL(endDate)}'
             `;
 
             const { rows, currency } = await GoogleAdsService.searchRows(adAccountId, query);
@@ -95,8 +97,8 @@ export class GoogleAdsService {
                 clicks: Number(row.metrics.clicks || 0),
                 roas: spend > 0 ? conversionsValue / spend : 0,
                 currency: row.customer?.currencyCode || row.customer?.currency_code || currency,
-                date_start: formatDateISO(startDate),
-                date_stop: formatDateISO(endDate)
+                date_start: range?.startDate || formatDateISO(startDate),
+                date_stop: range?.endDate || formatDateISO(endDate)
             };
 
         } catch (error: any) {
@@ -124,6 +126,7 @@ export class GoogleAdsService {
                 throw err;
             }
 
+            // eslint-disable-next-line preserve-caught-error -- Full gRPC causes contain huge protobuf descriptors that must not be serialized.
             throw new Error(userMessage);
         }
     }
@@ -131,7 +134,7 @@ export class GoogleAdsService {
     /**
      * Fetch campaign-level insights for the last N days.
      */
-    static async getCampaignInsights(adAccountId: string, days: number = 30): Promise<CampaignInsight[]> {
+    static async getCampaignInsights(adAccountId: string, days: number = 30, options: { strict?: boolean } = {}): Promise<CampaignInsight[]> {
         try {
             const endDate = new Date();
             const startDate = new Date();
@@ -179,6 +182,7 @@ export class GoogleAdsService {
                 recordGrpcFailure(adAccountId);
                 Logger.warn('Failed to fetch Google Ads Campaign Insights', { error: msg, adAccountId });
             }
+            if (options.strict) throw error;
             return [];
         }
     }
@@ -226,7 +230,7 @@ export class GoogleAdsService {
     /**
      * Fetch Google Shopping product-level performance.
      */
-    static async getShoppingProducts(adAccountId: string, days: number = 30, limit: number = 200): Promise<ShoppingProductInsight[]> {
+    static async getShoppingProducts(adAccountId: string, days: number = 30, limit: number = 200, options: { strict?: boolean } = {}): Promise<ShoppingProductInsight[]> {
         try {
             const endDate = new Date();
             const startDate = new Date();
@@ -283,6 +287,7 @@ export class GoogleAdsService {
                 recordGrpcFailure(adAccountId);
                 Logger.warn('Failed to fetch Google Shopping Products', { error: msg, adAccountId });
             }
+            if (options.strict) throw error;
             return [];
         }
     }
@@ -477,6 +482,7 @@ export class GoogleAdsService {
             // Handle specific errors
             if (error.message?.includes('immutable')) {
                 Logger.warn('Attempted to update shared/immutable budget', { campaignId });
+                // eslint-disable-next-line preserve-caught-error -- Do not retain full gRPC/protobuf error objects in user-facing errors.
                 throw new Error('Cannot update this budget: It may be a shared budget or immutable.');
             }
             Logger.error('Failed to update Google Ads campaign budget', { error: error.message, code: error.code });

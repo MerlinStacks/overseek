@@ -44,25 +44,31 @@ s:screen.width+'x'+screen.height+':'+window.innerWidth+'x'+window.innerHeight,
 l:(navigator.languages||[]).length
 }}
 function encode(o){try{return btoa(JSON.stringify(o))}catch(e){return''}}
-var f=document.querySelector('form.checkout,form.wc-block-checkout__form');
-if(f){
-f.addEventListener('submit',function(){
+document.addEventListener('submit',function(ev){
+var f=ev.target;
+if(!f||!f.matches||!f.matches('form.checkout,form.wc-block-checkout__form'))return;
 var tk=encode(sig());
 if(!tk)return;
-var inp=document.createElement('input');
+var fields=f.querySelectorAll('input[name="_os_fp"]'),inp=fields[0]||document.createElement('input');
+for(var i=1;i<fields.length;i++)fields[i].remove();
 inp.type='hidden';inp.name='_os_fp';inp.value=tk;
-f.appendChild(inp);
+if(!inp.parentNode)f.appendChild(inp);
 },true);
-}
 var origFetch=window.fetch;
-window.fetch=function(url,opts){
-if(typeof url==='string'&&url.indexOf('/wc/store')!==-1&&url.indexOf('checkout')!==-1&&opts&&opts.method&&opts.method.toUpperCase()==='POST'){
-opts.headers=opts.headers||{};
-if(opts.headers instanceof Headers){opts.headers.set('X-OS-FP',encode(sig()))}
-else if(Array.isArray(opts.headers)){opts.headers.push(['X-OS-FP',encode(sig())])}
-else{opts.headers['X-OS-FP']=encode(sig())}
+if(typeof origFetch==='function')window.fetch=function(input,opts){
+var config=opts;
+try{
+var req=typeof Request!=='undefined'&&input instanceof Request;
+var url=new URL(req?input.url:String(input),window.location.href);
+var method=String(opts&&opts.method||(req?input.method:'GET')).toUpperCase();
+var route=url.searchParams.get('rest_route')||url.pathname;
+if(url.origin===window.location.origin&&/^\\/(?:wp-json\\/)?wc\\/store\\/v[0-9]+\\/checkout\\/?$/.test(route)&&method==='POST'){
+var headers=new Headers(opts&&opts.headers!==undefined?opts.headers:(req?input.headers:undefined));
+var token=encode(sig());
+if(token){headers.set('X-OS-FP',token);config=Object.assign({},opts,{headers:headers})}
 }
-return origFetch.apply(this,arguments);
+}catch(e){}
+return origFetch.call(this,input,config);
 };
 })();`;
 

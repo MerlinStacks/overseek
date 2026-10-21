@@ -1,153 +1,39 @@
+import { useId } from 'react';
 import { useAccountFeature } from '../../hooks/useAccountFeature';
 import { useAccount } from '../../context/AccountContext';
 import { usePermissions } from '../../hooks/usePermissions';
-import { AlertTriangle, Scale, DollarSign, Calculator } from 'lucide-react';
+import { nonnegativeNumber } from '../../utils/responseValidation';
+import { reportMoney } from '../analytics/useReportRequest';
 
 type GoldPriceType = 'none' | 'legacy' | '18ct' | '9ct' | '18ctWhite' | '9ctWhite';
-
-interface ProductGoldPricingData {
-    weight?: string | null;
-    goldPriceType?: Exclude<GoldPriceType, 'none'> | null;
-    isGoldPriceApplied?: boolean;
-}
-
-interface GoldPriceUpdates {
-    isGoldPriceApplied: boolean;
-    goldPriceType: Exclude<GoldPriceType, 'none' | 'legacy'> | null;
-}
-
-interface GoldPricePanelProps {
-    product: ProductGoldPricingData;
-    onChange: (updates: GoldPriceUpdates) => void;
+interface Props {
+    product: { weight?: string | null; goldPriceType?: Exclude<GoldPriceType, 'none'> | null; isGoldPriceApplied?: boolean };
+    onChange: (updates: { isGoldPriceApplied: boolean; goldPriceType: Exclude<GoldPriceType, 'none' | 'legacy'> | null }) => void;
     hasVariants?: boolean;
 }
-
-export function GoldPricePanel({ product, onChange, hasVariants }: GoldPricePanelProps) {
-    const isEnabled = useAccountFeature('GOLD_PRICE_CALCULATOR');
-    const { currentAccount } = useAccount();
-    const { hasPermission } = usePermissions();
-    const canViewCogs = hasPermission('view_cogs');
-
-    // Hide panel if feature is disabled OR user doesn't have COGS permission
-    if (!isEnabled || !canViewCogs) return null;
-
-    // Hide main product gold price panel if variants exist (gold price is set per-variant)
-    if (hasVariants) {
-        return (
-            <div className="bg-amber-50/50 rounded-xl border border-amber-100 p-6">
-                <div className="flex items-center gap-3">
-                    <DollarSign className="text-amber-600" size={20} />
-                    <div>
-                        <h3 className="text-sm font-medium text-gray-900">Gold Price Calculation</h3>
-                        <p className="text-sm text-gray-600 mt-1">
-                            This product has variants. Gold price settings are configured per-variant in the <strong>Variations</strong> tab.
-                        </p>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    const weight = product.weight ? parseFloat(product.weight) : 0;
-
-    // Determine current selection
-    // If goldPriceType is set, use it.
-    // If not, but isGoldPriceApplied is true, treat as "Legacy/Base"
-    const currentType: GoldPriceType = product.goldPriceType || (product.isGoldPriceApplied ? 'legacy' : 'none');
-
-    // Get price based on type
-    const getPrice = (type: GoldPriceType) => {
-        switch (type) {
-            case '18ct': return Number(currentAccount?.goldPrice18ct) || 0;
-            case '9ct': return Number(currentAccount?.goldPrice9ct) || 0;
-            case '18ctWhite': return Number(currentAccount?.goldPrice18ctWhite) || 0;
-            case '9ctWhite': return Number(currentAccount?.goldPrice9ctWhite) || 0;
-            case 'legacy': return Number(currentAccount?.goldPrice) || 0;
-            default: return 0;
-        }
-    };
-
-    const selectedPrice = getPrice(currentType);
-    const calculatedCost = weight * selectedPrice;
-
-    const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const newType = e.target.value as GoldPriceType;
-        if (newType === 'none') {
-            onChange({ isGoldPriceApplied: false, goldPriceType: null });
-        } else if (newType === 'legacy') {
-            onChange({ isGoldPriceApplied: true, goldPriceType: null });
-        } else {
-            onChange({ isGoldPriceApplied: true, goldPriceType: newType });
-        }
-    };
-
-    return (
-        <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
-            <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-amber-50/30">
-                <h2 className="text-lg font-medium text-gray-900 flex items-center gap-2">
-                    <DollarSign className="text-amber-600" size={20} /> Gold Price Calculation
-                </h2>
-
-                <div className="flex items-center gap-2">
-                    <label className="text-sm font-medium text-gray-700">Gold Type:</label>
-                    <select
-                        value={currentType}
-                        onChange={handleTypeChange}
-                        className="block w-40 pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-hidden focus:ring-amber-500 focus:border-amber-500 sm:text-sm rounded-md bg-white"
-                    >
-                        <option value="none">None</option>
-                        <option value="18ct">18ct Gold</option>
-                        <option value="9ct">9ct Gold</option>
-                        <option value="18ctWhite">18ct White Gold</option>
-                        <option value="9ctWhite">9ct White Gold</option>
-                        {currentType === 'legacy' && <option value="legacy">Legacy (Base Price)</option>}
-                    </select>
-                </div>
-            </div>
-
-            <div className="p-6 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                        <div className="text-xs text-gray-500 uppercase font-bold mb-1">Applied Price</div>
-                        <div className="text-xl font-mono text-gray-900">
-                            ${selectedPrice.toFixed(2)} <span className="text-sm text-gray-500">/g</span>
-                        </div>
-                        {currentType !== 'none' && (
-                            <div className="text-xs text-gray-500 mt-1">
-                                Based on {currentType === 'legacy' ? 'Base Price' : currentType} setting
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                        <div className="text-xs text-gray-500 uppercase font-bold mb-1">Product Weight</div>
-                        <div className="flex items-center gap-2">
-                            <Scale size={16} className="text-gray-400" />
-                            <div className="text-xl font-mono text-gray-900">{weight > 0 ? weight : '--'} g</div>
-                        </div>
-                        {!weight && <p className="text-xs text-red-500 mt-1">Missing weight from sync</p>}
-                    </div>
-
-                    <div className={`p-4 border rounded-lg ${currentType !== 'none' ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200 opacity-50'}`}>
-                        <div className="text-xs text-gray-500 uppercase font-bold mb-1">Calculated COGS</div>
-                        <div className="flex items-center gap-2">
-                            <Calculator size={16} className="text-gray-400" />
-                            <div className="text-xl font-mono text-gray-900">
-                                ${calculatedCost.toFixed(2)}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {currentType !== 'none' && (
-                    <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 p-3 rounded-md border border-amber-100">
-                        <AlertTriangle size={16} className="mt-0.5" />
-                        <p>
-                            This calculated cost (${calculatedCost.toFixed(2)}) will override all manual COGS or BOM cost for margin reports.
-                        </p>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
+const types: Array<[GoldPriceType, string]> = [['none', 'None'], ['18ct', '18ct Gold'], ['9ct', '9ct Gold'], ['18ctWhite', '18ct White Gold'], ['9ctWhite', '9ct White Gold']];
+export function GoldPricePanel({ product, onChange, hasVariants }: Props) {
+    const isEnabled = useAccountFeature('GOLD_PRICE_CALCULATOR'); const { currentAccount } = useAccount();
+    const { hasPermission } = usePermissions(); const id = useId();
+    if (!isEnabled || !hasPermission('view_cogs') || !currentAccount) return null;
+    if (hasVariants) return <section className="p-6 rounded-xl bg-amber-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"><h2 className="font-semibold">Gold Price Calculation</h2><p>Gold price settings are configured per-variant in the Variations tab.</p></section>;
+    const currentType = product.goldPriceType || (product.isGoldPriceApplied ? 'legacy' : 'none');
+    const knownType = currentType === 'legacy' || types.some(([type]) => type === currentType);
+    const weight = nonnegativeNumber(product.weight);
+    const rates = { legacy: currentAccount.goldPrice, '18ct': currentAccount.goldPrice18ct, '9ct': currentAccount.goldPrice9ct, '18ctWhite': currentAccount.goldPrice18ctWhite, '9ctWhite': currentAccount.goldPrice9ctWhite };
+    const price = currentType !== 'none' && knownType ? nonnegativeNumber(rates[currentType as keyof typeof rates]) : null;
+    const calculated = price !== null && weight !== null && weight > 0 && Number.isFinite(price * weight) ? price * weight : null;
+    const currency = currentAccount.goldPriceCurrency || currentAccount.currency;
+    const money = (amount: number | null) => amount === null ? 'Unavailable' : reportMoney(amount, currency);
+    return <section aria-label="Gold pricing" className="p-6 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 space-y-4">
+        <div className="flex flex-wrap justify-between gap-3 items-center"><h2 className="font-semibold">Gold Price Calculation</h2><label htmlFor={id}>Gold Type:</label><select id={id} value={currentType} onChange={event => {
+            const value = event.target.value;
+            if (value === 'none') onChange({ isGoldPriceApplied: false, goldPriceType: null });
+            else if (value === 'legacy') onChange({ isGoldPriceApplied: true, goldPriceType: null });
+            else if (types.some(([type]) => type === value)) onChange({ isGoldPriceApplied: true, goldPriceType: value as Exclude<GoldPriceType, 'none' | 'legacy'> });
+        }} className="p-2 border rounded-lg bg-white dark:bg-slate-900 dark:border-slate-600">{types.map(([value, label]) => <option key={value} value={value}>{label}</option>)}{currentType === 'legacy' && <option value="legacy">Legacy (Base Price)</option>}{!knownType && <option value={currentType}>Unknown gold type</option>}</select></div>
+        <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4"><div><dt>Applied Price</dt><dd className="font-semibold">{currentType === 'none' ? 'Not applied' : `${money(price)} /g`}</dd></div><div><dt>Product Weight</dt><dd className="font-semibold">{weight !== null && weight > 0 ? `${weight} g` : 'Unavailable'}</dd></div><div><dt>Calculated COGS</dt><dd className="font-semibold">{currentType === 'none' ? 'Not applied' : money(calculated)}</dd></div></dl>
+        {currentType !== 'none' && currency !== currentAccount.currency && <p role="status">Gold rates use {currency}, which differs from the account currency ({currentAccount.currency}). No currency conversion is performed here.</p>}
+        {currentType !== 'none' && (calculated === null ? <p role="status" className="text-amber-800 dark:text-amber-300">A valid gold type, configured rate, and positive product weight are required. Cost cannot be calculated.</p> : <p className="text-sm text-amber-800 dark:text-amber-300">Calculated gold cost: {money(calculated)}. Gold pricing takes precedence over manual COGS and BOM costs when applied.</p>)}
+    </section>;
 }

@@ -82,6 +82,19 @@ describe('MetaCAPIService', () => {
         expect(userData.fbp).toBe('fb.1.456');
     });
 
+    it('Google braid and GA session context do not change Meta purchase payloads or deduplication', async () => {
+        const data = { ...purchaseData, occurredAt: '2026-10-21T12:00:00Z' };
+        await service.sendEvent(accountId, config, data, session);
+        const originalBody = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        await service.sendEvent(accountId, config, {
+            ...data, clickId: 'google-private-click', clickPlatform: 'google', clickIdType: 'wbraid',
+            payload: { ...data.payload, gaSessionIds: { STREAM: '1770000123' } },
+        }, session);
+        const enrichedBody = JSON.parse((global.fetch as any).mock.calls[1][1].body);
+        expect(enrichedBody).toEqual(originalBody);
+        expect(enrichedBody.data[0].event_id).toBe(purchaseData.eventId);
+    });
+
     it('should construct fbc from a top-level Facebook click ID', async () => {
         const viewData = {
             ...purchaseData,

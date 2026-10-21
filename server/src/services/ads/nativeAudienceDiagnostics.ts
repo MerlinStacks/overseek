@@ -11,7 +11,7 @@ export function sanitizeAudienceErrorText(value: unknown, secrets: string[] = []
         .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email redacted]')
         .replace(/\b[a-f0-9]{64}\b/gi, '[hash redacted]')
         .replace(/<[^>]*>/g, '')
-        .replace(/[\x00-\x1f\x7f]/g, ' ')
+        .replace(/[\x00-\x1f\x7f]/g, ' ') // eslint-disable-line no-control-regex -- Sanitize control characters from platform diagnostics.
         .replace(/\s+/g, ' ').trim().slice(0, 1200);
 }
 

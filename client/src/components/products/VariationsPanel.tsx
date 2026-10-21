@@ -12,9 +12,11 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import { Logger } from '../../utils/logger';
-import { calculateTotalBomCost } from '../../utils/bomUtils';
-import { ProductVariant } from './variantTypes';
+import { bomNumber, validBOMValues } from './bom/bomValues';
+import { ProductVariant, parseVariantStock } from './variantTypes';
 import { VariantTableRow } from './VariantTableRow';
+import { useScopedMutation } from '../../hooks/useScopedMutation';
+import { isRecord } from '../../utils/responseValidation';
 import { VariantExpandedDetails } from './VariantExpandedDetails';
 import type { VariationProductionEditor } from './ProductionRangeFields';
 
@@ -36,7 +38,11 @@ export interface VariationsPanelRef {
     saveAllBOMs: () => Promise<boolean>;
 }
 
-export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelProps>(function VariationsPanel({ product, variants, suppliers = [], parentSupplierId, onUpdate, production }, ref) {
+export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelProps>(function VariationsPanel(props, ref) {
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    return <ScopedVariationsPanel key={JSON.stringify([token, currentAccount?.id, props.product.id, props.product.wooId])} {...props} ref={ref} />;
+});
+const ScopedVariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelProps>(function ScopedVariationsPanel({ product, variants, suppliers = [], parentSupplierId, onUpdate, production }, ref) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -47,13 +53,17 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
 
     const [stockEditValues, setStockEditValues] = useState<Record<number, string>>({});
     const [savingStockId, setSavingStockId] = useState<number | null>(null);
+    const stockMutation = useScopedMutation();
+    const expansion = useScopedMutation();
     const bomPanelRefs = useRef<Map<number, BOMPanelRef | null>>(new Map());
-    const variantIdsRef = useRef<string>('');
     const [bomCogsMap, setBomCogsMap] = useState<Record<number, number | null>>({});
     const [bomCogsLoading, setBomCogsLoading] = useState(true);
     /** Tracks which variants have BOM items, independent of COGS visibility */
     const [bomExistsMap, setBomExistsMap] = useState<Record<number, boolean>>({});
     const lastSyncedVariantsRef = useRef<ProductVariant[]>(variants);
+    const accountId = currentAccount?.id;
+    const variantIds = variants.map(variant => variant.id).sort((a, b) => a - b).join(',');
+    const [bomAttempt, setBomAttempt] = useState(0);
 
     /**
      * Calculate gold price COGS for a variant.
@@ -78,11 +88,12 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
 
     // Why: useCallback so the function identity only changes when bomPanelRefs is reassigned (never)
     const saveAllBOMs = useCallback(async (): Promise<boolean> => {
+        if (stockMutation.isPending() || expansion.isPending()) return false;
         const refs = Array.from(bomPanelRefs.current.values()).filter(r => r !== null);
         if (refs.length === 0) return true;
         const results = await Promise.all(refs.map(r => r!.save()));
         return results.every(success => success);
-    }, []);
+    }, [stockMutation, expansion]);
 
     useImperativeHandle(ref, () => ({ saveAllBOMs }), [saveAllBOMs]);
 
@@ -96,51 +107,63 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
 
     // Fetch BOM existence (always) and COGS (when permitted) for all variants
     useEffect(() => {
-        if (!token || !currentAccount || variants.length === 0) {
+        if (!token || !accountId || !variantIds) {
             setBomCogsLoading(false);
             return;
         }
-        const currentVariantIds = variants.map(v => v.id).sort().join(',');
-        if (currentVariantIds === variantIdsRef.current) return;
-        variantIdsRef.current = currentVariantIds;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        let disposed = false;
 
         const fetchAllBomData = async () => {
             setBomCogsLoading(true);
             const newBomCogsMap: Record<number, number | null> = {};
             const newBomExistsMap: Record<number, boolean> = {};
 
-            await Promise.all(variants.map(async (v) => {
+            await Promise.all(variantIds.split(',').map(Number).map(async (id) => {
                 try {
-                    const res = await fetch(`/api/inventory/products/${product.id}/bom?variationId=${v.id}`, {
-                        headers: { 'Authorization': `Bearer ${token}`, 'x-account-id': currentAccount.id }
+                    const res = await fetch(`/api/inventory/products/${product.id}/bom?variationId=${id}`, {
+                        signal: controller.signal,
+                        headers: { 'Authorization': `Bearer ${token}`, 'x-account-id': accountId }
                     });
                     if (res.ok) {
                         const data = await res.json();
+                        if (!Array.isArray(data.items)) throw new Error('Invalid BOM');
                         const hasItems = data.items?.length > 0;
-                        newBomExistsMap[v.id] = hasItems;
+                        newBomExistsMap[id] = hasItems;
                         if (hasItems && canViewCogs) {
-                            newBomCogsMap[v.id] = calculateTotalBomCost(data.items);
+                            const cost = data.items.reduce((sum: number, item: unknown) => {
+                                if (!isRecord(item)) return NaN;
+                                const source = [item.internalProduct, item.childVariation, item.childProduct, item.supplierItem].find(isRecord);
+                                const quantity = bomNumber(item.quantity); const wasteFactor = bomNumber(item.wasteFactor);
+                                const unitCost = bomNumber(source === item.supplierItem ? source?.cost : source?.cogs);
+                                return sum + (validBOMValues({ quantity, wasteFactor }) ? unitCost * quantity * (1 + wasteFactor) : NaN);
+                            }, 0);
+                            newBomCogsMap[id] = Number.isFinite(cost) ? cost : null;
                         } else {
-                            newBomCogsMap[v.id] = null;
+                            newBomCogsMap[id] = null;
                         }
                     }
                 } catch (err) {
-                    Logger.error('Failed to fetch BOM for variant', { variantId: v.id, error: err });
-                    newBomCogsMap[v.id] = null;
-                    newBomExistsMap[v.id] = false;
+                    if (!controller.signal.aborted) Logger.error('Failed to fetch BOM for variant', { variantId: id, error: err });
+                    newBomCogsMap[id] = null;
                 }
             }));
 
+            clearTimeout(timeout);
+            if (disposed) return;
             setBomCogsMap(newBomCogsMap);
             setBomExistsMap(newBomExistsMap);
             setBomCogsLoading(false);
         };
         fetchAllBomData();
-    }, [token, currentAccount, product.id, variants, canViewCogs]);
+        return () => { disposed = true; controller.abort(); clearTimeout(timeout); };
+    }, [token, accountId, product.id, variantIds, canViewCogs, bomAttempt]);
 
     const handleFieldChange = useCallback((id: number, field: keyof ProductVariant, value: ProductVariant[keyof ProductVariant]) => {
+        if (stockMutation.isPending()) return;
         setEditingVariants(prev => prev.map(v => v.id === id ? { ...v, [field]: value } : v));
-    }, []);
+    }, [stockMutation]);
 
     // Why: reference comparison always triggered because setEditingVariants creates new arrays.
     // Use JSON comparison to detect actual value changes.
@@ -153,75 +176,68 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
         }
     }, [editingVariants, onUpdate]);
 
-    const handleBomCogsUpdate = useCallback((variantId: number, cogs: number, hasItems: boolean) => {
+    const handleBomCogsUpdate = useCallback((variantId: number, cogs: number | null, hasItems: boolean) => {
         setBomCogsMap(prev => ({ ...prev, [variantId]: hasItems ? cogs : null }));
         setBomExistsMap(prev => ({ ...prev, [variantId]: hasItems }));
     }, []);
 
     /** Update local variant stock after a BOM sync pushes new stock to WooCommerce */
     const handleSyncComplete = useCallback((variantId: number, newStock: number) => {
-        setEditingVariants(prev => {
-            const updated = prev.map(v => v.id === variantId ? { ...v, stockQuantity: newStock } : v);
-            if (onUpdate) onUpdate(updated);
-            return updated;
-        });
+        setEditingVariants(prev => prev.map(v => v.id === variantId ? { ...v, stockQuantity: newStock } : v));
         setStockEditValues(prev => ({ ...prev, [variantId]: newStock.toString() }));
-    }, [onUpdate]);
+    }, []);
 
     const hasVariations = product.type?.includes('variable') || (product.variations && product.variations.length > 0);
     if (!hasVariations) return null;
 
     const toggleExpand = async (id: number) => {
-        if (expandedId !== null && expandedId !== id) {
-            const currentRef = bomPanelRefs.current.get(expandedId);
-            if (currentRef) await currentRef.save();
-        }
-        if (expandedId === id) {
-            const currentRef = bomPanelRefs.current.get(id);
-            if (currentRef) await currentRef.save();
-        }
-        setExpandedId(expandedId === id ? null : id);
+        if (stockMutation.isPending() || expansion.isPending()) return;
+        if (expandedId === null) { setExpandedId(id); return; }
+        const result = await expansion.run(async () => {
+            const currentRef = expandedId !== null ? bomPanelRefs.current.get(expandedId) : null;
+            if (currentRef && !await currentRef.save()) throw new Error('BOM not saved');
+        }, 'Could not save the current BOM. Resolve its errors before changing variants.');
+        if (result.ok) setExpandedId(expandedId === id ? null : id);
     };
 
     const handleMultiFieldChange = (id: number, updates: Partial<ProductVariant>) => {
+        if (stockMutation.isPending()) return;
         setEditingVariants(prev => prev.map(v => v.id === id ? { ...v, ...updates } : v));
     };
 
     const handleStockAdjust = (variantId: number, delta: number) => {
-        const current = parseInt(stockEditValues[variantId] ?? '0', 10) || 0;
-        setStockEditValues(prev => ({ ...prev, [variantId]: Math.max(0, current + delta).toString() }));
+        if (stockMutation.isPending()) return;
+        setStockEditValues(prev => { const current = parseVariantStock(prev[variantId] ?? ''); return current === null || !Number.isSafeInteger(current + delta) ? prev : { ...prev, [variantId]: Math.max(0, current + delta).toString() }; });
     };
 
     const handleStockSave = async (variantId: number) => {
-        if (!token || !currentAccount) return;
-        const newStock = parseInt(stockEditValues[variantId] ?? '', 10);
-        if (isNaN(newStock) || newStock < 0) return;
+        if (!token || !currentAccount || stockMutation.isPending() || expansion.isPending() || bomCogsLoading || bomExistsMap[variantId] !== false) return;
+        const newStock = parseVariantStock(stockEditValues[variantId] ?? '');
+        if (newStock === null) return;
 
         setSavingStockId(variantId);
-        try {
+        const result = await stockMutation.run(async signal => {
             const res = await fetch(`/api/products/${product.wooId}/variants/${variantId}/stock`, {
+                signal,
                 method: 'PUT',
                 headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ stockQuantity: newStock })
             });
 
-            if (res.ok) {
-                const updated = editingVariants.map(v => v.id === variantId ? { ...v, stockQuantity: newStock } : v);
-                setEditingVariants(updated);
-                if (onUpdate) onUpdate(updated);
-            } else {
-                const data = await res.json();
-                Logger.error('Failed to save variant stock', { error: data.error, variantId });
-            }
-        } catch (err) {
-            Logger.error('Failed to save variant stock', { error: err, variantId });
-        } finally {
+            if (!res.ok) throw new Error('Stock save rejected');
+            const data: unknown = await res.json();
+            if (!isRecord(data) || data.success !== true || data.variantWooId !== variantId || data.stockQuantity !== newStock) throw new Error('Invalid stock confirmation');
+        }, 'Could not confirm stock save. Check the product before retrying.');
+        if (result.ok) setEditingVariants(prev => prev.map(v => v.id === variantId ? { ...v, stockQuantity: newStock } : v));
+        if (stockMutation.isActive()) {
             setSavingStockId(null);
         }
     };
 
     return (
         <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {stockMutation.error && <p role="alert">{stockMutation.error}</p>}{expansion.error && <p role="alert">{expansion.error}</p>}
+            {!bomCogsLoading && !!token && !!accountId && variants.some(variant => bomExistsMap[variant.id] === undefined) && <p role="alert">Some BOM status checks failed; stock editing is locked for those variants. <button type="button" disabled={stockMutation.busy} onClick={() => setBomAttempt(value => value + 1)}>Retry BOM checks</button></p>}
             <div className="px-6 py-4 border-b border-gray-100/50 bg-white/30 flex justify-between items-center">
                 <div className="flex items-center gap-2">
                     <Layers size={16} className="text-blue-600" />
@@ -258,10 +274,13 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
                                         onToggleExpand={() => toggleExpand(v.id)}
                                         onFieldChange={(field, value) => handleFieldChange(v.id, field, value)}
                                         stockEditValue={stockEditValues[v.id] ?? ''}
-                                        onStockEditChange={(val) => setStockEditValues(prev => ({ ...prev, [v.id]: val }))}
+                                        onStockEditChange={(val) => { if (!stockMutation.isPending()) setStockEditValues(prev => ({ ...prev, [v.id]: val })); }}
                                         onStockAdjust={(delta) => handleStockAdjust(v.id, delta)}
                                         onStockSave={() => handleStockSave(v.id)}
                                         isSavingStock={savingStockId === v.id}
+                                        disabled={stockMutation.busy || expansion.busy}
+                                        stockUnavailable={bomCogsLoading || bomExistsMap[v.id] === undefined}
+                                        currency={currentAccount?.currency}
                                         hasBOM={!!bomExistsMap[v.id]}
                                     />
                                     {expandedId === v.id && (
@@ -291,6 +310,8 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
                                             canViewCogs={canViewCogs}
                                             isGoldPriceEnabled={isGoldPriceEnabled}
                                             bomCogs={bomCogsMap[v.id] ?? null}
+                                            hasBOM={bomExistsMap[v.id]}
+                                            currency={currentAccount?.currency}
                                             bomCogsLoading={bomCogsLoading}
                                             calculateGoldCogs={calculateGoldCogs}
                                         />

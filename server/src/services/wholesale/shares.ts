@@ -17,7 +17,7 @@ function customerSnapshot(customer: any) {
 }
 
 function safeShare(share: any) {
-    const { tokenHash, passwordHash, personalizedPdfPath, personalizedPagesPath, ...result } = share;
+    const { tokenHash: _tokenHash, passwordHash: _passwordHash, personalizedPdfPath: _personalizedPdfPath, personalizedPagesPath: _personalizedPagesPath, ...result } = share;
     return { ...result, status: deriveShareStatus(share) };
 }
 

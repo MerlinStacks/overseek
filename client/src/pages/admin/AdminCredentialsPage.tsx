@@ -163,13 +163,17 @@ function useCredentials() {
                 setMessage({ type: 'error', text: 'Host, port, username, and password are required to test.' });
                 return;
             }
+            if (!/^\d+$/.test(smtpData.port) || Number(smtpData.port) < 1 || Number(smtpData.port) > 65535) {
+                setMessage({ type: 'error', text: 'SMTP port must be an integer from 1 to 65535.' });
+                return;
+            }
 
             const res = await fetch('/api/admin/platform-smtp/test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders },
                 body: JSON.stringify({
                     host: smtpData.host,
-                    port: parseInt(smtpData.port),
+                    port: Number(smtpData.port),
                     username: smtpData.username,
                     password: smtpData.password,
                     secure: smtpData.secure === 'true'

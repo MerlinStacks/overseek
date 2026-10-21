@@ -12,6 +12,7 @@ import { cacheAside, cacheDelete, CacheTTL } from '../../utils/cache';
 import { Logger } from '../../utils/logger';
 import { geoipLookupSync } from './GeoIPService';
 import { CRAWLER_REGISTRY, CrawlerIdentity, CATEGORY_META } from './CrawlerRegistry';
+import { createHash } from 'crypto';
 
 const CACHE_NS = 'crawlers';
 
@@ -24,7 +25,7 @@ const CACHE_NS = 'crawlers';
  * @returns Matched CrawlerIdentity or null if no pattern matches
  */
 export function identifyCrawler(userAgent: string): CrawlerIdentity | null {
-    if (!userAgent) return null;
+    if (typeof userAgent !== 'string' || !userAgent || userAgent.length > 2000) return null;
 
     const ua = userAgent.toLowerCase();
 
@@ -57,6 +58,7 @@ export async function logHitIfIdentifiable(
     ipAddress?: string
 ): Promise<void> {
     try {
+        if (typeof accountId !== 'string' || !accountId.trim() || typeof userAgent !== 'string' || !userAgent || userAgent.length > 2000) return;
         const crawler = identifyCrawler(userAgent);
 
         // For unknown bots: only log if the UA contains a recognisable bot signal word.
@@ -86,7 +88,9 @@ export async function logHitIfIdentifiable(
         }
 
         // For unknown bots, derive a stable slug from the first 40 chars of the UA.
-        const slug = crawler?.slug ?? ('unknown:' + userAgent.substring(0, 40).toLowerCase().replace(/[^a-z0-9-_]/g, '_'));
+        // Bounded unknown-UA sample buckets: full UA affects identity, not just its common prefix.
+        const signal = BOT_SIGNALS.find(value => ua.includes(value)) || 'bot';
+        const slug = crawler?.slug ?? `unknown:${signal}:${createHash('sha256').update(ua).digest('hex').slice(0, 2)}`;
         const category = crawler?.category ?? 'unknown';
 
         // Truncate to midnight UTC for daily bucketing
@@ -139,6 +143,7 @@ export async function logHitIfIdentifiable(
  * @returns Array of lowercase UA patterns to block
  */
 export async function getBlockedPatterns(accountId: string): Promise<string[]> {
+    if (typeof accountId !== 'string' || !accountId.trim()) throw new Error('Account required');
     return cacheAside(
         `blocked-patterns:${accountId}`,
         async () => {
@@ -171,6 +176,7 @@ export async function invalidateBlockedPatternsCache(accountId: string): Promise
  * @returns HTML string or null (use default template)
  */
 export async function getBlockPageHtml(accountId: string): Promise<string | null> {
+    if (typeof accountId !== 'string' || !accountId.trim()) throw new Error('Account required');
     const cached = await cacheAside(
         `block-page:${accountId}`,
         async () => {
@@ -252,6 +258,7 @@ function humanizeUnknownSlug(slug: string): string {
  * @param accountId - The newly created account ID
  */
 export async function seedDefaultBlockRules(accountId: string): Promise<void> {
+    if (typeof accountId !== 'string' || !accountId.trim()) throw new Error('Account required');
     const toBlock = CRAWLER_REGISTRY.filter(
         c => c.intent === 'harmful' || c.category === 'http_client'
     );
@@ -291,9 +298,11 @@ export async function seedDefaultBlockRules(accountId: string): Promise<void> {
  * @param days - Number of days to aggregate
  */
 export async function getCrawlerStats(accountId: string, days: number = 30) {
+    if (typeof accountId !== 'string' || !accountId.trim() || !Number.isInteger(days) || days < 1 || days > 365) throw new Error('Invalid crawler scope or days');
     const since = new Date();
-    since.setDate(since.getDate() - days);
     since.setUTCHours(0, 0, 0, 0);
+    const today = new Date(since);
+    since.setUTCDate(since.getUTCDate() - days + 1);
 
     const [logs, rules, totalHits24h, latestCountries] = await Promise.all([
         // Why no 'country' in groupBy: including it causes duplicate rows for
@@ -311,7 +320,7 @@ export async function getCrawlerStats(accountId: string, days: number = 30) {
         prisma.crawlerLog.aggregate({
             where: {
                 accountId,
-                date: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+                date: { gte: today }
             },
             _sum: { hitCount: true, blockedHitCount: true }
         }),
@@ -339,12 +348,12 @@ export async function getCrawlerStats(accountId: string, days: number = 30) {
             category: log.category,
             categoryLabel: CATEGORY_META[log.category as keyof typeof CATEGORY_META]?.label || 'Unknown',
             categoryEmoji: CATEGORY_META[log.category as keyof typeof CATEGORY_META]?.emoji || '❓',
-            owner: identity?.owner || 'Unknown',
+            owner: identity?.owner ? `${identity.owner} (claimed by user agent; unverified)` : 'Unknown',
             description: identity?.description || '',
             website: identity?.website || '',
             intent: identity?.intent || 'neutral',
             country: countryMap.get(log.crawlerName) || null,
-            totalHits: log._sum.hitCount || 0,
+            totalHits: (log._sum.hitCount || 0) + (log._sum.blockedHitCount || 0),
             blockedHits: log._sum.blockedHitCount || 0,
             action: rule?.action || 'ALLOW',
             ruleReason: rule?.reason || null,
@@ -353,8 +362,10 @@ export async function getCrawlerStats(accountId: string, days: number = 30) {
 
     return {
         crawlers,
-        totalHits24h: totalHits24h._sum.hitCount || 0,
-        totalBlockedHits24h: totalHits24h._sum.blockedHitCount || 0,
+        totalHitsToday: (totalHits24h._sum.hitCount || 0) + (totalHits24h._sum.blockedHitCount || 0),
+        totalRuleMatchedHitsToday: totalHits24h._sum.blockedHitCount || 0,
+        timeBasis: 'UTC-calendar-day',
+        hitBasis: 'UA observations; rule matches are not confirmed blocking; unknown identities are bounded sample buckets',
         uniqueCrawlers: new Set(logs.map(l => l.crawlerName)).size,
         blockedCount: rules.filter(r => r.action === 'BLOCK').length,
         rules,

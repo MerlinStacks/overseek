@@ -29,6 +29,14 @@ const jsonResponse = (body: unknown) => ({
 });
 
 describe('GoldPrice Feature Verification', () => {
+    it('preserves an explicitly configured zero margin during a market refresh', async () => {
+        vi.mocked(prisma.account.findUnique).mockResolvedValue({ id: 'account', currency: 'EUR', goldPriceMargin: 0 } as any);
+        const fetchPrice = vi.spyOn(GoldPriceService, 'fetchLivePrice').mockResolvedValue(100);
+        try {
+            await GoldPriceService.updateAccountPrices('account');
+            expect(prisma.account.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ goldPrice18ct: 75, goldPrice9ct: 37.5 }) }));
+        } finally { fetchPrice.mockRestore(); }
+    });
     const accountId = 'test-account-id';
 
     beforeEach(() => {

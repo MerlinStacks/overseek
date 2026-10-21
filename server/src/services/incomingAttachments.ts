@@ -18,7 +18,7 @@ export function storeIncomingAttachments(mail: Pick<ParsedMail, 'html' | 'attach
         const extension = type.split('/')[1]?.replace(/[^a-z0-9]/gi, '') || 'bin';
         const filename = attachment.filename || `attachment-${index + 1}.${extension}`;
         // MIME filenames are untrusted and can contain Windows or Unix path separators.
-        const safeName = filename.replace(/[\\/\x00-\x1f\x7f]/g, '_');
+        const safeName = filename.replace(/[\\/\x00-\x1f\x7f]/g, '_'); // eslint-disable-line no-control-regex -- Sanitize control characters from attachment names.
         const storageName = `${randomUUID()}-${safeName}`;
         fs.writeFileSync(path.join(directory, storageName), attachment.content);
         const url = getAttachmentUrl(storageName);

@@ -1,154 +1,78 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
-import { Logger } from '../../utils/logger';
-import { ShoppingCart, CreditCard, LogOut, CheckCircle } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { useScopedMutation } from '../../hooks/useScopedMutation';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { WidgetLoadingState, WidgetEmptyState, WidgetErrorState } from './WidgetState';
+import { isRecord } from '../../utils/responseValidation';
+import { toValidDate } from '../../utils/format';
+import { reportMoney } from '../analytics/useReportRequest';
+import { RelativeTime } from '../ui/RelativeTime';
 
-interface EcommerceItem {
-    name?: string;
+interface Event {
+    id: string; type: string; createdAt: string;
+    payload?: { items?: Array<{ name?: string | null }>; total?: number | string | null; currency?: string | null } | null;
+    session?: { email?: string | null; city?: string | null; country?: string | null } | null;
 }
-
-interface EcommercePayload {
-    items?: EcommerceItem[];
-    total?: number;
+function amount(value: unknown): number | null {
+    if (value == null) return null;
+    const number = typeof value === 'number' ? value : typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value.trim()) ? Number(value) : NaN;
+    if (!Number.isFinite(number)) throw new Error('Invalid event total');
+    return number;
 }
-
-interface AnalyticsEvent {
-    id: string;
-    type: string;
-    createdAt: string;
-    payload?: EcommercePayload;
-    pageTitle?: string;
-    session?: {
-        visitorId: string;
-        email?: string;
-        city?: string;
-        country?: string;
-    };
+function decodeEvents(value: unknown): Event[] {
+    if (!isRecord(value) || !Array.isArray(value.data) || !value.data.every(item => {
+        if (!isRecord(item) || !['id', 'type', 'createdAt'].every(key => typeof item[key] === 'string')) return false;
+        if (item.session != null && (!isRecord(item.session) || !['email', 'city', 'country'].every(key => (item.session as Record<string, unknown>)[key] == null || typeof (item.session as Record<string, unknown>)[key] === 'string'))) return false;
+        if (item.payload == null) return true;
+        if (!isRecord(item.payload)) return false;
+        const payload = item.payload;
+        if (payload.items != null && (!Array.isArray(payload.items) || !payload.items.every(product => isRecord(product) && (product.name == null || typeof product.name === 'string')))) return false;
+        if (payload.currency != null && (typeof payload.currency !== 'string' || !/^[A-Z]{3}$/i.test(payload.currency))) return false;
+        amount(payload.total); return true;
+    })) throw new Error('Invalid ecommerce stream');
+    return value.data;
 }
-
-interface EcommerceLogResponse {
-    data?: AnalyticsEvent[];
+function eventLabel(event: Event) {
+    const who = event.session?.email || 'Guest';
+    const total = amount(event.payload?.total);
+    const money = total === null ? '' : ` (${reportMoney(total, event.payload?.currency ?? undefined)})`;
+    switch (event.type) {
+        case 'add_to_cart': {
+            const names = event.payload?.items?.map(item => item.name).filter((name): name is string => typeof name === 'string' && !!name) ?? [];
+            return `${who} added ${names.slice(0, 2).join(', ') || 'items'}${names.length > 2 ? ` +${names.length - 2} more` : ''}${money}`;
+        }
+        case 'remove_from_cart': return `${who} removed items from cart`;
+        case 'cart_view': return `${who} viewed cart${money}`;
+        case 'checkout_view': return `${who} viewed checkout${money}`;
+        case 'checkout_start': return `${who} started checkout`;
+        case 'purchase': case 'checkout_success': return `${who} completed a purchase${money}`;
+        default: return `${who} performed ${event.type}`;
+    }
 }
-
-const EcommerceLogWidget = () => {
-    const [events, setEvents] = useState<AnalyticsEvent[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-
+export default function EcommerceLogWidget() {
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p role="status">Select an account to view ecommerce activity.</p>;
+    return <AccountLog key={JSON.stringify([token, currentAccount.id])} token={token} accountId={currentAccount.id} />;
+}
+function AccountLog({ token, accountId }: { token: string; accountId: string }) {
+    const [events, setEvents] = useState<Event[] | null>(null);
+    const { run, busy, error, isPending, isActive } = useScopedMutation();
     const fetchLog = useCallback(async () => {
-        if (!token || !currentAccount) return;
-
-        try {
-            const res = await fetch('/api/analytics/ecommerce/log?limit=20&live=true', {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
-                }
-            });
-            if (!res.ok) {
-                throw new Error(`HTTP ${res.status}`);
-            }
-            const json = await res.json() as EcommerceLogResponse;
-            setEvents(Array.isArray(json.data) ? json.data : []);
-            setError(null);
-        } catch (err) {
-            Logger.error('An error occurred', { error: err });
-            setError('Failed to load ecommerce stream');
-        } finally {
-            setLoading(false);
-        }
-    }, [currentAccount, token]);
-
-    useVisibilityPolling(fetchLog, 15000, [fetchLog], 'ecommerce-log');
-
-    const getIcon = (type: string) => {
-        switch (type) {
-            case 'add_to_cart': return <ShoppingCart className="w-4 h-4 text-emerald-500" />;
-            case 'remove_from_cart': return <LogOut className="w-4 h-4 text-rose-400" />;
-            case 'cart_view': return <ShoppingCart className="w-4 h-4 text-amber-500" />;
-            case 'checkout_view': return <CreditCard className="w-4 h-4 text-amber-500" />;
-            case 'checkout_start': return <CreditCard className="w-4 h-4 text-blue-500" />;
-            case 'checkout_success':
-            case 'purchase': return <CheckCircle className="w-4 h-4 text-green-600" />;
-            default: return <ShoppingCart className="w-4 h-4 text-slate-400 dark:text-slate-500" />;
-        }
-    };
-
-    const getLabel = (event: AnalyticsEvent) => {
-        const who = event.session?.email || 'Guest';
-        switch (event.type) {
-            case 'add_to_cart': {
-                const products = event.payload?.items?.map((item) => item.name).filter(Boolean).slice(0, 2);
-                const productLabel = products?.length
-                    ? products.join(', ') + ((event.payload?.items?.length || 0) > 2 ? ` +${(event.payload?.items?.length || 0) - 2} more` : '')
-                    : 'items';
-                const total = event.payload?.total ? ` ($${event.payload.total})` : '';
-                return <span><span className="font-semibold text-slate-800 dark:text-slate-200">{who}</span> added <span className="text-slate-700 dark:text-slate-300">{productLabel}</span>{total}</span>;
-            }
-            case 'remove_from_cart':
-                return <span><span className="font-semibold text-slate-800 dark:text-slate-200">{who}</span> removed items from cart</span>;
-            case 'checkout_start':
-                return <span><span className="font-semibold text-slate-800 dark:text-slate-200">{who}</span> started checkout</span>;
-            case 'checkout_success':
-            case 'purchase':
-                return <span><span className="font-semibold text-emerald-700 dark:text-emerald-400">{who} completed a purchase!</span></span>;
-            case 'cart_view': {
-                const cartTotal = event.payload?.total ? ` ($${event.payload.total})` : '';
-                return <span><span className="font-semibold text-slate-800 dark:text-slate-200">{who}</span> viewed cart{cartTotal}</span>;
-            }
-            case 'checkout_view': {
-                const checkoutTotal = event.payload?.total ? ` ($${event.payload.total})` : '';
-                return <span><span className="font-semibold text-slate-800 dark:text-slate-200">{who}</span> viewing checkout{checkoutTotal}</span>;
-            }
-            default:
-                return <span>{who} performed {event.type}</span>;
-        }
-    };
-
-    if (loading && events.length === 0) {
-        return <WidgetLoadingState message="Loading stream..." />;
-    }
-
-    if (error && events.length === 0) {
-        return <WidgetErrorState message={error} onRetry={fetchLog} />;
-    }
-
-    return (
-        <div className="h-full overflow-y-auto custom-scrollbar p-2 space-y-2">
-            {events.length === 0 ? (
-                <WidgetEmptyState message="No recent commerce activity" />
-            ) : (
-                events.map((event) => (
-                    <div key={event.id} className="flex gap-3 p-3 bg-white dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/50 rounded-lg shadow-xs">
-                        <div className="mt-0.5 shrink-0 bg-slate-50 dark:bg-slate-700/50 p-2 rounded-full h-fit">
-                            {getIcon(event.type)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <div className="text-sm text-slate-600 dark:text-slate-300 truncate">
-                                {getLabel(event)}
-                            </div>
-                            <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-400 dark:text-slate-500">
-                                <span>{formatDistanceToNow(new Date(event.createdAt), { addSuffix: true })}</span>
-                                {event.session?.country && (
-                                    <>
-                                        <span>&middot;</span>
-                                        <span>{event.session.city ? `${event.session.city}, ` : ''}{event.session.country}</span>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                ))
-            )}
-        </div>
-    );
-};
-
-export default EcommerceLogWidget;
+        if (isPending() || !isActive()) return;
+        const result = await run(async signal => {
+            const response = await fetch('/api/analytics/ecommerce/log?limit=20&live=true', { signal, headers: { Authorization: `Bearer ${token}`, 'x-account-id': accountId } });
+            if (!response.ok) throw new Error('Stream unavailable');
+            return decodeEvents(await response.json());
+        }, 'Could not refresh ecommerce activity. Any activity shown below is from the last successful refresh.');
+        if (result.ok) setEvents(result.value);
+    }, [run, accountId, token, isPending, isActive]);
+    useVisibilityPolling(fetchLog, 15000, [fetchLog], `ecommerce-log:${accountId}`);
+    return <section aria-label="Ecommerce activity" className="h-full overflow-y-auto p-2 space-y-3 text-slate-900 dark:text-slate-100">
+        {error && <p role="alert">{error} <button type="button" disabled={busy} onClick={() => void fetchLog()}>Retry ecommerce activity</button></p>}
+        {events === null && !error ? <p role="status">Loading ecommerce activity...</p> : <>
+            {busy && <p role="status">Refreshing ecommerce activity...</p>}
+            {events?.length === 0 && <p>No recent commerce activity.</p>}
+            <ul className="space-y-2">{events?.map(event => <li key={event.id} className="p-3 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800"><p className="text-sm break-words">{eventLabel(event)}</p><p className="text-xs text-slate-500 dark:text-slate-400">{toValidDate(event.createdAt) ? <RelativeTime date={event.createdAt} className="text-xs" /> : 'Date unavailable'}{event.session?.country ? ` · ${event.session.city ? `${event.session.city}, ` : ''}${event.session.country}` : ''}</p></li>)}</ul>
+        </>}
+    </section>;
+}

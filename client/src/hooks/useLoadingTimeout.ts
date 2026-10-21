@@ -6,7 +6,7 @@
  * the user may be offline or experiencing connectivity issues.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 interface UseLoadingTimeoutOptions {
     /** Timeout in milliseconds before showing offline message (default: 10000ms) */
@@ -28,7 +28,10 @@ export function useLoadingTimeout({
     timeoutMs = 10000,
     isLoading
 }: UseLoadingTimeoutOptions): UseLoadingTimeoutResult {
-    const [hasTimedOut, setHasTimedOut] = useState(false);
+    const delay = Number.isFinite(timeoutMs) && timeoutMs >= 0 ? Math.min(timeoutMs, 2147483647) : 10000;
+    const cycle = useMemo(() => ({ isLoading, delay }), [isLoading, delay]);
+    const [expiredCycle, setExpiredCycle] = useState<object | null>(null);
+    const hasTimedOut = isLoading && expiredCycle === cycle;
     const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
     // Track online/offline status
@@ -47,17 +50,14 @@ export function useLoadingTimeout({
 
     // Start timeout when loading begins
     useEffect(() => {
-        if (!isLoading) {
-            queueMicrotask(() => setHasTimedOut(false));
-            return;
-        }
+        if (!isLoading) return;
 
         const timer = setTimeout(() => {
-            setHasTimedOut(true);
-        }, timeoutMs);
+            setExpiredCycle(cycle);
+        }, delay);
 
         return () => clearTimeout(timer);
-    }, [isLoading, timeoutMs]);
+    }, [isLoading, delay, cycle]);
 
     // Determine message
     let message = '';

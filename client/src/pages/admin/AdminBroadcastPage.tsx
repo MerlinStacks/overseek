@@ -1,10 +1,16 @@
 import { useState } from 'react';
-import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
+import { useScopedMutation } from '../../hooks/useScopedMutation';
+import { isRecord } from '../../utils/responseValidation';
+import { abortable } from '../../utils/abortable';
 import { Send, CheckCircle, Bell } from 'lucide-react';
 
 export function AdminBroadcastPage() {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
+    if (!token || !user?.isSuperAdmin) return <p role="status">Sign in as a super admin to send broadcasts.</p>;
+    return <BroadcastForm key={JSON.stringify([token, user.id])} token={token} />;
+}
+function BroadcastForm({ token }: { token: string }) {
     const [formData, setFormData] = useState({
         title: '',
         message: '',
@@ -12,41 +18,45 @@ export function AdminBroadcastPage() {
         link: '',
         sendPush: false
     });
-    const [sending, setSending] = useState(false);
+    const mutation = useScopedMutation();
+    const sending = mutation.busy;
+    const [validation, setValidation] = useState('');
     const [successMsg, setSuccessMsg] = useState('');
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setSending(true);
+        if (mutation.isPending()) return;
+        const submitted = { ...formData, title: formData.title.trim(), message: formData.message.trim(), link: formData.link.trim() };
+        const validLink = !submitted.link || (/^\/(?![\\/])[^\\\s]*$/.test(submitted.link)) || (() => { try { const url = new URL(submitted.link); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password; } catch { return false; } })();
+        if (!submitted.title || !submitted.message || !['INFO', 'SUCCESS', 'WARNING', 'ERROR'].includes(submitted.type) || !validLink) { setValidation('Enter a title, message, valid type and an optional app path or HTTP(S) link.'); return; }
+        setValidation('');
+        if (!confirm(`Send “${submitted.title}” to ALL active accounts${submitted.sendPush ? ' and subscribed push devices' : ''}?`)) return;
         setSuccessMsg('');
 
-        try {
-            const res = await fetch('/api/admin/broadcast', {
+        const result = await mutation.run(async signal => {
+            const res = await abortable(fetch('/api/admin/broadcast', {
                 method: 'POST',
+                signal,
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`
                 },
-                body: JSON.stringify(formData)
-            });
+                body: JSON.stringify(submitted)
+            }), signal);
 
             if (res.ok) {
-                const data = await res.json();
+                const data: unknown = await abortable(res.json(), signal);
+                if (!isRecord(data) || data.success !== true || !['count', 'pushSent', 'pushFailed'].every(key => typeof data[key] === 'number' && Number.isSafeInteger(data[key]) && (data[key] as number) >= 0)) throw new Error('Invalid broadcast confirmation');
                 let msg = `Successfully sent to ${data.count} accounts.`;
-                if (formData.sendPush) {
+                if (submitted.sendPush) {
                     msg += ` Push: ${data.pushSent} sent, ${data.pushFailed} failed.`;
                 }
-                setSuccessMsg(msg);
-                setFormData({ title: '', message: '', type: 'INFO', link: '', sendPush: false });
+                return msg;
             } else {
-                alert('Failed to send broadcast');
+                throw new Error('Broadcast failed');
             }
-        } catch (err) {
-            Logger.error('An error occurred', { error: err });
-            alert('Error sending broadcast');
-        } finally {
-            setSending(false);
-        }
+        }, 'Could not confirm the broadcast outcome. It may have been sent. Check delivery before retrying; your draft is retained.');
+        if (result.ok) { setSuccessMsg(result.value); setFormData({ title: '', message: '', type: 'INFO', link: '', sendPush: false }); }
     };
 
     return (
@@ -55,15 +65,18 @@ export function AdminBroadcastPage() {
             <p className="text-slate-500">Send a notification to ALL active accounts system-wide.</p>
 
             {successMsg && (
-                <div className="bg-green-50 border border-green-200 text-green-700 p-4 rounded-lg flex items-center gap-2">
+                <div role="status" className="bg-green-50 border border-green-200 text-green-700 p-4 rounded-lg flex items-center gap-2">
                     <CheckCircle size={20} /> {successMsg}
                 </div>
             )}
 
             <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-xs border border-slate-200 p-6 space-y-4">
+                {(validation || mutation.error) && <p role="alert" className="text-red-600">{validation || mutation.error}</p>}
+                {sending && <p role="status">Sending broadcast...</p>}
+                <fieldset disabled={sending} className="space-y-4">
                 <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Title</label>
-                    <input
+                    <input aria-label="Title"
                         type="text"
                         required
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
@@ -75,7 +88,7 @@ export function AdminBroadcastPage() {
 
                 <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Message</label>
-                    <textarea
+                    <textarea aria-label="Message"
                         required
                         rows={4}
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
@@ -88,7 +101,7 @@ export function AdminBroadcastPage() {
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Type</label>
-                        <select
+                        <select aria-label="Type"
                             className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                             value={formData.type}
                             onChange={e => setFormData({ ...formData, type: e.target.value })}
@@ -101,7 +114,7 @@ export function AdminBroadcastPage() {
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Link (Optional)</label>
-                        <input
+                        <input aria-label="Link (Optional)"
                             type="text"
                             className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                             placeholder="/settings or https://..."
@@ -138,6 +151,7 @@ export function AdminBroadcastPage() {
                         {sending ? 'Sending...' : <><Send size={18} /> Send Broadcast</>}
                     </button>
                 </div>
+                </fieldset>
             </form>
         </div>
     );

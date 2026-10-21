@@ -35,8 +35,8 @@ interface CrawlerEntry {
 
 interface CrawlerStats {
     crawlers: CrawlerEntry[];
-    totalHits24h: number;
-    totalBlockedHits24h: number;
+    totalHitsToday?: number;
+    totalRuleMatchedHitsToday?: number;
     uniqueCrawlers: number;
     blockedCount: number;
 }
@@ -227,8 +227,8 @@ export function CrawlerManagement() {
                 {/* Stats Bar */}
                 {data && (
                     <div className="grid grid-cols-4 gap-4">
-                        <StatCard icon={<BarChart3 size={18} />} label="Hits (24h)" value={(data.totalHits24h ?? 0).toLocaleString()} color="blue" />
-                        <StatCard icon={<ShieldOff size={18} />} label="Blocked (24h)" value={(data.totalBlockedHits24h ?? 0).toLocaleString()} color="red" />
+                        <StatCard icon={<BarChart3 size={18} />} label="Observed hits (today UTC)" value={data.totalHitsToday?.toLocaleString() ?? 'Unavailable'} color="blue" />
+                        <StatCard icon={<ShieldOff size={18} />} label="Rule-matched (today UTC)" value={data.totalRuleMatchedHitsToday?.toLocaleString() ?? 'Unavailable'} color="red" />
                         <StatCard icon={<Bot size={18} />} label="Unique Crawlers" value={(data.uniqueCrawlers ?? 0).toString()} color="purple" />
                         <StatCard icon={<ShieldOff size={18} />} label="Rules Active" value={(data.blockedCount ?? 0).toString()} color="red" />
                     </div>
@@ -392,7 +392,7 @@ function CrawlerRow({ crawler, isToggling, onToggle }: {
             {/* Blocked Hit Count */}
             <div className="text-right shrink-0">
                 <p className="text-sm font-semibold text-red-600 dark:text-red-400">{(crawler.blockedHits ?? 0).toLocaleString()}</p>
-                <p className="text-[10px] text-red-400 dark:text-red-500">blocked</p>
+                <p className="text-[10px] text-red-400 dark:text-red-500">rule-matched, not confirmed blocked</p>
             </div>
 
             {/* Block Toggle */}

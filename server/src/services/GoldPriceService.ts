@@ -66,6 +66,7 @@ export class GoldPriceService {
                         headers: { 'Accept': 'application/json' }
                     });
                     if (!fallbackResponse.ok) {
+                        // eslint-disable-next-line preserve-caught-error -- This is the fallback HTTP failure, not the primary error being handled.
                         throw new Error(`HTTP ${fallbackResponse.status}`);
                     }
                     const fallbackData = await safeJson(fallbackResponse, 'metals.dev');
@@ -168,7 +169,8 @@ export class GoldPriceService {
 
         const livePricePerGram24ct = await this.fetchLivePrice(account.currency);
         if (livePricePerGram24ct !== null) {
-            const margin = Number(account.goldPriceMargin) || 10; // Default 10%
+            const configuredMargin = account.goldPriceMargin == null ? NaN : Number(account.goldPriceMargin);
+            const margin = Number.isFinite(configuredMargin) && configuredMargin >= 0 ? configuredMargin : 10;
             const marginMultiplier = 1 + (margin / 100);
 
             // 18ct = 75% gold

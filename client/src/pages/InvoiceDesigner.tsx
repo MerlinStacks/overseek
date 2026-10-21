@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, type ComponentProps } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, type ComponentProps } from 'react';
 import { Logger } from '../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { useAccount } from '../context/AccountContext';
@@ -143,11 +143,13 @@ export function InvoiceDesigner() {
 
     // Refs for keyboard shortcut access to latest state
     const isDirtyRef = useRef(isDirty);
-    isDirtyRef.current = isDirty;
     const selectedIdRef = useRef(selectedId);
-    selectedIdRef.current = selectedId;
     const showPreviewRef = useRef(showPreview);
-    showPreviewRef.current = showPreview;
+    useLayoutEffect(() => {
+        isDirtyRef.current = isDirty;
+        selectedIdRef.current = selectedId;
+        showPreviewRef.current = showPreview;
+    }, [isDirty, selectedId, showPreview]);
 
     // Preview state
     const [recentOrders, setRecentOrders] = useState<PreviewOrder[]>([]);
@@ -523,9 +525,9 @@ export function InvoiceDesigner() {
     }, [currentAccount, token, templateId, fetchVersions]);
 
     useEffect(() => {
-        if (showSettingsModal) {
-            fetchVersions();
-        }
+        let disposed = false;
+        if (showSettingsModal) queueMicrotask(() => { if (!disposed) void fetchVersions(); });
+        return () => { disposed = true; };
     }, [showSettingsModal, fetchVersions]);
 
     // Track dirty state — only flip dirty on user-initiated changes, not template load
@@ -1026,6 +1028,7 @@ export function InvoiceDesigner() {
                 {/* Right Sidebar - Properties Panel */}
                 {selectedId && (
                     <DesignerProperties
+                        templateId={templateId}
                         items={items as unknown as DesignerPropertiesProps['items']}
                         selectedId={selectedId}
                         onUpdateItem={updateItem}

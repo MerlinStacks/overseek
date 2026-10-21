@@ -298,12 +298,11 @@ async function handleTrackingEmailEvent(
     }
 
     const bearerToken = extractBearerToken(request.headers);
-    let { account, feature, credentialMatched } = await resolveAccountContext(requestedAccountId, bearerToken);
+    let { account, credentialMatched } = await resolveAccountContext(requestedAccountId, bearerToken);
 
     if (!account) {
         const eventContext = await resolveAccountContextFromEvent(event);
         account = eventContext.account;
-        feature = eventContext.feature;
         credentialMatched = eventContext.credentialMatched;
     }
 

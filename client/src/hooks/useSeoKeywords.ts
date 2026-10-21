@@ -267,7 +267,7 @@ export interface KeywordGroup {
     color: string;
     keywordCount: number;
     avgPosition: number | null;
-    totalClicks: number;
+    totalClicks: number | null;
     avgCtr: number | null;
 }
 
@@ -499,8 +499,10 @@ export function useCannibalization() {
 export interface ContentBrief {
     keyword: string;
     currentPosition: number | null;
-    currentClicks: number;
-    currentImpressions: number;
+    currentClicks: number | null;
+    currentImpressions: number | null;
+    provenance?: 'ai' | 'template';
+    fallbackReason?: 'not-configured' | 'generation-failed';
     brief: {
         suggestedTitle: string;
         metaDescription: string;
@@ -545,19 +547,20 @@ export function useBulkImportKeywords() {
 export interface SeoDigest {
     generatedAt: string;
     period: { start: string; end: string };
+    coverage?: { basis: 'returned-query-sample'; possiblyTruncated: boolean };
     summary: {
         totalClicks: number;
         totalImpressions: number;
-        avgPosition: number;
+        avgPosition: number | null;
         clicksChange: number;
         impressionsChange: number;
-        positionChange: number;
+        positionChange: number | null;
     };
     topMovers: {
         improved: Array<{ keyword: string; oldPosition: number; newPosition: number; delta: number }>;
         declined: Array<{ keyword: string; oldPosition: number; newPosition: number; delta: number }>;
     };
-    topKeywords: Array<{ keyword: string; clicks: number; impressions: number; position: number; estimatedRevenue: number }>;
+    topKeywords: Array<{ keyword: string; clicks: number; impressions: number; position: number; estimatedRevenue: number | null }>;
     newKeywords: Array<{ keyword: string; position: number; impressions: number }>;
     alerts: string[];
 }

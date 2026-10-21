@@ -7,6 +7,7 @@ import { CannedResponseLabelManager, type CannedResponseLabel } from './CannedRe
 import { CannedResponseForm } from './CannedResponseForm';
 import { CannedResponseList, type CannedResponse } from './CannedResponseList';
 import { Toast, type ToastType } from '../ui/Toast';
+import { hasResponseText, validLabelColor } from './cannedResponseValues';
 
 export function CannedResponsesSettings({ onUpdate }: { onUpdate?: () => void } = {}) {
     const { token } = useAuth();
@@ -90,7 +91,8 @@ function CannedResponsesContent({ accountId, token, onUpdate }: { accountId: str
 
     const handleSave = () => {
         if (!formData.shortcut.trim()) { showToast('Shortcut is required'); return; }
-        if (!formData.content.trim()) { showToast('Response content is required'); return; }
+        if (!hasResponseText(formData.content)) { showToast('Response content is required'); return; }
+        if (formData.labelId && !labels.some(label => label.id === formData.labelId)) { showToast('Choose an available label'); return; }
         void mutate(editingId ? `/api/chat/canned-responses/${encodeURIComponent(editingId)}` : '/api/chat/canned-responses', editingId ? 'PUT' : 'POST',
             { shortcut: formData.shortcut.trim(), content: formData.content.trim(), labelId: formData.labelId || null }, () => {
                 setFormData({ shortcut: '', content: '', labelId: '' }); setEditingId(null); void load('responses'); showToast('Canned response saved', 'success');
@@ -102,19 +104,20 @@ function CannedResponsesContent({ accountId, token, onUpdate }: { accountId: str
     };
     const refreshLabels = () => { void load('labels'); void load('responses'); };
     const createLabel = () => {
-        if (!newLabelName.trim()) { showToast('Label name is required'); return; }
+        if (!newLabelName.trim() || !validLabelColor(newLabelColor)) { showToast('A label name and valid color are required'); return; }
         void mutate('/api/chat/canned-labels', 'POST', { name: newLabelName.trim(), color: newLabelColor }, () => {
             setNewLabelName(''); setNewLabelColor('#6366f1'); refreshLabels(); showToast('Label created', 'success');
         });
     };
-    const groups = new Map<string, { label: CannedResponseLabel | null; items: CannedResponse[] }>();
+    const groups = new Map<string, { name: string; label: CannedResponseLabel | null; items: CannedResponse[] }>();
     for (const response of responses) {
         const name = response.label?.name || 'Uncategorized';
-        const group = groups.get(name) || { label: response.label, items: [] };
-        group.items.push(response); groups.set(name, group);
+        const key = response.label?.id ? `label:${response.label.id}` : 'uncategorized';
+        const group = groups.get(key) || { name, label: response.label, items: [] };
+        group.items.push(response); groups.set(key, group);
     }
     const query = searchQuery.trim().toLowerCase();
-    const filteredGroups = [...groups].map(([name, group]) => ({ name, label: group.label, items: group.items.filter(response => response.shortcut.toLowerCase().includes(query) || response.content.toLowerCase().includes(query)) })).filter(group => group.items.length);
+    const filteredGroups = [...groups.values()].map(group => ({ ...group, items: group.items.filter(response => response.shortcut.toLowerCase().includes(query) || response.content.toLowerCase().includes(query)) })).filter(group => group.items.length);
 
     return <div className="space-y-6" aria-busy={isSaving}>
         {isSaving && <p role="status">Saving changes...</p>}
@@ -128,7 +131,7 @@ function CannedResponsesContent({ accountId, token, onUpdate }: { accountId: str
                 labels={labels} editingLabelId={editingLabelId} newLabelName={newLabelName} newLabelColor={newLabelColor}
                 onLabelsChange={setLabels} onEditingLabelIdChange={setEditingLabelId} onNewLabelNameChange={setNewLabelName} onNewLabelColorChange={setNewLabelColor}
                 onCreateLabel={createLabel} onUpdateLabel={(id, name, color) => {
-                    if (!name.trim()) { showToast('Label name is required'); return; }
+                    if (!name.trim() || !validLabelColor(color)) { showToast('A label name and valid color are required'); return; }
                     void mutate(`/api/chat/canned-labels/${encodeURIComponent(id)}`, 'PUT', { name: name.trim(), color }, () => { setEditingLabelId(null); refreshLabels(); showToast('Label updated', 'success'); });
                 }} onDeleteLabel={id => {
                     if (confirm('Delete this label? Responses will keep their content but lose this label.')) void mutate(`/api/chat/canned-labels/${encodeURIComponent(id)}`, 'DELETE', undefined, () => { refreshLabels(); showToast('Label deleted', 'success'); });

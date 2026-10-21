@@ -77,38 +77,45 @@ export class AccountBackupService {
         accountId: string,
         updates: Partial<Pick<BackupSettings, 'isEnabled' | 'frequency' | 'maxBackups'>>
     ): Promise<BackupSettings> {
-        // Calculate next backup time if enabling
-        let nextBackupAt: Date | undefined;
-        if (updates.isEnabled) {
-            const frequency = updates.frequency || 'WEEKLY';
-            nextBackupAt = new Date(Date.now() + FREQUENCY_MS[frequency]);
-        } else if (updates.isEnabled === false) {
-            nextBackupAt = undefined; // Will be set to null
-        }
+        if (!accountId || !updates || Object.keys(updates).some(key => !['isEnabled', 'frequency', 'maxBackups'].includes(key)) ||
+            updates.isEnabled !== undefined && typeof updates.isEnabled !== 'boolean' ||
+            updates.frequency !== undefined && !Object.hasOwn(FREQUENCY_MS, updates.frequency) ||
+            updates.maxBackups !== undefined && (!Number.isInteger(updates.maxBackups) || updates.maxBackups < 1 || updates.maxBackups > 100)) throw new Error('Invalid backup settings');
+        return prisma.$transaction(async tx => {
+            await tx.$queryRaw`SELECT id FROM "Account" WHERE id = ${accountId} FOR NO KEY UPDATE`;
+            const previous = await tx.accountBackupSettings.findUnique({ where: { accountId } }) || { isEnabled: false, frequency: 'WEEKLY', nextBackupAt: null };
+            const enabled = updates.isEnabled ?? previous.isEnabled;
+            const frequency = updates.frequency ?? previous.frequency;
+            // Derive scheduling from the merged settings, not defaults in a partial update.
+            let nextBackupAt: Date | undefined;
+            if (enabled && (!previous.isEnabled || updates.frequency !== undefined || !previous.nextBackupAt)) {
+                nextBackupAt = new Date(Date.now() + FREQUENCY_MS[frequency]);
+            }
 
-        const settings = await prisma.accountBackupSettings.upsert({
-            where: { accountId },
-            update: {
-                ...updates,
-                ...(nextBackupAt !== undefined && { nextBackupAt }),
-                ...(updates.isEnabled === false && { nextBackupAt: null }),
-            },
-            create: {
-                accountId,
-                isEnabled: updates.isEnabled ?? false,
-                frequency: updates.frequency ?? 'WEEKLY',
-                maxBackups: updates.maxBackups ?? 5,
-                nextBackupAt: updates.isEnabled ? nextBackupAt : null,
-            },
+            const settings = await tx.accountBackupSettings.upsert({
+                where: { accountId },
+                update: {
+                    ...updates,
+                    ...(nextBackupAt !== undefined && { nextBackupAt }),
+                    ...(updates.isEnabled === false && { nextBackupAt: null }),
+                },
+                create: {
+                    accountId,
+                    isEnabled: updates.isEnabled ?? false,
+                    frequency: updates.frequency ?? 'WEEKLY',
+                    maxBackups: updates.maxBackups ?? 5,
+                    nextBackupAt: updates.isEnabled ? nextBackupAt : null,
+                },
+            });
+
+            return {
+                isEnabled: settings.isEnabled,
+                frequency: settings.frequency as 'DAILY' | 'EVERY_3_DAYS' | 'WEEKLY',
+                maxBackups: settings.maxBackups,
+                lastBackupAt: settings.lastBackupAt,
+                nextBackupAt: settings.nextBackupAt,
+            };
         });
-
-        return {
-            isEnabled: settings.isEnabled,
-            frequency: settings.frequency as 'DAILY' | 'EVERY_3_DAYS' | 'WEEKLY',
-            maxBackups: settings.maxBackups,
-            lastBackupAt: settings.lastBackupAt,
-            nextBackupAt: settings.nextBackupAt,
-        };
     }
 
     // =========================================
@@ -168,12 +175,22 @@ export class AccountBackupService {
                 nextBackupAt: { lte: now },
             },
             include: { account: { select: { id: true, name: true } } },
+            orderBy: [{ nextBackupAt: 'asc' }, { accountId: 'asc' }],
+            take: 100,
         });
 
         let processed = 0;
         let failed = 0;
 
         for (const settings of dueAccounts) {
+            if (!Object.hasOwn(FREQUENCY_MS, settings.frequency)) { failed++; continue; }
+            // Compare-and-swap the exact due occurrence before any external/file work.
+            // A failed/ambiguous backup is not retried immediately and cannot be double-claimed.
+            const claim = await prisma.accountBackupSettings.updateMany({
+                where: { accountId: settings.accountId, isEnabled: true, nextBackupAt: settings.nextBackupAt, updatedAt: settings.updatedAt },
+                data: { nextBackupAt: new Date(now.getTime() + FREQUENCY_MS[settings.frequency]) },
+            });
+            if (claim.count !== 1) continue;
             try {
                 Logger.info('[AccountBackup] Running scheduled backup', {
                     accountId: settings.accountId,

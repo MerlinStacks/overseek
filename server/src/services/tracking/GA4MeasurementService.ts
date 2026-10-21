@@ -9,7 +9,7 @@
  * events, ensuring accurate revenue and conversion reporting in GA4.
  *
  * FIXES APPLIED (May 2026):
- * - session_id: GA4 requires this for session attribution (was missing)
+ * - session_id: uses the configured Google stream's browser cookie, not an Overseek visit
  * - timestamp_micros: Ensures events recorded at correct time (was missing)
  * - consent object: Prevents GA4 from dropping events under strict consent mode
  * - engagement_time_msec: Now sent as number instead of string
@@ -62,8 +62,8 @@ export class GA4MeasurementService implements ConversionPlatformService {
         // GA4 requires a client_id — use GA cookie value or fall back to visitorId
         const clientId = this.extractGAClientId(userData.gaClientId) || data.visitorId;
 
-        // Build session_id from session start time (required for session attribution)
-        const sessionId = this.buildSessionId(session);
+        // Only Google's own session ID can join the original browser session.
+        const sessionId = this.buildSessionId(data.payload, measurementId);
 
         const payload = this.buildPayload(eventName, eventId, clientId, sessionId, data, session);
         const deliveryId = await this.logDelivery(accountId, eventName, eventId, payload);
@@ -90,19 +90,19 @@ export class GA4MeasurementService implements ConversionPlatformService {
     }
 
     /**
-     * Build GA4 session_id from session start time.
-     * GA4 session_id must be a Unix timestamp in seconds since epoch.
-     * Omitted when service-level session start data is not available.
+     * Select the configured stream's actual browser session, never an Overseek visit.
+     * Missing/invalid IDs are omitted rather than inventing misleading attribution.
      */
     private buildSessionId(
-        session: { sessionStartAt?: number | null; id?: string; startAt?: Date | null } | null,
+        payload: Record<string, any> | undefined,
+        measurementId: string,
     ): number | undefined {
-        // Use explicit session start timestamp if available
-        if (session?.sessionStartAt) {
-            return Math.floor(session.sessionStartAt);
-        }
-
-        return undefined;
+        const streamId = measurementId.replace(/^G-/, '');
+        const value = payload?.gaSessionIds?.[streamId];
+        if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+        if (!/^\d+$/.test(String(value))) return undefined;
+        const id = Number(value);
+        return Number.isSafeInteger(id) && id > 0 ? id : undefined;
     }
 
     /**

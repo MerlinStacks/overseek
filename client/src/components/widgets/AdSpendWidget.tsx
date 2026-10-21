@@ -1,97 +1,29 @@
-import { WidgetProps } from './WidgetRegistry';
-import { Logger } from '../../utils/logger';
-import { formatCurrency } from '../../utils/format';
-import { TrendingUp } from 'lucide-react';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import type { WidgetProps } from './WidgetRegistry';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { WidgetLoadingState, WidgetErrorState } from './WidgetState';
-import { widgetCardClass, widgetSubtleTextClass } from './widgetStyles';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+import { isRecord } from '../../utils/responseValidation';
+import { reportMoney } from '../analytics/useReportRequest';
+import { widgetCardClass, widgetTitleClass } from './widgetStyles';
 
-interface AdSpendData {
-    spend?: number;
-    currency?: string;
-    roas?: number;
-    clicks?: number;
+interface Data { spend?: number | null; currency?: string | null; roas?: number | null; clicks?: number | null; hasData?: boolean }
+function decode(value: unknown): Data {
+    if (!isRecord(value) || (value.hasData !== undefined && typeof value.hasData !== 'boolean') || !['spend', 'roas', 'clicks'].every(key => value[key] == null || (typeof value[key] === 'number' && Number.isFinite(value[key]))) || (value.currency != null && (typeof value.currency !== 'string' || !/^[A-Z]{3}$/i.test(value.currency)))) throw new Error('Invalid ad metrics');
+    return value;
 }
-
-export function AdSpendWidget({ className, dateRange }: WidgetProps) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const [data, setData] = useState<AdSpendData | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const fetchAbortRef = useRef<AbortController | null>(null);
-
-    const fetchData = useCallback(async () => {
-        if (!currentAccount || !token) return;
-
-        fetchAbortRef.current?.abort();
-        const controller = new AbortController();
-        fetchAbortRef.current = controller;
-        setLoading(true);
-
-        try {
-            const res = await fetch(`/api/analytics/ads-summary?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id },
-                signal: controller.signal
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const resData = await res.json() as AdSpendData;
-            if (controller.signal.aborted) return;
-            setData(resData);
-            setError(null);
-        } catch (err) {
-            if (err instanceof DOMException && err.name === 'AbortError') return;
-            Logger.error('Failed to fetch ad spend data', { error: err });
-            setError('Failed to load ad spend');
-        } finally {
-            if (!controller.signal.aborted) {
-                setLoading(false);
-            }
-        }
-    }, [currentAccount, dateRange.endDate, dateRange.startDate, token]);
-
-    useEffect(() => {
-        fetchData();
-        return () => {
-            fetchAbortRef.current?.abort();
-        };
-    }, [fetchData]);
-
-    return (
-        <div className={`${widgetCardClass} h-full w-full p-6 flex flex-col justify-between hover:-translate-y-0.5 ${className || ''}`}>
-            <div className="flex justify-between items-start">
-                <div>
-                    <h3 className={`${widgetSubtleTextClass} font-medium uppercase tracking-wider`}>Ad Spend</h3>
-                    {loading ? (
-                        <WidgetLoadingState message="Loading ad metrics..." className="items-start py-2" />
-                    ) : error ? (
-                        <WidgetErrorState message={error} onRetry={fetchData} className="items-start py-2" />
-                    ) : (
-                        <p className="text-3xl font-bold text-slate-900 dark:text-white mt-2">
-                            {formatCurrency(data?.spend || 0, data?.currency || 'USD')}
-                        </p>
-                    )}
-                </div>
-                <div className="p-2.5 bg-gradient-to-br from-blue-400 to-indigo-600 rounded-lg text-white shadow-lg shadow-blue-500/25">
-                    <TrendingUp size={20} />
-                </div>
-            </div>
-            {!loading && !error && (
-                <div className="mt-4 grid grid-cols-2 gap-2 text-sm border-t border-slate-200 dark:border-slate-700 pt-4">
-                    <div>
-                        <p className="text-slate-400 dark:text-slate-500 text-xs">ROAS</p>
-                        <p className="font-bold text-slate-900 dark:text-white">
-                            {data?.roas ? `${data.roas.toFixed(2)}x` : '-'}
-                        </p>
-                    </div>
-                    <div className="text-right">
-                        <p className="text-slate-400 dark:text-slate-500 text-xs">Clicks</p>
-                        <p className="font-bold text-slate-900 dark:text-white">{(data?.clicks || 0).toLocaleString()}</p>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
+export function AdSpendWidget(props: WidgetProps) {
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p role="status">Select an account to view ad spend.</p>;
+    return <AccountAdSpend key={JSON.stringify([token, currentAccount.id, props.dateRange.startDate, props.dateRange.endDate])} {...props} token={token} accountId={currentAccount.id} />;
+}
+function AccountAdSpend({ className = '', dateRange, token, accountId }: WidgetProps & { token: string; accountId: string }) {
+    const query = new URLSearchParams({ startDate: dateRange.startDate, endDate: dateRange.endDate });
+    const { data, loading, error, retry } = useScopedRequest(`/api/analytics/ads-summary?${query}`, accountId, token, decode);
+    return <section aria-label="Ad spend" className={`${widgetCardClass} h-full w-full p-6 space-y-4 ${className}`}>
+        <h3 className={widgetTitleClass}>Ad Spend</h3>
+        {loading ? <p role="status">Loading ad metrics...</p> : error || !data ? <p role="alert">Could not load ad spend. <button type="button" onClick={retry}>Retry ad spend</button></p> : data.hasData === false ? <p>No connected advertising accounts.</p> : <>
+            <p className="text-3xl font-semibold text-slate-900 dark:text-white">{data.spend == null ? 'Unavailable' : reportMoney(data.spend, data.currency ?? undefined)}</p>
+            <dl className="flex justify-between text-slate-900 dark:text-white"><div><dt>ROAS</dt><dd>{data.roas == null ? 'Unavailable' : `${data.roas.toFixed(2)}x`}</dd></div><div><dt>Clicks</dt><dd>{data.clicks == null ? 'Unavailable' : data.clicks.toLocaleString()}</dd></div></dl>
+        </>}
+    </section>;
 }

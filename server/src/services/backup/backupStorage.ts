@@ -118,9 +118,9 @@ export async function saveBackupToStorage(
             where: { accountId },
         });
         if (settings) {
-            const nextBackupAt = new Date(Date.now() + FREQUENCY_MS[settings.frequency]);
-            await prisma.accountBackupSettings.update({
-                where: { accountId },
+            const nextBackupAt = settings.isEnabled ? new Date(Date.now() + FREQUENCY_MS[settings.frequency]) : null;
+            await prisma.accountBackupSettings.updateMany({
+                where: { accountId, updatedAt: settings.updatedAt },
                 data: {
                     lastBackupAt: new Date(),
                     nextBackupAt,
@@ -140,6 +140,7 @@ export async function saveBackupToStorage(
 
     return {
         id: stored.id,
+        accountId: stored.accountId,
         filename: stored.filename,
         sizeBytes: stored.sizeBytes,
         recordCount: stored.recordCount,
@@ -160,6 +161,7 @@ export async function getStoredBackups(accountId: string): Promise<StoredBackupI
 
     return backups.map(b => ({
         id: b.id,
+        accountId: b.accountId,
         filename: b.filename,
         sizeBytes: b.sizeBytes,
         recordCount: b.recordCount,

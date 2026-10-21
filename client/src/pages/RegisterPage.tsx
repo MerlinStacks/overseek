@@ -2,41 +2,52 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { LayoutDashboard, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useScopedMutation } from '../hooks/useScopedMutation';
+import { isRecord } from '../utils/responseValidation';
+import { abortable } from '../utils/abortable';
 
 export function RegisterPage() {
+    const { token, user } = useAuth();
+    if (token || user) return <p role="status">You are already signed in. <Link to="/dashboard">Go to dashboard</Link></p>;
+    return <RegistrationForm />;
+}
+
+function RegistrationForm() {
     const [fullName, setFullName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
-    const [loading, setLoading] = useState(false);
+    const mutation = useScopedMutation();
+    const loading = mutation.busy;
+    const [initialSession] = useState(() => localStorage.getItem('token'));
     const { login } = useAuth();
     const navigate = useNavigate();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (mutation.isPending()) return;
         setError('');
-        setLoading(true);
-
-        try {
-            const response = await fetch('/api/auth/register', {
+        if (fullName.trim().length < 2 || password.length < 8 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('Enter a full name, valid email and password of at least 8 characters.'); return; }
+        const result = await mutation.run(async signal => {
+            const response = await abortable(fetch('/api/auth/register', {
                 method: 'POST',
+                signal,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fullName, email, password }),
-            });
+                body: JSON.stringify({ fullName: fullName.trim(), email: email.trim().toLowerCase(), password }),
+            }), signal);
 
-            const data = await response.json();
+            const data: unknown = await abortable(response.json(), signal);
 
             if (!response.ok) {
-                throw new Error(data.error || 'Registration failed');
+                throw new Error('Registration failed');
             }
 
-            // EDGE CASE FIX: Pass refresh token for silent refresh support
-            login(data.token, data.user, data.refreshToken);
+            if (!isRecord(data) || typeof data.token !== 'string' || !data.token.trim() || typeof data.refreshToken !== 'string' || !data.refreshToken.trim() || !isRecord(data.user) || typeof data.user.id !== 'string' || !data.user.id || typeof data.user.email !== 'string' || (data.user.fullName !== null && typeof data.user.fullName !== 'string') || (data.user.avatarUrl != null && typeof data.user.avatarUrl !== 'string') || (data.user.isSuperAdmin !== undefined && typeof data.user.isSuperAdmin !== 'boolean')) throw new Error('Invalid registration confirmation');
+            return { token: data.token, refreshToken: data.refreshToken, user: data.user as unknown as Parameters<typeof login>[1] };
+        }, 'Could not confirm registration. Your inputs are retained. Check whether your account was created before retrying or try signing in.');
+        if (result.ok && localStorage.getItem('token') === initialSession) {
+            login(result.value.token, result.value.user, result.value.refreshToken);
             navigate('/dashboard');
-        } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : 'Registration failed');
-        } finally {
-            setLoading(false);
         }
     };
 
@@ -60,9 +71,10 @@ export function RegisterPage() {
             <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
                 <div className="bg-white py-8 px-4 shadow-sm sm:rounded-lg sm:px-10">
                     <form className="space-y-6" onSubmit={handleSubmit}>
-                        {error && (
-                            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
-                                {error}
+                        <fieldset disabled={loading} className="space-y-6">
+                        {(error || mutation.error) && (
+                            <div role="alert" className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
+                                {error || mutation.error}
                             </div>
                         )}
 
@@ -74,6 +86,8 @@ export function RegisterPage() {
                                 <input
                                     id="fullName"
                                     name="fullName"
+                                    autoComplete="name"
+                                    minLength={2}
                                     type="text"
                                     required
                                     value={fullName}
@@ -109,6 +123,7 @@ export function RegisterPage() {
                                 <input
                                     id="password"
                                     name="password"
+                                    minLength={8}
                                     type="password"
                                     autoComplete="new-password"
                                     required
@@ -125,9 +140,10 @@ export function RegisterPage() {
                                 disabled={loading}
                                 className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-xs text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                {loading ? <Loader2 className="animate-spin" size={20} /> : 'Register'}
+                                {loading ? <><Loader2 aria-hidden="true" className="animate-spin motion-reduce:animate-none" size={20} /><span role="status">Registering...</span></> : 'Register'}
                             </button>
                         </div>
+                        </fieldset>
                     </form>
                 </div>
             </div>

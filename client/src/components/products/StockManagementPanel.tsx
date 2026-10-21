@@ -1,391 +1,86 @@
-/**
- * Stock Management Panel - View and edit stock on hand
- * Shows calculated stock for BOM products, editable for simple products
- * For variable products, shows stock per variant
- */
-
-import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
-import { Package, Loader2, AlertTriangle, Layers, ChevronDown, ChevronUp } from 'lucide-react';
+import { forwardRef, useId, useImperativeHandle, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Logger } from '../../utils/logger';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+import { useScopedMutation } from '../../hooks/useScopedMutation';
+import { isRecord } from '../../utils/responseValidation';
 
-interface StockManagementPanelProps {
+interface Props {
     productWooId: number;
-    variants?: Array<{
-        id: number;
-        sku?: string;
-        attributes?: Array<{ name: string; option: string }>;
-        stock_quantity?: number | null;
-        stock_status?: string;
-    }>;
+    variants?: Array<{ id: number; sku?: string; attributes?: Array<{ name: string; option: string }>; stock_quantity?: number | null; stock_status?: string }>;
     onStockChange?: (newStock: number, variantId?: number) => void;
 }
-
-/** Imperative handle so the parent Save button can trigger a stock save */
-export interface StockManagementPanelRef {
-    save(): Promise<boolean>;
+export interface StockManagementPanelRef { save(): Promise<boolean> }
+interface Variant { wooId: number; sku?: string; stockQuantity: number | null; manageStock: boolean; attributes?: string }
+interface StockInfo { stockQuantity: number | null; isBOMBased: boolean; manageStock: boolean; isVariable?: boolean; variants?: Variant[] }
+const stockValue = (value: unknown) => value === null || (typeof value === 'number' && Number.isSafeInteger(value));
+function decodeStock(value: unknown): StockInfo {
+    if (!isRecord(value) || !stockValue(value.stockQuantity) || typeof value.isBOMBased !== 'boolean' || typeof value.manageStock !== 'boolean' || (value.isVariable != null && typeof value.isVariable !== 'boolean') ||
+        (value.variants !== undefined && (!Array.isArray(value.variants) || !value.variants.every(item => isRecord(item) && typeof item.wooId === 'number' && Number.isSafeInteger(item.wooId) && item.wooId > 0 && stockValue(item.stockQuantity) && typeof item.manageStock === 'boolean' && ['sku', 'attributes'].every(key => item[key] == null || typeof item[key] === 'string')))) ||
+        (value.isVariable && (!Array.isArray(value.variants) || value.variants.length === 0))) throw new Error('Invalid stock information');
+    const data = value as unknown as StockInfo;
+    if (data.variants && new Set(data.variants.map(item => item.wooId)).size !== data.variants.length) throw new Error('Duplicate variants');
+    return data;
 }
-
-interface StockInfo {
-    stockQuantity: number | null;
-    isBOMBased: boolean;
-    manageStock: boolean;
-    isVariable?: boolean;
-    variants?: Array<{
-        wooId: number;
-        sku?: string;
-        stockQuantity: number | null;
-        stockStatus?: string;
-        manageStock: boolean;
-        attributes?: string;
-    }>;
+function quantity(value: string): number | null {
+    const number = /^\d+$/.test(value.trim()) ? Number(value) : NaN;
+    return Number.isSafeInteger(number) && number >= 0 ? number : null;
 }
-
-export const StockManagementPanel = forwardRef<StockManagementPanelRef, StockManagementPanelProps>(function StockManagementPanel({ productWooId, variants, onStockChange }, ref) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-
-    // Why: refs prevent callback recreation on silent token refresh, same pattern as useProductEdit
-    const tokenRef = useRef(token);
-    tokenRef.current = token;
-    const accountRef = useRef(currentAccount);
-    accountRef.current = currentAccount;
-
-    const [stockInfo, setStockInfo] = useState<StockInfo | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [savingVariantId, setSavingVariantId] = useState<number | null>(null);
-    const [editValues, setEditValues] = useState<Record<number, string>>({});
-    const [error, setError] = useState<string | null>(null);
-    const [isExpanded, setIsExpanded] = useState(true);
-
-    const fetchStock = useCallback(async () => {
-        const tkn = tokenRef.current;
-        const acct = accountRef.current;
-        if (!tkn || !acct) return;
-
-        try {
-            const res = await fetch(`/api/products/${productWooId}/stock`, {
-                headers: {
-                    'Authorization': `Bearer ${tkn}`,
-                    'X-Account-ID': acct.id
-                }
-            });
-
-            if (res.ok) {
-                const data: StockInfo = await res.json();
-                setStockInfo(data);
-
-                // Initialize edit values
-                if (data.variants) {
-                    const values: Record<number, string> = {};
-                    data.variants.forEach(v => {
-                        values[v.wooId] = v.stockQuantity?.toString() ?? '';
-                    });
-                    setEditValues(values);
-                } else {
-                    setEditValues({ 0: data.stockQuantity?.toString() ?? '' });
-                }
-            } else {
-                setError('Failed to load stock info');
+export const StockManagementPanel = forwardRef<StockManagementPanelRef, Props>(function StockManagementPanel(props, ref) {
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount || !Number.isSafeInteger(props.productWooId) || props.productWooId < 1) return <p role="status">Select an account and product to manage stock.</p>;
+    return <ScopedStock key={JSON.stringify([token, currentAccount.id, props.productWooId])} {...props} ref={ref} token={token} accountId={currentAccount.id} />;
+});
+const ScopedStock = forwardRef<StockManagementPanelRef, Props & { token: string; accountId: string }>(function ScopedStock(props, ref) {
+    const { data, loading, error, retry } = useScopedRequest(`/api/products/${props.productWooId}/stock`, props.accountId, props.token, decodeStock);
+    const editor = useRef<StockManagementPanelRef>(null);
+    useImperativeHandle(ref, () => ({ save: () => editor.current?.save() ?? Promise.resolve(false) }), []);
+    if (loading) return <p role="status">Loading stock...</p>;
+    if (error || !data) return <p role="alert">Could not load stock information. <button type="button" onClick={retry}>Retry stock</button></p>;
+    return <StockEditor {...props} initial={data} ref={editor} />;
+});
+const StockEditor = forwardRef<StockManagementPanelRef, Props & { token: string; accountId: string; initial: StockInfo }>(function StockEditor({ productWooId, token, accountId, initial, onStockChange }, ref) {
+    const [stock, setStock] = useState(initial);
+    const [edits, setEdits] = useState<Record<number, string>>(() => Object.fromEntries(initial.variants?.map(item => [item.wooId, item.stockQuantity?.toString() ?? '']) ?? [[0, initial.stockQuantity?.toString() ?? '']]));
+    const [expanded, setExpanded] = useState(true); const id = useId();
+    const [validation, setValidation] = useState<string | null>(null); const [savingId, setSavingId] = useState<number | null>(null);
+    const mutation = useScopedMutation();
+    const rows = stock.variants?.length ? stock.variants : [{ wooId: 0, stockQuantity: stock.stockQuantity, manageStock: stock.manageStock, attributes: 'Product' }];
+    const save = async (onlyId?: number): Promise<boolean> => {
+        if (mutation.isPending()) return false;
+        if (stock.isBOMBased) return true;
+        const targets = rows.filter(row => (onlyId === undefined || row.wooId === onlyId) && edits[row.wooId] !== (row.stockQuantity?.toString() ?? ''));
+        if (!targets.length) return !mutation.busy;
+        if (targets.some(row => quantity(edits[row.wooId] ?? '') === null)) { setValidation('Enter a whole stock quantity of zero or greater.'); return false; }
+        setValidation(null);
+        const result = await mutation.run(async signal => {
+            for (const row of targets) {
+                if (signal.aborted) throw new Error('Cancelled');
+                const value = quantity(edits[row.wooId])!; setSavingId(row.wooId);
+                const path = row.wooId ? `/api/products/${productWooId}/variants/${row.wooId}/stock` : `/api/products/${productWooId}/stock`;
+                const response = await fetch(path, { method: 'PUT', signal, headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId, 'Content-Type': 'application/json' }, body: JSON.stringify({ stockQuantity: value }) });
+                if (!response.ok) throw new Error('Stock save failed');
+                const saved: unknown = await response.json();
+                if (!isRecord(saved) || saved.success !== true || saved.stockQuantity !== value || signal.aborted) throw new Error('Invalid stock confirmation');
+                setStock(previous => row.wooId ? { ...previous, variants: previous.variants?.map(item => item.wooId === row.wooId ? { ...item, stockQuantity: value, manageStock: true } : item) } : { ...previous, stockQuantity: value, manageStock: true });
+                try { void Promise.resolve(onStockChange?.(value, row.wooId || undefined)).catch(() => {}); } catch { /* Saved stock must not be retried because of a callback failure. */ }
             }
-        } catch (err) {
-            Logger.error('Failed to fetch stock', { error: err });
-            setError('Failed to load stock info');
-        } finally {
-            setIsLoading(false);
-        }
-    }, [productWooId]);
-
-    useEffect(() => {
-        fetchStock();
-    }, [fetchStock]);
-
-    /**
-     * Save stock for a variant or main product.
-     * Returns true on success, false on failure.
-     */
-    const handleSave = useCallback(async (variantWooId?: number): Promise<boolean> => {
-        const tkn = tokenRef.current;
-        const acct = accountRef.current;
-        if (!tkn || !acct) return false;
-
-        const targetId = variantWooId ?? 0;
-        const newStock = parseInt(editValues[targetId] ?? '', 10);
-        if (isNaN(newStock) || newStock < 0) {
-            setError('Please enter a valid stock quantity');
-            return false;
-        }
-
-        setSavingVariantId(targetId);
-        setError(null);
-
-        try {
-            const url = variantWooId
-                ? `/api/products/${productWooId}/variants/${variantWooId}/stock`
-                : `/api/products/${productWooId}/stock`;
-
-            const res = await fetch(url, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `Bearer ${tkn}`,
-                    'X-Account-ID': acct.id,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ stockQuantity: newStock })
-            });
-
-            if (res.ok) {
-                // Update local state
-                if (variantWooId && stockInfo?.variants) {
-                    setStockInfo(prev => prev ? {
-                        ...prev,
-                        variants: prev.variants?.map(v =>
-                            v.wooId === variantWooId
-                                ? { ...v, stockQuantity: newStock, manageStock: true }
-                                : v
-                        )
-                    } : prev);
-                } else {
-                    setStockInfo(prev => prev ? { ...prev, stockQuantity: newStock, manageStock: true } : prev);
-                }
-                onStockChange?.(newStock, variantWooId);
-                return true;
-            } else {
-                const data = await res.json();
-                setError(data.error || 'Failed to update stock');
-                return false;
-            }
-        } catch (err) {
-            Logger.error('Failed to save stock', { error: err });
-            setError('Failed to save stock');
-            return false;
-        } finally {
-            setSavingVariantId(null);
-        }
-    }, [editValues, onStockChange, productWooId, stockInfo?.variants]);
-
-    const handleAdjust = (delta: number, variantWooId?: number) => {
-        const targetId = variantWooId ?? 0;
-        const current = parseInt(editValues[targetId] ?? '0', 10) || 0;
-        const newValue = Math.max(0, current + delta);
-        setEditValues(prev => ({ ...prev, [targetId]: newValue.toString() }));
+        }, 'Could not confirm all stock updates. Saved rows are retained; check stock before retrying.');
+        if (mutation.isActive()) setSavingId(null);
+        return result.ok;
     };
-
-    /**
-     * Why: expose save() so the page-level Save button can flush pending stock edits.
-     * Returns true if save succeeded or was a no-op, false on failure.
-     */
-    useImperativeHandle(ref, () => ({
-        async save(): Promise<boolean> {
-            const targets: Array<{ variantWooId?: number; targetId: number }> = [];
-
-            if (stockInfo?.variants) {
-                for (const v of stockInfo.variants) {
-                    const current = v.stockQuantity?.toString() ?? '';
-                    if (editValues[v.wooId] !== current) {
-                        targets.push({ variantWooId: v.wooId, targetId: v.wooId });
-                    }
-                }
-            } else {
-                const current = stockInfo?.stockQuantity?.toString() ?? '';
-                if (editValues[0] !== current) {
-                    targets.push({ targetId: 0 });
-                }
-            }
-
-            if (targets.length === 0) return true;
-
-            for (const t of targets) {
-                const ok = await handleSave(t.variantWooId);
-                if (!ok) return false;
-            }
-            return true;
-        }
-    }), [stockInfo, editValues, handleSave]);
-
-    if (isLoading) {
-        return (
-            <div className="bg-gradient-to-br from-blue-50/50 to-indigo-50/50 rounded-xl border border-blue-100/50 p-6">
-                <div className="flex items-center justify-center gap-2 text-gray-500">
-                    <Loader2 className="animate-spin" size={18} />
-                    <span className="text-sm">Loading stock...</span>
-                </div>
-            </div>
-        );
-    }
-
-    // Variable product with variants
-    const isVariable = stockInfo?.isVariable || (variants && variants.length > 0);
-
-    return (
-        <div className="bg-gradient-to-br from-blue-50/50 to-indigo-50/50 rounded-xl border border-blue-100/50 p-6">
-            <button
-                type="button"
-                onClick={() => setIsExpanded(!isExpanded)}
-                className="w-full flex items-center justify-between text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4"
-            >
-                <span className="flex items-center gap-2">
-                    <Package size={14} className="text-blue-600" />
-                    Stock On Hand
-                    {stockInfo?.isBOMBased && (
-                        <span className="ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-medium rounded-full flex items-center gap-1">
-                            <Layers size={10} />
-                            BOM Calculated
-                        </span>
-                    )}
-                    {isVariable && (
-                        <span className="ml-2 px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-medium rounded-full">
-                            {stockInfo?.variants?.length ?? variants?.length ?? 0} Variants
-                        </span>
-                    )}
-                </span>
-                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </button>
-
-            {error && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
-                    <AlertTriangle size={16} />
-                    {error}
-                </div>
-            )}
-
-            {isExpanded && (
-                <>
-                    {stockInfo?.isBOMBased ? (
-                        // BOM-based: Read-only display
-                        <div className="space-y-3">
-                            <div className="flex items-center gap-4">
-                                <div className="text-4xl font-bold text-gray-900">
-                                    {stockInfo.stockQuantity ?? '-'}
-                                </div>
-                                <div className="text-sm text-gray-500">
-                                    units available
-                                </div>
-                            </div>
-                            <p className="text-xs text-gray-500 bg-white/50 rounded-lg p-3 border border-gray-100">
-                                This product has a Bill of Materials (BOM). Stock is automatically calculated
-                                based on the available quantity of component items.
-                            </p>
-                        </div>
-                    ) : isVariable ? (
-                        // Variable product: Show variant stock table
-                        <div className="space-y-3">
-                            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                                <table className="w-full text-sm">
-                                    <thead className="bg-gray-50 border-b border-gray-200">
-                                        <tr>
-                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Variant</th>
-                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
-                                            <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Stock</th>
-                                            <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {(stockInfo?.variants ?? variants?.map(v => ({
-                                            wooId: v.id,
-                                            sku: v.sku,
-                                            stockQuantity: v.stock_quantity,
-                                            stockStatus: v.stock_status,
-                                            manageStock: false,
-                                            attributes: v.attributes?.map(a => a.option).join(' / ')
-                                        })) ?? []).map((variant) => (
-                                            <tr key={variant.wooId} className="hover:bg-gray-50">
-                                                <td className="px-4 py-3 font-medium text-gray-900">
-                                                    {variant.attributes || `Variation #${variant.wooId}`}
-                                                </td>
-                                                <td className="px-4 py-3 text-gray-500 font-mono text-xs">
-                                                    {variant.sku || '-'}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleAdjust(-1, variant.wooId)}
-                                                            className="w-7 h-7 flex items-center justify-center bg-gray-100 border border-gray-200 rounded text-gray-600 hover:bg-gray-200 transition-colors text-sm font-bold"
-                                                        >
-                                                            −
-                                                        </button>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            value={editValues[variant.wooId] ?? ''}
-                                                            onChange={(e) => setEditValues(prev => ({ ...prev, [variant.wooId]: e.target.value }))}
-                                                            className="w-16 px-2 py-1 text-center font-bold bg-white border border-gray-200 rounded focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                                                        />
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleAdjust(1, variant.wooId)}
-                                                            className="w-7 h-7 flex items-center justify-center bg-gray-100 border border-gray-200 rounded text-gray-600 hover:bg-gray-200 transition-colors text-sm font-bold"
-                                                        >
-                                                            +
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-3 text-center">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleSave(variant.wooId)}
-                                                        disabled={savingVariantId === variant.wooId || editValues[variant.wooId] === (variant.stockQuantity?.toString() ?? '')}
-                                                        className="px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                                    >
-                                                        {savingVariantId === variant.wooId ? <Loader2 className="animate-spin" size={12} /> : 'Save'}
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                            <p className="text-xs text-gray-500">
-                                Stock is managed per variant for variable products.
-                            </p>
-                        </div>
-                    ) : (
-                        // Simple product: Editable single stock
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => handleAdjust(-1)}
-                                    className="w-10 h-10 flex items-center justify-center bg-white border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors text-lg font-bold"
-                                >
-                                    −
-                                </button>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value={editValues[0] ?? ''}
-                                    onChange={(e) => setEditValues(prev => ({ ...prev, 0: e.target.value }))}
-                                    className="w-24 px-4 py-2 text-center text-xl font-bold bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => handleAdjust(1)}
-                                    className="w-10 h-10 flex items-center justify-center bg-white border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors text-lg font-bold"
-                                >
-                                    +
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => handleSave()}
-                                    disabled={savingVariantId === 0 || editValues[0] === (stockInfo?.stockQuantity?.toString() ?? '')}
-                                    className="ml-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                                >
-                                    {savingVariantId === 0 ? <Loader2 className="animate-spin" size={14} /> : null}
-                                    Update Stock
-                                </button>
-                            </div>
-                            {!stockInfo?.manageStock && (
-                                <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-3 border border-amber-100">
-                                    Stock management is currently disabled for this product.
-                                    Setting a stock quantity will enable local stock tracking.
-                                </p>
-                            )}
-                        </div>
-                    )}
-                </>
-            )}
-        </div>
-    );
+    useImperativeHandle(ref, () => ({ save: () => save() }));
+    return <section aria-label="Stock management" className="p-6 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 space-y-4">
+        <button type="button" aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded(!expanded)} className="font-semibold">Stock On Hand {expanded ? '−' : '+'}{stock.isBOMBased ? ' · BOM Calculated' : ''}</button>
+        {(validation || mutation.error) && <p role="alert">{validation || mutation.error}</p>}
+        <div id={id} hidden={!expanded}>{stock.isBOMBased ? <><p className="text-3xl font-semibold">{stock.stockQuantity ?? 'Unavailable'}</p><p>Stock is calculated from BOM components and cannot be edited here.</p></> : <fieldset disabled={mutation.busy} className="space-y-4">
+            {rows.map(row => <div key={row.wooId} className="flex flex-wrap items-center gap-3"><label htmlFor={`${id}-${row.wooId}`} className="min-w-32">{row.attributes || row.sku || `Variation #${row.wooId}`} stock</label><span className="text-xs">{row.sku}</span><button type="button" aria-label={`Decrease ${row.wooId || 'product'} stock`} onClick={() => { const value = quantity(edits[row.wooId]); if (value !== null) setEdits(previous => ({ ...previous, [row.wooId]: String(Math.max(0, value - 1)) })); }}>−</button>
+                <input id={`${id}-${row.wooId}`} type="number" min="0" step="1" value={edits[row.wooId] ?? ''} onChange={event => setEdits(previous => ({ ...previous, [row.wooId]: event.target.value }))} className="w-24 p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900" />
+                <button type="button" aria-label={`Increase ${row.wooId || 'product'} stock`} onClick={() => { const value = quantity(edits[row.wooId]); if (value !== null && Number.isSafeInteger(value + 1)) setEdits(previous => ({ ...previous, [row.wooId]: String(value + 1) })); }}>+</button>
+                <button type="button" disabled={edits[row.wooId] === (row.stockQuantity?.toString() ?? '')} onClick={() => void save(row.wooId)} className="px-3 py-2 rounded-lg bg-indigo-600 text-white disabled:opacity-50">{savingId === row.wooId ? 'Saving...' : row.wooId ? 'Save variant' : 'Update Stock'}</button>
+            </div>)}
+            <p className="text-xs text-slate-500 dark:text-slate-400">Saving enables stock tracking. Stock updates are processed one at a time.</p>
+        </fieldset>}</div>
+        {mutation.busy && <p role="status">Saving stock...</p>}
+    </section>;
 });

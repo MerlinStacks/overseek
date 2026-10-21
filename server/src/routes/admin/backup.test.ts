@@ -7,10 +7,12 @@ const mocks = vi.hoisted(() => ({
     applyRetentionPolicy: vi.fn(), getSettings: vi.fn(), updateSettings: vi.fn(),
     getStoredBackups: vi.fn(), getBackupFilePath: vi.fn(), deleteStoredBackup: vi.fn(),
     restoreFromBackup: vi.fn(), createReadStream: vi.fn(),
+    findBackup: vi.fn(),
 }));
 vi.mock('../../services/AccountBackupService', () => ({ AccountBackupService: mocks }));
 vi.mock('../../utils/logger', () => ({ Logger: { error: vi.fn(), info: vi.fn() } }));
 vi.mock('fs', () => ({ createReadStream: mocks.createReadStream }));
+vi.mock('../../utils/prisma', () => ({ prisma: { storedBackup: { findUnique: mocks.findBackup } } }));
 
 import { backupRoutes } from './backup';
 
@@ -24,6 +26,7 @@ describe('admin backup routes', () => {
         mocks.generateBackup.mockResolvedValue(backup);
         mocks.saveBackupToStorage.mockResolvedValue({ id: 'backup-1' });
         mocks.updateSettings.mockResolvedValue({ isEnabled: true });
+        mocks.findBackup.mockResolvedValue({ accountId: 'tenant-1', status: 'COMPLETED', account: { name: 'My Store!' } });
         app = Fastify();
         await app.register(backupRoutes);
     });
@@ -139,10 +142,21 @@ describe('admin backup routes', () => {
 
     it('preserves restoration results and the requested backup ID', async () => {
         mocks.restoreFromBackup.mockResolvedValue({ success: true, restored: 5 });
-        const response = await app.inject({ method: 'POST', url: '/backups/backup-1/restore' });
+        const response = await app.inject({ method: 'POST', url: '/backups/backup-1/restore', payload: { accountId: 'tenant-1', confirmAccountName: 'My Store!' } });
         expect(response.statusCode).toBe(200);
         expect(response.json()).toEqual({ success: true, restored: 5 });
         expect(mocks.restoreFromBackup).toHaveBeenCalledExactlyOnceWith('backup-1');
+    });
+
+    it.each([{}, { accountId: 'tenant-1', confirmAccountName: 'Wrong' }, { accountId: 'tenant-2', confirmAccountName: 'My Store!' }])('requires matching backup account/name before restoration: %j', async payload => {
+        const response = await app.inject({ method: 'POST', url: '/backups/backup-1/restore', payload });
+        expect(response.statusCode).toBe(400); expect(mocks.restoreFromBackup).not.toHaveBeenCalled();
+    });
+
+    it('rejects a restore already in progress', async () => {
+        mocks.findBackup.mockResolvedValue({ accountId: 'tenant-1', status: 'RESTORING', account: { name: 'My Store!' } });
+        const response = await app.inject({ method: 'POST', url: '/backups/backup-1/restore', payload: { accountId: 'tenant-1', confirmAccountName: 'My Store!' } });
+        expect(response.statusCode).toBe(409); expect(mocks.restoreFromBackup).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -153,7 +167,7 @@ describe('admin backup routes', () => {
         { method: 'GET' as const, url: '/backups/backup-1/download', service: 'getBackupFilePath' as const, error: 'Failed to download backup' },
     ])('does not leak internal errors from $service', async ({ method, url, service, error }) => {
         mocks[service].mockRejectedValue(new Error('private database credentials'));
-        const response = await app.inject({ method, url, ...(method === 'PUT' ? { payload: {} } : {}) });
+        const response = await app.inject({ method, url, ...(url.endsWith('/restore') ? { payload: { accountId: 'tenant-1', confirmAccountName: 'My Store!' } } : method === 'PUT' ? { payload: {} } : {}) });
         expect(response.statusCode).toBe(500);
         expect(response.json()).toEqual({ error });
     });

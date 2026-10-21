@@ -216,7 +216,7 @@ export class AcquisitionAnalytics {
                 }
             }
 
-            return Array.from(campaigns.values()).map(({ countedOrders, ...row }) => row).sort((a, b) => b.sessions - a.sessions).slice(0, 50);
+            return Array.from(campaigns.values()).map(({ countedOrders: _countedOrders, ...row }) => row).sort((a, b) => b.sessions - a.sessions).slice(0, 50);
         } catch (error) {
             Logger.error('Analytics Campaigns Error', { error });
             return [];

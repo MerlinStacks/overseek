@@ -28,7 +28,7 @@ export function DigestTab() {
     }
 
     const s = digest.summary;
-    const fmtPct = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
+    const fmtChange = (v: number) => `${v >= 0 ? '+' : ''}${v.toLocaleString()} vs previous sample`;
 
     return (
         <div className="space-y-6 animate-fade-slide-up">
@@ -43,23 +43,24 @@ export function DigestTab() {
                 </div>
             </div>
 
+            <p className="text-xs text-slate-500">Returned query samples, not whole-site totals. {digest.coverage?.possiblyTruncated ? 'Query row limit reached. ' : ''}Position is impression-weighted; query coverage may differ between periods.</p>
             {/* Summary Stats */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-900/20 dark:to-blue-800/10 rounded-xl p-4 border border-blue-100 dark:border-blue-800/30">
                     <p className="text-xs text-blue-600/70 dark:text-blue-400/70 font-medium">Clicks</p>
                     <p className="text-2xl font-bold text-blue-700 dark:text-blue-300 mt-0.5">{s.totalClicks.toLocaleString()}</p>
-                    <p className={`text-xs font-medium mt-1 ${s.clicksChange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{fmtPct(s.clicksChange)}</p>
+                    <p className={`text-xs font-medium mt-1 ${s.clicksChange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{fmtChange(s.clicksChange)}</p>
                 </div>
                 <div className="bg-gradient-to-br from-violet-50 to-violet-100/50 dark:from-violet-900/20 dark:to-violet-800/10 rounded-xl p-4 border border-violet-100 dark:border-violet-800/30">
                     <p className="text-xs text-violet-600/70 dark:text-violet-400/70 font-medium">Impressions</p>
                     <p className="text-2xl font-bold text-violet-700 dark:text-violet-300 mt-0.5">{s.totalImpressions.toLocaleString()}</p>
-                    <p className={`text-xs font-medium mt-1 ${s.impressionsChange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{fmtPct(s.impressionsChange)}</p>
+                    <p className={`text-xs font-medium mt-1 ${s.impressionsChange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{fmtChange(s.impressionsChange)}</p>
                 </div>
                 <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-900/20 dark:to-amber-800/10 rounded-xl p-4 border border-amber-100 dark:border-amber-800/30">
                     <p className="text-xs text-amber-600/70 dark:text-amber-400/70 font-medium">Avg Position</p>
-                    <p className="text-2xl font-bold text-amber-700 dark:text-amber-300 mt-0.5">#{Math.round(s.avgPosition)}</p>
-                    <p className={`text-xs font-medium mt-1 ${s.positionChange <= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {s.positionChange > 0 ? '+' : ''}{s.positionChange.toFixed(1)} pos
+                    <p className="text-2xl font-bold text-amber-700 dark:text-amber-300 mt-0.5">{s.avgPosition == null ? 'Unavailable' : `#${s.avgPosition.toFixed(1)}`}</p>
+                    <p className={`text-xs font-medium mt-1 ${s.positionChange != null && s.positionChange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {s.positionChange == null ? 'Unavailable' : `${s.positionChange > 0 ? '+' : ''}${s.positionChange.toFixed(1)} pos (positive = improved)`}
                     </p>
                 </div>
             </div>
@@ -114,7 +115,7 @@ export function DigestTab() {
             {digest.newKeywords.length > 0 && (
                 <div className="glass-panel rounded-xl p-4">
                     <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5 mb-3">
-                        <Star className="w-4 h-4 text-amber-500" /> Newly Discovered Keywords
+                        <Star className="w-4 h-4 text-amber-500" /> Newly Observed in Query Sample
                     </h4>
                     <div className="flex flex-wrap gap-2">
                         {digest.newKeywords.map((nk: NewKw) => (

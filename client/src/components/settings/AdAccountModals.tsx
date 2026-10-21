@@ -1,182 +1,28 @@
-/**
- * AdAccountModals
- * 
- * Edit and Pending Setup modals for ad account settings.
- */
-import { Loader2, Pencil, Check, AlertCircle } from 'lucide-react';
 import { Modal } from '../ui/Modal';
+import { validAdAccountId } from './adAccountValues';
 
-interface AdAccount {
-    id: string;
-    platform: string;
-    name: string;
-    externalId: string;
-}
-
-interface EditForm {
-    name: string;
-    externalId: string;
-    accessToken: string;
-    refreshToken: string;
-}
-
-interface EditAdAccountModalProps {
-    account: AdAccount | null;
-    form: EditForm;
-    onFormChange: (form: EditForm) => void;
-    onClose: () => void;
-    onSave: () => void;
-    isSaving: boolean;
-}
-
-export function EditAdAccountModal({
-    account,
-    form,
-    onFormChange,
-    onClose,
-    onSave,
-    isSaving
-}: EditAdAccountModalProps) {
+interface AdAccount { id: string; platform: string; name: string; externalId: string }
+interface EditForm { name: string; externalId: string; accessToken: string; refreshToken: string }
+interface EditProps { account: AdAccount | null; form: EditForm; onFormChange: (form: EditForm) => void; onClose: () => void; onSave: () => void; isSaving: boolean; error?: string | null }
+export function EditAdAccountModal({ account, form, onFormChange, onClose, onSave, isSaving, error }: EditProps) {
     if (!account) return null;
-
-    return (
-        <Modal
-            isOpen={!!account}
-            onClose={onClose}
-            title={
-                <div className="flex items-center gap-2">
-                    <Pencil size={18} className="text-blue-600" />
-                    <span>Edit {account.platform} Account</span>
-                </div>
-            }
-            maxWidth="max-w-md"
-        >
-            <div className="space-y-4">
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Account Name</label>
-                    <input
-                        type="text"
-                        className="w-full p-2 border rounded-lg"
-                        value={form.name}
-                        onChange={e => onFormChange({ ...form, name: e.target.value })}
-                    />
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {account.platform === 'GOOGLE' ? 'Customer ID' : 'Ad Account ID'}
-                    </label>
-                    <input
-                        type="text"
-                        className="w-full p-2 border rounded-lg"
-                        placeholder={account.externalId}
-                        value={form.externalId}
-                        onChange={e => onFormChange({ ...form, externalId: e.target.value })}
-                    />
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">New Access Token (leave blank to keep current)</label>
-                    <input
-                        type="password"
-                        className="w-full p-2 border rounded-lg"
-                        placeholder="Enter new access token..."
-                        value={form.accessToken}
-                        onChange={e => onFormChange({ ...form, accessToken: e.target.value })}
-                    />
-                    {account.platform === 'GOOGLE' && (
-                        <p className="text-xs text-gray-500 mt-1">
-                            To refresh expired tokens, disconnect and reconnect your account using the OAuth flow.
-                        </p>
-                    )}
-                </div>
-                {account.platform === 'GOOGLE' && (
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">New Refresh Token (leave blank to keep current)</label>
-                        <input
-                            type="password"
-                            className="w-full p-2 border rounded-lg"
-                            placeholder="Enter new refresh token..."
-                            value={form.refreshToken}
-                            onChange={e => onFormChange({ ...form, refreshToken: e.target.value })}
-                        />
-                    </div>
-                )}
-            </div>
-
-            <div className="flex gap-3 justify-end mt-6 pt-4 border-t">
-                <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                <button
-                    onClick={onSave}
-                    disabled={isSaving}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-                >
-                    {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />}
-                    Save Changes
-                </button>
-            </div>
-        </Modal>
-    );
+    const valid = !!form.name.trim() && validAdAccountId(account.platform, form.externalId);
+    return <Modal isOpen onClose={isSaving ? undefined : onClose} title={`Edit ${account.platform} Account`} maxWidth="max-w-md">
+        <fieldset disabled={isSaving} className="space-y-4 text-slate-900 dark:text-slate-100">
+            {([['name', 'Account Name'], ['externalId', account.platform === 'GOOGLE' ? 'Customer ID' : 'Ad Account ID'], ['accessToken', 'New Access Token (leave blank to keep current)'], ...(account.platform === 'GOOGLE' ? [['refreshToken', 'New Refresh Token (leave blank to keep current)']] : [])] as Array<[keyof EditForm, string]>).map(([field, label]) => <label className="block" key={field}>{label}<input className="block w-full p-2 border rounded-lg bg-white dark:bg-slate-900" autoComplete="off" type={field.endsWith('Token') ? 'password' : 'text'} value={form[field]} onChange={event => onFormChange({ ...form, [field]: event.target.value })} /></label>)}
+            {!valid && <p>Enter an account name and a valid {account.platform === 'GOOGLE' ? '10-digit Customer ID (dashes optional)' : 'numeric Ad Account ID (act_ prefix optional)'}.</p>}
+            <p>Use Reconnect to reauthorize an expired connection without deleting it.</p>
+            <div className="flex gap-4 justify-end"><button type="button" onClick={onClose}>Cancel</button><button type="button" disabled={!valid} onClick={onSave}>{isSaving ? 'Saving...' : 'Save Changes'}</button></div>
+        </fieldset>{error && <p role="alert">{error}</p>}
+    </Modal>;
 }
-
-interface PendingSetupModalProps {
-    isOpen: boolean;
-    pendingId: string;
-    customerId: string;
-    isSubmitting: boolean;
-    onCustomerIdChange: (value: string) => void;
-    onClose: () => void;
-    onComplete: () => void;
-    onCancel: () => void;
-}
-
-export function PendingSetupModal({
-    isOpen,
-    customerId,
-    isSubmitting,
-    onCustomerIdChange,
-    onClose,
-    onComplete,
-    onCancel
-}: PendingSetupModalProps) {
-    return (
-        <Modal
-            isOpen={isOpen}
-            onClose={onClose}
-            title={
-                <div className="flex items-center gap-2">
-                    <AlertCircle className="text-amber-500" size={20} />
-                    <span>Complete Google Ads Setup</span>
-                </div>
-            }
-            maxWidth="max-w-md"
-        >
-            <p className="text-sm text-gray-600 mb-4">
-                Your Google account has been connected. Please enter your Google Ads Customer ID to complete the setup.
-            </p>
-            <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Google Ads Customer ID</label>
-                <input
-                    type="text"
-                    className="w-full p-3 border rounded-lg"
-                    placeholder="123-456-7890"
-                    value={customerId}
-                    onChange={e => onCustomerIdChange(e.target.value)}
-                />
-                <p className="text-xs text-gray-500 mt-2">
-                    Find your Customer ID in the top-right corner of{' '}
-                    <a href="https://ads.google.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Google Ads</a>
-                </p>
-            </div>
-            <div className="flex gap-3 justify-end pt-4 border-t">
-                <button onClick={onCancel} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                <button
-                    onClick={onComplete}
-                    disabled={!customerId.trim() || isSubmitting}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-                >
-                    {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : null}
-                    Complete Setup
-                </button>
-            </div>
-        </Modal>
-    );
+interface PendingProps { isOpen: boolean; pendingId: string; customerId: string; isSubmitting: boolean; onCustomerIdChange: (value: string) => void; onClose: () => void; onComplete: () => void; onCancel: () => void; error?: string | null }
+export function PendingSetupModal({ isOpen, pendingId, customerId, isSubmitting, onCustomerIdChange, onClose, onComplete, onCancel, error }: PendingProps) {
+    return <Modal isOpen={isOpen} onClose={isSubmitting ? undefined : onClose} title="Complete Google Ads Setup" maxWidth="max-w-md">
+        <fieldset disabled={isSubmitting} className="space-y-4 text-slate-900 dark:text-slate-100"><p>Enter the Google Ads Customer ID to finish this pending connection. Closing keeps the pending connection; disconnecting removes it after confirmation.</p>
+            <label className="block">Google Ads Customer ID<input className="block w-full p-2 border rounded-lg bg-white dark:bg-slate-900" placeholder="123-456-7890" value={customerId} onChange={event => onCustomerIdChange(event.target.value)} /></label>
+            <p>Use 10 digits, with optional dashes. Find the ID in <a href="https://ads.google.com" target="_blank" rel="noopener noreferrer" className="underline">Google Ads</a>.</p>
+            <div className="flex flex-wrap gap-4"><button type="button" onClick={onClose}>Close</button><button type="button" disabled={!pendingId} onClick={onCancel}>Disconnect pending account</button><button type="button" disabled={!pendingId || !validAdAccountId('GOOGLE', customerId)} onClick={onComplete}>{isSubmitting ? 'Completing...' : 'Complete Setup'}</button></div>
+        </fieldset>{error && <p role="alert">{error}</p>}
+    </Modal>;
 }

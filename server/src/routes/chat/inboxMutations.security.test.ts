@@ -53,21 +53,6 @@ vi.mock('../../services/LabelService', () => ({
     }
 }));
 
-vi.mock('zod', () => {
-    const stringSchema: any = {
-        min: () => stringSchema,
-        max: () => stringSchema,
-        regex: () => stringSchema,
-        optional: () => stringSchema
-    };
-    return {
-        z: {
-            object: () => ({ parse: (value: unknown) => value }),
-            string: () => stringSchema
-        }
-    };
-});
-
 import labelsRoutes from '../labels';
 import { cannedResponseRoutes } from './cannedResponses';
 import { macroRoutes } from './macros';

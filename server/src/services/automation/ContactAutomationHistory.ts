@@ -57,7 +57,7 @@ export async function getContactAutomationHistory(accountId: string, contactEmai
         if (page.length < 20) break;
         cursor = page[page.length - 1].id;
     }
-    return visible.slice(0, 20).map(({ runEvents, automation, ...enrollment }) => ({
+    return visible.slice(0, 20).map(({ runEvents: _runEvents, automation, ...enrollment }) => ({
         ...enrollment,
         automation: { name: automation.name }
     }));

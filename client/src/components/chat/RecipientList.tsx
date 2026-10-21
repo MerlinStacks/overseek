@@ -5,9 +5,10 @@
  * Shows the primary recipient prominently, with other channels collapsible.
  */
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Mail, MessageCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { isRecord } from '../../utils/responseValidation';
 
 // Channel icon components (inline SVG for social platforms)
 const InstagramIcon = () => (
@@ -43,6 +44,7 @@ interface RecipientListProps {
     primaryChannel?: string;
     mergedRecipients?: MergedRecipient[];
     className?: string;
+    scopeKey?: string;
 }
 
 function getChannelIcon(channel: string) {
@@ -90,7 +92,12 @@ function getRecipientDisplay(recipient: MergedRecipient): string {
     return recipient.guestName || recipient.guestEmail || 'Unknown';
 }
 
-export function RecipientList({
+export function RecipientList(props: RecipientListProps) {
+    if ([props.primaryEmail, props.primaryName, props.primaryChannel].some(value => value != null && typeof value !== 'string')) return <p role="alert">Recipient details unavailable.</p>;
+    const key = JSON.stringify([props.scopeKey, props.primaryEmail, props.primaryName, props.primaryChannel, Array.isArray(props.mergedRecipients) ? props.mergedRecipients.map(recipient => isRecord(recipient) ? [recipient.id, recipient.channel] : null) : null]);
+    return <ScopedRecipientList key={key} {...props} />;
+}
+function ScopedRecipientList({
     primaryEmail,
     primaryName,
     primaryChannel = 'EMAIL',
@@ -98,6 +105,8 @@ export function RecipientList({
     className
 }: RecipientListProps) {
     const [isExpanded, setIsExpanded] = useState(false);
+    const listId = useId();
+    if (!Array.isArray(mergedRecipients) || !mergedRecipients.every(recipient => isRecord(recipient) && typeof recipient.id === 'string' && typeof recipient.channel === 'string' && ['guestEmail', 'guestName'].every(key => recipient[key] == null || typeof recipient[key] === 'string') && (recipient.wooCustomer == null || (isRecord(recipient.wooCustomer) && ['email', 'firstName', 'lastName'].every(key => recipient.wooCustomer && ((recipient.wooCustomer as Record<string, unknown>)[key] == null || typeof (recipient.wooCustomer as Record<string, unknown>)[key] === 'string')))) && (recipient.socialAccount == null || (isRecord(recipient.socialAccount) && (recipient.socialAccount.name == null || typeof recipient.socialAccount.name === 'string'))))) return <p role="alert">Recipient details unavailable.</p>;
 
     // Build list of all unique recipients
     const allRecipients: Array<{ channel: string; display: string; identifier: string }> = [];
@@ -107,19 +116,20 @@ export function RecipientList({
         allRecipients.push({
             channel: primaryChannel,
             display: primaryName || primaryEmail || 'Customer',
-            identifier: primaryEmail || primaryName || ''
+            identifier: primaryEmail?.trim() ? `${primaryChannel}:${primaryEmail.trim().toLowerCase()}` : 'primary'
         });
     }
 
     // Add merged recipients (avoid duplicates by email/identifier)
-    const seenIdentifiers = new Set(allRecipients.map(r => r.identifier.toLowerCase()));
+    const seenIdentifiers = new Set(allRecipients.map(r => r.identifier));
 
     for (const merged of mergedRecipients) {
         const display = getRecipientDisplay(merged);
-        const identifier = merged.guestEmail || merged.wooCustomer?.email || merged.socialAccount?.name || display;
+        const email = merged.guestEmail || merged.wooCustomer?.email;
+        const identifier = email?.trim() ? `${merged.channel}:${email.trim().toLowerCase()}` : `${merged.channel}:conversation:${merged.id}`;
 
-        if (!seenIdentifiers.has(identifier.toLowerCase())) {
-            seenIdentifiers.add(identifier.toLowerCase());
+        if (!seenIdentifiers.has(identifier)) {
+            seenIdentifiers.add(identifier);
             allRecipients.push({
                 channel: merged.channel,
                 display,
@@ -133,9 +143,10 @@ export function RecipientList({
         const recipient = allRecipients[0];
         return (
             <div className={cn("min-w-0", className)}>
-                <div className="font-medium text-gray-900 text-sm truncate">
+                <div className="font-medium text-gray-900 dark:text-slate-100 text-sm truncate">
                     {recipient?.display || 'Customer'}
                 </div>
+                {recipient && <span className="text-xs text-gray-500 dark:text-slate-400">{recipient.channel}</span>}
                 {primaryEmail && primaryName && (
                     <div className="text-xs text-gray-500 truncate">{primaryEmail}</div>
                 )}
@@ -150,14 +161,15 @@ export function RecipientList({
         <div className={cn("min-w-0", className)}>
             {/* Primary recipient */}
             <div className="flex items-center gap-1.5">
-                <span className={cn("p-0.5 rounded", getChannelColor(allRecipients[0].channel))}>
+                <span aria-hidden="true" className={cn("p-0.5 rounded", getChannelColor(allRecipients[0].channel))}>
                     {getChannelIcon(allRecipients[0].channel)}
                 </span>
-                <span className="font-medium text-gray-900 text-sm truncate">
+                <span className="sr-only">{allRecipients[0].channel} recipient:</span><span className="font-medium text-gray-900 dark:text-slate-100 text-sm truncate">
                     {allRecipients[0].display}
                 </span>
                 {hiddenCount > 0 && (
                     <button
+                        type="button" aria-expanded={isExpanded} aria-controls={listId} aria-label={isExpanded ? 'Hide additional recipients' : `Show ${hiddenCount} additional recipients`}
                         onClick={() => setIsExpanded(!isExpanded)}
                         className="flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-700 font-medium shrink-0"
                     >
@@ -169,13 +181,13 @@ export function RecipientList({
 
             {/* Expanded recipients */}
             {isExpanded && (
-                <div className="mt-1.5 space-y-1 pl-0.5">
+                <div id={listId} className="mt-1.5 space-y-1 pl-0.5">
                     {allRecipients.slice(1).map((recipient, index) => (
-                        <div key={index} className="flex items-center gap-1.5 text-xs text-gray-600">
-                            <span className={cn("p-0.5 rounded", getChannelColor(recipient.channel))}>
+                        <div key={index} className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-slate-300">
+                            <span aria-hidden="true" className={cn("p-0.5 rounded", getChannelColor(recipient.channel))}>
                                 {getChannelIcon(recipient.channel)}
                             </span>
-                            <span className="truncate">{recipient.display}</span>
+                            <span className="truncate">{recipient.display} <span className="text-xs">({recipient.channel})</span></span>
                         </div>
                     ))}
                 </div>

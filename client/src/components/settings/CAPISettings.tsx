@@ -118,7 +118,7 @@ const PLATFORMS: PlatformDef[] = [
         fields: [
             { name: 'measurementId', label: 'Measurement ID', type: 'text', placeholder: 'G-XXXXXXXXXX', section: 'pixel' },
             { name: 'apiSecret', label: 'MP API Secret (for CAPI)', type: 'password', placeholder: 'From GA4 Admin → Data Streams', section: 'capi' },
-            { name: 'useDebugEndpoint', label: 'Debug Mode', type: 'toggle', help: 'Send server-side events to GA4 debug endpoint.', section: 'capi' },
+            { name: 'useDebugEndpoint', label: 'Debug Mode', type: 'toggle', help: 'Validation only: debug events are NOT recorded in GA4 reports or Google Ads. Turn off for production tracking.', section: 'capi' },
         ],
     },
     {
@@ -412,6 +412,16 @@ export function CAPISettings() {
                                         Enable {platform.label}
                                     </span>
                                 </label>
+
+                                {platform.key === 'google' && config.enabled && (
+                                    <div role="note" className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-sm text-amber-800 dark:text-amber-200 space-y-2">
+                                        {!getStringValue(config.config.purchaseUploadActionId).trim() && (
+                                            <p>Browser-dependent purchase tracking: server enhancements cannot replace a missed browser purchase. Configure and validate a separate Independent Purchase Import Action to recover those purchases.</p>
+                                        )}
+                                        <p>ROAS uses Google Ads Conversions value, not All conversions value. Secondary purchase actions normally do not contribute. After validating real orders, use only one purchase source for bidding and check campaign-specific goals. Adding browser, GA4-imported and independent purchases together can double-count orders.</p>
+                                        <p>Save your changes, then use Check Google Configuration for action and value-setting warnings. No Google goals are changed automatically.</p>
+                                    </div>
+                                )}
 
                                 {/* Credential Fields — grouped by section */}
                                 {['pixel', 'capi', 'advanced'].map(section => {

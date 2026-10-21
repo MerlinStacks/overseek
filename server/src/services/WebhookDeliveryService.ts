@@ -122,7 +122,7 @@ export class WebhookDeliveryService {
      * Replay a failed webhook delivery.
      * Returns the delivery data for the caller to re-process.
      */
-    static async replay(deliveryId: string, accountId?: string): Promise<{
+    static async replay(deliveryId: string, accountId?: string, expected?: { receivedAt: Date; topic: string; source: string; now: Date }): Promise<{
         id: string;
         accountId: string;
         topic: string;
@@ -138,7 +138,8 @@ export class WebhookDeliveryService {
         const claimed = await prisma.webhookDelivery.updateMany({
             where: {
                 ...where,
-                status: { in: ['FAILED', 'PROCESSED'] },
+                status: 'FAILED',
+                ...(expected ? { topic: expected.topic, source: expected.source, receivedAt: { equals: expected.receivedAt, gte: new Date(expected.now.getTime() - 24 * 60 * 60 * 1000), lte: expected.now } } : {}),
             },
             data: {
                 attempts: { increment: 1 },

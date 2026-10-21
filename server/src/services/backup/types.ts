@@ -34,6 +34,7 @@ export interface BackupSettings {
 }
 
 export interface StoredBackupInfo {
+    accountId: string;
     id: string;
     filename: string;
     sizeBytes: number;

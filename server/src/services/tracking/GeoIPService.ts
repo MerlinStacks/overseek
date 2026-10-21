@@ -14,6 +14,9 @@ import https from 'https';
 import zlib from 'zlib';
 import maxmind, { CityResponse, Reader } from 'maxmind';
 import { Logger } from '../../utils/logger';
+import { Readable, Transform } from 'stream';
+import { pipeline } from 'stream/promises';
+import { randomUUID } from 'crypto';
 
 /**
  * Result structure for GeoIP lookups
@@ -44,6 +47,50 @@ let readers: GeoIPReader[] = [];
 let initPromise: Promise<void> | null = null;
 let updateCheckTimer: NodeJS.Timeout | null = null;
 let isUpdating = false;
+let readerVersion = 0;
+const MAX_DB_BYTES = 128 * 1024 * 1024;
+
+function closeReader(reader: Reader<CityResponse>) { try { (reader as unknown as { close?: () => void }).close?.(); } catch { /* Best-effort release of an old buffer/handle. */ } }
+function boundedStream() {
+    let bytes = 0;
+    return new Transform({ transform(chunk, _encoding, callback) {
+        bytes += chunk.length;
+        callback(bytes > MAX_DB_BYTES ? new Error('GeoIP database exceeds 128 MiB') : null, chunk);
+    } });
+}
+async function installValidatedDatabase(tempPath: string, source: 'manual' | 'auto') {
+    const reader = await maxmind.open<CityResponse>(tempPath);
+    let installed = false;
+    try {
+        const buildDate = getBuildDate(reader);
+        if (!/city/i.test(reader.metadata.databaseType) || !Number.isFinite(buildDate.getTime())) throw new Error('A valid City MMDB database is required');
+        const stats = await fs.promises.stat(tempPath);
+        if (!stats.size || stats.size > MAX_DB_BYTES) throw new Error('Invalid GeoIP database size');
+        const destination = source === 'manual' ? MANUAL_DB_PATH : AUTO_DB_PATH;
+        await fs.promises.rename(tempPath, destination);
+        const previous = readers.filter(item => item.source === source);
+        readers = [...readers.filter(item => item.source !== source), { reader, source, buildDate, path: destination }].sort((a, b) => b.buildDate.getTime() - a.buildDate.getTime());
+        readerVersion++; installed = true;
+        previous.forEach(item => closeReader(item.reader));
+        return { size: stats.size, lastModified: stats.mtime.toISOString() };
+    } finally { if (!installed) closeReader(reader); }
+}
+
+/** Shares the update lock with scheduled downloads; invalid uploads never replace the active file. */
+export async function installManualGeoIP(stream: Readable, truncated: () => boolean = () => false) {
+    if (isUpdating) throw Object.assign(new Error('GeoIP update already in progress'), { statusCode: 409 });
+    isUpdating = true;
+    const temporary = path.join(DATA_DIR, `.geoip-${randomUUID()}.tmp`);
+    try {
+        await fs.promises.mkdir(DATA_DIR, { recursive: true });
+        await pipeline(stream, boundedStream(), fs.createWriteStream(temporary, { flags: 'wx', mode: 0o600 }), { signal: AbortSignal.timeout(60000) });
+        if (truncated()) throw Object.assign(new Error('GeoIP upload was truncated'), { statusCode: 413 });
+        return await installValidatedDatabase(temporary, 'manual');
+    } finally {
+        await fs.promises.unlink(temporary).catch(() => {});
+        isUpdating = false;
+    }
+}
 
 /**
  * Get the build date of a MaxMind reader
@@ -56,22 +103,14 @@ function getBuildDate(reader: Reader<CityResponse>): Date {
     if (typeof epoch === 'number') {
         return new Date(epoch * 1000);
     }
-    return new Date();
+    return new Date(NaN);
 }
 
 /**
  * Initialize all available databases
  */
 async function loadDatabases(): Promise<void> {
-    // Close existing readers to release memory-mapped file handles
-    for (const existing of readers) {
-        try {
-            (existing.reader as any).close();
-        } catch {
-            // Ignore close errors
-        }
-    }
-
+    const version = readerVersion;
     const newReaders: GeoIPReader[] = [];
 
     // 1. Try Manual DB
@@ -79,6 +118,7 @@ async function loadDatabases(): Promise<void> {
         try {
             const reader = await maxmind.open<CityResponse>(MANUAL_DB_PATH);
             const buildDate = getBuildDate(reader);
+            if (!/city/i.test(reader.metadata.databaseType) || !Number.isFinite(buildDate.getTime())) { closeReader(reader); throw new Error('Invalid City database metadata'); }
             newReaders.push({
                 reader,
                 source: 'manual',
@@ -96,6 +136,7 @@ async function loadDatabases(): Promise<void> {
         try {
             const reader = await maxmind.open<CityResponse>(AUTO_DB_PATH);
             const buildDate = getBuildDate(reader);
+            if (!/city/i.test(reader.metadata.databaseType) || !Number.isFinite(buildDate.getTime())) { closeReader(reader); throw new Error('Invalid City database metadata'); }
             newReaders.push({
                 reader,
                 source: 'auto',
@@ -111,7 +152,9 @@ async function loadDatabases(): Promise<void> {
     // 3. Sort by build date (Newest first)
     newReaders.sort((a, b) => b.buildDate.getTime() - a.buildDate.getTime());
 
-    readers = newReaders;
+    if (readerVersion !== version) { newReaders.forEach(item => closeReader(item.reader)); return; }
+    const previous = readers;
+    if (newReaders.length || !readers.length) { readers = newReaders; previous.forEach(item => closeReader(item.reader)); }
 
     if (readers.length === 0) {
         Logger.warn('[GeoIP] No databases available. Lookups will return null.');
@@ -125,38 +168,16 @@ async function loadDatabases(): Promise<void> {
  */
 function downloadFile(url: string, destPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
-        const file = fs.createWriteStream(destPath);
-
-        const request = https.get(url, (response) => {
+        const request = https.get(url, { signal: AbortSignal.timeout(60000) }, (response) => {
             if (response.statusCode !== 200) {
-                fs.unlink(destPath, () => { }); // Delete temp file
+                response.resume();
                 reject(new Error(`Failed to download: Status ${response.statusCode}`));
                 return;
             }
-
-            // Pipe response -> gunzip -> file
-            const gunzip = zlib.createGunzip();
-            response.pipe(gunzip).pipe(file);
-
-            file.on('finish', () => {
-                file.close(() => resolve());
-            });
-
-            file.on('error', (err) => {
-                fs.unlink(destPath, () => { });
-                reject(err);
-            });
-
-            gunzip.on('error', (err) => {
-                fs.unlink(destPath, () => { });
-                reject(err);
-            });
+            void pipeline(response, zlib.createGunzip(), boundedStream(), fs.createWriteStream(destPath, { mode: 0o600 }), { signal: AbortSignal.timeout(60000) }).then(resolve, reject);
         });
-
-        request.on('error', (err) => {
-            fs.unlink(destPath, () => { });
-            reject(err);
-        });
+        request.setTimeout(30000, () => request.destroy(new Error('GeoIP download timed out')));
+        request.on('error', reject);
     });
 }
 
@@ -197,7 +218,7 @@ export async function updateGeoLiteDB(): Promise<boolean> {
             // Fallback: Try previous month if current month is "future" or just released and not available yet
             // Or simple logic: if it's early in the month (e.g., < 5th), maybe try prev month?
             // Simplified: If current failed, try 1 month back
-            const prevDate = new Date();
+            const prevDate = new Date(); prevDate.setDate(1);
             prevDate.setMonth(prevDate.getMonth() - 1);
             const prevYear = prevDate.getFullYear();
             const prevMonth = String(prevDate.getMonth() + 1).padStart(2, '0');
@@ -211,22 +232,8 @@ export async function updateGeoLiteDB(): Promise<boolean> {
 
         // Test the new database before swapping
         try {
-            await maxmind.open(tempPath);
-            // If we are here, it's valid
-            // Check if it's actually newer than what we have? 
-            // We can just overwrite. The prioritization logic in loadDatabases will handle it.
-            // But good to check if it's valid.
-
-            // Close test reader
-            // Note: maxmind library doesn't expose close() easily in types sometimes, strictly it doesn't hold open file handle in pure JS mode but with MMDB-Reader it might.
-            // In pure JS mode (default for 'maxmind' package unless using fast version), it reads buffer.
-
-            // Move temp to real path
-            fs.renameSync(tempPath, AUTO_DB_PATH);
+            await installValidatedDatabase(tempPath, 'auto');
             Logger.info('[GeoIP] Updated DB-IP database successfully.');
-
-            // Reload databases to pick up potential new order
-            await loadDatabases();
             return true;
         } catch (e: any) {
             Logger.error(`[GeoIP] Downloaded database is invalid: ${e.message}`);
@@ -238,6 +245,7 @@ export async function updateGeoLiteDB(): Promise<boolean> {
         Logger.error(`[GeoIP] Update failed: ${e.message}`);
         return false;
     } finally {
+        await fs.promises.unlink(path.join(DATA_DIR, 'dbip-city-lite.mmdb.tmp')).catch(() => {});
         isUpdating = false;
     }
 }
@@ -278,7 +286,8 @@ export function scheduleUpdates() {
 
     // Schedule weekly check
     if (updateCheckTimer) clearInterval(updateCheckTimer);
-    updateCheckTimer = setInterval(checkAndRun, MAX_AGE_MS);
+    updateCheckTimer = setInterval(() => { void checkAndRun().catch(error => Logger.error('[GeoIP] Scheduled update failed', { error })); }, MAX_AGE_MS);
+    updateCheckTimer.unref();
 }
 
 /**

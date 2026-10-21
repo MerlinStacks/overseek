@@ -356,8 +356,8 @@ export class BOMInventorySyncService {
             const requiredQty = Number(bomItem.quantity) * (1 + waste);
             if (requiredQty <= 0) continue;
 
-            let childStock = 0;
-            let childName = '';
+            let childStock: number;
+            let childName: string;
             let childProductId = '';
             let childWooId = 0;
 
@@ -648,10 +648,10 @@ export class BOMInventorySyncService {
             const requiredQty = Number(bomItem.quantity) * (1 + waste);
             if (requiredQty <= 0) continue;
 
-            let childStock = 0;
-            let childName = '';
-            let childProductId = '';
-            let childWooId = 0;
+            let childStock: number;
+            let childName: string;
+            let childProductId: string;
+            let childWooId: number;
 
             // Handle internal product components (priority check)
             if (bomItem.internalProductId && bomItem.internalProduct) {

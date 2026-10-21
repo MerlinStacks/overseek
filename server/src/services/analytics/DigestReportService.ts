@@ -7,11 +7,14 @@
 import { SalesAnalytics } from './sales';
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+import { escapeReportHtml, reportCurrency, reportNumber } from './utils/reportFormatting';
 import {
     calculatePercentChange
 } from './utils';
 
 export interface DigestData {
+    currency?: string;
+    customerCountBasis?: 'local-record-created-at';
     period: 'daily' | 'weekly';
     dateRange: {
         start: Date;
@@ -30,12 +33,12 @@ export interface DigestData {
     topProducts: Array<{
         name: string;
         quantity: number;
-        revenue: number;
+        revenue: number | null;
     }>;
     topSources: Array<{
         source: string;
         sessions: number;
-        revenue: number;
+        revenue: number | null;
     }>;
 }
 
@@ -44,8 +47,7 @@ export class DigestReportService {
     /**
      * Generate a daily digest for yesterday's performance
      */
-    static async generateDailyDigest(accountId: string): Promise<DigestData> {
-        const now = new Date();
+    static async generateDailyDigest(accountId: string, now = new Date()): Promise<DigestData> {
         const yesterday = new Date(now);
         yesterday.setDate(yesterday.getDate() - 1);
         yesterday.setHours(0, 0, 0, 0);
@@ -65,8 +67,7 @@ export class DigestReportService {
     /**
      * Generate a weekly digest for last week's performance
      */
-    static async generateWeeklyDigest(accountId: string): Promise<DigestData> {
-        const now = new Date();
+    static async generateWeeklyDigest(accountId: string, now = new Date()): Promise<DigestData> {
 
         // Last week: 7 days ending yesterday
         const endDate = new Date(now);
@@ -101,6 +102,8 @@ export class DigestReportService {
         prevEndDate: Date
     ): Promise<DigestData> {
         try {
+            const currencies = await prisma.wooOrder.groupBy({ by: ['currency'], where: { accountId, dateCreated: { gte: prevStartDate, lte: endDate } } });
+            if (currencies.length > 1) throw new Error('Digest unavailable: mixed order currencies');
             // Execute queries in parallel for better performance
             const [
                 currentSales,
@@ -110,13 +113,14 @@ export class DigestReportService {
                 topProducts,
                 topSources
             ] = await Promise.all([
-                SalesAnalytics.getTotalSales(accountId, startDate.toISOString(), endDate.toISOString()),
-                SalesAnalytics.getTotalSales(accountId, prevStartDate.toISOString(), prevEndDate.toISOString()),
+                SalesAnalytics.getTotalSales(accountId, startDate.toISOString(), endDate.toISOString(), { throwOnError: true }),
+                SalesAnalytics.getTotalSales(accountId, prevStartDate.toISOString(), prevEndDate.toISOString(), { throwOnError: true }),
                 this.getNewCustomers(accountId, startDate, endDate),
                 this.getNewCustomers(accountId, prevStartDate, prevEndDate),
-                SalesAnalytics.getTopProducts(accountId, startDate.toISOString(), endDate.toISOString(), 5),
+                SalesAnalytics.getTopProducts(accountId, startDate.toISOString(), endDate.toISOString(), 5, { throwOnError: true }),
                 this.getTopSources(accountId, startDate, endDate)
             ]);
+            if ([currentSales.total, currentSales.count, previousSales.total, previousSales.count].some(value => typeof value !== 'number' || !Number.isFinite(value) || value < 0)) throw new Error('Digest sales unavailable');
 
             // Calculate AOV
             const currentAov = currentSales.count > 0 ? currentSales.total / currentSales.count : 0;
@@ -124,6 +128,8 @@ export class DigestReportService {
 
             return {
                 period,
+                currency: currencies[0]?.currency,
+                customerCountBasis: 'local-record-created-at',
                 dateRange: { start: startDate, end: endDate },
                 metrics: {
                     revenue: currentSales.total,
@@ -138,7 +144,7 @@ export class DigestReportService {
                 topProducts: topProducts.map(p => ({
                     name: p.name,
                     quantity: p.quantity,
-                    revenue: 0 // SalesAnalytics doesn't return revenue per product yet
+                    revenue: null // Not provided by product analytics.
                 })),
                 topSources,
             };
@@ -172,7 +178,7 @@ export class DigestReportService {
         accountId: string,
         startDate: Date,
         endDate: Date
-    ): Promise<Array<{ source: string; sessions: number; revenue: number }>> {
+    ): Promise<Array<{ source: string; sessions: number; revenue: number | null }>> {
         const sessions = await prisma.analyticsSession.groupBy({
             by: ['utmSource'],
             where: {
@@ -191,7 +197,7 @@ export class DigestReportService {
             .map(s => ({
                 source: s.utmSource || 'Direct',
                 sessions: s._count.id,
-                revenue: 0, // Would need purchase event correlation to calculate
+                revenue: null, // No reliable purchase attribution available.
             }))
             .sort((a, b) => b.sessions - a.sessions)
             .slice(0, 5);
@@ -207,7 +213,7 @@ export class DigestReportService {
         });
 
         if (directSessions > 0) {
-            sources.push({ source: 'Direct', sessions: directSessions, revenue: 0 });
+            sources.push({ source: 'Direct', sessions: directSessions, revenue: null });
             sources.sort((a, b) => b.sessions - a.sessions);
         }
 
@@ -217,14 +223,17 @@ export class DigestReportService {
     /**
      * Generate HTML email content for a digest
      */
-    static generateHtml(data: DigestData, currency: string = 'USD'): string {
+    static generateHtml(data: DigestData, currency?: string): string {
+        currency = reportCurrency(currency);
+        if (data.currency && data.currency !== currency) throw new Error('Digest currency does not match order currency');
         const periodLabel = data.period === 'daily' ? 'Daily' : 'Weekly';
         const dateLabel = data.period === 'daily'
             ? data.dateRange.start.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
             : `${data.dateRange.start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${data.dateRange.end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
 
-        const formatCurrency = (val: number) => `${currency === 'USD' ? '$' : currency} ${val.toFixed(2)}`;
+        const formatCurrency = (val: number) => Number.isFinite(val) ? new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(val) : 'Unavailable';
         const formatChange = (val: number) => {
+            if (!Number.isFinite(val)) return 'Unavailable';
             const arrow = val > 0 ? '↑' : val < 0 ? '↓' : '→';
             const color = val > 0 ? '#22c55e' : val < 0 ? '#ef4444' : '#6b7280';
             return `<span style="color: ${color}; font-weight: 600;">${arrow} ${Math.abs(val)}%</span>`;
@@ -240,15 +249,15 @@ export class DigestReportService {
 
         const productRows = data.topProducts.map((p, i) => `
             <tr>
-                <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6;">${i + 1}. ${p.name}</td>
-                <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; text-align: right;">${p.quantity} sold</td>
+                <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6;">${i + 1}. ${escapeReportHtml(p.name)}</td>
+                <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; text-align: right;">${reportNumber(p.quantity)} sold</td>
             </tr>
         `).join('');
 
         const sourceRows = data.topSources.map((s, i) => `
             <tr>
-                <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6;">${i + 1}. ${s.source}</td>
-                <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; text-align: right;">${s.sessions} sessions</td>
+                <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6;">${i + 1}. ${escapeReportHtml(s.source)}</td>
+                <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; text-align: right;">${reportNumber(s.sessions)} sessions</td>
             </tr>
         `).join('');
 
@@ -272,11 +281,11 @@ export class DigestReportService {
             <table style="width: 100%; border-collapse: collapse;">
                 <tr>
                     ${metricsRow('Revenue', formatCurrency(data.metrics.revenue), data.metrics.revenueChange)}
-                    ${metricsRow('Orders', data.metrics.orders.toString(), data.metrics.ordersChange)}
+                    ${metricsRow('Orders', reportNumber(data.metrics.orders), data.metrics.ordersChange)}
                 </tr>
                 <tr>
                     ${metricsRow('AOV', formatCurrency(data.metrics.aov), data.metrics.aovChange)}
-                    ${metricsRow('New Customers', data.metrics.newCustomers.toString(), data.metrics.newCustomersChange)}
+                    ${metricsRow('Customer records added locally', reportNumber(data.metrics.newCustomers), data.metrics.newCustomersChange)}
                 </tr>
             </table>
         </div>
@@ -311,7 +320,7 @@ export class DigestReportService {
 
         <!-- Footer -->
         <div style="text-align: center; padding: 24px 0; color: #9ca3af; font-size: 12px;">
-            <p style="margin: 0;">Generated by ${process.env.APP_NAME || 'Commerce Platform'}</p>
+            <p style="margin: 0;">Generated by ${escapeReportHtml(process.env.APP_NAME || 'Commerce Platform')}</p>
             <p style="margin: 4px 0 0;">Manage your digest settings in the Reports section</p>
         </div>
     </div>

@@ -1,367 +1,60 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Logger } from '../../utils/logger';
+import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { useToast } from '../../context/ToastContext';
-import { Trash2, UserPlus, Shield, User, Edit2, Check, X } from 'lucide-react';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+import { useScopedMutation } from '../../hooks/useScopedMutation';
+import { isRecord } from '../../utils/responseValidation';
 
-interface CustomRole {
-    id: string;
-    name: string;
-    permissions: Record<string, boolean>;
+interface Role { id: string; name: string }
+interface Member { userId: string; role: string; roleId: string | null; maxRole: Role | null; user: { fullName: string | null; email: string; avatarUrl?: string | null } }
+const baseRoles = ['ADMIN', 'STAFF', 'VIEWER'];
+function decodeMembers(value: unknown): Member[] {
+    if (!Array.isArray(value) || !value.every(item => isRecord(item) && typeof item.userId === 'string' && ['OWNER', ...baseRoles].includes(String(item.role)) && (item.roleId == null || typeof item.roleId === 'string') && (item.maxRole == null || (isRecord(item.maxRole) && typeof item.maxRole.id === 'string' && typeof item.maxRole.name === 'string')) && isRecord(item.user) && typeof item.user.email === 'string' && ['fullName', 'avatarUrl'].every(key => item.user && ((item.user as Record<string, unknown>)[key] == null || typeof (item.user as Record<string, unknown>)[key] === 'string')))) throw new Error('Invalid members');
+    return value;
 }
-
-interface Member {
-    userId: string;
-    role: 'OWNER' | 'ADMIN' | 'STAFF' | 'VIEWER';
-    roleId: string | null;
-    maxRole: CustomRole | null;
-    user: {
-        id: string;
-        fullName: string;
-        email: string;
-        avatarUrl: string | null;
-    };
+function decodeRoles(value: unknown): Role[] {
+    if (!Array.isArray(value) || !value.every(item => isRecord(item) && typeof item.id === 'string' && typeof item.name === 'string')) throw new Error('Invalid roles');
+    return value;
 }
-
-const BASE_ROLES = [
-    { value: 'OWNER', label: 'Owner', description: 'Full access, can transfer ownership' },
-    { value: 'ADMIN', label: 'Admin', description: 'Full access, cannot transfer ownership' },
-    { value: 'STAFF', label: 'Staff', description: 'Access based on custom role' },
-    { value: 'VIEWER', label: 'Viewer', description: 'Read-only access' },
-] as const;
-
-/**
- * Team management component for Settings page.
- * Allows adding/removing/editing team members and managing roles.
- */
 export function TeamSettings() {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const toast = useToast();
-    const [members, setMembers] = useState<Member[]>([]);
-    const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
-    const [email, setEmail] = useState('');
-    const [role, setRole] = useState<string>('STAFF');
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [editingUserId, setEditingUserId] = useState<string | null>(null);
-    const [editValues, setEditValues] = useState<{ role: string; roleId: string | null }>({ role: 'STAFF', roleId: null });
-    const [isSaving, setIsSaving] = useState(false);
-
-    const fetchMembers = useCallback(async () => {
-        try {
-            const res = await fetch(`/api/accounts/${currentAccount?.id}/users`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (res.ok) setMembers(await res.json());
-        } catch (e) {
-            Logger.error('Failed to fetch members', { error: e });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [currentAccount?.id, token]);
-
-    const fetchCustomRoles = useCallback(async () => {
-        try {
-            const res = await fetch('/api/roles', {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || ''
-                }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setCustomRoles(data);
-            }
-        } catch (e) {
-            Logger.error('Failed to fetch custom roles', { error: e });
-        }
-    }, [currentAccount?.id, token]);
-
-    useEffect(() => {
-        if (currentAccount && token) {
-            fetchMembers();
-            fetchCustomRoles();
-        }
-    }, [currentAccount, token, fetchMembers, fetchCustomRoles]);
-
-    const handleInvite = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError('');
-        if (!email) return;
-
-        try {
-            const res = await fetch(`/api/accounts/${currentAccount?.id}/users`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ email, role })
-            });
-
-            if (!res.ok) {
-                let errorMessage = 'Failed to add user';
-                try {
-                    const data = await res.json();
-                    errorMessage = data.error || errorMessage;
-                } catch {
-                    // Response body is not valid JSON, use status text
-                    errorMessage = res.statusText || `Error ${res.status}`;
-                }
-                throw new Error(errorMessage);
-            }
-
-            setEmail('');
-            fetchMembers();
-        } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Failed to add user';
-            setError(message);
-        }
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p role="status">Select an account to manage its team.</p>;
+    return <AccountTeam key={JSON.stringify([token, currentAccount.id])} accountId={currentAccount.id} token={token} accountName={currentAccount.name} />;
+}
+function AccountTeam({ accountId, token, accountName }: { accountId: string; token: string; accountName: string }) {
+    const endpoint = `/api/accounts/${encodeURIComponent(accountId)}/users`;
+    const members = useScopedRequest(endpoint, accountId, token, decodeMembers);
+    const roles = useScopedRequest('/api/roles', accountId, token, decodeRoles);
+    const mutation = useScopedMutation();
+    const [email, setEmail] = useState(''); const [role, setRole] = useState('STAFF');
+    const [editing, setEditing] = useState<string | null>(null); const [editRole, setEditRole] = useState('STAFF'); const [roleId, setRoleId] = useState('');
+    const [validation, setValidation] = useState<string | null>(null);
+    const mutate = async (path: string, method: string, body?: unknown) => {
+        if (mutation.isPending() || members.loading || members.error || roles.loading || roles.error) return;
+        setValidation(null);
+        const result = await mutation.run(async signal => {
+            const response = await fetch(path, { method, signal, headers: { Authorization: `Bearer ${token}`, 'x-account-id': accountId, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+            if (!response.ok) throw new Error('Team change failed');
+        }, 'Could not confirm the team change. Existing members are retained; check their status before retrying.');
+        if (result.ok) { setEmail(''); setEditing(null); members.retry(); }
     };
-
-    const handleRemove = async (userId: string) => {
-        if (!confirm('Are you sure you want to remove this member?')) return;
-        try {
-            await fetch(`/api/accounts/${currentAccount?.id}/users/${userId}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            fetchMembers();
-        } catch (e) {
-            Logger.error('Failed to remove member', { error: e });
-        }
-    };
-
-    const startEdit = (member: Member) => {
-        setEditingUserId(member.userId);
-        setEditValues({ role: member.role, roleId: member.roleId });
-    };
-
-    const cancelEdit = () => {
-        setEditingUserId(null);
-        setEditValues({ role: 'STAFF', roleId: null });
-    };
-
-    const saveEdit = async (userId: string) => {
-        setIsSaving(true);
-        try {
-            const res = await fetch(`/api/accounts/${currentAccount?.id}/users/${userId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({
-                    role: editValues.role,
-                    roleId: editValues.roleId
-                })
-            });
-
-            if (!res.ok) {
-                let errorMessage = 'Failed to update user';
-                try {
-                    const data = await res.json();
-                    errorMessage = data.error || errorMessage;
-                } catch {
-                    // Response body is not valid JSON, use status text
-                    errorMessage = res.statusText || `Error ${res.status}`;
-                }
-                throw new Error(errorMessage);
-            }
-
-            setEditingUserId(null);
-            fetchMembers();
-        } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Failed to update user.';
-            toast.error(message);
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const getRoleBadgeClass = (role: string) => {
-        switch (role) {
-            case 'OWNER': return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300';
-            case 'ADMIN': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
-            case 'STAFF': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
-            case 'VIEWER': return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
-            default: return 'bg-gray-100 text-gray-800';
-        }
-    };
-
-    if (isLoading) return <div className="p-4 text-gray-500">Loading members...</div>;
-
-    return (
-        <div className="space-y-6">
-            {/* Invite Card */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
-                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-gray-900 dark:text-white">
-                    <UserPlus size={20} className="text-blue-600" />
-                    Add New Member
-                </h2>
-                <form onSubmit={handleInvite} className="flex flex-col sm:flex-row gap-4 items-start">
-                    <div className="flex-1 w-full">
-                        <input
-                            type="email"
-                            placeholder="Enter user email address"
-                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden dark:bg-gray-900 dark:border-gray-600 dark:text-white"
-                            value={email}
-                            onChange={e => setEmail(e.target.value)}
-                        />
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">User must already be registered with this email.</p>
-                        {error && <p className="text-xs text-red-500 mt-1 font-medium">{error}</p>}
-                    </div>
-
-                    <select
-                        className="px-4 py-2 border rounded-lg bg-white dark:bg-gray-900 dark:border-gray-600 dark:text-white"
-                        value={role}
-                        onChange={e => setRole(e.target.value)}
-                    >
-                        <option value="STAFF">Staff</option>
-                        <option value="ADMIN">Admin</option>
-                        <option value="VIEWER">Viewer</option>
-                    </select>
-
-                    <button type="submit" className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap">
-                        Add User
-                    </button>
-                </form>
-            </div>
-
-            {/* Members List */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs overflow-hidden">
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                    <h3 className="font-medium text-gray-900 dark:text-white">Team Members</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Manage who has access to {currentAccount?.name}</p>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                        <thead className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
-                            <tr>
-                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">User</th>
-                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Base Role</th>
-                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Custom Role</th>
-                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                            {members.map(member => {
-                                const isEditing = editingUserId === member.userId;
-                                const isOwner = member.role === 'OWNER';
-
-                                return (
-                                    <tr key={member.userId} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-500 overflow-hidden">
-                                                    {member.user.avatarUrl ? (
-                                                        <img src={member.user.avatarUrl} alt="" className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        <User size={16} />
-                                                    )}
-                                                </div>
-                                                <div>
-                                                    <div className="font-medium text-gray-900 dark:text-white">{member.user.fullName || 'No Name'}</div>
-                                                    <div className="text-sm text-gray-500 dark:text-gray-400">{member.user.email}</div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            {isEditing && !isOwner ? (
-                                                <select
-                                                    value={editValues.role}
-                                                    onChange={e => setEditValues({ ...editValues, role: e.target.value })}
-                                                    className="px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-gray-900 dark:border-gray-600 dark:text-white"
-                                                >
-                                                    {BASE_ROLES.filter(r => r.value !== 'OWNER').map(r => (
-                                                        <option key={r.value} value={r.value}>{r.label}</option>
-                                                    ))}
-                                                </select>
-                                            ) : (
-                                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeClass(member.role)}`}>
-                                                    {isOwner && <Shield size={12} />}
-                                                    {member.role}
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            {isEditing && !isOwner ? (
-                                                <select
-                                                    value={editValues.roleId || ''}
-                                                    onChange={e => setEditValues({ ...editValues, roleId: e.target.value || null })}
-                                                    className="px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-gray-900 dark:border-gray-600 dark:text-white"
-                                                >
-                                                    <option value="">None</option>
-                                                    {customRoles.map(r => (
-                                                        <option key={r.id} value={r.id}>{r.name}</option>
-                                                    ))}
-                                                </select>
-                                            ) : (
-                                                member.maxRole ? (
-                                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300">
-                                                        {member.maxRole.name}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-gray-400 dark:text-gray-500 text-sm">—</span>
-                                                )
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <div className="flex items-center justify-end gap-2">
-                                                {isEditing ? (
-                                                    <>
-                                                        <button
-                                                            onClick={() => saveEdit(member.userId)}
-                                                            disabled={isSaving}
-                                                            className="p-1.5 text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30 rounded transition-colors"
-                                                            title="Save"
-                                                        >
-                                                            <Check size={16} />
-                                                        </button>
-                                                        <button
-                                                            onClick={cancelEdit}
-                                                            className="p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
-                                                            title="Cancel"
-                                                        >
-                                                            <X size={16} />
-                                                        </button>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        {!isOwner && (
-                                                            <button
-                                                                onClick={() => startEdit(member)}
-                                                                className="p-1.5 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded transition-colors"
-                                                                title="Edit Role"
-                                                            >
-                                                                <Edit2 size={16} />
-                                                            </button>
-                                                        )}
-                                                        {!isOwner && (
-                                                            <button
-                                                                onClick={() => handleRemove(member.userId)}
-                                                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors"
-                                                                title="Remove User"
-                                                            >
-                                                                <Trash2 size={16} />
-                                                            </button>
-                                                        )}
-                                                    </>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            {/* Custom Roles Info */}
-            {customRoles.length === 0 && (
-                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
-                    <p className="text-sm text-amber-800 dark:text-amber-300">
-                        <strong>Tip:</strong> Create custom roles in the "Roles" tab to define granular permissions for STAFF members.
-                    </p>
-                </div>
-            )}
-        </div>
-    );
+    if (members.loading || roles.loading) return <p role="status">Loading team members and roles...</p>;
+    if (members.error || roles.error || !members.data || !roles.data) return <p role="alert">Could not load team members or roles. <button type="button" onClick={() => { members.retry(); roles.retry(); }}>Retry team</button></p>;
+    return <section aria-label="Team settings" className="space-y-4 p-6 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl border border-slate-200 dark:border-slate-700">
+        <h2 className="font-semibold">Team Members · {accountName}</h2>{(validation || mutation.error) && <p role="alert">{validation || mutation.error}</p>}{mutation.busy && <p role="status">Saving team changes...</p>}
+        <fieldset disabled={mutation.busy} className="space-y-4"><form onSubmit={event => { event.preventDefault(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || !baseRoles.includes(role)) { setValidation('Enter a valid member email and role.'); return; } void mutate(endpoint, 'POST', { email: email.trim().toLowerCase(), role }); }} className="flex flex-wrap items-end gap-3">
+            <label className="text-sm">Member email<input type="email" required value={email} onChange={event => setEmail(event.target.value)} className="block p-2 border rounded-lg dark:bg-slate-900 dark:border-slate-600" /></label><label className="text-sm">New member role<select value={role} onChange={event => setRole(event.target.value)} className="block p-2 border rounded-lg dark:bg-slate-900 dark:border-slate-600">{baseRoles.map(value => <option key={value}>{value}</option>)}</select></label><button type="submit">Add User</button>
+        </form><p className="text-sm">Users must already be registered with this email.</p>
+        <div className="overflow-x-auto"><table className="w-full text-sm text-left"><caption className="sr-only">Account team members and assigned roles</caption><thead><tr>{['User', 'Base role', 'Custom role', 'Actions'].map(label => <th scope="col" key={label} className="p-2">{label}</th>)}</tr></thead><tbody>{members.data.map(member => <tr key={member.userId}>
+            <th scope="row" className="p-2">{member.user.fullName || member.user.email}<span className="block text-xs font-normal">{member.user.email}</span></th>
+            <td className="p-2">{editing === member.userId ? <select aria-label={`Base role for ${member.user.email}`} value={editRole} onChange={event => setEditRole(event.target.value)} className="dark:bg-slate-900">{baseRoles.map(value => <option key={value}>{value}</option>)}</select> : member.role}</td>
+            <td className="p-2">{editing === member.userId ? <select aria-label={`Custom role for ${member.user.email}`} value={roleId} onChange={event => setRoleId(event.target.value)} className="dark:bg-slate-900"><option value="">None</option>{roles.data!.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select> : member.maxRole?.name || 'None'}</td>
+            <td className="p-2">{member.role !== 'OWNER' && (editing === member.userId ? <div className="flex gap-3"><button type="button" onClick={() => {
+                if (!baseRoles.includes(editRole) || (roleId && !roles.data!.some(item => item.id === roleId))) { setValidation('Choose an available role.'); return; }
+                void mutate(`${endpoint}/${encodeURIComponent(member.userId)}`, 'PATCH', { role: editRole, roleId: roleId || null });
+            }}>Save Role</button><button type="button" onClick={() => setEditing(null)}>Cancel Role Edit</button></div> : <div className="flex gap-3"><button type="button" aria-label={`Edit role for ${member.user.email}`} onClick={() => { setEditing(member.userId); setEditRole(member.role); setRoleId(member.roleId || ''); }}>Edit Role</button><button type="button" aria-label={`Remove ${member.user.email}`} onClick={() => { if (!mutation.isPending() && confirm('Remove this member from the account?')) void mutate(`${endpoint}/${encodeURIComponent(member.userId)}`, 'DELETE'); }}>Remove User</button></div>)}</td>
+        </tr>)}</tbody></table></div>{!members.data.length && <p>No team members found.</p>}
+        {!roles.data.length && <p className="text-sm">Create custom roles in the Roles tab to define granular staff permissions.</p>}
+        </fieldset>
+    </section>;
 }

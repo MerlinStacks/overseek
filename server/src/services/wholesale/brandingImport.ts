@@ -82,7 +82,7 @@ function decodeEntities(value: string) {
 }
 
 function cleanText(value: unknown, maximum = 300) {
-    return decodeEntities(String(value || '').replace(/<[^>]*>/g, ' ').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, maximum);
+    return decodeEntities(String(value || '').replace(/<[^>]*>/g, ' ').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, maximum); // eslint-disable-line no-control-regex -- Sanitize control characters from imported branding.
 }
 
 function attributes(tag: string) {

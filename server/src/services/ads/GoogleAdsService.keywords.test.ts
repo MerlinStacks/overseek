@@ -6,6 +6,13 @@ vi.mock('./GoogleAdsClient', () => ({ createGoogleAdsRestConfig: async () => ({ 
 import { GoogleAdsService } from './GoogleAdsService';
 afterEach(() => vi.unstubAllGlobals());
 describe('strict paid keyword reads', () => {
+    it('honors the selected summary reporting window', async () => {
+        const search = vi.spyOn(GoogleAdsService as any, 'searchRows').mockResolvedValue({ rows: [{ customer: { currencyCode: 'EUR' }, metrics: { costMicros: 1000000, clicks: 1, impressions: 2, conversionsValue: 3 } }], currency: 'EUR' });
+        try {
+            const result = await GoogleAdsService.getInsights('ad', { startDate: '2026-10-01', endDate: '2026-10-17' });
+            expect(search.mock.calls[0][1]).toContain("BETWEEN '2026-10-01' AND '2026-10-17'"); expect(result).toMatchObject({ spend: 1, currency: 'EUR', date_start: '2026-10-01', date_stop: '2026-10-17' });
+        } finally { search.mockRestore(); }
+    });
     it('preserves legacy fallback and propagates strict failures', async () => {
         vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response('Unavailable', { status: 503 })));
         expect(await GoogleAdsService.getSearchKeywords('ad')).toEqual([]);

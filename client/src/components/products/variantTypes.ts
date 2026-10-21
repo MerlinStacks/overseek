@@ -5,6 +5,12 @@
  */
 
 /** Variant editor fields; production drafts are held separately by Woo ID. */
+export function parseVariantStock(value: string): number | null {
+    if (!/^\d+$/.test(value.trim())) return null;
+    const number = Number(value); return Number.isSafeInteger(number) && number >= 0 ? number : null;
+}
+
+/** Variant editor fields; production drafts are held separately by Woo ID. */
 export interface ProductVariant {
     id: number;
     sku: string;

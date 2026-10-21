@@ -99,11 +99,14 @@ export class PlatformEmailService {
         password: string;
         secure?: boolean;
     }): Promise<{ success: boolean; error?: string }> {
+        let transporter: Transporter | undefined;
         try {
-            const transporter = nodemailer.createTransport({
+            transporter = nodemailer.createTransport({
                 host: config.host,
                 port: config.port,
                 secure: config.secure ?? false,
+                requireTLS: !config.secure,
+                connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 30000,
                 auth: {
                     user: config.username,
                     pass: config.password
@@ -111,15 +114,14 @@ export class PlatformEmailService {
             });
 
             await transporter.verify();
-            transporter.close();
             return { success: true };
         } catch (error: any) {
-            Logger.error('SMTP test connection failed', { error: error.message });
+            Logger.error('SMTP test connection failed');
             return {
                 success: false,
-                error: error.message || 'Connection failed'
+                error: 'Connection failed'
             };
-        }
+        } finally { try { transporter?.close(); } catch { /* Cleanup must not change a confirmed test outcome. */ } }
     }
 
     /**

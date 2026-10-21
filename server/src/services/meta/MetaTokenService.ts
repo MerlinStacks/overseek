@@ -191,7 +191,7 @@ export class MetaTokenService {
                 throw error; // Re-throw our formatted errors
             }
             Logger.error('[MetaToken] Network error during token exchange', { error });
-            throw new Error(`Meta token exchange network error: ${error.message}`);
+            throw new Error(`Meta token exchange network error: ${error.message}`, { cause: error });
         }
     }
 

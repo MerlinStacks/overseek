@@ -10,7 +10,7 @@ const listener = source.slice(source.indexOf('return <<<JS', source.indexOf('pri
     .replaceAll('{$this->get_currency_code()}', 'AUD');
 
 describe('storefront Meta AddToCart IDs', () => {
-    let handlers: Record<string, Function>;
+    let handlers: Record<string, (...args: any[]) => any>;
     let fbq: ReturnType<typeof vi.fn>;
     let button: any;
     beforeEach(() => {

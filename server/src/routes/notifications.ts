@@ -232,7 +232,9 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(400).send({ error: 'Endpoint required' });
             }
 
-            const success = await PushNotificationService.updatePreferences(userId, endpoint, preferences);
+            if (!request.accountId) return reply.code(400).send({ error: 'Account required' });
+            const success = await PushNotificationService.updatePreferences(userId, endpoint, preferences, request.accountId);
+            if (!success) return reply.code(409).send({ success: false, error: 'Subscription preferences were not updated' });
             return { success };
         } catch (error) {
             Logger.error('[notifications] Update preferences failed', { error });

@@ -1,144 +1,76 @@
-
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { getDateRange } from '../utils/dateUtils';
-import { Logger } from '../utils/logger';
-
-import { ReportResult, ReportTemplate } from '../types/analytics';
+import { type ReportResult, type ReportTemplate, DIMENSION_OPTIONS, METRIC_OPTIONS } from '../types/analytics';
 import { AnalyticsService } from '../services/AnalyticsService';
+import { useScopedMutation } from '../hooks/useScopedMutation';
 import { ReportConfigPanel } from './reports/ReportConfigPanel';
 import { ReportResults } from './reports/ReportResults';
-import { SaveReportModal } from './reports/SaveReportModal';
-import type { SaveReportPayload } from './reports/SaveReportModal';
+import { SaveReportModal, type SaveReportPayload } from './reports/SaveReportModal';
 
-interface ReportBuilderProps {
-    initialConfig?: ReportTemplate['config'];
-    autoRun?: boolean;
-    viewMode?: boolean; // New prop to toggle master-detail viewer style
-    onTemplateSaved?: () => void;
+interface Props { initialConfig?: ReportTemplate['config']; autoRun?: boolean; viewMode?: boolean; onTemplateSaved?: () => void }
+export function ReportBuilder(props: Props) {
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p role="status">Select an account to build reports.</p>;
+    return <ScopedReportBuilder key={JSON.stringify([token, currentAccount.id, props.initialConfig])} {...props} token={token} accountId={currentAccount.id} />;
 }
-
-export function ReportBuilder({ initialConfig, autoRun = false, viewMode = false, onTemplateSaved }: ReportBuilderProps) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-
-    const [metrics, setMetrics] = useState<string[]>(initialConfig?.metrics || ['sales']);
+function ScopedReportBuilder({ initialConfig, autoRun = false, viewMode = false, onTemplateSaved, token, accountId }: Props & { token: string; accountId: string }) {
+    const [metrics, setMetrics] = useState(initialConfig?.metrics || ['sales']);
     const [dimension, setDimension] = useState(initialConfig?.dimension || 'day');
     const [dateRange, setDateRange] = useState(initialConfig?.dateRange || 'today');
-    const [isLoading, setIsLoading] = useState(false);
-    const [results, setResults] = useState<ReportResult[]>([]);
-    const [hasSearched, setHasSearched] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-
-    const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
-
-    const handleSave = async (data: SaveReportPayload) => {
-        if (!currentAccount || !token) return;
-
+    const config = { metrics, dimension, dateRange }; const configKey = JSON.stringify(config);
+    const [report, setReport] = useState<{ key: string; rows: ReportResult[] } | null>(null);
+    const [attemptKey, setAttemptKey] = useState('');
+    const [validation, setValidation] = useState('');
+    const [open, setOpen] = useState(false); const [completed, setCompleted] = useState(false); const [notice, setNotice] = useState('');
+    const [saved, setSaved] = useState<{ id: string; name: string; configKey: string } | null>(null);
+    const savePending = useRef(false);
+    const mutation = useScopedMutation(); const { run, isPending, isActive } = mutation;
+    const valid = metrics.length > 0 && metrics.every(metric => METRIC_OPTIONS.some(item => item.value === metric)) && DIMENSION_OPTIONS.some(item => item.value === dimension) && ['today', 'yesterday', '7d', '30d', '90d', 'ytd'].includes(dateRange);
+    const generate = useCallback(async () => {
+        if (isPending()) return;
+        if (!valid) { setValidation('Choose a valid date range, grouping and at least one supported metric.'); return; }
+        setValidation('');
+        setAttemptKey(configKey); setReport(null);
+        const result = await run(signal => {
+            const range = getDateRange(dateRange);
+            return AnalyticsService.generateReport(token, accountId, { metrics, dimension, startDate: new Date(range.startDate), endDate: new Date(range.endDate) }, { signal });
+        }, 'Report unavailable. Retry generation.');
+        if (result.ok) setReport({ key: configKey, rows: result.value });
+    }, [isPending, valid, run, dateRange, token, accountId, metrics, dimension, configKey]);
+    useEffect(() => { let disposed = false; if (autoRun) queueMicrotask(() => { if (!disposed) void generate(); }); return () => { disposed = true; }; }, [autoRun, generate]);
+    const save = async (payload: SaveReportPayload, signal?: AbortSignal) => {
+        if (savePending.current || !valid || completed) throw new Error('Save unavailable');
+        savePending.current = true;
         try {
-            const newTemplate = await AnalyticsService.saveTemplate(token, currentAccount.id, {
-                name: data.name,
-                config: { metrics, dimension, dateRange }
-            });
-
-            if (data.schedule) {
-                await AnalyticsService.createSchedule(token, currentAccount.id, {
-                    templateId: newTemplate.id,
-                    frequency: data.schedule.frequency,
-                    dayOfWeek: data.schedule.dayOfWeek,
-                    dayOfMonth: data.schedule.dayOfMonth,
-                    time: data.schedule.time,
-                    emailRecipients: data.schedule.emailRecipients,
-                });
+            let template = saved;
+            if (!template) {
+                const value = await AnalyticsService.saveTemplate(token, accountId, { name: payload.name, config }, { signal });
+                if (!isActive() || signal?.aborted) throw new Error('Save cancelled');
+                template = { id: value.id, name: value.name, configKey }; setSaved(template);
             }
-
-            setIsSaveModalOpen(false);
-            if (onTemplateSaved) onTemplateSaved();
-        } catch (e) {
-            Logger.error('Save failed', { error: e });
-            // Optionally set an error state here to show in the modal, 
-            // but for now we mirror previous behavior which was just console.error
-        }
+            if (template.configKey !== configKey) throw new Error('The saved template uses different settings. Close this dialog and start a new template.');
+            if (payload.schedule) await AnalyticsService.createSchedule(token, accountId, { ...payload.schedule, templateId: template.id }, { signal });
+            if (!isActive() || signal?.aborted) throw new Error('Save cancelled');
+            setCompleted(true);
+            try { await onTemplateSaved?.(); } catch { if (isActive()) setNotice('Save confirmed, but the template list could not refresh. Do not repeat the save; reload the reports list.'); }
+        } finally { savePending.current = false; }
     };
-
-    const generateReport = useCallback(async () => {
-        if (!currentAccount || !token) return;
-        setIsLoading(true);
-        setError(null);
-        setHasSearched(true);
-        setResults([]);
-
-        const range = getDateRange(dateRange);
-
-        try {
-            Logger.debug('Generating report', { metrics, dimension, startDate: range.startDate, endDate: range.endDate });
-
-            const data = await AnalyticsService.generateReport(token, currentAccount.id, {
-                metrics,
-                dimension,
-                startDate: new Date(range.startDate),
-                endDate: new Date(range.endDate)
-            });
-
-            setResults(data);
-        } catch (error: unknown) {
-            Logger.error('Report failed', { error });
-            const message = error instanceof Error ? error.message : 'An error occurred while generating the report.';
-            setError(message);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [currentAccount, token, metrics, dimension, dateRange]);
-
-    useEffect(() => {
-        if (initialConfig) {
-            setMetrics(initialConfig.metrics);
-            setDimension(initialConfig.dimension);
-            setDateRange(initialConfig.dateRange);
-        }
-        // Auto-run if requested and we have a valid initial config (or just defaults)
-        if (autoRun) {
-            generateReport();
-        }
-    }, [initialConfig, autoRun, generateReport]);
-
-    return (
-        <div className={`min-w-0 ${viewMode ? 'h-full flex flex-col' : 'space-y-6 overflow-hidden bg-white p-6 rounded-xl shadow-xs border border-gray-200'} `}>
-            <div className={`flex min-w-0 flex-col gap-6 md:flex-row ${viewMode ? 'h-full' : ''} `}>
-
-                {/* Configuration Panel - Hidden in View Mode unless toggled (future feature) */}
-                {!viewMode && (
-                    <ReportConfigPanel
-                        dateRange={dateRange}
-                        setDateRange={setDateRange}
-                        dimension={dimension}
-                        setDimension={setDimension}
-                        metrics={metrics}
-                        setMetrics={setMetrics}
-                        isLoading={isLoading}
-                        onGenerate={generateReport}
-                        onSaveOpen={() => setIsSaveModalOpen(true)}
-                    />
-                )}
-
-                {/* Results Panel */}
-                <ReportResults
-                    results={results}
-                    metrics={metrics}
-                    dimension={dimension}
-                    viewMode={viewMode}
-                    error={error}
-                    hasSearched={hasSearched}
-                />
+    const showSave = () => {
+        if (mutation.busy || !valid) return;
+        if (completed || saved && saved.configKey !== configKey) { setSaved(null); setCompleted(false); }
+        setNotice(''); setOpen(true);
+    };
+    const currentReport = report?.key === configKey;
+    return <div className="space-y-5 text-slate-900 dark:text-slate-100">
+        <div className="flex flex-col md:flex-row gap-6">
+            {!viewMode && <ReportConfigPanel dateRange={dateRange} setDateRange={setDateRange} dimension={dimension} setDimension={setDimension} metrics={metrics} setMetrics={setMetrics} isLoading={mutation.busy || open} onGenerate={() => void generate()} onSaveOpen={showSave} />}
+            <div className="min-w-0 flex-1">{mutation.busy && <p role="status">Generating report...</p>}{validation && <p role="alert">{validation}</p>}
+                <ReportResults results={currentReport ? report.rows : []} metrics={metrics} dimension={dimension} viewMode={viewMode} error={attemptKey === configKey ? mutation.error : null} hasSearched={!!currentReport || attemptKey === configKey && !!mutation.error} />
             </div>
-
-            {/* Save Template Modal */}
-            <SaveReportModal
-                isOpen={isSaveModalOpen}
-                onClose={() => setIsSaveModalOpen(false)}
-                onSave={handleSave}
-            />
         </div>
-    );
+        {notice && <p role="status">{notice}</p>}
+        <SaveReportModal isOpen={open} onClose={() => { if (!savePending.current) setOpen(false); }} onSave={save} savedTemplateName={saved?.name} completed={completed} />
+    </div>;
 }

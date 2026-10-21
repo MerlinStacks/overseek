@@ -165,7 +165,6 @@ export function testRoasChange(
 
     // Heuristic confidence scoring
     let score = 50;
-    let confidence: 'low' | 'medium' | 'high' = 'medium';
     const isSignificant = Math.abs(roasChange) > 15;
 
     // Adjust based on magnitude of change
@@ -180,7 +179,6 @@ export function testRoasChange(
     // Adjust based on sample size
     if (conversions >= 100) {
         score += 20;
-        confidence = 'high';
         factors.push('High conversion count (100+)');
     } else if (conversions >= 30) {
         score += 10;
@@ -193,6 +191,7 @@ export function testRoasChange(
         factors.push('Substantial spend volume ($1000+)');
     }
 
+    let confidence: 'low' | 'medium' | 'high';
     if (score >= 80) confidence = 'high';
     else if (score >= 55) confidence = 'medium';
     else confidence = 'low';

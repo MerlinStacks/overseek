@@ -1,579 +1,167 @@
-/**
- * BOMPanel - Bill of Materials configuration panel.
- * Manages composite product components, costs, and WooCommerce inventory sync.
- */
-import { useState, useEffect, useImperativeHandle, forwardRef, useCallback, useRef } from 'react';
-import { Logger } from '../../utils/logger';
-import { GitBranch, Loader2, Save } from 'lucide-react';
+/** Account/product/variation-scoped BOM editor. Failed reads never become empty BOMs. */
+import { useState, useImperativeHandle, forwardRef, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+import { useScopedMutation } from '../../hooks/useScopedMutation';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { isRecord } from '../../utils/responseValidation';
 import { BOMCostSummary, BOMSearchDropdown, BOMItemsTable, type BOMItem } from './bom';
-import type { BOMSearchResultProduct, BOMSearchResultVariant } from './bom/BOMSearchDropdown';
+import type { BOMSearchResultProduct } from './bom/BOMSearchDropdown';
+import { bomNumber, validBOMValues, validStock } from './bom/bomValues';
 
 interface BOMPanelProps {
-    productId: string; // Internal UUID
-    variants?: VariantScopeOption[]; // Passed from parent
-    fixedVariationId?: number; // If set, locks to this ID
-    onSaveComplete?: () => void; // Optional callback after save completes
-    onCOGSUpdate?: (cogs: number, hasItems: boolean) => void; // Optional callback to update parent COGS + presence
-    onSyncComplete?: (newStock: number) => void; // Optional callback after sync completes
+    productId: string; variants?: { id: number; sku?: string }[]; fixedVariationId?: number;
+    onSaveComplete?: () => void; onCOGSUpdate?: (cogs: number | null, hasItems: boolean) => void; onSyncComplete?: (newStock: number) => void;
 }
-
-interface VariantScopeOption {
-    id: number;
-    sku?: string;
-}
-
-interface InternalProductSearchResponse {
-    id: string;
-    name: string;
-    mainImage?: string;
-    cogs?: number;
-    stockQuantity?: number;
-}
-
-interface ProductApiResult extends BOMSearchResultProduct {
-    searchableVariants?: BOMSearchResultVariant[];
-}
-
-interface BomResponseItem {
-    id?: string;
-    childProductId?: string;
-    childVariationId?: number;
-    internalProductId?: string;
-    supplierItemId?: string;
-    quantity: number | string;
-    wasteFactor: number | string;
-    internalProduct?: { name: string; cogs?: number | string };
-    childProduct?: { name?: string; cogs?: number | string };
-    childVariation?: {
-        cogs?: number | string;
-        sku?: string;
-        wooId?: number | string;
-        _parentProductName?: string;
-        rawData?: { attributes?: Array<{ option?: string; value?: string }> };
-    };
-    supplierItem?: { name?: string; cost?: number | string };
-}
-
-/**
- * Exposes a save() method via ref so parent can trigger BOM save.
- */
-export interface BOMPanelRef {
-    save: () => Promise<boolean>;
-}
-
-export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel({ productId, variants = [], fixedVariationId, onSaveComplete, onCOGSUpdate, onSyncComplete }, ref) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const toast = useToast();
-    const { hasPermission } = usePermissions();
-    const canViewCogs = hasPermission('view_cogs');
-    const [bomItems, setBomItems] = useState<BOMItem[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [saving, setSaving] = useState(false);
-    const hadPersistedBomItemsRef = useRef(false);
-
-    const [searchTerm, setSearchTerm] = useState('');
-    const [searchResults, setSearchResults] = useState<BOMSearchResultProduct[]>([]);
-
-    // BOM Inventory Sync state
-    const [effectiveStock, setEffectiveStock] = useState<number | null>(null);
-    const [currentWooStock, setCurrentWooStock] = useState<number | null>(null);
-    const [isSyncing, setIsSyncing] = useState(false);
-    const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
-
-    const extractBomApiError = async (res: Response, fallback: string): Promise<string> => {
-        try {
-            const data = await res.json() as { error?: string; code?: string; result?: { error?: string; code?: string } };
-            const code = data.code || data.result?.code;
-            const message = data.error || data.result?.error || fallback;
-            const codeMap: Record<string, string> = {
-                INVALID_VARIATION_ID: 'Invalid variation selected. Refresh and try again.',
-                PRODUCT_NOT_FOUND: 'Product not found. Re-sync products and try again.',
-                INVALID_BOM_PAYLOAD: 'Invalid BOM input. Check quantity and waste values.',
-                BOM_COMPONENT_OWNERSHIP_INVALID: 'One or more BOM components are invalid for this account.',
-                BOM_SAVE_FAILED: 'Failed to save BOM. Please try again.',
-                BOM_SYNC_FAILED: 'BOM sync was rejected. Check BOM components and stock values.',
-                BOM_SYNC_EXCEPTION: 'BOM sync failed on the server. Please retry shortly.',
-                EFFECTIVE_STOCK_CALC_FAILED: 'Could not calculate effective stock right now.'
-            };
-            return code ? (codeMap[code] || message) : message;
-        } catch {
-            return fallback;
-        }
-    };
-
-    // 0 = Main Product, otherwise Variant ID
-    // If fixedVariationId is defined, use it, else default to 0
-    const [selectedScope, setSelectedScope] = useState<number>(fixedVariationId !== undefined ? fixedVariationId : 0);
-
-    useEffect(() => {
-        hadPersistedBomItemsRef.current = false;
-    }, [productId, selectedScope]);
-
-    // Search for products with debounce
-    useEffect(() => {
-        if (!searchTerm || searchTerm.length < 2) {
-            setSearchResults([]);
-            return;
-        }
-
-        const delayDebounceFn = setTimeout(async () => {
-            try {
-                // Fetch both WooCommerce products and internal products in parallel
-                const [wooRes, internalRes] = await Promise.all([
-                    fetch(`/api/products?q=${encodeURIComponent(searchTerm)}&limit=8`, {
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'x-account-id': currentAccount?.id || ''
-                        }
-                    }),
-                    fetch(`/api/inventory/internal-products?search=${encodeURIComponent(searchTerm)}&limit=8`, {
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'x-account-id': currentAccount?.id || ''
-                        }
-                    })
-                ]);
-
-                let results: BOMSearchResultProduct[] = [];
-
-                if (wooRes.ok) {
-                    const wooData: { products?: ProductApiResult[] } = await wooRes.json();
-                    results = [...(wooData.products || [])];
-                }
-
-                if (internalRes.ok) {
-                    const internalData: { items?: InternalProductSearchResponse[] } = await internalRes.json();
-                    // Mark internal products for visual distinction
-                    const internalProducts: BOMSearchResultProduct[] = (internalData.items || []).map((ip) => ({
-                        ...ip,
-                        isInternalProduct: true,
-                        name: ip.name,
-                        mainImage: ip.mainImage,
-                        cogs: ip.cogs,
-                        stockQuantity: ip.stockQuantity,
-                        price: ip.cogs // Use COGS as display price for internal
-                    }));
-                    results = [...results, ...internalProducts];
-                }
-
-                // Smart sorting by relevance
-                const sortedResults = sortProductsByRelevance(results, searchTerm);
-                setSearchResults(sortedResults);
-            } catch (err) {
-                Logger.error('Failed to search products', { error: err });
-            }
-        }, 300);
-
-        return () => clearTimeout(delayDebounceFn);
-    }, [searchTerm, token, currentAccount]);
-
-    /**
-     * Sorts products by relevance to search term.
-     * Prioritizes products matching more search words.
-     */
-    const sortProductsByRelevance = (products: BOMSearchResultProduct[], term: string): BOMSearchResultProduct[] => {
-        const searchWords = term.toLowerCase().trim().split(/\s+/).filter(w => w.length > 0);
-
-        const getRelevanceScore = (product: BOMSearchResultProduct): number => {
-            const nameLower = (product.name || '').toLowerCase();
-            const skuLower = (product.sku || '').toLowerCase();
-            const variantStrings: string[] = (product.searchableVariants || []).map((v) =>
-                `${(v.attributeString || '')} ${(v.sku || '')}`.toLowerCase()
-            );
-
-            let matchCount = 0;
-            let variantMatchCount = 0;
-
-            for (const word of searchWords) {
-                const matchesName = nameLower.includes(word);
-                const matchesSku = skuLower.includes(word);
-                const matchesVariant = variantStrings.some(vs => vs.includes(word));
-
-                if (matchesName || matchesSku) matchCount++;
-                if (matchesVariant) variantMatchCount++;
-            }
-
-            const totalMatches = matchCount + variantMatchCount;
-            if (totalMatches === 0) return 1000;
-
-            let score = -totalMatches * 100;
-            score -= matchCount * 10;
-            if (searchWords.length > 0 && nameLower.startsWith(searchWords[0])) {
-                score -= 5;
-            }
-            return score;
-        };
-
-        const sorted = products.sort((a, b) => getRelevanceScore(a) - getRelevanceScore(b));
-
-        // Sort variants within each product
-        return sorted.map((product) => {
-            if (!product.searchableVariants || product.searchableVariants.length === 0) {
-                return product;
-            }
-
-            const sortedVariants = [...product.searchableVariants].sort((va, vb) => {
-                const aStr = `${(va.attributeString || '')} ${(va.sku || '')}`.toLowerCase();
-                const bStr = `${(vb.attributeString || '')} ${(vb.sku || '')}`.toLowerCase();
-                const aMatches = searchWords.filter(w => aStr.includes(w)).length;
-                const bMatches = searchWords.filter(w => bStr.includes(w)).length;
-                return bMatches - aMatches;
-            });
-
-            return { ...product, searchableVariants: sortedVariants };
-        });
-    };
-
-    const fetchBOM = useCallback(async () => {
-        setLoading(true);
-        try {
-            const res = await fetch(`/api/inventory/products/${productId}/bom?variationId=${selectedScope}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || ''
-                }
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                if (data && data.items) {
-                    const mapped = data.items.map((item: BomResponseItem) => mapBOMItemFromResponse(item));
-                    hadPersistedBomItemsRef.current = mapped.length > 0;
-                    setBomItems(mapped);
-                } else {
-                    hadPersistedBomItemsRef.current = false;
-                    setBomItems([]);
-                }
-            } else {
-                hadPersistedBomItemsRef.current = false;
-                setBomItems([]);
-            }
-        } catch (err) {
-            Logger.error('An error occurred', { error: err });
-        } finally {
-            setLoading(false);
-        }
-    }, [productId, selectedScope, token, currentAccount]);
-
-    /**
-     * Maps a backend BOM item response to the UI BOMItem interface.
-     */
-    const mapBOMItemFromResponse = (item: BomResponseItem): BOMItem => {
-        let displayName = 'Unknown';
-        let isInternal = false;
-
-        if (item.internalProduct) {
-            displayName = `[Internal] ${item.internalProduct.name}`;
-            isInternal = true;
-        } else if (item.childVariation) {
-            const variantRaw = item.childVariation.rawData || {};
-            const attrString = (variantRaw.attributes || [])
-                .map((a) => a.option || a.value)
-                .filter(Boolean)
-                .join(' / ');
-            const parentName = item.childProduct?.name || item.childVariation._parentProductName;
-            displayName = parentName
-                ? `${parentName} - ${attrString || item.childVariation.sku || `#${item.childVariation.wooId}`}`
-                : attrString || item.childVariation.sku || `Variant #${item.childVariation.wooId}`;
-        } else if (item.childProduct) {
-            displayName = item.childProduct.name || 'Unknown';
-        } else if (item.supplierItem) {
-            displayName = item.supplierItem.name || 'Unknown';
-        }
-
-        let cost = 0;
-        if (item.internalProduct?.cogs != null) {
-            cost = Number(item.internalProduct.cogs);
-        } else if (item.childVariation?.cogs != null) {
-            cost = Number(item.childVariation.cogs);
-        } else if (item.childProduct?.cogs != null) {
-            cost = Number(item.childProduct.cogs);
-        } else if (item.supplierItem?.cost != null) {
-            cost = Number(item.supplierItem.cost);
-        }
-
+export interface BOMPanelRef { save: () => Promise<boolean> }
+type ScopeProps = BOMPanelProps & { token: string; accountId: string; currency?: string; scope: number };
+function decodeBOM(value: unknown): BOMItem[] {
+    if (!isRecord(value) || !Array.isArray(value.items)) throw new Error('Invalid BOM');
+    return value.items.map(item => {
+        if (!isRecord(item)) throw new Error('Invalid BOM item');
+        const quantity = bomNumber(item.quantity); const wasteFactor = bomNumber(item.wasteFactor);
+        if (!validBOMValues({ quantity, wasteFactor })) throw new Error('Invalid BOM quantities');
+        for (const field of ['id', 'childProductId', 'internalProductId', 'supplierItemId']) if (item[field] != null && typeof item[field] !== 'string') throw new Error('Invalid BOM identity');
+        if (item.childVariationId != null && (!validStock(item.childVariationId) || item.childVariationId === 0)) throw new Error('Invalid variation');
+        const internal = isRecord(item.internalProduct) ? item.internalProduct : null;
+        const variation = isRecord(item.childVariation) ? item.childVariation : null;
+        const product = isRecord(item.childProduct) ? item.childProduct : null;
+        const supplier = isRecord(item.supplierItem) ? item.supplierItem : null;
+        const source = internal || variation || product || supplier;
+        const name = internal?.name || product?.name || supplier?.name;
+        const attributes = isRecord(variation?.rawData) && Array.isArray(variation.rawData.attributes) ? variation.rawData.attributes.filter(isRecord).map(attribute => attribute.option || attribute.value).filter(value => typeof value === 'string').join(' / ') : '';
+        const suffix = variation ? ` - ${attributes || (typeof variation.sku === 'string' ? variation.sku : `Variant #${item.childVariationId}`)}` : '';
         return {
-            id: item.id,
-            childProductId: item.childProductId,
-            childVariationId: item.childVariationId,
-            internalProductId: item.internalProductId,
-            supplierItemId: item.supplierItemId,
-            displayName,
-            quantity: Number(item.quantity),
-            wasteFactor: Number(item.wasteFactor),
-            cost,
-            isInternal
+            id: item.id as string | undefined, childProductId: item.childProductId as string | undefined, childVariationId: item.childVariationId as number | undefined,
+            internalProductId: item.internalProductId as string | undefined, supplierItemId: item.supplierItemId as string | undefined,
+            displayName: `${internal ? '[Internal] ' : ''}${typeof name === 'string' ? name : 'Unknown component'}${suffix}`,
+            quantity, wasteFactor, cost: bomNumber(supplier ? supplier.cost : source?.cogs), isInternal: !!internal,
         };
-    };
+    });
+}
+function decodeStock(value: unknown) {
+    if (!isRecord(value)) throw new Error('Invalid stock');
+    return { effectiveStock: validStock(value.effectiveStock) ? value.effectiveStock : null, currentWooStock: validStock(value.currentWooStock) ? value.currentWooStock : null };
+}
+function decodeProducts(value: unknown, field: 'products' | 'items'): BOMSearchResultProduct[] {
+    if (!isRecord(value) || !Array.isArray(value[field])) throw new Error('Invalid search');
+    return value[field].map((item: unknown) => {
+        if (!isRecord(item) || typeof item.id !== 'string' || typeof item.name !== 'string' || (item.sku != null && typeof item.sku !== 'string')) throw new Error('Invalid component');
+        if (item.searchableVariants != null && (!Array.isArray(item.searchableVariants) || !item.searchableVariants.every(variant => isRecord(variant) && validStock(variant.wooId) && variant.wooId > 0 && ['sku', 'attributeString'].every(key => variant[key] == null || typeof variant[key] === 'string')))) throw new Error('Invalid variants');
+        return { ...item, id: item.id, name: item.name, cogs: bomNumber(item.cogs), isInternalProduct: field === 'items' } as BOMSearchResultProduct;
+    });
+}
+const decodeWoo = (value: unknown) => decodeProducts(value, 'products');
+const decodeInternal = (value: unknown) => decodeProducts(value, 'items');
 
-    const fetchEffectiveStock = useCallback(async () => {
-        if (!currentAccount || !productId) return;
-
-        try {
-            const res = await fetch(`/api/inventory/products/${productId}/bom/effective-stock?variationId=${selectedScope}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
-                }
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                setEffectiveStock(data.effectiveStock);
-                setCurrentWooStock(data.currentWooStock);
-            } else {
-                const errorMsg = await extractBomApiError(res, 'Failed to fetch effective BOM stock');
-                toast.error(errorMsg);
-                setEffectiveStock(null);
-                setCurrentWooStock(null);
-            }
-        } catch (err) {
-            Logger.error('Failed to fetch effective stock', { error: err });
-            setEffectiveStock(null);
-            setCurrentWooStock(null);
-        }
-    }, [currentAccount, productId, selectedScope, token, toast]);
-
-    useEffect(() => {
-        if (!currentAccount || !productId || !canViewCogs) return;
-        void fetchBOM();
-        void fetchEffectiveStock();
-    }, [currentAccount, productId, canViewCogs, fetchBOM, fetchEffectiveStock]);
-
-    const handleSyncToWoo = async () => {
-        if (!currentAccount || !productId) return;
-
-        setIsSyncing(true);
-        setSyncStatus('idle');
-
-        try {
-            const res = await fetch(`/api/inventory/products/${productId}/bom/sync?variationId=${selectedScope}`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
-                }
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                setCurrentWooStock(data.newStock);
-                setSyncStatus('success');
-                await fetchEffectiveStock();
-                onSyncComplete?.(data.newStock);
-            } else {
-                const errorMsg = await extractBomApiError(res, 'Failed to sync inventory to WooCommerce');
-                toast.error(errorMsg);
-                setSyncStatus('error');
-            }
-        } catch (err) {
-            Logger.error('Failed to sync inventory to WooCommerce', { error: err });
-            setSyncStatus('error');
-        } finally {
-            setIsSyncing(false);
-            setTimeout(() => setSyncStatus('idle'), 3000);
-        }
-    };
-
-    const totalCost = bomItems.reduce((sum, item) => {
-        const itemCost = Number(item.cost) * Number(item.quantity) * (1 + Number(item.wasteFactor));
-        return sum + itemCost;
-    }, 0);
-
-    const handleSave = useCallback(async (): Promise<boolean> => {
-        if (bomItems.length === 0 && !hadPersistedBomItemsRef.current) {
-            return true;
-        }
-
-        setSaving(true);
-        try {
-            const payload = {
-                variationId: selectedScope,
-                items: bomItems.map(item => ({
-                    childProductId: item.childProductId,
-                    childVariationId: item.childVariationId,
-                    internalProductId: item.internalProductId,
-                    supplierItemId: item.supplierItemId,
-                    quantity: item.quantity,
-                    wasteFactor: item.wasteFactor
-                }))
-            };
-
-            const res = await fetch(`/api/inventory/products/${productId}/bom`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || ''
-                },
-                body: JSON.stringify(payload)
-            });
-
-            if (res.ok) {
-                hadPersistedBomItemsRef.current = bomItems.length > 0;
-                fetchBOM();
-                onCOGSUpdate?.(totalCost, bomItems.length > 0);
-                onSaveComplete?.();
-                return true;
-            } else {
-                const errorMsg = await extractBomApiError(res, 'Failed to save BOM');
-                toast.error(errorMsg);
-                return false;
-            }
-        } catch (err) {
-            Logger.error('An error occurred', { error: err });
-            return false;
-        } finally {
-            setSaving(false);
-        }
-    }, [selectedScope, bomItems, productId, token, currentAccount, fetchBOM, onCOGSUpdate, totalCost, onSaveComplete, toast]);
-
-    useImperativeHandle(ref, () => ({
-        save: handleSave
-    }), [handleSave]);
-
-    const handleAddProduct = (product: BOMSearchResultProduct) => {
-        // Handle internal products
-        if (product.isInternalProduct) {
-            const alreadyExists = bomItems.some(i => i.internalProductId === product.id);
-            if (alreadyExists) {
-                toast.error('This component is already in the BOM.');
-                return;
-            }
-
-            const newItem: BOMItem = {
-                internalProductId: product.id,
-                displayName: `[Internal] ${product.name}`,
-                quantity: 1,
-                wasteFactor: 0,
-                cost: Number(product.cogs) || 0,
-                isInternal: true
-            };
-
-            setBomItems([...bomItems, newItem]);
-            setSearchTerm('');
-            setSearchResults([]);
-            return;
-        }
-
-        // Check if self-linking
-        if (product.id === productId && !product.isVariant) {
-            toast.error('Cannot add the product to its own BOM.');
-            return;
-        }
-
-        // Check if already exists
-        const alreadyExists = bomItems.some(i => {
-            if (product.isVariant) {
-                return i.childProductId === product.id && i.childVariationId === Number(product.variantId);
-            }
-            return i.childProductId === product.id && !i.childVariationId;
-        });
-
-        if (alreadyExists) {
-            toast.error('This component is already in the BOM.');
-            return;
-        }
-
-        const newItem: BOMItem = {
-            childProductId: product.id,
-            childVariationId: product.isVariant ? Number(product.variantId) : undefined,
-            displayName: product.name,
-            quantity: 1,
-            wasteFactor: 0,
-            cost: Number(product.cogs) || 0
-        };
-
-        setBomItems([...bomItems, newItem]);
-        setSearchTerm('');
-        setSearchResults([]);
-    };
-
-    // Hide entire panel if user doesn't have COGS permission
+export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel(props, ref) {
+    const { token } = useAuth(); const { currentAccount } = useAccount(); const { hasPermission } = usePermissions();
+    const canViewCogs = hasPermission('view_cogs');
+    const child = useRef<BOMPanelRef>(null);
+    useImperativeHandle(ref, () => ({ save: () => !canViewCogs ? Promise.resolve(true) : child.current?.save() ?? Promise.resolve(false) }), [canViewCogs]);
     if (!canViewCogs) return null;
-
-    return (
-        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
-            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-                <div className="flex items-center gap-4">
-                    <h3 className="font-semibold text-gray-900">BOM Configuration</h3>
-
-                    {/* Scope Selector - Only show if NO fixedVariationId */}
-                    {fixedVariationId === undefined && (
-                        <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-gray-200 text-sm">
-                            <GitBranch size={16} className="text-gray-400" />
-                            <select
-                                value={selectedScope}
-                                onChange={(e) => setSelectedScope(Number(e.target.value))}
-                                className="bg-transparent border-none outline-hidden text-gray-700 font-medium cursor-pointer min-w-[150px]"
-                            >
-                                <option value={0}>Main Product</option>
-                                {variants.map(v => (
-                                    <option key={v.id} value={v.id}>
-                                        Variant #{v.id} {v.sku ? `(${v.sku})` : ''}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            <div className="p-6 space-y-6">
-                <BOMCostSummary
-                    totalCost={totalCost}
-                    effectiveStock={effectiveStock}
-                    currentWooStock={currentWooStock}
-                    isSyncing={isSyncing}
-                    syncStatus={syncStatus}
-                    onSyncToWoo={handleSyncToWoo}
-                />
-
-                {loading ? (
-                    <div className="p-12 text-center text-gray-400">
-                        <Loader2 className="animate-spin inline mr-2" /> Loading BOM...
-                    </div>
-                ) : (
-                    <>
-                        <BOMSearchDropdown
-                            searchTerm={searchTerm}
-                            onSearchChange={setSearchTerm}
-                            searchResults={searchResults}
-                            productId={productId}
-                            onAddProduct={handleAddProduct}
-                        />
-
-                        <BOMItemsTable
-                            items={bomItems}
-                            selectedScope={selectedScope}
-                            onItemsChange={setBomItems}
-                        />
-
-                        {/* Save Button */}
-                        {bomItems.length > 0 && (
-                            <div className="flex justify-end mt-4 pt-4 border-t border-gray-100">
-                                <button
-                                    onClick={handleSave}
-                                    disabled={saving}
-                                    className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm font-medium"
-                                >
-                                    {saving ? (
-                                        <Loader2 size={14} className="animate-spin" />
-                                    ) : (
-                                        <Save size={14} />
-                                    )}
-                                    {saving ? 'Saving...' : 'Save BOM'}
-                                </button>
-                            </div>
-                        )}
-                    </>
-                )}
-            </div>
-        </div>
-    );
+    if (!token || !currentAccount || !props.productId) return <p role="alert">Select an account and product to edit the BOM.</p>;
+    return <BOMScopes key={JSON.stringify([token, currentAccount.id, props.productId, props.fixedVariationId])} {...props} ref={child} token={token} accountId={currentAccount.id} currency={currentAccount.currency} />;
 });
+const BOMScopes = forwardRef<BOMPanelRef, Omit<ScopeProps, 'scope'>>(function BOMScopes(props, ref) {
+    const [scope, setScope] = useState(props.fixedVariationId ?? 0);
+    const [busy, setBusy] = useState(false);
+    const transition = useScopedMutation(); const child = useRef<BOMPanelRef>(null);
+    useImperativeHandle(ref, () => ({ save: () => transition.isPending() ? Promise.resolve(false) : child.current?.save() ?? Promise.resolve(false) }), [transition]);
+    const changeScope = async (next: number) => {
+        if (busy || transition.isPending()) return;
+        const result = await transition.run(async () => { if (!child.current || !await child.current.save()) throw new Error('BOM not saved'); }, 'Could not save this BOM. Resolve its errors before changing scope.');
+        if (result.ok) setScope(next);
+    };
+    return <section className="p-5 space-y-4 border rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"><h3 className="font-semibold">BOM Configuration</h3>
+        {props.fixedVariationId === undefined && <label>BOM scope<select disabled={busy || transition.busy} className="ml-2 p-2 border rounded-lg bg-white dark:bg-slate-900" value={scope} onChange={event => void changeScope(Number(event.target.value))}><option value={0}>Main Product</option>{props.variants?.map(variant => <option key={variant.id} value={variant.id}>Variant #{variant.id} {variant.sku}</option>)}</select></label>}
+        {transition.error && <p role="alert">{transition.error}</p>}
+        <LoadedBOM key={scope} {...props} scope={scope} ref={child} onBusyChange={setBusy} />
+    </section>;
+});
+const LoadedBOM = forwardRef<BOMPanelRef, ScopeProps & { onBusyChange: (busy: boolean) => void }>(function LoadedBOM(props, ref) {
+    const request = useScopedRequest(`/api/inventory/products/${encodeURIComponent(props.productId)}/bom?variationId=${props.scope}`, props.accountId, props.token, decodeBOM);
+    const editor = useRef<BOMPanelRef>(null);
+    useImperativeHandle(ref, () => ({ save: () => editor.current?.save() ?? Promise.resolve(false) }), []);
+    if (request.loading) return <p role="status">Loading BOM...</p>;
+    if (request.error || !request.data) return <p role="alert">BOM unavailable. Editing is disabled to protect existing components. <button type="button" onClick={request.retry}>Retry</button></p>;
+    return <BOMEditor {...props} initial={request.data} ref={editor} />;
+});
+const BOMEditor = forwardRef<BOMPanelRef, ScopeProps & { initial: BOMItem[]; onBusyChange: (busy: boolean) => void }>(function BOMEditor({ initial, onBusyChange, ...props }, ref) {
+    const [items, setItems] = useState(initial); const [saved, setSaved] = useState(JSON.stringify(initial));
+    const [query, setQuery] = useState(''); const debounced = useDebouncedValue(query, 300);
+    const [message, setMessage] = useState(''); const [stockVersion, setStockVersion] = useState(0);
+    const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
+    const mutation = useScopedMutation(); const pending = useRef(false);
+    const dirty = saved !== JSON.stringify(items);
+    const totalCost = items.length ? items.reduce((sum, item) => sum + (validBOMValues(item) && Number.isFinite(item.cost) && item.cost >= 0 ? item.quantity * item.cost * (1 + item.wasteFactor) : NaN), 0) : NaN;
+    const base = `/api/inventory/products/${encodeURIComponent(props.productId)}/bom`;
+    const headers = { Authorization: `Bearer ${props.token}`, 'X-Account-ID': props.accountId, 'Content-Type': 'application/json' };
+    const save = async (): Promise<boolean> => {
+        if (!mutation.isActive() || pending.current || mutation.isPending()) return false;
+        if (!items.every(validBOMValues)) { setMessage('Enter positive quantities and nonnegative waste percentages before saving.'); return false; }
+        if (!dirty) return true;
+        pending.current = true; onBusyChange(true); setMessage('');
+        const result = await mutation.run(async signal => {
+            const response = await fetch(base, { method: 'POST', headers, signal, body: JSON.stringify({ variationId: props.scope, items: items.map(item => ({ childProductId: item.childProductId, childVariationId: item.childVariationId, internalProductId: item.internalProductId, supplierItemId: item.supplierItemId, quantity: item.quantity, wasteFactor: item.wasteFactor })) }) });
+            if (!response.ok) throw new Error('BOM save rejected');
+            const confirmed = decodeBOM(await response.json());
+            const signature = (rows: BOMItem[]) => JSON.stringify(rows.map(item => [item.childProductId ?? null, item.childVariationId ?? null, item.internalProductId ?? null, item.supplierItemId ?? null, item.quantity, item.wasteFactor]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
+            if (signature(confirmed) !== signature(items)) throw new Error('BOM save incomplete');
+            return confirmed;
+        }, 'Could not confirm BOM save. Check the saved configuration before retrying.');
+        pending.current = false;
+        if (!mutation.isActive()) return false;
+        onBusyChange(false);
+        if (!result.ok) return false;
+        const confirmed = result.value;
+        const confirmedCost = confirmed.reduce((sum, item) => sum + item.cost * item.quantity * (1 + item.wasteFactor), 0);
+        setItems(confirmed); setSaved(JSON.stringify(confirmed)); setStockVersion(value => value + 1); setMessage('BOM saved.');
+        try {
+            props.onCOGSUpdate?.(Number.isFinite(confirmedCost) ? confirmedCost : null, !!confirmed.length);
+            props.onSaveComplete?.();
+        } catch { setMessage('BOM saved, but the parent view could not refresh. Do not repeat the save; reload the product.'); }
+        return true;
+    };
+    useImperativeHandle(ref, () => ({ save }));
+    const sync = async () => {
+        if (dirty || pending.current || mutation.isPending() || !items.length) return;
+        pending.current = true; onBusyChange(true); setSyncStatus('idle');
+        const result = await mutation.run(async signal => {
+            const response = await fetch(`${base}/sync?variationId=${props.scope}`, { method: 'POST', headers, signal });
+            const value: unknown = await response.json();
+            if (!response.ok || !isRecord(value) || !validStock(value.newStock)) throw new Error('Unconfirmed sync');
+            return value.newStock;
+        }, 'Could not confirm stock sync. Check WooCommerce before retrying.');
+        pending.current = false;
+        if (!mutation.isActive()) return;
+        onBusyChange(false); setSyncStatus(result.ok ? 'success' : 'error');
+        if (result.ok) { setStockVersion(value => value + 1); try { props.onSyncComplete?.(result.value); } catch { setMessage('Stock synced, but the product view could not refresh. Reload the product.'); } }
+    };
+    const add = (product: BOMSearchResultProduct) => {
+        if (mutation.isPending() || product.id === props.productId && !product.isInternalProduct) return;
+        if (items.some(item => product.isInternalProduct ? item.internalProductId === product.id : item.childProductId === product.id && item.childVariationId === product.variantId)) { setMessage('This component is already in the BOM.'); return; }
+        setItems(current => [...current, { ...(product.isInternalProduct ? { internalProductId: product.id } : { childProductId: product.id, childVariationId: product.variantId }), displayName: product.name, quantity: 1, wasteFactor: 0, cost: bomNumber(product.cogs), isInternal: product.isInternalProduct }]);
+        setQuery(''); setSyncStatus('idle');
+    };
+    return <div className="space-y-4">
+        <StockSummary key={stockVersion} {...props} totalCost={totalCost} isSyncing={mutation.busy} disabled={dirty || mutation.busy || !items.length} syncStatus={syncStatus} onSyncToWoo={() => void sync()} />
+        {dirty && <p>Unsaved BOM changes. Save before syncing stock; buildable units reflect the saved BOM.</p>}
+        <label className="block">Search components<input className="block w-full p-2 border rounded-lg bg-white dark:bg-slate-900" disabled={mutation.busy} value={query} onChange={event => setQuery(event.target.value)} /></label>
+        {query.trim().length >= 2 && (query !== debounced ? <p role="status">Searching components...</p> : <ComponentSearch key={debounced} {...props} query={debounced} onAdd={add} disabled={mutation.busy} />)}
+        <BOMItemsTable items={items} selectedScope={props.scope} currency={props.currency} disabled={mutation.busy} onItemsChange={next => { if (!mutation.isPending()) { setItems(next); setSyncStatus('idle'); } }} />
+        {mutation.error && <p role="alert">{mutation.error}</p>}{message && <p role="status">{message}</p>}
+        <button type="button" disabled={mutation.busy || !dirty || !items.every(validBOMValues)} onClick={() => void save()}>{mutation.busy ? 'Working...' : 'Save BOM'}</button>
+    </div>;
+});
+function StockSummary(props: ScopeProps & Omit<React.ComponentProps<typeof BOMCostSummary>, 'effectiveStock' | 'currentWooStock'>) {
+    const request = useScopedRequest(`/api/inventory/products/${encodeURIComponent(props.productId)}/bom/effective-stock?variationId=${props.scope}`, props.accountId, props.token, decodeStock);
+    return <><BOMCostSummary {...props} effectiveStock={!request.loading && !request.error ? request.data?.effectiveStock ?? null : null} currentWooStock={!request.loading && !request.error ? request.data?.currentWooStock ?? null : null} />{request.error && <p role="alert">Stock unavailable. <button type="button" onClick={request.retry}>Retry stock</button></p>}</>;
+}
+function ComponentSearch({ query, onAdd, disabled, ...props }: ScopeProps & { query: string; onAdd: (product: BOMSearchResultProduct) => void; disabled: boolean }) {
+    const woo = useScopedRequest(`/api/products?q=${encodeURIComponent(query)}&limit=8`, props.accountId, props.token, decodeWoo);
+    const internal = useScopedRequest(`/api/inventory/internal-products?search=${encodeURIComponent(query)}&limit=8`, props.accountId, props.token, decodeInternal);
+    return <BOMSearchDropdown hideSearchInput searchTerm={query} onSearchChange={() => {}} searchResults={[...(woo.data || []), ...(internal.data || [])]} productId={props.productId} onAddProduct={onAdd} currency={props.currency} disabled={disabled} loading={woo.loading || internal.loading} error={woo.error || internal.error} onRetry={() => { woo.retry(); internal.retry(); }} />;
+}

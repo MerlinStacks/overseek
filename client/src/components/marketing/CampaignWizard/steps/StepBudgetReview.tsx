@@ -1,119 +1,38 @@
-/**
- * Step 4: Budget & Review
- * 
- * Final step for setting daily budget and reviewing campaign configuration.
- */
+import { useState } from 'react';
+import { type WizardStepProps } from '../types';
+import { useAccount } from '../../../../context/AccountContext';
+import { useAuth } from '../../../../context/AuthContext';
+import { useScopedRequest } from '../../../../hooks/useScopedRequest';
+import { isRecord } from '../../../../utils/responseValidation';
+import { reportMoney } from '../../../analytics/useReportRequest';
 
-import { useCallback, useMemo } from 'react';
-import { DollarSign, MapPin, Target } from 'lucide-react';
-import { WizardStepProps, DEFAULT_BUDGET } from '../types';
-
-/** Budget slider configuration */
-const BUDGET_MIN = 5;
-const BUDGET_MAX = 200;
-const BUDGET_STEP = 5;
-
-/** Average days per month for estimation */
-const DAYS_PER_MONTH = 30.4;
-
-export function StepBudgetReview({ draft, setDraft }: WizardStepProps) {
-
-    const estimatedMonthly = useMemo(
-        () => Math.round(draft.budget * DAYS_PER_MONTH),
-        [draft.budget]
-    );
-
-    const updateBudget = useCallback((value: number) => {
-        setDraft(d => ({ ...d, budget: value }));
-    }, [setDraft]);
-
-    const campaignGoal = draft.type === 'PMAX'
-        ? 'Performance Max (Sales)'
-        : 'Search (Traffic)';
-
-    return (
-        <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
-            <div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">Budget & Review</h3>
-                <p className="text-gray-500">
-                    Set your daily spend and review your campaign details before launching.
-                </p>
-            </div>
-
-            <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
-                <div>
-                    <label htmlFor="budget-input" className="block text-sm font-bold text-gray-700 mb-4">
-                        Daily Budget
-                    </label>
-                    <div className="flex items-center gap-4">
-                        <div className="relative flex-1">
-                            <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                            <input
-                                id="budget-input"
-                                type="number"
-                                value={draft.budget}
-                                onChange={(e) => updateBudget(parseFloat(e.target.value) || DEFAULT_BUDGET)}
-                                min={BUDGET_MIN}
-                                max={BUDGET_MAX}
-                                className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none text-lg font-semibold"
-                            />
-                        </div>
-                        <div className="text-sm text-gray-500">
-                            Est. ${estimatedMonthly} / month
-                        </div>
-                    </div>
-                    <input
-                        type="range"
-                        min={BUDGET_MIN}
-                        max={BUDGET_MAX}
-                        step={BUDGET_STEP}
-                        value={draft.budget}
-                        onChange={(e) => updateBudget(parseFloat(e.target.value))}
-                        className="w-full mt-4 h-2 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                        aria-label="Budget slider"
-                    />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
-                    <div className="bg-gray-50 p-4 rounded-xl">
-                        <div className="flex items-center gap-2 text-gray-500 mb-1">
-                            <Target size={16} />
-                            <span className="text-xs font-semibold uppercase tracking-wider">Goal</span>
-                        </div>
-                        <div className="font-semibold text-gray-900">{campaignGoal}</div>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-xl">
-                        <div className="flex items-center gap-2 text-gray-500 mb-1">
-                            <MapPin size={16} />
-                            <span className="text-xs font-semibold uppercase tracking-wider">Targeting</span>
-                        </div>
-                        <div className="font-semibold text-gray-900">United States (Default)</div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Campaign Summary */}
-            <div className="space-y-3">
-                <h4 className="font-bold text-gray-900 text-sm uppercase tracking-wider">Campaign Summary</h4>
-                <div className="bg-gray-50 rounded-xl p-4 text-sm space-y-2 text-gray-600">
-                    <div className="flex justify-between">
-                        <span>Campaign Name:</span>
-                        <span className="font-medium text-gray-900">{draft.name || '(Not set)'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span>Products Selected:</span>
-                        <span className="font-medium text-gray-900">{draft.selectedProducts.length} items</span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span>Headlines:</span>
-                        <span className="font-medium text-gray-900">{draft.adCopy.headlines.length} variations</span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span>Daily Budget:</span>
-                        <span className="font-medium text-gray-900">${draft.budget}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
+function decodeAccount(value: unknown) {
+    if (!Array.isArray(value) || !value.every(isRecord)) throw new Error('Invalid ad accounts');
+    const account = value.find(item => item.platform === 'GOOGLE');
+    return { name: typeof account?.name === 'string' ? account.name : null, currency: typeof account?.currency === 'string' ? account.currency : undefined };
+}
+export function StepBudgetReview(props: WizardStepProps) {
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p role="alert">Select an account to review the budget.</p>;
+    return <BudgetReview key={JSON.stringify([token, currentAccount.id])} {...props} token={token} accountId={currentAccount.id} />;
+}
+function BudgetReview({ draft, setDraft, token, accountId }: WizardStepProps & { token: string; accountId: string }) {
+    const [input, setInput] = useState(String(draft.budget));
+    const request = useScopedRequest('/api/ads', accountId, token, decodeAccount);
+    return <section className="space-y-5 text-slate-900 dark:text-slate-100">
+        <h3 className="text-2xl font-bold">Budget & Review</h3>
+        {request.loading && <p role="status">Loading ad-account currency...</p>}
+        {request.error && <p role="alert">Ad-account details unavailable. <button type="button" onClick={request.retry}>Retry</button></p>}
+        <p>Campaign: {draft.name} · {draft.type === 'SEARCH' ? 'Search' : 'Unsupported campaign type'}</p>
+        <p>Launch uses the first connected Google Ads account{request.data?.name ? `: ${request.data.name}` : ''}.</p>
+        <label className="block">Daily budget ({request.data?.currency || 'currency unavailable'})
+            <input aria-invalid={!Number.isFinite(draft.budget) || draft.budget <= 0} type="number" min="0.01" step="0.01" value={input} className="block p-2 border rounded-lg bg-white dark:bg-slate-900" onChange={event => {
+                const value = event.target.value; setInput(value);
+                setDraft(current => ({ ...current, budget: value.trim() ? Number(value) : NaN }));
+            }} />
+        </label>
+        {(!Number.isFinite(draft.budget) || draft.budget <= 0) && <p role="alert">Enter a daily budget greater than zero.</p>}
+        <p>Estimated monthly budget (daily × 30.4): {reportMoney(draft.budget > 0 ? draft.budget * 30.4 : NaN, request.data?.currency)}</p>
+        <p>No location targeting is configured by this wizard. Review targeting and bidding in Google Ads before enabling the campaign.</p>
+    </section>;
 }

@@ -17,6 +17,13 @@ const row = (id: string, spend: string) => ({
 });
 
 describe('Meta Ads reporting', () => {
+    it('uses the requested summary window and reports provider currency rather than a fabricated default', async () => {
+        const fetchMock = vi.fn(async (_url: string) => json({ data: [{ spend: '0', clicks: '0', impressions: '0', account_currency: 'EUR', date_start: '2026-10-01', date_stop: '2026-10-15' }] }));
+        vi.stubGlobal('fetch', fetchMock);
+        const result = await MetaAdsService.getInsights('connected', { startDate: '2026-10-01', endDate: '2026-10-15' });
+        const url = new URL(fetchMock.mock.calls[0][0]); expect(JSON.parse(url.searchParams.get('time_range')!)).toEqual({ since: '2026-10-01', until: '2026-10-15' }); expect(url.searchParams.has('date_preset')).toBe(false);
+        expect(result).toMatchObject({ spend: 0, currency: 'EUR', date_start: '2026-10-01' });
+    });
     beforeEach(() => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-10-15T12:00:00Z'));

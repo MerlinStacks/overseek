@@ -1,225 +1,64 @@
-/**
- * Step 3: Ad Copy Editor
- * 
- * Displays AI-generated ad copy and allows user editing.
- * Validates headline and description lengths per Google Ads specs.
- */
+import { useState } from 'react';
+import { type WizardStepProps, MAX_HEADLINE_LENGTH, MAX_DESCRIPTION_LENGTH, MIN_HEADLINES, MIN_DESCRIPTIONS, MAX_HEADLINES, MAX_DESCRIPTIONS } from '../types';
 
-import { useEffect, useState, useCallback } from 'react';
-import { RefreshCw, Wand2 } from 'lucide-react';
-import { Logger } from '../../../../utils/logger';
-import {
-    WizardStepProps,
-    MAX_HEADLINE_LENGTH,
-    MAX_DESCRIPTION_LENGTH,
-    MIN_HEADLINES,
-    MIN_DESCRIPTIONS,
-    MAX_HEADLINES,
-    MAX_DESCRIPTIONS
-} from '../types';
-
-/** Simulated AI generation delay (ms) */
-const AI_GENERATION_DELAY = 1200;
-
-/**
- * Generates mock AI ad copy based on selected products.
- * In production, this would call an actual AI service.
- */
-function generateMockAdCopy(productName: string) {
-    return {
-        headlines: [
-            `Shop ${productName} Today`,
-            'Best Deals of the Season',
-            'Free Shipping on All Orders',
-            'Premium Quality Guaranteed',
-            'Limited Time Offer'
-        ],
-        descriptions: [
-            `Discover our exclusive collection of ${productName}. Unmatched quality and style for the modern lifestyle.`,
-            'Upgrade your daily essentials with our premium selection. Shop now and save 20% on your first order.'
-        ],
-        finalUrl: 'https://example.com/shop'
-    };
-}
-
+const filled = (values: string[], minimum: number) => Array.from({ length: Math.max(minimum, values.length) }, (_, index) => values[index] ?? '');
+/** Manual copy with optional, explicitly labelled starter templates. No simulated AI. */
 export function StepAdCopy({ draft, setDraft }: WizardStepProps) {
-    const [generating, setGenerating] = useState(false);
-
-    const generateCopy = useCallback(async () => {
-        setGenerating(true);
-        Logger.info('[StepAdCopy] Generating AI ad copy');
-
-        // Simulate AI processing time
-        await new Promise(r => setTimeout(r, AI_GENERATION_DELAY));
-
-        const productName = draft.selectedProducts[0]?.name || 'Premium Product';
-        const generatedCopy = generateMockAdCopy(productName);
-
-        setDraft(d => ({
-            ...d,
-            adCopy: generatedCopy
-        }));
-
-        setGenerating(false);
-        Logger.info('[StepAdCopy] Ad copy generated', { headlineCount: generatedCopy.headlines.length });
-    }, [draft.selectedProducts, setDraft]);
-
-    // Auto-generate on first load if empty
-    useEffect(() => {
-        if (draft.adCopy.headlines.length === 0 && draft.selectedProducts.length > 0) {
-            // Defer the async call to avoid cascading renders
-            const timeoutId = setTimeout(() => {
-                generateCopy();
-            }, 0);
-            return () => clearTimeout(timeoutId);
-        }
-    }, [draft.adCopy.headlines.length, draft.selectedProducts.length, generateCopy]);
-
-    const updateHeadline = useCallback((index: number, value: string) => {
-        setDraft(d => {
-            const newHeadlines = [...d.adCopy.headlines];
-            newHeadlines[index] = value;
-            return { ...d, adCopy: { ...d.adCopy, headlines: newHeadlines } };
+    const [notice, setNotice] = useState('');
+    const headlines = filled(draft.adCopy.headlines, MIN_HEADLINES); const descriptions = filled(draft.adCopy.descriptions, MIN_DESCRIPTIONS);
+    const insertTemplate = () => {
+        if ([...draft.adCopy.headlines, ...draft.adCopy.descriptions].some(value => value.trim()) && !confirm('Replace the current headlines and descriptions with starter templates? Your destination URL will be kept.')) return;
+        const productName = draft.selectedProducts[0]?.name.trim() || 'Product';
+        const copySnapshot = JSON.stringify(draft.adCopy); const productSnapshot = JSON.stringify(draft.selectedProducts.map(product => [product.id, product.name]));
+        const short = productName.slice(0, MAX_HEADLINE_LENGTH - 'Product Details: '.length).trim();
+        const generated = {
+            headlines: [`View ${short}`, `Explore ${short}`, `Product Details: ${short}`],
+            descriptions: [`View product information for ${productName}.`.slice(0, MAX_DESCRIPTION_LENGTH), `Read the product details before choosing ${productName}.`.slice(0, MAX_DESCRIPTION_LENGTH)],
+        };
+        setDraft(current => {
+            if (JSON.stringify(current.adCopy) !== copySnapshot || JSON.stringify(current.selectedProducts.map(product => [product.id, product.name])) !== productSnapshot) return current;
+            return { ...current, adCopy: { ...current.adCopy, ...generated } };
         });
-    }, [setDraft]);
-
-    const updateDescription = useCallback((index: number, value: string) => {
-        setDraft(d => {
-            const newDesc = [...d.adCopy.descriptions];
-            newDesc[index] = value;
-            return { ...d, adCopy: { ...d.adCopy, descriptions: newDesc } };
+        setNotice('Starter templates inserted. Review accuracy and enter the real landing-page URL before launching.');
+    };
+    const update = (kind: 'headlines' | 'descriptions', index: number, value: string) => {
+        setDraft(current => {
+            const values = filled(current.adCopy[kind], kind === 'headlines' ? MIN_HEADLINES : MIN_DESCRIPTIONS);
+            values[index] = value;
+            return { ...current, adCopy: { ...current.adCopy, [kind]: values } };
         });
-    }, [setDraft]);
-
-    const addHeadline = useCallback(() => {
-        if (draft.adCopy.headlines.length >= MAX_HEADLINES) return;
-        setDraft(d => ({
-            ...d,
-            adCopy: { ...d.adCopy, headlines: [...d.adCopy.headlines, ''] }
-        }));
-    }, [draft.adCopy.headlines.length, setDraft]);
-
-    const updateFinalUrl = useCallback((value: string) => {
-        setDraft(d => ({ ...d, adCopy: { ...d.adCopy, finalUrl: value } }));
-    }, [setDraft]);
-
-    return (
-        <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
-            <div className="flex justify-between items-start">
-                <div>
-                    <h3 className="text-2xl font-bold text-gray-900 mb-2">Review Ad Copy</h3>
-                    <p className="text-gray-500">
-                        AI has generated these assets based on your products. Edit them to fit your brand.
-                    </p>
-                </div>
-                <button
-                    onClick={generateCopy}
-                    disabled={generating}
-                    className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-colors font-medium text-sm disabled:opacity-50"
-                >
-                    {generating ? (
-                        <RefreshCw className="animate-spin" size={16} />
-                    ) : (
-                        <Wand2 size={16} />
-                    )}
-                    Regenerate AI Copy
-                </button>
-            </div>
-
-            {/* Live Preview */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm max-w-md mx-auto">
-                <div className="text-xs text-green-700 font-bold mb-1">
-                    Ad <span className="text-gray-400 font-normal">· example.com/shop</span>
-                </div>
-                <div className="text-blue-700 text-xl font-medium mb-1 hover:underline cursor-pointer line-clamp-1">
-                    {draft.adCopy.headlines[0] || 'Headline 1'} | {draft.adCopy.headlines[1] || 'Headline 2'}
-                </div>
-                <div className="text-gray-600 text-sm line-clamp-2">
-                    {draft.adCopy.descriptions[0] || 'Description text will appear here...'}
-                </div>
-            </div>
-
-            <div className="space-y-6">
-                {/* Headlines */}
-                <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-3">
-                        Headlines{' '}
-                        <span className="text-xs font-normal text-gray-400">
-                            (Min {MIN_HEADLINES}, Max {MAX_HEADLINES})
-                        </span>
-                    </label>
-                    <div className="space-y-3">
-                        {draft.adCopy.headlines.map((headline, idx) => (
-                            <div key={`headline-${idx}`} className="relative">
-                                <span className="absolute left-3 top-3 text-gray-400 text-xs font-mono">
-                                    {idx + 1}
-                                </span>
-                                <input
-                                    type="text"
-                                    value={headline}
-                                    onChange={(e) => updateHeadline(idx, e.target.value)}
-                                    maxLength={MAX_HEADLINE_LENGTH}
-                                    className="w-full pl-8 pr-12 py-2 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-100 outline-none text-sm"
-                                />
-                                <span className={`absolute right-3 top-2.5 text-xs ${headline.length >= MAX_HEADLINE_LENGTH ? 'text-red-500' : 'text-gray-400'
-                                    }`}>
-                                    {headline.length}/{MAX_HEADLINE_LENGTH}
-                                </span>
-                            </div>
-                        ))}
-                        {draft.adCopy.headlines.length < MAX_HEADLINES && (
-                            <button
-                                onClick={addHeadline}
-                                className="text-sm text-blue-600 font-medium hover:underline pl-1"
-                            >
-                                + Add Headline
-                            </button>
-                        )}
-                    </div>
-                </div>
-
-                {/* Descriptions */}
-                <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-3">
-                        Descriptions{' '}
-                        <span className="text-xs font-normal text-gray-400">
-                            (Min {MIN_DESCRIPTIONS}, Max {MAX_DESCRIPTIONS})
-                        </span>
-                    </label>
-                    <div className="space-y-3">
-                        {draft.adCopy.descriptions.map((desc, idx) => (
-                            <div key={`desc-${idx}`} className="relative">
-                                <span className="absolute left-3 top-3 text-gray-400 text-xs font-mono">
-                                    {idx + 1}
-                                </span>
-                                <textarea
-                                    value={desc}
-                                    onChange={(e) => updateDescription(idx, e.target.value)}
-                                    maxLength={MAX_DESCRIPTION_LENGTH}
-                                    rows={2}
-                                    className="w-full pl-8 pr-12 py-2 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-100 outline-none text-sm resize-none"
-                                />
-                                <span className={`absolute right-3 top-2 text-xs ${desc.length >= MAX_DESCRIPTION_LENGTH ? 'text-red-500' : 'text-gray-400'
-                                    }`}>
-                                    {desc.length}/{MAX_DESCRIPTION_LENGTH}
-                                </span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Final URL */}
-                <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">Final URL</label>
-                    <input
-                        type="url"
-                        value={draft.adCopy.finalUrl}
-                        onChange={(e) => updateFinalUrl(e.target.value)}
-                        placeholder="https://example.com/product-page"
-                        className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-100 outline-none text-sm"
-                    />
-                </div>
-            </div>
-        </div>
-    );
+    };
+    const add = (kind: 'headlines' | 'descriptions') => setDraft(current => {
+        const values = filled(current.adCopy[kind], kind === 'headlines' ? MIN_HEADLINES : MIN_DESCRIPTIONS);
+        if (values.length >= (kind === 'headlines' ? MAX_HEADLINES : MAX_DESCRIPTIONS)) return current;
+        return { ...current, adCopy: { ...current.adCopy, [kind]: [...values, ''] } };
+    });
+    const remove = (kind: 'headlines' | 'descriptions', index: number) => setDraft(current => {
+        const minimum = kind === 'headlines' ? MIN_HEADLINES : MIN_DESCRIPTIONS; const values = filled(current.adCopy[kind], minimum);
+        if (values.length <= minimum) return current;
+        return { ...current, adCopy: { ...current.adCopy, [kind]: values.filter((_, currentIndex) => currentIndex !== index) } };
+    });
+    let destination: URL | null = null;
+    try { const url = new URL(draft.adCopy.finalUrl.trim()); if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password) destination = url; } catch { /* A missing destination must not become example.com. */ }
+    const inputClass = 'block w-full p-2 border rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100';
+    return <section aria-label="Campaign ad copy" className="space-y-6 text-slate-900 dark:text-slate-100">
+        <h3 className="text-2xl font-bold">Review Ad Copy</h3><p>Write your ad copy manually, or insert starter templates based on the selected product name. Templates are not AI-generated and make no shipping, discount or quality claims.</p>
+        <button type="button" onClick={insertTemplate} className="px-4 py-2 rounded-lg bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">Insert starter templates</button>
+        {notice && <p role="status">{notice}</p>}
+        <section aria-label="Ad preview" className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 space-y-2">
+            <p className="text-xs">Ad preview · {destination ? `${destination.host}${destination.pathname}${destination.search}` : 'Enter a valid destination URL'}</p>
+            <p className="text-lg text-indigo-700 dark:text-indigo-300">{headlines.filter(value => value.trim()).slice(0, 2).join(' | ') || 'Your headlines will appear here'}</p><p>{descriptions[0] || 'Your description will appear here'}</p>
+        </section>
+        {(['headlines', 'descriptions'] as const).map(kind => {
+            const values = kind === 'headlines' ? headlines : descriptions; const minimum = kind === 'headlines' ? MIN_HEADLINES : MIN_DESCRIPTIONS;
+            const maximum = kind === 'headlines' ? MAX_HEADLINES : MAX_DESCRIPTIONS; const length = kind === 'headlines' ? MAX_HEADLINE_LENGTH : MAX_DESCRIPTION_LENGTH;
+            return <fieldset key={kind} className="space-y-3"><legend className="font-semibold capitalize">{kind} (Min {minimum}, Max {maximum})</legend>{values.map((value, index) => <div key={index}>
+                <label className="text-sm">{kind === 'headlines' ? 'Headline' : 'Description'} {index + 1}{kind === 'headlines' ? <input className={inputClass} value={value} maxLength={length} onChange={event => update(kind, index, event.target.value)} /> : <textarea className={inputClass} value={value} maxLength={length} rows={2} onChange={event => update(kind, index, event.target.value)} />}</label>
+                <p className={value.length > length ? 'text-xs text-red-600 dark:text-red-400' : 'text-xs text-slate-500 dark:text-slate-400'}>{value.length}/{length}{value.length > length ? ' · Too long' : ''}</p>
+                {values.length > minimum && <button type="button" aria-label={`Remove ${kind === 'headlines' ? 'headline' : 'description'} ${index + 1}`} onClick={() => remove(kind, index)}>Remove</button>}
+            </div>)}{values.length < maximum && <button type="button" onClick={() => add(kind)}>+ Add {kind === 'headlines' ? 'Headline' : 'Description'}</button>}</fieldset>;
+        })}
+        <label className="block font-semibold">Final URL<input type="url" className={inputClass} value={draft.adCopy.finalUrl} placeholder="Enter the actual product or landing-page URL" onChange={event => setDraft(current => ({ ...current, adCopy: { ...current.adCopy, finalUrl: event.target.value } }))} /></label>
+        {!destination && <p role="status">A valid HTTP or HTTPS landing-page URL is required before launch.</p>}
+    </section>;
 }

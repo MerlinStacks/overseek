@@ -106,7 +106,7 @@ describe('ProductSync Reconciliation Performance', () => {
         await (productSync as any).sync(woo, accountId, incremental);
         expect(mockPrisma.productVariation.deleteMany).toHaveBeenCalledExactlyOnceWith({ where: { productId: 'p' } });
         expect(mockPrisma.bOMItem.updateMany).toHaveBeenNthCalledWith(2, {
-            where: { bom: { productId: 'p', variationId: { not: 0 } } },
+            where: { bom: { productId: 'p', variationId: { not: 0 } }, OR: [{ isActive: true }, { deactivatedReason: null }, { deactivatedReason: { not: 'VARIATION_DELETED_IN_WOO' } }] },
             data: { isActive: false, deactivatedReason: 'VARIATION_DELETED_IN_WOO' }
         });
         expect(mockPrisma.bOM.deleteMany).not.toHaveBeenCalled();

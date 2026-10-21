@@ -419,6 +419,9 @@ class OverSeek_Server_Tracking
         if (!empty($click_data['id'])) {
             $data['clickId'] = $click_data['id'];
             $data['clickPlatform'] = $click_data['platform'];
+            if (!empty($click_data['param'])) {
+                $data['clickIdType'] = $click_data['param'];
+            }
         }
 
         // Add persisted landing referrer (original external referrer)

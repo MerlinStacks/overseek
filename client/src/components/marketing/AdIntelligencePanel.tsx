@@ -1,319 +1,55 @@
-/**
- * Ad Intelligence Panel
- *
- * Displays the SC↔Ads correlation data: cannibalization, organic-only
- * keywords, and negative keyword suggestions. Uses skeleton-first rendering
- * for instant perceived load.
- */
-
-import { useCallback, useEffect, useState } from 'react';
+import { useId, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Skeleton, SkeletonText } from '../ui/Skeleton';
-import {
-    AlertTriangle,
-    TrendingUp,
-    Ban,
-    Zap,
-    ArrowRight,
-    ChevronDown,
-    ChevronUp,
-    Loader2,
-    Search,
-    DollarSign
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
-import { Logger } from '../../utils/logger';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+import { finiteFields, isRecord } from '../../utils/responseValidation';
+import { reportMoney } from '../analytics/useReportRequest';
 
-/* ────────── Types (mirrors server response shapes) ────────── */
-
-interface IntelligenceSummary {
-    overlapCount: number;
-    organicOnlyCount: number;
-    estimatedWastedSpend: number;
-    estimatedUntappedValue: number;
-    cannibalizationCount: number;
-    negativeCandidates: number;
-    estimatedMonthlySavings: number;
-    hasData: boolean;
+interface Summary { currency?: string | null; overlapCount: number; organicOnlyCount: number; estimatedWastedSpend: number; cannibalizationCount: number; negativeCandidates: number; hasData: boolean }
+interface Overlap { query: string; organic: { position: number; ctr: number }; paid: { spend: number; roas: number }; estimatedWastedSpend: number; cannibalizationScore: number }
+interface Organic { query: string; position: number; clicks: number; ctr: number; estimatedPaidValue: number }
+interface Correlation { currency?: string | null; overlap: Overlap[]; organicOnly: Organic[] }
+const validCurrency = (value: unknown) => value == null || (typeof value === 'string' && /^[A-Z]{3}$/i.test(value));
+function decodeSummary(value: unknown): Summary {
+    if (!isRecord(value) || typeof value.hasData !== 'boolean' || !validCurrency(value.currency) || !finiteFields(value, ['overlapCount', 'organicOnlyCount', 'estimatedWastedSpend', 'cannibalizationCount', 'negativeCandidates'])) throw new Error('Invalid intelligence summary');
+    return value as unknown as Summary;
 }
-
-interface OverlapQuery {
-    query: string;
-    organic: { clicks: number; impressions: number; ctr: number; position: number };
-    paid: { clicks: number; impressions: number; spend: number; cpc: number; conversions: number; roas: number };
-    estimatedWastedSpend: number;
-    cannibalizationScore: number;
+function decodeCorrelation(value: unknown): Correlation {
+    if (!isRecord(value) || !validCurrency(value.currency) || !Array.isArray(value.overlap) || !Array.isArray(value.organicOnly) ||
+        !value.overlap.every(item => isRecord(item) && typeof item.query === 'string' && finiteFields(item, ['estimatedWastedSpend', 'cannibalizationScore']) && isRecord(item.organic) && finiteFields(item.organic, ['position', 'ctr']) && isRecord(item.paid) && finiteFields(item.paid, ['spend', 'roas'])) ||
+        !value.organicOnly.every(item => isRecord(item) && typeof item.query === 'string' && finiteFields(item, ['position', 'clicks', 'ctr', 'estimatedPaidValue']))) throw new Error('Invalid correlation');
+    return value as unknown as Correlation;
 }
-
-interface OrganicOnlyQuery {
-    query: string;
-    clicks: number;
-    impressions: number;
-    ctr: number;
-    position: number;
-    estimatedPaidValue: number;
+function Section({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
+    const [open, setOpen] = useState(true); const id = useId();
+    return <section className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 space-y-3"><button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)} className="font-semibold">{title} ({count}) {open ? '−' : '+'}</button><div id={id} hidden={!open}>{children}</div></section>;
 }
-
-interface Correlation {
-    overlap: OverlapQuery[];
-    organicOnly: OrganicOnlyQuery[];
-    paidOnlyCount: number;
-    summary: {
-        totalOrganicQueries: number;
-        totalPaidKeywords: number;
-        overlapCount: number;
-        organicOnlyCount: number;
-        estimatedTotalWastedSpend: number;
-        estimatedUntappedValue: number;
-    };
-}
-
-/* ────────── Sub-components ───────────────────────────────── */
-
-function SummaryCards({ data }: { data: IntelligenceSummary }) {
-    const cards = [
-        { label: 'Cannibalized Keywords', value: data.cannibalizationCount, icon: AlertTriangle, color: 'text-amber-400', bg: 'bg-amber-500/10' },
-        { label: 'Est. Wasted Spend/mo', value: `$${data.estimatedWastedSpend.toFixed(0)}`, icon: DollarSign, color: 'text-red-400', bg: 'bg-red-500/10' },
-        { label: 'Organic Opportunities', value: data.organicOnlyCount, icon: TrendingUp, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-        { label: 'Neg Keyword Candidates', value: data.negativeCandidates, icon: Ban, color: 'text-blue-400', bg: 'bg-blue-500/10' }
-    ];
-
-    return (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-            {cards.map(c => (
-                <div key={c.label} className={`${c.bg} rounded-xl p-4 border border-white/5`}>
-                    <div className="flex items-center gap-2 mb-2">
-                        <c.icon className={`w-4 h-4 ${c.color}`} />
-                        <span className="text-xs text-white/50 uppercase tracking-wide">{c.label}</span>
-                    </div>
-                    <div className="text-2xl font-bold text-white">{c.value}</div>
-                </div>
-            ))}
-        </div>
-    );
-}
-
-function SummaryCardsSkeleton() {
-    return (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-            {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="bg-white/5 rounded-xl p-4 border border-white/5">
-                    <Skeleton className="h-4 w-24 mb-3" />
-                    <Skeleton className="h-8 w-16" />
-                </div>
-            ))}
-        </div>
-    );
-}
-
-/** Expandable section wrapper */
-function Section({ title, icon: Icon, count, color, children, defaultOpen = false }: {
-    title: string; icon: LucideIcon; count: number; color: string; children: React.ReactNode; defaultOpen?: boolean;
-}) {
-    const [open, setOpen] = useState(defaultOpen);
-
-    return (
-        <div className="bg-white/[0.03] border border-white/5 rounded-xl mb-4 overflow-hidden">
-            <button
-                onClick={() => setOpen(!open)}
-                className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/[0.02] transition-colors"
-            >
-                <div className="flex items-center gap-3">
-                    <Icon className={`w-5 h-5 ${color}`} />
-                    <span className="font-semibold text-white">{title}</span>
-                    <span className="text-xs bg-white/10 text-white/70 px-2 py-0.5 rounded-full">{count}</span>
-                </div>
-                {open ? <ChevronUp className="w-4 h-4 text-white/40" /> : <ChevronDown className="w-4 h-4 text-white/40" />}
-            </button>
-            {open && <div className="px-5 pb-4">{children}</div>}
-        </div>
-    );
-}
-
-/* ────────── Main Component ──────────────────────────────── */
-
 export function AdIntelligencePanel() {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-
-    const [summary, setSummary] = useState<IntelligenceSummary | null>(null);
-    const [correlation, setCorrelation] = useState<Correlation | null>(null);
-    const [loadingSummary, setLoadingSummary] = useState(true);
-    const [loadingCorrelation, setLoadingCorrelation] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-
-    /** Build auth headers fresh on each request to avoid stale closures */
-    const getHeaders = useCallback(() => {
-        return {
-            'Authorization': `Bearer ${token}`,
-            'X-Account-ID': currentAccount?.id || ''
-        };
-    }, [token, currentAccount?.id]);
-
-    const loadCorrelation = useCallback(async () => {
-        setLoadingCorrelation(true);
-        try {
-            const res = await fetch(`/api/ads/intelligence/correlation`, { headers: getHeaders() });
-            if (!res.ok) throw new Error('Failed to load correlation data');
-            setCorrelation(await res.json());
-        } catch (err: unknown) {
-            Logger.error('Intelligence correlation load failed', { error: err });
-        } finally {
-            setLoadingCorrelation(false);
-        }
-    }, [getHeaders]);
-
-    const loadSummary = useCallback(async () => {
-        setLoadingSummary(true);
-        setError(null);
-        try {
-            const res = await fetch(`/api/ads/intelligence/summary`, { headers: getHeaders() });
-            if (!res.ok) throw new Error('Failed to load intelligence summary');
-            const data = await res.json();
-            setSummary(data);
-
-            // Auto-load full correlation after summary renders
-            if (data.hasData) loadCorrelation();
-        } catch (err: unknown) {
-            Logger.error('Intelligence summary load failed', { error: err });
-            const message = err instanceof Error ? err.message : 'Failed to load intelligence summary';
-            setError(message);
-        } finally {
-            setLoadingSummary(false);
-        }
-    }, [getHeaders, loadCorrelation]);
-
-    /** Load summary immediately, correlation lazily */
-    useEffect(() => {
-        loadSummary();
-    }, [loadSummary]);
-
-    /* ── No data ── */
-    if (!loadingSummary && summary && !summary.hasData) {
-        return (
-            <div className="bg-white/[0.03] border border-white/5 rounded-xl p-8 text-center">
-                <Search className="w-10 h-10 text-white/20 mx-auto mb-3" />
-                <p className="text-white/60 text-sm">
-                    No search intelligence data yet. Connect both Search Console and Google Ads to see organic↔paid insights.
-                </p>
-            </div>
-        );
-    }
-
-    return (
-        <div>
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-5">
-                <Zap className="w-5 h-5 text-violet-400" />
-                <h2 className="text-lg font-semibold text-white">Search Intelligence</h2>
-                {loadingSummary && <Loader2 className="w-4 h-4 animate-spin text-white/40" />}
-            </div>
-
-            {/* Summary Cards — skeleton first */}
-            {loadingSummary ? <SummaryCardsSkeleton /> : summary && <SummaryCards data={summary} />}
-
-            {/* Correlation sections — load progressively */}
-            {loadingCorrelation && (
-                <div className="space-y-4 mb-4">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                        <div key={i} className="bg-white/[0.03] border border-white/5 rounded-xl p-5">
-                            <Skeleton className="h-5 w-48 mb-3" />
-                            <SkeletonText lines={3} />
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {correlation && (
-                <>
-                    {/* Cannibalization */}
-                    {(() => {
-                        const cannibalized = correlation.overlap.filter(o => o.cannibalizationScore >= 50);
-                        if (cannibalized.length === 0) return null;
-                        return (
-                            <Section
-                                title="Cannibalized Keywords"
-                                icon={AlertTriangle}
-                                count={cannibalized.length}
-                                color="text-amber-400"
-                                defaultOpen
-                            >
-                                <div className="space-y-2">
-                                    {cannibalized.slice(0, 10).map(o => (
-                                        <CannibalizationRow key={o.query} data={o} />
-                                    ))}
-                                </div>
-                            </Section>
-                        );
-                    })()}
-
-                    {/* Organic Keyword Opportunities */}
-                    {correlation.organicOnly.length > 0 && (
-                        <Section
-                            title="Organic Keyword Opportunities"
-                            icon={TrendingUp}
-                            count={correlation.organicOnly.length}
-                            color="text-emerald-400"
-                        >
-                            <div className="space-y-2">
-                                {correlation.organicOnly.slice(0, 10).map(o => (
-                                    <OrganicOpportunityRow key={o.query} data={o} />
-                                ))}
-                            </div>
-                        </Section>
-                    )}
-                </>
-            )}
-
-            {/* Error state */}
-            {error && (
-                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-300 text-sm">
-                    {error}
-                </div>
-            )}
-        </div>
-    );
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p role="status">Select an account to view search intelligence.</p>;
+    return <AccountIntelligence key={JSON.stringify([token, currentAccount.id])} token={token} accountId={currentAccount.id} />;
 }
-
-/* ────────── Row Components ──────────────────────────────── */
-
-function CannibalizationRow({ data }: { data: OverlapQuery }) {
-    return (
-        <div className="bg-white/[0.03] rounded-lg p-3 flex items-center justify-between gap-4 hover:bg-white/[0.05] transition-colors">
-            <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">"{data.query}"</p>
-                <div className="flex items-center gap-3 mt-1 text-xs text-white/50">
-                    <span>Organic #{data.organic.position.toFixed(0)} · {data.organic.ctr.toFixed(1)}% CTR</span>
-                    <ArrowRight className="w-3 h-3" />
-                    <span>Paid ${data.paid.spend.toFixed(0)} · {data.paid.roas.toFixed(1)}x ROAS</span>
-                </div>
-            </div>
-            <div className="text-right shrink-0">
-                <p className="text-sm font-medium text-amber-400">~${data.estimatedWastedSpend.toFixed(0)}/mo</p>
-                <p className="text-xs text-white/40">{data.cannibalizationScore}% confidence</p>
-            </div>
-        </div>
-    );
-}
-
-function OrganicOpportunityRow({ data }: { data: OrganicOnlyQuery }) {
-    return (
-        <div className="bg-white/[0.03] rounded-lg p-3 flex items-center justify-between gap-4 hover:bg-white/[0.05] transition-colors">
-            <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">"{data.query}"</p>
-                <div className="flex items-center gap-3 mt-1 text-xs text-white/50">
-                    <span>Position #{data.position.toFixed(0)}</span>
-                    <span>·</span>
-                    <span>{data.clicks} organic clicks</span>
-                    <span>·</span>
-                    <span>{data.ctr.toFixed(1)}% CTR</span>
-                </div>
-            </div>
-            <div className="text-right shrink-0">
-                <p className="text-sm font-medium text-emerald-400">~${data.estimatedPaidValue.toFixed(0)}/mo</p>
-                <p className="text-xs text-white/40">est. paid value</p>
-            </div>
-        </div>
-    );
+function AccountIntelligence({ accountId, token }: { accountId: string; token: string }) {
+    const summary = useScopedRequest('/api/ads/intelligence/summary', accountId, token, decodeSummary);
+    const correlation = useScopedRequest(summary.data?.hasData ? '/api/ads/intelligence/correlation' : null, accountId, token, decodeCorrelation);
+    if (summary.loading) return <p role="status">Loading search intelligence...</p>;
+    if (summary.error || !summary.data) return <p role="alert">Could not load search intelligence. <button type="button" onClick={summary.retry}>Retry intelligence</button></p>;
+    if (!summary.data.hasData) return <p>No search intelligence data yet. Connect Search Console and Google Ads to see organic and paid insights.</p>;
+    const data = summary.data; const rows = correlation.data;
+    const cannibalized = rows?.overlap.filter(item => item.cannibalizationScore >= 50) ?? [];
+    return <div className="space-y-4 text-slate-900 dark:text-slate-100">
+        <h2 className="text-lg font-semibold">Search Intelligence</h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">{[
+            ['Cannibalized Keywords', data.cannibalizationCount], ['Est. Wasted Spend', reportMoney(data.estimatedWastedSpend, data.currency ?? undefined)],
+            ['Organic Opportunities', data.organicOnlyCount], ['Neg Keyword Candidates', data.negativeCandidates]
+        ].map(([label, value]) => <div key={label} className="p-4 bg-slate-100 dark:bg-slate-800 rounded-xl"><p className="text-xs text-slate-600 dark:text-slate-400">{label}</p><p className="text-xl font-semibold">{value}</p></div>)}</div>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Estimates use the reporting window and ad currency, without currency conversion. Scores are heuristic indicators, not statistical confidence.</p>
+        {correlation.loading && <p role="status">Loading correlation details...</p>}
+        {correlation.error && <p role="alert">Could not load correlation details. <button type="button" onClick={correlation.retry}>Retry correlation</button></p>}
+        {!correlation.loading && !correlation.error && rows && <>
+            {cannibalized.length > 0 && <Section title="Cannibalized Keywords" count={cannibalized.length}><ul className="space-y-3">{cannibalized.slice(0, 10).map(item => <li key={item.query}><p className="font-medium">{item.query}</p><p className="text-sm">Organic #{item.organic.position.toFixed(0)} · {item.organic.ctr.toFixed(1)}% CTR · Paid {reportMoney(item.paid.spend, rows.currency ?? undefined)} · {item.paid.roas.toFixed(1)}x ROAS</p><p className="text-sm">Estimated overlap spend: {reportMoney(item.estimatedWastedSpend, rows.currency ?? undefined)} · Score {item.cannibalizationScore}/100</p></li>)}</ul></Section>}
+            {rows.organicOnly.length > 0 && <Section title="Organic Keyword Opportunities" count={rows.organicOnly.length}><ul className="space-y-3">{rows.organicOnly.slice(0, 10).map(item => <li key={item.query}><p className="font-medium">{item.query}</p><p className="text-sm">Position #{item.position.toFixed(0)} · {item.clicks} clicks · {item.ctr.toFixed(1)}% CTR · Estimated paid value {reportMoney(item.estimatedPaidValue, rows.currency ?? undefined)}</p></li>)}</ul></Section>}
+            {!cannibalized.length && !rows.organicOnly.length && <p>No overlap or organic opportunities found in this reporting window.</p>}
+        </>}
+    </div>;
 }

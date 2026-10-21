@@ -55,6 +55,6 @@ export const decrypt = (text: string): string => {
     } catch (e: any) {
         // key probably changed since this was encrypted
         Logger.error('[encryption] Decryption failed - ENCRYPTION_KEY may have changed. Value will be unusable.', { error: e?.message });
-        throw new Error('Decryption failed - encryption key mismatch or corrupted data');
+        throw new Error('Decryption failed - encryption key mismatch or corrupted data', { cause: e });
     }
 };

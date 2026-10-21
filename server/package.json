@@ -61,6 +61,7 @@
         "zod": "^4.4.3"
     },
     "devDependencies": {
+        "@eslint/js": "^10.0.1",
         "@types/html-to-text": "^9.0.4",
         "@types/jsonwebtoken": "^9.0.10",
         "@types/mailparser": "^3.4.6",
@@ -73,9 +74,11 @@
         "@types/uuid": "^10.0.0",
         "@vitest/coverage-v8": "^4.1.10",
         "esbuild": "^0.28.1",
+        "eslint": "^10.7.0",
         "nodemon": "^3.1.14",
         "ts-node": "^10.9.2",
         "typescript": "^7.0.2",
+        "typescript-eslint": "^8.64.0",
         "vitest": "^4.1.10"
     }
 }

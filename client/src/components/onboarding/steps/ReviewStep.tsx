@@ -8,6 +8,7 @@
 import React from 'react';
 import { CheckCircle, SkipForward, ArrowLeft, Rocket, Store, Plug, Mail, TrendingUp, AlertCircle } from 'lucide-react';
 import { OnboardingStepProps, ONBOARDING_STEPS } from '../types';
+import { useAccount } from '../../../context/AccountContext';
 
 interface IntegrationStatus {
     step: number;
@@ -22,13 +23,15 @@ interface IntegrationStatus {
  * Shows a summary of all configured integrations and allows final confirmation.
  */
 export function ReviewStep({ draft, setDraft: _setDraft, onNext, onBack, isSubmitting }: OnboardingStepProps) {
+    const { currentAccount } = useAccount();
+    const storeReady = !!currentAccount?.id && draft.store.connectionVerified && draft.store.accountId === currentAccount.id;
     // Build integration status list
     const integrations: IntegrationStatus[] = [
         {
             step: ONBOARDING_STEPS.STORE,
             label: 'WooCommerce Store',
             icon: Store,
-            isCompleted: !!draft.store.name && !!draft.store.wooConsumerKey,
+            isCompleted: storeReady,
             isSkipped: false,
             details: draft.store.name || undefined
         },
@@ -36,7 +39,7 @@ export function ReviewStep({ draft, setDraft: _setDraft, onNext, onBack, isSubmi
             step: ONBOARDING_STEPS.PLUGIN,
             label: 'OverSeek Plugin',
             icon: Plug,
-            isCompleted: draft.plugin.verified,
+            isCompleted: storeReady && draft.plugin.verified && !draft.skippedSteps.includes(ONBOARDING_STEPS.PLUGIN),
             isSkipped: draft.skippedSteps.includes(ONBOARDING_STEPS.PLUGIN),
             details: draft.plugin.verified ? `v${draft.plugin.pluginVersion || 'Installed'}` : undefined
         },
@@ -44,15 +47,15 @@ export function ReviewStep({ draft, setDraft: _setDraft, onNext, onBack, isSubmi
             step: ONBOARDING_STEPS.EMAIL,
             label: 'Email (SMTP)',
             icon: Mail,
-            isCompleted: draft.email.enabled && draft.email.verified,
+            isCompleted: storeReady && draft.email.enabled && !!draft.email.configured && !!draft.email.savedEmailId && draft.email.verifiedAccountId === currentAccount?.id && !draft.skippedSteps.includes(ONBOARDING_STEPS.EMAIL),
             isSkipped: draft.skippedSteps.includes(ONBOARDING_STEPS.EMAIL) || !draft.email.enabled,
-            details: draft.email.verified ? draft.email.email : undefined
+            details: draft.email.configured ? draft.email.email : draft.email.verified ? 'Connection tested only; configuration not saved' : undefined
         },
         {
             step: ONBOARDING_STEPS.ADS,
             label: 'Ad Accounts',
             icon: TrendingUp,
-            isCompleted: draft.ads.googleConnected || draft.ads.metaConnected,
+            isCompleted: storeReady && !draft.skippedSteps.includes(ONBOARDING_STEPS.ADS) && (draft.ads.googleConnected || draft.ads.metaConnected),
             isSkipped: draft.skippedSteps.includes(ONBOARDING_STEPS.ADS),
             details: [
                 draft.ads.googleConnected ? 'Google Ads' : null,
@@ -71,7 +74,7 @@ export function ReviewStep({ draft, setDraft: _setDraft, onNext, onBack, isSubmi
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 text-white mb-4">
                     <Rocket size={32} />
                 </div>
-                <h2 className="text-2xl font-bold text-gray-900">Ready to Launch!</h2>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Review Setup</h2>
                 <p className="text-gray-500 mt-2">
                     Review your setup and start using OverSeek
                 </p>
@@ -158,8 +161,7 @@ export function ReviewStep({ draft, setDraft: _setDraft, onNext, onBack, isSubmi
                     <div className="text-sm text-blue-800">
                         <p className="font-medium">Some integrations were skipped</p>
                         <p className="mt-1 opacity-90">
-                            You can complete these anytime from Settings. All features will work,
-                            but some functionality may be limited until configured.
+                            You can complete these from Settings. Features that depend on skipped integrations remain unavailable until configured.
                         </p>
                     </div>
                 </div>
@@ -170,6 +172,7 @@ export function ReviewStep({ draft, setDraft: _setDraft, onNext, onBack, isSubmi
                 <button
                     type="button"
                     onClick={onBack}
+                    disabled={isSubmitting}
                     className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors font-medium"
                 >
                     <ArrowLeft size={18} />
@@ -179,7 +182,7 @@ export function ReviewStep({ draft, setDraft: _setDraft, onNext, onBack, isSubmi
                 <button
                     type="button"
                     onClick={onNext}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || !storeReady}
                     className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 transition-all font-bold shadow-lg shadow-purple-500/25"
                 >
                     {isSubmitting ? (

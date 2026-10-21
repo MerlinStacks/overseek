@@ -1,238 +1,39 @@
-/**
- * Step 2: Product Selection
- * 
- * Allows users to select products to promote in their campaign.
- * Fetches real products from the inventory API.
- */
-
-import { useCallback, useMemo, useState, useEffect } from 'react';
-import { Search, Check, Package, Loader2 } from 'lucide-react';
-import { WizardStepProps, WizardProduct } from '../types';
+import { useState } from 'react';
+import { type WizardStepProps, type WizardProduct } from '../types';
 import { useAuth } from '../../../../context/AuthContext';
 import { useAccount } from '../../../../context/AccountContext';
+import { useScopedRequest } from '../../../../hooks/useScopedRequest';
+import { useDebouncedValue } from '../../../../hooks/useDebouncedValue';
+import { isRecord } from '../../../../utils/responseValidation';
+import { reportMoney } from '../../../analytics/useReportRequest';
 
-interface ApiProduct {
-    wooId: number | string;
-    name?: string;
-    price?: number | string;
-    mainImage?: string;
-    images?: Array<{ src?: string } | string>;
-    sku?: string;
+function decodeProducts(value: unknown): WizardProduct[] {
+    if (!isRecord(value) || !Array.isArray(value.products)) throw new Error('Invalid products');
+    return value.products.map(product => {
+        if (!isRecord(product) || !['number', 'string'].includes(typeof product.wooId) || !String(product.wooId).trim() || typeof product.name !== 'string') throw new Error('Invalid product');
+        const price = typeof product.price === 'number' || (typeof product.price === 'string' && /^\d+(?:\.\d+)?$/.test(product.price)) ? Number(product.price) : NaN;
+        return { id: String(product.wooId), name: product.name, price: Number.isFinite(price) && price >= 0 ? price : null, sku: typeof product.sku === 'string' ? product.sku : undefined };
+    });
 }
-
-/**
- * Maps API product response to WizardProduct format.
- */
-function mapToWizardProduct(apiProduct: ApiProduct): WizardProduct {
-    const firstImage = apiProduct.images?.[0];
-    const firstImageSrc = typeof firstImage === 'string' ? firstImage : firstImage?.src;
-    const imageUrl = apiProduct.mainImage || firstImageSrc;
-    return {
-        id: String(apiProduct.wooId),
-        name: apiProduct.name || 'Unnamed Product',
-        price: parseFloat(String(apiProduct.price ?? 0)) || 0,
-        image: imageUrl || undefined,
-        sku: apiProduct.sku || ''
-    };
+export function StepProductSelection(props: WizardStepProps) {
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p role="alert">Select an account to load products.</p>;
+    return <ScopedProducts key={JSON.stringify([token, currentAccount.id])} {...props} token={token} accountId={currentAccount.id} currency={currentAccount.currency} />;
 }
-
-export function StepProductSelection({ draft, setDraft }: WizardStepProps) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-
-    const [products, setProducts] = useState<WizardProduct[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [searchQuery, setSearchQuery] = useState('');
-
-    // Fetch products on mount
-    useEffect(() => {
-        const fetchProducts = async () => {
-            if (!token || !currentAccount) return;
-
-            setLoading(true);
-            setError(null);
-
-            try {
-                const res = await fetch('/api/products?limit=100', {
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'x-account-id': currentAccount.id
-                    }
-                });
-
-                if (!res.ok) {
-                    throw new Error('Failed to fetch products');
-                }
-
-                const data = await res.json();
-                const productList = (data.products || data.items || data || []) as ApiProduct[];
-
-                // Map and sort by name for consistent UX
-                const mapped = productList
-                    .map(mapToWizardProduct)
-                    .filter((p: WizardProduct) => p.price > 0); // Only show priced products
-
-                setProducts(mapped);
-            } catch (err: unknown) {
-                const message = err instanceof Error ? err.message : 'Failed to load products';
-                setError(message);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchProducts();
-    }, [token, currentAccount]);
-
-    const selectedIds = useMemo(
-        () => new Set(draft.selectedProducts.map(p => p.id)),
-        [draft.selectedProducts]
-    );
-
-    // Filter products by search query
-    const filteredProducts = useMemo(() => {
-        if (!searchQuery.trim()) return products;
-        const q = searchQuery.toLowerCase();
-        return products.filter(p =>
-            p.name.toLowerCase().includes(q) ||
-            (p.sku && p.sku.toLowerCase().includes(q))
-        );
-    }, [products, searchQuery]);
-
-    const toggleProduct = useCallback((product: WizardProduct) => {
-        setDraft(d => {
-            const isSelected = d.selectedProducts.some(p => p.id === product.id);
-            return {
-                ...d,
-                selectedProducts: isSelected
-                    ? d.selectedProducts.filter(p => p.id !== product.id)
-                    : [...d.selectedProducts, product]
-            };
-        });
-    }, [setDraft]);
-
-    const clearSelection = useCallback(() => {
-        setDraft(d => ({ ...d, selectedProducts: [] }));
-    }, [setDraft]);
-
-    // Loading state
-    if (loading) {
-        return (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                <div>
-                    <h3 className="text-2xl font-bold text-gray-900 mb-2">Select Products</h3>
-                    <p className="text-gray-500">Loading your inventory...</p>
-                </div>
-                <div className="flex items-center justify-center h-96">
-                    <div className="flex flex-col items-center gap-3">
-                        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-                        <span className="text-sm text-gray-500">Fetching products...</span>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    // Error state
-    if (error) {
-        return (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                <div>
-                    <h3 className="text-2xl font-bold text-gray-900 mb-2">Select Products</h3>
-                    <p className="text-red-500">{error}</p>
-                </div>
-            </div>
-        );
-    }
-
-    // Empty state
-    if (products.length === 0) {
-        return (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                <div>
-                    <h3 className="text-2xl font-bold text-gray-900 mb-2">Select Products</h3>
-                    <p className="text-gray-500">No products found in your inventory.</p>
-                </div>
-                <div className="flex flex-col items-center justify-center h-96 bg-gray-50 rounded-2xl">
-                    <Package className="w-12 h-12 text-gray-300 mb-4" />
-                    <p className="text-gray-500">Sync your WooCommerce products first</p>
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-            <div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">Select Products</h3>
-                <p className="text-gray-500">Choose the products you want to feature in this campaign.</p>
-            </div>
-
-            {/* Search Bar */}
-            <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                <input
-                    type="text"
-                    placeholder="Search by name or SKU..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-12 pr-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
-                />
-            </div>
-
-            {/* Product Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 h-96 overflow-y-auto pr-2">
-                {filteredProducts.map(product => {
-                    const isSelected = selectedIds.has(product.id);
-                    return (
-                        <button
-                            key={product.id}
-                            onClick={() => toggleProduct(product)}
-                            className={`relative p-4 rounded-2xl border-2 text-left transition-all group ${isSelected
-                                ? 'border-blue-500 bg-blue-50/30'
-                                : 'border-gray-100 bg-white hover:border-gray-200 hover:shadow-sm'
-                                }`}
-                        >
-                            {/* Product Image */}
-                            <div className="w-full h-20 mb-3 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
-                                {product.image ? (
-                                    <img
-                                        src={product.image}
-                                        alt={product.name}
-                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                                    />
-                                ) : (
-                                    <Package className="w-8 h-8 text-gray-300" />
-                                )}
-                            </div>
-                            <h4 className="font-semibold text-gray-900 text-sm mb-1 line-clamp-2">{product.name}</h4>
-                            <p className="text-gray-500 text-sm">${product.price.toFixed(2)}</p>
-                            {product.sku && (
-                                <p className="text-gray-400 text-xs mt-1">SKU: {product.sku}</p>
-                            )}
-
-                            {isSelected && (
-                                <div className="absolute top-3 right-3 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center shadow-md animate-in zoom-in duration-200">
-                                    <Check size={14} />
-                                </div>
-                            )}
-                        </button>
-                    );
-                })}
-            </div>
-
-            <div className="flex justify-between text-sm text-gray-500 pt-2 border-t border-gray-100">
-                <span>{draft.selectedProducts.length} items selected</span>
-                {draft.selectedProducts.length > 0 && (
-                    <button
-                        onClick={clearSelection}
-                        className="text-red-500 hover:text-red-600"
-                    >
-                        Clear Selection
-                    </button>
-                )}
-            </div>
-        </div>
-    );
+function ScopedProducts(props: WizardStepProps & { token: string; accountId: string; currency?: string }) {
+    const [query, setQuery] = useState(''); const debounced = useDebouncedValue(query, 300);
+    return <section className="space-y-4 text-slate-900 dark:text-slate-100"><h3 className="text-2xl font-bold">Select products (optional)</h3>
+        <label className="block">Search products<input className="block w-full p-2 border rounded-lg bg-white dark:bg-slate-900" value={query} onChange={event => setQuery(event.target.value)} /></label>
+        <p>Up to 100 matching products are shown. Search by name or SKU to find other products. Prices use the store currency, not the ad-account currency.</p>
+        {query !== debounced ? <p role="status">Searching...</p> : <ProductResults key={debounced} {...props} query={debounced} />}
+        <p>{props.draft.selectedProducts.length} selected</p>
+        <ul>{props.draft.selectedProducts.map(product => <li key={product.id}>{product.name} <button type="button" aria-label={`Remove ${product.name}`} onClick={() => props.setDraft(current => ({ ...current, selectedProducts: current.selectedProducts.filter(item => item.id !== product.id) }))}>Remove</button></li>)}</ul>
+    </section>;
+}
+function ProductResults({ draft, setDraft, query, token, accountId, currency }: WizardStepProps & { query: string; token: string; accountId: string; currency?: string }) {
+    const request = useScopedRequest(`/api/products?limit=100&q=${encodeURIComponent(query)}`, accountId, token, decodeProducts);
+    if (request.loading) return <p role="status">Loading products...</p>;
+    if (request.error) return <p role="alert">Products unavailable. <button type="button" onClick={request.retry}>Retry</button></p>;
+    if (!request.data?.length) return <p>No matching products.</p>;
+    return <ul className="space-y-2">{request.data.map(product => <li key={product.id}><button type="button" aria-pressed={draft.selectedProducts.some(item => item.id === product.id)} className="w-full text-left p-3 border rounded-lg" onClick={() => setDraft(current => ({ ...current, selectedProducts: current.selectedProducts.some(item => item.id === product.id) ? current.selectedProducts.filter(item => item.id !== product.id) : [...current.selectedProducts, product] }))}>{product.name} {product.sku} · {reportMoney(product.price ?? NaN, currency)}</button></li>)}</ul>;
 }

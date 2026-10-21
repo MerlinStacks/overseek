@@ -3,11 +3,11 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { gunzipSync } from 'zlib';
 import { createHash } from 'crypto';
-const mocks = vi.hoisted(() => ({ directory: '', create: vi.fn() }));
-vi.mock('../../utils/prisma', () => ({ prisma: { storedBackup: { create: mocks.create } } }));
+const mocks = vi.hoisted(() => ({ directory: '', create: vi.fn(), findMany: vi.fn() }));
+vi.mock('../../utils/prisma', () => ({ prisma: { storedBackup: { create: mocks.create, findMany: mocks.findMany } } }));
 vi.mock('../../utils/logger', () => ({ Logger: { info: vi.fn() } }));
 vi.mock('./constants', () => ({ get BACKUP_DIR() { return mocks.directory; }, FREQUENCY_MS: {} }));
-import { saveBackupToStorage, streamSerializeToGzip } from './backupStorage';
+import { getStoredBackups, saveBackupToStorage, streamSerializeToGzip } from './backupStorage';
 import type { AccountBackup } from './types';
 const backup = (): AccountBackup => ({ exportedAt: '2026-10-20', version: '1', account: { id: 'account' }, data: { orders: [{ id: 1 }], products: [] } });
 beforeEach(async () => {
@@ -16,6 +16,11 @@ beforeEach(async () => {
 });
 afterEach(async () => { await fs.rm(mocks.directory, { recursive: true, force: true }); vi.restoreAllMocks(); vi.clearAllMocks(); });
 describe('backup streaming and publication', () => {
+    it('includes owning account identity in listed backup metadata', async () => {
+        mocks.findMany.mockResolvedValue([{ id: 'stored', accountId: 'account', filename: 'backup.gz', sizeBytes: 1, recordCount: 0, status: 'COMPLETED', type: 'MANUAL', createdAt: new Date() }]);
+        expect(await getStoredBackups('account')).toEqual([expect.objectContaining({ id: 'stored', accountId: 'account' })]);
+        expect(mocks.findMany).toHaveBeenCalledWith({ where: { accountId: 'account' }, orderBy: { createdAt: 'desc' } });
+    });
     it('produces complete gzip JSON and a checksum over the compressed bytes', async () => {
         const file = path.join(mocks.directory, 'backup.gz'); const data = backup();
         data.data.orders = Array.from({ length: 1600 }, (_, id) => ({ id, note: 'x'.repeat(200) }));

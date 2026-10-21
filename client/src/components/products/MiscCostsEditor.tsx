@@ -1,5 +1,6 @@
 import React from 'react';
 import { Plus, Trash2 } from 'lucide-react';
+import { reportMoney } from '../analytics/useReportRequest';
 
 export interface MiscCost {
     amount: number;
@@ -9,9 +10,10 @@ export interface MiscCost {
 interface MiscCostsEditorProps {
     value: MiscCost[];
     onChange: (costs: MiscCost[]) => void;
+    currency?: string;
 }
 
-export const MiscCostsEditor: React.FC<MiscCostsEditorProps> = ({ value = [], onChange }) => {
+export const MiscCostsEditor: React.FC<MiscCostsEditorProps> = ({ value = [], onChange, currency }) => {
     const handleAdd = () => {
         onChange([...value, { amount: 0, note: '' }]);
     };
@@ -34,7 +36,7 @@ export const MiscCostsEditor: React.FC<MiscCostsEditorProps> = ({ value = [], on
         <div className="space-y-3">
             <div className="flex justify-between items-center">
                 <h4 className="block text-sm font-medium text-gray-700">Miscellaneous Costs</h4>
-                <span className="text-sm font-bold text-gray-500">Total: ${total.toFixed(2)}</span>
+                <span className="text-sm font-bold text-gray-500 dark:text-slate-400">Total: {currency === undefined ? `$${total.toFixed(2)}` : reportMoney(total, currency)}</span>
             </div>
 
             <div className="space-y-2">
@@ -51,7 +53,7 @@ export const MiscCostsEditor: React.FC<MiscCostsEditorProps> = ({ value = [], on
                             />
                         </div>
                         <div className="relative w-24">
-                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{currency === undefined ? '$' : currency || '—'}</span>
                             <input
                                 aria-label={`Cost ${index + 1} amount`}
                                 type="number"
@@ -61,7 +63,7 @@ export const MiscCostsEditor: React.FC<MiscCostsEditorProps> = ({ value = [], on
                                     const amount = e.target.value === '' ? 0 : e.target.valueAsNumber;
                                     if (Number.isFinite(amount)) handleChange(index, 'amount', amount);
                                 }}
-                                className="w-full text-sm pl-5 pr-2 py-1.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                className="w-full text-sm pl-10 pr-2 py-1.5 border border-gray-200 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                                 placeholder="0.00"
                             />
                         </div>

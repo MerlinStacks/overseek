@@ -104,7 +104,10 @@ export class AudienceSyncService {
                             if (result.numInvalidEntries > 0) throw new Error('Meta rejected audience identifiers. Check your customer email data.');
                         }
                     }
-                    for (const row of batch) action === 'remove' ? applied.delete(audienceIdentifierKey(row)) : applied.set(audienceIdentifierKey(row), row);
+                    for (const row of batch) {
+                        if (action === 'remove') applied.delete(audienceIdentifierKey(row));
+                        else applied.set(audienceIdentifierKey(row), row);
+                    }
                     await prisma.audienceSync.update({ where: { id: sync.id }, data: {
                         syncedEmailHashes: [...new Set([...applied.values()].flatMap(row => row.email ? [row.email] : []))],
                         syncedIdentifiers: [...applied.values()] as object[],
@@ -123,6 +126,7 @@ export class AudienceSyncService {
                 status: 'FAILED', lastError
             } });
             // Queue retries without retaining platform responses containing customer data.
+            // eslint-disable-next-line preserve-caught-error -- A cause would retain private platform response/customer data in the queue.
             throw new Error('Audience sync failed');
         }
     }

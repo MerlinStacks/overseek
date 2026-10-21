@@ -10,6 +10,16 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { REVENUE_STATUSES } from '../../constants/orderStatus';
+import { extractBillingInfo, extractCustomerId, orderRecord } from './utils/orderDataExtractor';
+function customerIdentity(order: { rawData: unknown }): string | null {
+    const id = extractCustomerId(order);
+    return id ? `customer:${id}` : extractBillingInfo(order).email;
+}
+function checkCoverage(orders: Array<{ total: unknown; currency?: string }>) {
+    if (orders.length > 50000) throw new Error('Cohort unavailable: order history exceeds 50,000 rows; no partial cohort returned');
+    if (new Set(orders.map(order => order.currency)).size > 1) throw new Error('Cohort unavailable for mixed currencies');
+    if (orders.some(order => !Number.isFinite(Number(order.total)))) throw new Error('Cohort revenue unavailable');
+}
 import {
     monthsDifference,
     normalizeSource,
@@ -17,6 +27,8 @@ import {
 } from './utils';
 
 export interface RetentionCohort {
+    retentionMethod?: 'cumulative-repeat-purchase-complete-months';
+    coverage?: 'complete-local-order-history';
     cohortMonth: string; // "2026-01"
     totalCustomers: number;
     retention: Array<{
@@ -54,10 +66,11 @@ export class CustomerCohortService {
      * Returns a matrix showing what % of customers from each cohort made repeat purchases
      */
     static async getRetentionCohorts(accountId: string, monthsBack: number = 6): Promise<RetentionCohort[]> {
+        if (!Number.isInteger(monthsBack) || monthsBack < 1 || monthsBack > 24) throw new Error('monthsBack must be 1-24');
         try {
             const cutoffDate = new Date();
-            cutoffDate.setMonth(cutoffDate.getMonth() - monthsBack);
             cutoffDate.setDate(1);
+            cutoffDate.setMonth(cutoffDate.getMonth() - monthsBack);
             cutoffDate.setHours(0, 0, 0, 0);
 
             // Get all orders with customer info
@@ -66,25 +79,26 @@ export class CustomerCohortService {
                 where: {
                     accountId,
                     status: { in: REVENUE_STATUSES },
-                    dateCreated: { gte: cutoffDate }
+                    dateCreated: { lte: new Date() }
                 },
                 select: {
                     id: true,
                     wooId: true,
                     dateCreated: true,
                     total: true,
+                    currency: true,
                     rawData: true
                 },
-                orderBy: { dateCreated: 'asc' },
-                take: 50000
+                orderBy: [{ dateCreated: 'asc' }, { id: 'asc' }],
+                take: 50001
             });
+            checkCoverage(orders);
 
             // Group orders by customer email
             const customerOrders = new Map<string, Array<{ date: Date; total: number }>>();
 
             for (const order of orders) {
-                const rawData = order.rawData as any;
-                const email = rawData?.billing?.email?.toLowerCase();
+                const email = customerIdentity(order);
                 if (!email) continue;
 
                 if (!customerOrders.has(email)) {
@@ -108,6 +122,7 @@ export class CustomerCohortService {
                 // Sort by date
                 emailOrders.sort((a, b) => a.date.getTime() - b.date.getTime());
                 const firstOrder = emailOrders[0];
+                if (firstOrder.date < cutoffDate) continue;
                 const cohortKey = `${firstOrder.date.getFullYear()}-${String(firstOrder.date.getMonth() + 1).padStart(2, '0')}`;
 
                 if (!cohortMap.has(cohortKey)) {
@@ -147,7 +162,10 @@ export class CustomerCohortService {
                 // Track cumulative retention
                 const retainedCustomers = new Set<string>();
 
-                for (let month = 1; month <= 6; month++) {
+                // Only complete observation months; current partial/future months are omitted.
+                const [year, monthNumber] = cohortMonth.split('-').map(Number);
+                const observedMonths = monthsDifference(new Date(year, monthNumber - 1, 1), new Date()) - 1;
+                for (let month = 1; month <= Math.min(6, observedMonths); month++) {
                     const monthReturners = data.returnedByMonth.get(month) || new Set();
                     monthReturners.forEach(c => retainedCustomers.add(c));
 
@@ -161,6 +179,8 @@ export class CustomerCohortService {
                 }
 
                 cohorts.push({
+                    retentionMethod: 'cumulative-repeat-purchase-complete-months',
+                    coverage: 'complete-local-order-history',
                     cohortMonth,
                     totalCustomers,
                     retention
@@ -189,7 +209,7 @@ export class CustomerCohortService {
                 where: {
                     accountId,
                     wooCustomerId: { not: null },
-                    createdAt: { gte: sixMonthsAgo }
+                    createdAt: { lte: new Date() }
                 },
                 select: {
                     wooCustomerId: true,
@@ -198,8 +218,10 @@ export class CustomerCohortService {
                     referrer: true,
                     createdAt: true
                 },
-                take: 100000
+                orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+                take: 100001
             });
+            if (sessions.length > 100000) throw new Error('Acquisition cohort unavailable: session coverage limit exceeded');
 
             // Get all orders by customer
             const orders = await prisma.wooOrder.findMany({
@@ -211,14 +233,21 @@ export class CustomerCohortService {
                     wooId: true,
                     dateCreated: true,
                     total: true,
+                    currency: true,
                     rawData: true
-                }
+                },
+                orderBy: [{ dateCreated: 'asc' }, { id: 'asc' }], take: 50001,
             });
+            checkCoverage(orders);
+            const firstPurchase = new Map<number, Date>();
+            for (const order of orders) { const id = extractCustomerId(order); if (id && !firstPurchase.has(id)) firstPurchase.set(id, order.dateCreated); }
 
             // Map customers to their source
             const customerSource = new Map<number, string>();
             for (const session of sessions) {
                 if (!session.wooCustomerId) continue;
+                const purchase = firstPurchase.get(session.wooCustomerId);
+                if (!purchase || session.createdAt > purchase) continue;
                 const source = normalizeSource(session.firstTouchSource || session.utmSource || session.referrer);
                 if (!customerSource.has(session.wooCustomerId)) {
                     customerSource.set(session.wooCustomerId, source);
@@ -233,8 +262,7 @@ export class CustomerCohortService {
             }>();
 
             for (const order of orders) {
-                const rawData = order.rawData as any;
-                const customerId = rawData?.customer_id;
+                const customerId = extractCustomerId(order);
                 if (!customerId) continue;
 
                 const source = customerSource.get(customerId) || 'Unknown';
@@ -293,11 +321,13 @@ export class CustomerCohortService {
                     wooId: true,
                     dateCreated: true,
                     total: true,
+                    currency: true,
                     rawData: true
                 },
-                orderBy: { dateCreated: 'asc' },
-                take: 50000
+                orderBy: [{ dateCreated: 'asc' }, { id: 'asc' }],
+                take: 50001
             });
+            checkCoverage(orders);
 
             // Track first product category per customer
             const customerFirstCategory = new Map<string, {
@@ -313,25 +343,24 @@ export class CustomerCohortService {
             }>();
 
             for (const order of orders) {
-                const rawData = order.rawData as any;
-                const email = rawData?.billing?.email?.toLowerCase();
+                const rawData = orderRecord(order.rawData);
+                const email = customerIdentity(order);
                 if (!email) continue;
 
-                const lineItems = rawData?.line_items || [];
+                const lineItems = Array.isArray(rawData.line_items) ? rawData.line_items.map(orderRecord) : [];
 
                 // Get first category from line items
                 let category = 'Uncategorized';
                 for (const item of lineItems) {
-                    if (item.category_name || item.meta_data?.find((m: any) => m.key === 'category')) {
-                        category = item.category_name ||
-                            item.meta_data?.find((m: any) => m.key === 'category')?.value ||
-                            'Uncategorized';
+                    const meta = Array.isArray(item.meta_data) ? item.meta_data.map(orderRecord).find(m => m.key === 'category') : null;
+                    if (typeof item.category_name === 'string' || typeof meta?.value === 'string') {
+                        category = String(item.category_name || meta.value);
                         break;
                     }
                     // Try product name as fallback for categorization
-                    if (item.name) {
+                    if (typeof item.name === 'string') {
                         // Simple heuristic: use first word or predefined patterns
-                        category = inferCategory(item.name);
+                        category = `Inferred: ${inferCategory(item.name)}`;
                     }
                 }
 

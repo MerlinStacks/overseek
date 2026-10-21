@@ -17,30 +17,34 @@ export function useApi() {
     const { currentAccount } = useAccount();
 
     const accountId = currentAccount?.id;
+    const request = useCallback(async <T,>(endpoint: string, method: string, data?: unknown, options?: { signal?: AbortSignal }) => {
+        if (!token || !accountId) throw new Error('Sign in and select an account before making this request.');
+        return api.request<T>(endpoint, { method, token, accountId, signal: options?.signal, ...(data === undefined ? {} : { body: JSON.stringify(data) }) });
+    }, [token, accountId]);
 
     const get = useCallback(
-        <T>(endpoint: string) => api.get<T>(endpoint, token || undefined, accountId),
-        [token, accountId]
+        <T>(endpoint: string, options?: { signal?: AbortSignal }) => request<T>(endpoint, 'GET', undefined, options),
+        [request]
     );
 
     const post = useCallback(
-        <T>(endpoint: string, data?: unknown) => api.post<T>(endpoint, data, token || undefined, accountId),
-        [token, accountId]
+        <T>(endpoint: string, data?: unknown, options?: { signal?: AbortSignal }) => request<T>(endpoint, 'POST', data, options),
+        [request]
     );
 
     const patch = useCallback(
-        <T>(endpoint: string, data?: unknown) => api.patch<T>(endpoint, data, token || undefined, accountId),
-        [token, accountId]
+        <T>(endpoint: string, data?: unknown, options?: { signal?: AbortSignal }) => request<T>(endpoint, 'PATCH', data, options),
+        [request]
     );
 
     const put = useCallback(
-        <T>(endpoint: string, data?: unknown) => api.put<T>(endpoint, data, token || undefined, accountId),
-        [token, accountId]
+        <T>(endpoint: string, data?: unknown, options?: { signal?: AbortSignal }) => request<T>(endpoint, 'PUT', data, options),
+        [request]
     );
 
     const del = useCallback(
-        <T>(endpoint: string) => api.delete<T>(endpoint, token || undefined, accountId),
-        [token, accountId]
+        <T>(endpoint: string, options?: { signal?: AbortSignal }) => request<T>(endpoint, 'DELETE', undefined, options),
+        [request]
     );
 
     const isReady = Boolean(token && accountId);

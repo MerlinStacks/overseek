@@ -179,6 +179,7 @@ async function repair(db, { apply = false, baseline, migrations = loadMigrations
     } catch (error) {
         await db.query('ROLLBACK');
         // Do not print PostgreSQL DETAIL (may contain customer/row data) or URLs.
+        // eslint-disable-next-line preserve-caught-error -- A cause would expose the deliberately redacted PostgreSQL detail.
         if (error.code) throw new Error(`Repair rolled back at ${stage}: PostgreSQL ${error.code}${error.constraint ? ` (${error.constraint})` : ''}. No migration history was advanced.`);
         throw error;
     }

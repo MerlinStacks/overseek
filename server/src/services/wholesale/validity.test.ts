@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ add: vi.fn(), transaction: vi.fn(), log: vi.fn() }));
 vi.mock('../../utils/prisma', () => ({ prisma: { $transaction: mocks.transaction, wholesaleCatalogGeneration: { updateMany: vi.fn() } } }));
@@ -10,6 +10,7 @@ import { snapshotWithValidity } from './validityWorker';
 
 describe('wholesale commercial validity extension', () => {
     beforeEach(() => vi.clearAllMocks());
+    afterEach(() => vi.useRealTimers());
 
     it('allows revival within the original 30-day horizon and rejects stale dates beyond it', () => {
         const generation = { originalGeneratedAt: new Date('2026-08-01T00:00:00Z'), effectiveDate: new Date('2026-08-01T00:00:00Z') };
@@ -22,7 +23,7 @@ describe('wholesale commercial validity extension', () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-08-07T00:00:00Z'));
         const generation = { id: 'generation-1', accountId: 'account-1', status: 'APPROVED', staleAt: null, validityArtifactStatus: 'CURRENT', validityRevision: 2, validUntil: new Date('2026-08-09'), originalGeneratedAt: new Date('2026-08-01'), effectiveDate: new Date('2026-08-01'), account: { timezone: 'UTC' }, inputSnapshot: {} };
-        const tx = { $queryRawUnsafe: vi.fn(), wholesaleCatalogGeneration: { findFirst: vi.fn().mockResolvedValue(generation), updateMany: vi.fn().mockResolvedValue({ count: 1 }) } };
+        const tx = { $executeRawUnsafe: vi.fn(), wholesaleCatalogGeneration: { findFirst: vi.fn().mockResolvedValue(generation), updateMany: vi.fn().mockResolvedValue({ count: 1 }) } };
         mocks.transaction.mockImplementation((callback: any) => callback(tx));
         mocks.add.mockResolvedValue({});
         const result = await WholesaleGenerationService.extendValidity('account-1', 'generation-1', 'user-1', '2026-08-20');

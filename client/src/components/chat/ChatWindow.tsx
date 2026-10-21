@@ -68,7 +68,7 @@ interface ChatWindowProps {
     onStatusChange?: (newStatus: string, snoozeUntil?: Date) => Promise<void>;
     onAssign?: (userId: string) => Promise<void>;
     onMerge?: (targetConversationId: string) => Promise<void>;
-    onBlock?: () => Promise<void>;
+    onBlock?: (signal?: AbortSignal) => Promise<void>;
     assigneeId?: string;
     availableChannels?: ChannelOption[];
     currentChannel?: ConversationChannel;
@@ -157,7 +157,8 @@ export const ChatWindow = memo(function ChatWindow({
     });
 
     // === LOCAL STATE ===
-    const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+    const [statusOperation, setStatusOperation] = useState<{ conversationId: string; marker: object } | null>(null);
+    const isUpdatingStatus = statusOperation?.conversationId === conversationId;
 
     // Modal states
     const [showSnoozeModal, setShowSnoozeModal] = useState(false);
@@ -288,11 +289,12 @@ export const ChatWindow = memo(function ChatWindow({
     // === STATUS CHANGE ===
     const handleStatusChange = async (newStatus: string) => {
         if (!onStatusChange || isUpdatingStatus) return;
-        setIsUpdatingStatus(true);
+        const operation = { conversationId, marker: {} };
+        setStatusOperation(operation);
         try {
             await onStatusChange(newStatus);
         } finally {
-            setIsUpdatingStatus(false);
+            setStatusOperation(current => current === operation ? null : current);
         }
     };
 

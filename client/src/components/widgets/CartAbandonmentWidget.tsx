@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
-import { Logger } from '../../utils/logger';
+import { useState } from 'react';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+import { finiteFields, isRecord } from '../../utils/responseValidation';
 import { ShoppingCart, TrendingDown, Clock, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -30,33 +31,20 @@ interface CartAbandonmentData {
 export function CartAbandonmentWidget({ className = '', dateRange }: WidgetProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
-    const [data, setData] = useState<CartAbandonmentData | null>(null);
-    const [loading, setLoading] = useState(true);
+    if (!token || !currentAccount) return <p role="status">Select an account to view cart activity.</p>;
+    return <AccountCart key={JSON.stringify([token, currentAccount.id, dateRange.startDate, dateRange.endDate])} className={className} dateRange={dateRange} accountId={currentAccount.id} token={token} />;
+}
+
+function decodeCart(value: unknown): CartAbandonmentData {
+    const validProduct = (item: unknown) => isRecord(item) && typeof item.productName === 'string' && (item.sku == null || typeof item.sku === 'string') && finiteFields(item, ['productId', 'addToCartCount', 'purchaseCount', 'removeCount', 'abandonmentRate', 'quickRemoveCount']);
+    if (!isRecord(value) || !finiteFields(value, ['totalAddToCarts', 'totalPurchases', 'totalRemoves', 'overallAbandonmentRate']) || !Array.isArray(value.topAbandonedProducts) || !value.topAbandonedProducts.every(validProduct) || !Array.isArray(value.quickRemoveProducts) || !value.quickRemoveProducts.every(validProduct)) throw new Error('Invalid cart metrics');
+    return value as unknown as CartAbandonmentData;
+}
+
+function AccountCart({ className, dateRange, token, accountId }: WidgetProps & { token: string; accountId: string }) {
+    const query = new URLSearchParams({ startDate: dateRange.startDate, endDate: dateRange.endDate });
+    const { data, loading, error, retry } = useScopedRequest(`/api/tracking/cart-abandonment?${query}`, accountId, token, decodeCart);
     const [activeTab, setActiveTab] = useState<'abandoned' | 'quickRemove'>('abandoned');
-
-    const fetchData = useCallback(async () => {
-        if (!currentAccount || !token) return;
-
-        try {
-            const res = await fetch(`/api/tracking/cart-abandonment?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
-                }
-            });
-            if (res.ok) {
-                setData(await res.json());
-            }
-        } catch (error) {
-            Logger.error('Failed to load cart abandonment data', { error });
-        } finally {
-            setLoading(false);
-        }
-    }, [currentAccount, token, dateRange]);
-
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
 
     if (loading) {
         return (
@@ -67,14 +55,16 @@ export function CartAbandonmentWidget({ className = '', dateRange }: WidgetProps
                         <ShoppingCart size={16} />
                     </div>
                 </div>
-                <div className="flex-1 flex justify-center items-center">
+                <div role="status" aria-label="Loading cart activity" className="flex-1 flex justify-center items-center">
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-slate-400"></div>
                 </div>
             </div>
         );
     }
 
-    if (!data || (data.topAbandonedProducts.length === 0 && data.quickRemoveProducts.length === 0)) {
+    if (error || !data) return <div role="alert" className={`${widgetCardClass} p-5 ${className || ''}`}>Could not load cart activity. <button type="button" onClick={retry}>Retry cart activity</button></div>;
+
+    if (data.totalAddToCarts === 0 && data.totalPurchases === 0 && data.totalRemoves === 0 && data.topAbandonedProducts.length === 0 && data.quickRemoveProducts.length === 0) {
         return (
             <div className={`${widgetCardClass} h-full w-full p-5 flex flex-col ${className || ''}`}>
                 <div className={widgetHeaderRowClass}>
@@ -128,6 +118,7 @@ export function CartAbandonmentWidget({ className = '', dateRange }: WidgetProps
             {/* Tabs */}
             <div className="flex gap-1 mb-3 bg-slate-100 dark:bg-slate-700/50 p-1 rounded-lg">
                 <button
+                    type="button" aria-pressed={activeTab === 'abandoned'}
                     onClick={() => setActiveTab('abandoned')}
                     className={`flex-1 text-xs py-1.5 px-2 rounded-md transition-colors flex items-center justify-center gap-1 ${activeTab === 'abandoned'
                             ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
@@ -138,6 +129,7 @@ export function CartAbandonmentWidget({ className = '', dateRange }: WidgetProps
                     Most Abandoned
                 </button>
                 <button
+                    type="button" aria-pressed={activeTab === 'quickRemove'}
                     onClick={() => setActiveTab('quickRemove')}
                     className={`flex-1 text-xs py-1.5 px-2 rounded-md transition-colors flex items-center justify-center gap-1 ${activeTab === 'quickRemove'
                             ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'

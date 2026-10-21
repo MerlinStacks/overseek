@@ -10,8 +10,8 @@ export async function backfillContactPage(accountId: string, source: ContactBack
     return withOrderTotalsTransaction(accountId, async tx => {
         const where = { accountId, ...(after ? { id: { gt: after } } : {}) };
         const contacts: string[] = [];
-        let cursor = after;
-        let count = 0;
+        let cursor: string | undefined;
+        let count: number;
         if (source === 'orders') {
             const rows = await tx.wooOrder.findMany({ where, orderBy: { id: 'asc' }, take: limit,
                 select: { id: true, wooId: true, wooCustomerId: true, billingEmail: true, rawData: true } });

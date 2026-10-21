@@ -350,7 +350,7 @@ export function ContactPanel({ conversation, smsIdentifier, messageCount, onSele
                             isLoading={isLoadingOrders}
                             customerId={customer?.id}
                             ordersCount={customer?.ordersCount}
-                            accountCurrency={accountCurrency}
+                            accountCurrency={currentAccount?.currency}
                         />
                     </Section>
                 )}

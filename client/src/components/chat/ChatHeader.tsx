@@ -4,12 +4,16 @@
  * Displays conversation recipient info and action buttons.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useId } from 'react';
 import { ChevronDown, Clock, CheckCircle, RotateCcw, MoreHorizontal, MoreVertical, Search, Users, Merge, Ban, Eye } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useClickOutside } from '../../hooks/useClickOutside';
 import { MacrosDropdown } from './MacrosDropdown';
 import { RecipientList, MergedRecipient } from './RecipientList';
+import { useAuth } from '../../context/AuthContext';
+import { useAccount } from '../../context/AccountContext';
+import { useScopedMutation } from '../../hooks/useScopedMutation';
+import { Modal } from '../ui/Modal';
 
 interface Viewer {
     userId: string;
@@ -25,11 +29,11 @@ interface ChatHeaderProps {
     isUpdatingStatus: boolean;
     showSearch: boolean;
     onToggleSearch: () => void;
-    onStatusChange: (status: string) => void;
+    onStatusChange: (status: string) => void | Promise<void>;
     onShowSnooze: () => void;
     onShowAssign: () => void;
     onShowMerge: () => void;
-    onBlock?: () => Promise<void>;
+    onBlock?: (signal?: AbortSignal) => Promise<void>;
     /** Other users currently viewing this conversation */
     otherViewers?: Viewer[];
     /** Merged recipients from merged conversations */
@@ -38,7 +42,11 @@ interface ChatHeaderProps {
     primaryChannel?: string;
 }
 
-export function ChatHeader({
+export function ChatHeader(props: ChatHeaderProps) {
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    return <ScopedChatHeader key={JSON.stringify([props.conversationId, props.recipientEmail, props.primaryChannel, currentAccount?.id, token])} {...props} />;
+}
+function ScopedChatHeader({
     conversationId,
     recipientName,
     recipientEmail,
@@ -58,6 +66,18 @@ export function ChatHeader({
     const [showActionsMenu, setShowActionsMenu] = useState(false);
     const [showMoreMenu, setShowMoreMenu] = useState(false);
     const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+    const mutation = useScopedMutation(); const statusMenuId = useId(); const moreMenuId = useId();
+    const locked = isUpdatingStatus || mutation.busy;
+    const changeStatus = async (nextStatus: string) => {
+        if (isUpdatingStatus || mutation.isPending()) return;
+        setShowActionsMenu(false);
+        await mutation.run(() => Promise.resolve(onStatusChange(nextStatus)), 'Could not confirm status change. Check the conversation before retrying.');
+    };
+    const block = async () => {
+        if (isUpdatingStatus || mutation.isPending() || !onBlock || !recipientEmail) return;
+        const result = await mutation.run(signal => onBlock(signal), 'Could not confirm blocking. Check customer status before retrying.');
+        if (result.ok) setShowBlockConfirm(false);
+    };
 
     // Close dropdowns on outside click
     const actionsMenuRef = useClickOutside<HTMLDivElement>(
@@ -71,25 +91,27 @@ export function ChatHeader({
 
     // Close block-confirm modal on Escape key
     useEffect(() => {
-        if (!showBlockConfirm) return;
+        if (!showActionsMenu && !showMoreMenu) return;
         const handleKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') setShowBlockConfirm(false);
+            if (e.key === 'Escape') { setShowActionsMenu(false); setShowMoreMenu(false); }
         };
         document.addEventListener('keydown', handleKey);
         return () => document.removeEventListener('keydown', handleKey);
-    }, [showBlockConfirm]);
+    }, [showActionsMenu, showMoreMenu]);
 
     const isOpen = status === 'OPEN';
     const hasOtherViewers = otherViewers.length > 0;
 
     return (
-        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-white">
+        <div className="flex flex-wrap gap-3 items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">
+            {mutation.error && !showBlockConfirm && <p role="alert">{mutation.error}</p>}
             {/* Left - Sender Info */}
             <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium">
                     {recipientName ? recipientName.charAt(0).toUpperCase() : 'C'}
                 </div>
                 <RecipientList
+                    scopeKey={conversationId}
                     primaryEmail={recipientEmail}
                     primaryName={recipientName}
                     primaryChannel={primaryChannel}
@@ -134,8 +156,9 @@ export function ChatHeader({
                 <div className="relative" ref={actionsMenuRef}>
                     <div className="flex">
                         <button
-                            onClick={() => onStatusChange(isOpen ? 'CLOSED' : 'OPEN')}
-                            disabled={isUpdatingStatus}
+                            type="button"
+                            onClick={() => void changeStatus(isOpen ? 'CLOSED' : 'OPEN')}
+                            disabled={locked || !status}
                             aria-label={isOpen ? 'Resolve conversation' : 'Reopen conversation'}
                             className={cn(
                                 "flex items-center gap-1.5 px-3 py-1.5 rounded-l-lg text-sm font-medium transition-colors",
@@ -149,6 +172,7 @@ export function ChatHeader({
                             {isUpdatingStatus ? '...' : (isOpen ? 'Resolve' : 'Reopen')}
                         </button>
                         <button
+                            type="button" disabled={locked} aria-expanded={showActionsMenu} aria-controls={statusMenuId}
                             onClick={() => setShowActionsMenu(!showActionsMenu)}
                             aria-label="More status options"
                             className={cn(
@@ -164,8 +188,9 @@ export function ChatHeader({
 
                     {/* Dropdown Menu */}
                     {showActionsMenu && (
-                        <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
+                        <div id={statusMenuId} role="group" aria-label="Status options" className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg shadow-lg z-20">
                             <button
+                                type="button" disabled={locked}
                                 onClick={() => {
                                     setShowActionsMenu(false);
                                     onShowSnooze();
@@ -176,9 +201,10 @@ export function ChatHeader({
                                 Snooze
                             </button>
                             <button
+                                type="button" disabled={locked}
                                 onClick={() => {
                                     setShowActionsMenu(false);
-                                    onStatusChange('PENDING');
+                                    void changeStatus('PENDING');
                                 }}
                                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                             >
@@ -191,6 +217,7 @@ export function ChatHeader({
 
                 {/* Search Button */}
                 <button
+                    type="button" aria-pressed={showSearch}
                     onClick={onToggleSearch}
                     aria-label="Search messages"
                     className={cn(
@@ -205,6 +232,7 @@ export function ChatHeader({
                 {/* More Options */}
                 <div className="relative" ref={moreMenuRef}>
                     <button
+                        type="button" disabled={locked} aria-expanded={showMoreMenu} aria-controls={moreMenuId}
                         onClick={() => setShowMoreMenu(!showMoreMenu)}
                         aria-label="More options"
                         className="p-1.5 rounded-sm hover:bg-gray-100 text-gray-500"
@@ -214,8 +242,9 @@ export function ChatHeader({
 
                     {/* More Options Dropdown */}
                     {showMoreMenu && (
-                        <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
+                        <div id={moreMenuId} role="group" aria-label="Conversation options" className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg shadow-lg z-20">
                             <button
+                                type="button" disabled={locked}
                                 onClick={() => {
                                     setShowMoreMenu(false);
                                     onShowAssign();
@@ -226,6 +255,7 @@ export function ChatHeader({
                                 Assign to team member
                             </button>
                             <button
+                                type="button" disabled={locked}
                                 onClick={() => {
                                     setShowMoreMenu(false);
                                     onShowMerge();
@@ -237,6 +267,7 @@ export function ChatHeader({
                             </button>
                             {recipientEmail && onBlock && (
                                 <button
+                                    type="button" disabled={locked}
                                     onClick={() => {
                                         setShowMoreMenu(false);
                                         setShowBlockConfirm(true);
@@ -252,38 +283,11 @@ export function ChatHeader({
                 </div>
             </div>
             {/* Block Customer Confirmation Modal */}
-            {showBlockConfirm && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-                    <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-6 animate-in fade-in zoom-in-95 duration-150">
-                        <div className="flex items-center gap-3 mb-3">
-                            <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                                <Ban size={20} className="text-red-600" />
-                            </div>
-                            <h3 className="text-lg font-semibold text-gray-900">Block Customer</h3>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-5">
-                            Block <span className="font-medium text-gray-900">{recipientEmail}</span>? Their future messages will be auto-resolved without notifications.
-                        </p>
-                        <div className="flex justify-end gap-2">
-                            <button
-                                onClick={() => setShowBlockConfirm(false)}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    setShowBlockConfirm(false);
-                                    await onBlock?.();
-                                }}
-                                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
-                            >
-                                Block
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <Modal isOpen={showBlockConfirm} onClose={mutation.busy ? undefined : () => setShowBlockConfirm(false)} title="Block Customer">
+                <p>Block <strong>{recipientEmail}</strong>? Their future messages will be auto-resolved without notifications.</p>
+                {mutation.error && <p role="alert">{mutation.error}</p>}{mutation.busy && <p role="status">Blocking customer...</p>}
+                <div className="flex justify-end gap-3 mt-4"><button type="button" disabled={mutation.busy} onClick={() => setShowBlockConfirm(false)}>Cancel</button><button type="button" disabled={locked} onClick={() => void block()}>{mutation.busy ? 'Blocking...' : 'Block'}</button></div>
+            </Modal>
         </div>
     );
 }
