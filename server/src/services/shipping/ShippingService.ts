@@ -532,6 +532,7 @@ export class ShippingService {
     async listPrintStations(accountId: string) {
         return prisma.shippingPrintStation.findMany({
             where: { accountId },
+            take: 101,
             orderBy: { name: 'asc' },
             select: {
                 id: true,
@@ -632,10 +633,10 @@ export class ShippingService {
         return updated;
     }
 
-    async createPrintStation(accountId: string, name: string, defaultPrinterName?: string | null) {
+    async createPrintStation(accountId: string, name: string, defaultPrinterName?: string | null, db: Prisma.TransactionClient = prisma) {
         const token = crypto.randomBytes(32).toString('hex');
         const tokenHash = this.hashStationToken(token);
-        const station = await prisma.shippingPrintStation.create({
+        const station = await db.shippingPrintStation.create({
             data: {
                 accountId,
                 name,
@@ -657,14 +658,14 @@ export class ShippingService {
         return { printStation: station, token };
     }
 
-    async rotatePrintStationToken(accountId: string, id: string) {
-        const existing = await prisma.shippingPrintStation.findFirst({ where: { id, accountId } });
+    async rotatePrintStationToken(accountId: string, id: string, db: Prisma.TransactionClient = prisma) {
+        const existing = await db.shippingPrintStation.findFirst({ where: { id, accountId } });
         if (!existing) throw new Error('Print station not found');
         const token = crypto.randomBytes(32).toString('hex');
-        const printStation = await prisma.shippingPrintStation.update({
+        const printStation = await db.shippingPrintStation.update({
             where: { id },
-            data: { stationTokenHash: this.hashStationToken(token), tokenRotatedAt: new Date() },
-            select: { id: true, name: true, status: true, defaultPrinterName: true, tokenRotatedAt: true },
+            data: { stationTokenHash: this.hashStationToken(token), tokenRotatedAt: new Date(), updatedAt: new Date(Math.max(Date.now(), existing.updatedAt.getTime() + 1)) },
+            select: { id: true, name: true, status: true, defaultPrinterName: true, tokenRotatedAt: true, updatedAt: true },
         });
         return { printStation, token };
     }
@@ -1113,8 +1114,8 @@ export class ShippingService {
         return await ausPostShippingTrackingAdapter.listAvailableServiceCatalog(accountId, options);
     }
 
-    async saveSettings(accountId: string, data: ShippingSettingsInput) {
-        const existing = await prisma.shippingCarrierAccount.findFirst({
+    async saveSettings(accountId: string, data: ShippingSettingsInput, db: Prisma.TransactionClient = prisma) {
+        const existing = await db.shippingCarrierAccount.findFirst({
             where: { accountId, carrier: 'AUSPOST' },
             orderBy: { createdAt: 'asc' },
         });
@@ -1149,7 +1150,7 @@ export class ShippingService {
             labelFormat: data.labelFormat || 'PDF',
             defaultPrintStationId: data.defaultPrintStationId,
             wooFulfillmentBehavior: data.wooFulfillmentBehavior,
-            trackingSyncEnabled: data.trackingSyncEnabled ?? true,
+            trackingSyncEnabled: data.trackingSyncEnabled ?? false,
             trackingAutomationAllowlist: Array.isArray(data.trackingAutomationAllowlist)
                 ? data.trackingAutomationAllowlist.filter(Boolean)
                 : undefined,
@@ -1178,9 +1179,10 @@ export class ShippingService {
                 }));
             })()
             : existing?.credentialsEncrypted;
+        if (!existing?.credentialsEncrypted && Boolean(data.apiKey) !== Boolean(data.apiSecret)) throw new Error('Both credential fields are required for initial configuration');
 
         const saved = existing
-            ? await prisma.shippingCarrierAccount.update({
+            ? await db.shippingCarrierAccount.update({
                 where: { id: existing.id },
                 data: {
                     displayName: data.displayName || existing.displayName,
@@ -1188,14 +1190,15 @@ export class ShippingService {
                     credentialsEncrypted: credentialPayload,
                     config: nextConfig as Prisma.InputJsonValue,
                     senderAddress: (data.senderAddress || existing.senderAddress || {}) as Prisma.InputJsonValue,
+                    updatedAt: new Date(Math.max(Date.now(), existing.updatedAt.getTime() + 1)),
                 },
             })
-            : await prisma.shippingCarrierAccount.create({
+            : await db.shippingCarrierAccount.create({
                 data: {
                     accountId,
                     carrier: 'AUSPOST',
                     displayName: data.displayName || 'Australia Post',
-                    isEnabled: data.isEnabled ?? true,
+                    isEnabled: data.isEnabled ?? false,
                     credentialsEncrypted: credentialPayload,
                     config: nextConfig as Prisma.InputJsonValue,
                     senderAddress: (data.senderAddress || {}) as Prisma.InputJsonValue,

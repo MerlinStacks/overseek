@@ -17,7 +17,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { redisClient } from '../utils/redis';
-import { getUploadsDir } from '../utils/uploadPaths';
+import { getPublicUploadsDir } from '../utils/uploadPaths';
 
 // Schemas
 const registerSchema = z.object({
@@ -256,7 +256,7 @@ function detectImageType(buffer: Buffer): { ext: string; mime: string } | null {
 
 const authRoutes: FastifyPluginAsync = async (fastify) => {
     // Ensure upload directory exists
-    const uploadDir = getUploadsDir();
+    const uploadDir = getPublicUploadsDir();
     if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
     }

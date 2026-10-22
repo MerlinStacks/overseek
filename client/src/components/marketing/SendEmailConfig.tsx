@@ -14,6 +14,8 @@ import { evaluateEmailPreflight, groupPreflightIssues, type PreflightIssue } fro
 import { EMAIL_MERGE_TAGS, type MergeTagDefinition } from './emailDesignerV2/mergeTags';
 import { LTR_TEXT_STYLE, sanitizeBidiText } from './textInputBidi';
 import { InlineEmailPreview } from './flow/InlineEmailPreview';
+import { compileEmailDesignV2, isEmailDesignV2 } from '../../lib/emailDesignerV2';
+import { sanitizeEmailHtml } from '../../utils/emailHtml';
 
 interface SendEmailNodeConfig {
     templateType?: 'visual' | 'richtext' | 'html';
@@ -108,19 +110,19 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
     };
 
     const handleTemplateSelect = (template: EmailTemplate) => {
+        if (!onUpdateMany) throw new Error('Atomic draft replacement adapter unavailable');
+        if (template.designJson != null) {
+            if (!isEmailDesignV2(template.designJson)) throw new Error('Unsupported visual design; keep the current draft and review an explicit HTML import');
+            compileEmailDesignV2(template.designJson); // Shared structural/renderer validation, not a send or publication.
+        }
         const updates: Record<string, unknown> = {
-            htmlContent: template.content,
+            htmlContent: sanitizeEmailHtml(template.content),
             designJson: template.designJson,
+            subject: template.subject ?? '',
         };
 
-        if (template.subject) updates.subject = template.subject;
-
-        if (onUpdateMany) {
-            onUpdateMany(updates);
-        } else {
-            Object.entries(updates).forEach(([key, value]) => onUpdate(key, value));
-        }
-        setShowTemplateSelector(false);
+        onUpdateMany(updates);
+        return true;
     };
 
     const handleVisualBuilderSave = (html: string, design: unknown, meta?: { subject: string; previewText: string; autosave?: boolean }) => {

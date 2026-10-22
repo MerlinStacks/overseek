@@ -3,6 +3,8 @@ import { AutomationEngine } from '../services/AutomationEngine';
 import { ChatService } from '../services/ChatService';
 import { Logger } from '../utils/logger';
 import { NotificationEngine } from '../services/NotificationEngine';
+import { drainCriticalEvents } from '../services/CriticalEventOutbox';
+import { prisma } from '../utils/prisma';
 
 function subscribeAutomationTrigger(
     eventName: string,
@@ -11,22 +13,21 @@ function subscribeAutomationTrigger(
     automationEngine: AutomationEngine,
     shouldProcess: (data: any) => boolean = () => true
 ): void {
-    EventBus.on(eventName, async (data: any) => {
-        try {
+    EventBus.subscribeRequired(eventName, `automation:${triggerName}`, async (data: any) => {
+            if (data.shippingLabelId) {
+                const [label, policy] = await Promise.all([
+                    prisma.shippingLabel.findFirst({ where: { id: data.shippingLabelId, accountId: data.accountId }, select: { status: true, latestTrackingOccurredAt: true } }),
+                    prisma.shippingCarrierAccount.findFirst({ where: { accountId: data.accountId, carrier: 'AUSPOST' }, select: { config: true } }),
+                ]);
+                const allowlist = (policy?.config as Record<string, unknown> | null)?.trackingAutomationAllowlist;
+                if (!label || label.status === 'cancelled' || !Array.isArray(allowlist) || !allowlist.includes(triggerName) || label.latestTrackingOccurredAt?.toISOString() !== data.shipment?.scanEventOccurredAt) return { state: 'skipped', reason: 'source-or-policy-changed' };
+            }
             if (!shouldProcess(data)) return;
             await automationEngine.processTrigger(data.accountId, triggerName, getPayload(data));
-        } catch (error) {
-            Logger.error('[EventBus] Failed to process automation trigger', {
-                error,
-                eventName,
-                triggerName,
-                accountId: data?.accountId
-            });
-        }
     });
 }
 
-export function subscribeEventBus(chatService: ChatService, automationEngine: AutomationEngine): void {
+export function subscribeEventBus(chatService: ChatService, automationEngine: AutomationEngine): () => void {
     // "Order Created" automations intentionally run from paid events so flows
     // only enroll orders that reached processing, including orders first
     // seen by Overseek after WooCommerce has already changed status.
@@ -63,7 +64,7 @@ export function subscribeEventBus(chatService: ChatService, automationEngine: Au
     subscribeAutomationTrigger(EVENTS.CUSTOMER.CREATED, 'CUSTOMER_CREATED', data => data.customer, automationEngine);
     subscribeAutomationTrigger(EVENTS.REVIEW.LEFT, 'REVIEW_LEFT', data => data.review, automationEngine);
 
-    EventBus.on(EVENTS.EMAIL.RECEIVED, async (data: any) => {
+    EventBus.subscribeRequired(EVENTS.EMAIL.RECEIVED, 'incoming-email', async (data: any) => {
         if (data.emailAccountId && !data.conversationId) {
             if (!data.fromEmail || !data.messageId) {
                 Logger.warn('[App] Skipping malformed email event - missing required fields', {
@@ -75,8 +76,7 @@ export function subscribeEventBus(chatService: ChatService, automationEngine: Au
             }
             try {
                 Logger.info('[App] Processing incoming email', {
-                    fromEmail: data.fromEmail,
-                    subject: data.subject,
+                    accountId: data.accountId,
                     emailAccountId: data.emailAccountId
                 });
                 await chatService.handleIncomingEmail({
@@ -92,14 +92,20 @@ export function subscribeEventBus(chatService: ChatService, automationEngine: Au
                     attachments: data.attachments
                 });
                 Logger.info('[App] Successfully ingested email', {
-                    fromEmail: data.fromEmail,
-                    subject: data.subject
+                    accountId: data.accountId,
+                    emailAccountId: data.emailAccountId
                 });
             } catch (error) {
-                Logger.error('[App] Failed to handle incoming email', { error, fromEmail: data.fromEmail });
+                Logger.error('[App] Incoming email outcome uncertain', { accountId: data.accountId });
+                throw error;
             }
         }
     });
 
     NotificationEngine.init();
+    let pending = false;
+    const tick = async () => { if (pending) return; pending = true; try { await drainCriticalEvents(); } catch { Logger.error('[EventBus] Critical event drain unavailable'); } finally { pending = false; } };
+    const timer = setInterval(() => { void tick(); }, 30000);
+    timer.unref();
+    return () => { clearInterval(timer); EventBus.removeAllListeners(); NotificationEngine.dispose(); };
 }

@@ -4,7 +4,6 @@ import Fastify, { FastifyError } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
-import fastifyStatic from '@fastify/static';
 import fastifyCompress from '@fastify/compress';
 import fastifyMultipart from '@fastify/multipart';
 import http from 'http';
@@ -20,7 +19,7 @@ import { initializeSocketIO } from './config/socket';
 import { subscribeEventBus } from './config/events';
 import { setupSocketHandlers } from './config/socketHandlers';
 import { requireSuperAdminFastify } from './middleware/auth';
-import { getUploadsDir } from './utils/uploadPaths';
+import { publicUploadsRoutes } from './routes/publicUploads';
 
 QueueFactory.init();
 
@@ -115,13 +114,8 @@ async function build() {
         hsts: { maxAge: 31536000, includeSubDomains: true },
     });
 
-    // Static uploads
-    const uploadDir = getUploadsDir();
-    if (!require('fs').existsSync(uploadDir)) {
-        require('fs').mkdirSync(uploadDir, { recursive: true });
-    }
-    Logger.info('Uploads directory configured', { uploadDir });
-    await fastify.register(fastifyStatic, { root: uploadDir, prefix: '/uploads/', maxAge: '1h' });
+    // Never expose the private/legacy invoice and attachment root statically.
+    await fastify.register(publicUploadsRoutes);
     await fastify.register(fastifyCompress, { encodings: ['br', 'gzip', 'deflate'], threshold: 1024 });
     await fastify.register(fastifyMultipart, { limits: { fileSize: UPLOAD_LIMITS.MAX_FILE_SIZE } });
 
@@ -238,7 +232,8 @@ async function initializeApp() {
     server = app.server;
     const { io: socketIo, chatService } = await initializeSocketIO(server, app);
     io = socketIo;
-    subscribeEventBus(chatService, automationEngine);
+    const disposeEvents = subscribeEventBus(chatService, automationEngine);
+    fastify.addHook('onClose', async () => { disposeEvents(); });
     setupSocketHandlers(io);
     return app;
 }

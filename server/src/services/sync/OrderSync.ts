@@ -4,6 +4,7 @@ import { prisma } from '../../utils/prisma';
 import { IndexingService } from '../search/IndexingService';
 import { OrderTaggingService } from '../OrderTaggingService';
 import { EventBus, EVENTS } from '../events';
+import { recordOrderLifecycle } from '../CriticalEventOutbox';
 import { Logger } from '../../utils/logger';
 import { WooOrderSchema, WooOrder } from './wooSchemas';
 import { esClient } from '../../utils/elastic';
@@ -114,6 +115,7 @@ export class OrderSync extends BaseSync {
                 continue;
             }
 
+            if (new Set(orders.map(order => order.id)).size !== orders.length) throw new Error('Duplicate order source identities; no source transition admitted');
             const snapshots = new Map<number, unknown>();
             const manualTags = new Map<number, string[]>();
             const existingOrders = await withOrderTotalsTransaction(accountId, async tx => {
@@ -153,6 +155,7 @@ export class OrderSync extends BaseSync {
                         }
                     });
                     snapshots.set(order.id, await importOrderSnapshot(tx, accountId, order.id, order.meta_data, persisted?.deliveryEstimateSnapshot));
+                    await recordOrderLifecycle(tx, accountId, { ...order, tags, deliveryEstimateSnapshot: snapshots.get(order.id) ?? null }, existing.find(row => row.wooId === order.id)?.status ?? null, isBaselineSync);
                     const contact = await materializeContact(tx, accountId, {
                         source: 'ORDER', sourceKey: `order:${order.id}`, wooCustomerId, email: billingEmail,
                         firstName: order.billing?.first_name, lastName: order.billing?.last_name

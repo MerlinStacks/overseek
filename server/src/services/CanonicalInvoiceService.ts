@@ -11,6 +11,13 @@ import { InvoiceService } from './InvoiceService';
 const invoiceService = new InvoiceService();
 const OPERATIONAL_A4_RENDERER_VERSION = 'operational-a4-v6';
 
+export class InvoiceOrderUnavailableError extends Error {
+    constructor() {
+        super('Scoped invoice order unavailable');
+        this.name = 'InvoiceOrderUnavailableError';
+    }
+}
+
 export class MissingInvoiceTemplateError extends Error {
     constructor() {
         super('No invoice template found for account');
@@ -76,7 +83,7 @@ export class CanonicalInvoiceService {
         }
 
         const order = await prisma.wooOrder.findFirst({ where: { accountId, OR: [{ id: orderId }, ...(/^\d+$/.test(orderId) && Number.isSafeInteger(Number(orderId)) ? [{ wooId: Number(orderId) }] : [])] }, select: { id: true, updatedAt: true } });
-        if (!order) throw new Error('Scoped invoice order unavailable');
+        if (!order) throw new InvoiceOrderUnavailableError();
         orderId = order.id;
         const templateVersion = normalizeTemplateVersion(template.layout);
         const layoutHash = createHash('sha256').update(`${template.id}:${getLayoutHash(template.layout)}:${order.updatedAt.toISOString()}`).digest('hex');

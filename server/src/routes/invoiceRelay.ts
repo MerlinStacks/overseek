@@ -4,7 +4,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { z } from 'zod';
 import { Logger } from '../utils/logger';
 import { authenticateRelayEmailAccount } from './email/helpers';
-import { MissingInvoiceTemplateError, canonicalInvoiceService } from '../services/CanonicalInvoiceService';
+import { InvoiceOrderUnavailableError, MissingInvoiceTemplateError, canonicalInvoiceService } from '../services/CanonicalInvoiceService';
 import { prisma } from '../utils/prisma';
 
 function isCanonicalRenderer(renderer: string | null | undefined): boolean {
@@ -227,6 +227,10 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
                 generated_at: settled?.generatedAt ?? null,
             });
         } catch (error) {
+            if (error instanceof InvoiceOrderUnavailableError) {
+                Logger.warn('Relay invoice order not synced or unavailable in account', { accountId, orderId });
+                return reply.code(404).send({ success: false, status: 'order_unavailable', error: 'Order is not available in this account. Check order sync before retrying.', diagnostic_reason: 'order_unavailable' });
+            }
             if ((error as { statusCode?: number }).statusCode === 409) return reply.code(409).send({ success: false, status: 'reconciliation_required', error: 'Existing invoice requires reconciliation; automatic regeneration is disabled' });
             if (error instanceof MissingInvoiceTemplateError) {
                 Logger.warn('Relay invoice generation skipped: missing invoice template', { accountId, orderId });

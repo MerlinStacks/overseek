@@ -211,7 +211,8 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(400).send({ error: 'Endpoint required' });
             }
 
-            const success = await PushNotificationService.unsubscribe(userId, endpoint);
+            if (!request.accountId) return reply.code(400).send({ error: 'Account required' });
+            const success = await PushNotificationService.unsubscribe(userId, endpoint, request.accountId);
             return { success };
         } catch (error) {
             Logger.error('[notifications] Unsubscribe failed', { error });

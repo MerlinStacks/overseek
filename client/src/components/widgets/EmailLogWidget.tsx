@@ -8,6 +8,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { RelativeTime } from '../ui/RelativeTime';
 import { Logger } from '../../utils/logger';
+import { z } from 'zod';
+import { readBoundedBytes } from '../../utils/boundedResponse';
 
 type EmailLogStatus = 'SUCCESS' | 'FAILED' | 'BOUNCED' | 'COMPLAINED' | 'SKIPPED' | 'RETRIED' | 'PENDING_RETRY';
 
@@ -28,7 +30,7 @@ interface EmailLogsResponse {
 function getStatusMeta(status: EmailLogStatus) {
     if (status === 'SUCCESS' || status === 'RETRIED') {
         return {
-            label: status === 'RETRIED' ? 'RETRIED' : 'SENT',
+            label: status === 'RETRIED' ? 'RETRY RECORDED' : 'ACCEPTANCE RECORDED',
             icon: CheckCircle,
             className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
         };
@@ -63,8 +65,12 @@ function formatSource(source?: string) {
 }
 
 export function EmailLogWidget({ className }: WidgetProps) {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const { currentAccount } = useAccount();
+    if (!token || !currentAccount || !user?.id) return <WidgetEmptyState message="Select an account to observe email logs" />;
+    return <ScopedEmailLogWidget key={JSON.stringify([token, user.id, currentAccount.id])} className={className} token={token} accountId={currentAccount.id} />;
+}
+function ScopedEmailLogWidget({ className, token, accountId }: Pick<WidgetProps, 'className'> & { token: string; accountId: string }) {
     const [logs, setLogs] = useState<EmailLog[]>([]);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -72,8 +78,6 @@ export function EmailLogWidget({ className }: WidgetProps) {
     const fetchAbortRef = useRef<AbortController | null>(null);
 
     const fetchLogs = useCallback(async () => {
-        if (!currentAccount || !token) return;
-
         fetchAbortRef.current?.abort();
         const controller = new AbortController();
         fetchAbortRef.current = controller;
@@ -83,20 +87,21 @@ export function EmailLogWidget({ className }: WidgetProps) {
             const res = await fetch('/api/email/logs?limit=6&offset=0', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
+                    'X-Account-ID': accountId
                 },
-                signal: controller.signal
+                signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)])
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-            const data: EmailLogsResponse = await res.json();
+            const data: EmailLogsResponse = z.object({ logs: z.array(z.object({ id: z.string().min(1).max(200), to: z.string().max(1000), subject: z.string().max(2000), status: z.enum(['SUCCESS', 'FAILED', 'BOUNCED', 'COMPLAINED', 'SKIPPED', 'RETRIED', 'PENDING_RETRY']), source: z.string().max(100).optional(), createdAt: z.string().datetime({ offset: true }) })).max(6), total: z.number().int().nonnegative().safe() }).parse(JSON.parse(new TextDecoder().decode(await readBoundedBytes(res, 64000))));
+            if (data.total < data.logs.length || new Set(data.logs.map(log => log.id)).size !== data.logs.length) throw new Error('Log coverage invalid');
             if (controller.signal.aborted) return;
 
             setLogs(Array.isArray(data.logs) ? data.logs : []);
             setTotal(data.total || 0);
             setError(null);
         } catch (err) {
-            if (err instanceof DOMException && err.name === 'AbortError') return;
+            if (controller.signal.aborted) return;
             Logger.error('Failed to fetch email log widget data', { error: err });
             setError('Failed to load email logs');
         } finally {
@@ -104,11 +109,13 @@ export function EmailLogWidget({ className }: WidgetProps) {
                 setLoading(false);
             }
         }
-    }, [currentAccount, token]);
+    }, [accountId, token]);
 
     useEffect(() => {
-        fetchLogs();
+        let active = true;
+        queueMicrotask(() => { if (active) void fetchLogs(); });
         return () => {
+            active = false;
             fetchAbortRef.current?.abort();
         };
     }, [fetchLogs]);
@@ -120,15 +127,15 @@ export function EmailLogWidget({ className }: WidgetProps) {
             <div className={widgetHeaderRowClass}>
                 <div>
                     <h3 className={widgetTitleClass}>Email Log</h3>
-                    <p className={widgetSubtleTextClass}>{total} total logged</p>
+                    <p className={widgetSubtleTextClass}>{loading || error ? 'Log total unavailable' : `${total} locally logged; up to six newest rows`}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    {issueCount > 0 && (
+                    {!loading && !error && issueCount > 0 && (
                         <Link
                             to="/emails/logs?status=FAILED,BOUNCED,COMPLAINED"
                             className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100 dark:bg-rose-500/10 dark:text-rose-300 dark:hover:bg-rose-500/20"
                         >
-                            {issueCount} issue{issueCount === 1 ? '' : 's'}
+                            {issueCount} issue{issueCount === 1 ? '' : 's'} in sample
                         </Link>
                     )}
                     <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-indigo-500 to-violet-600 shadow-indigo-500/20`}>

@@ -7,6 +7,7 @@ import { esClient } from '../../../utils/elastic';
 import { materializeContact } from '../../ContactMaterialization';
 import { snapshotFixture, snapshotMetadata } from '../../deliveryEstimates/__tests__/snapshotFixture';
 import { OrderTaggingService } from '../../OrderTaggingService';
+vi.mock('../../CriticalEventOutbox', () => ({ recordOrderLifecycle: vi.fn() }));
 import { IndexingService } from '../../search/IndexingService';
 
 vi.mock('../../ContactMaterialization', async importOriginal => ({

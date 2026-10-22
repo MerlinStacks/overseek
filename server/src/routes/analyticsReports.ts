@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import { getRouteAccountIdOrReply } from './routeHelpers';
 import { parseFirstIssueOrReply } from './routeHelpers';
+import { PermissionService } from '../services/PermissionService';
 
 const createTemplateSchema = z.object({ name: z.string().min(1), type: z.string(), config: z.record(z.string(), z.unknown()) });
 const createScheduleSchema = z.object({
@@ -57,7 +58,7 @@ const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = getRouteAccountIdOrReply(request, reply);
             if (!accountId) return;
             const userTemplates = await prisma.reportTemplate.findMany({
-                where: { accountId }, orderBy: { createdAt: 'desc' }
+                where: { accountId }, orderBy: { createdAt: 'desc' }, take: 487
             });
             return [...SYSTEM_TEMPLATES, ...userTemplates];
         } catch (e: any) { return reply.code(500).send({ error: e.message }); }
@@ -84,11 +85,23 @@ const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = getRouteAccountIdOrReply(request, reply);
             if (!accountId) return;
-            const result = await prisma.reportTemplate.deleteMany({ where: { id: request.params.id, accountId } });
-            if (result.count === 0) {
-                return reply.code(404).send({ error: 'Template not found' });
-            }
-            return { success: true };
+            if (!request.user?.id || !await PermissionService.hasPermission(request.user.id, accountId, '*')) return reply.code(403).send({ error: 'Admin permission required for template deletion' });
+            const command = z.object({ operationId: z.string().uuid(), version: z.string().datetime() }).strict().parse(request.body);
+            const id = `report-template-delete:${accountId}:${command.operationId}`;
+            return await prisma.$transaction(async tx => {
+                await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${id}, 0))`;
+                const previous = await tx.scopedOperation.findUnique({ where: { id } });
+                const occurrence = { actorId: request.user!.id, resourceId: request.params.id, version: command.version };
+                if (previous) {
+                    const saved = previous.result as typeof occurrence;
+                    if (saved.actorId !== occurrence.actorId || saved.resourceId !== occurrence.resourceId || saved.version !== occurrence.version) throw new Error('Template occurrence conflict');
+                    return { success: true, operationId: command.operationId, accountId, resourceId: request.params.id };
+                }
+                const result = await tx.reportTemplate.deleteMany({ where: { id: request.params.id, accountId, type: 'CUSTOM', updatedAt: new Date(command.version), schedules: { none: {} } } });
+                if (result.count !== 1) throw new Error('Template changed, linked or unavailable');
+                await tx.scopedOperation.create({ data: { id, accountId, kind: 'report-template-delete', result: occurrence } });
+                return { success: true, operationId: command.operationId, accountId, resourceId: request.params.id };
+            });
         } catch (e: any) { return reply.code(500).send({ error: e.message }); }
     });
 

@@ -32,7 +32,7 @@ export class AIService {
         const unavailable = (sources: unknown[] = []) => ({ reply: 'Analysis unavailable or incomplete. Do not infer store facts, profit or forecasts from missing observations. No automatic retry was performed.', sources, state: sources.length ? 'partial' as const : 'unavailable' as const });
         if (!account?.openRouterApiKey) return unavailable();
         const model = modelId.parse(account.aiModel || AI_LIMITS.DEFAULT_MODEL);
-        if (!AI_LIMITS.TOOL_CAPABLE_PREFIXES.some(prefix => model.startsWith(prefix))) return unavailable();
+        if (!AI_LIMITS.TOOL_CAPABLE_MODELS.includes(model)) return unavailable();
         const release = await claimProviderWork(accountId, 'chat', 5), deadline = AbortSignal.timeout(60000);
         const sources: unknown[] = [], calls = new Set<string>(); let work = 0;
         const messages: Record<string, unknown>[] = [

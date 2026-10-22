@@ -1,11 +1,9 @@
 import type { AusPostServiceCatalogResponse } from './shippingApi';
 
 export function serviceCodeOptionsFromCatalog(catalog: AusPostServiceCatalogResponse | undefined) {
-    const genericCodes = GENERIC_AUSPOST_SERVICES.map((service) => service.code);
-    const codes = uniqueStrings([
-        ...genericCodes,
-        ...(catalog?.services || []).map((service) => service.code),
-    ]);
+    // Options are observed rows, never an assertion that reference codes are entitled.
+    const genericCodes: string[] = [];
+    const codes = uniqueStrings(catalogRows(catalog).map(service => service.code));
     return codes.sort((left, right) => {
         const leftGenericIndex = genericCodes.indexOf(left);
         const rightGenericIndex = genericCodes.indexOf(right);
@@ -23,15 +21,13 @@ export function serviceCodeLabelFormatter(catalog: AusPostServiceCatalogResponse
 }
 
 export function serviceCodeNaturalLabel(catalog: AusPostServiceCatalogResponse | undefined, code: string, fallback?: string) {
-    const normalizedCode = code.trim();
-    const catalogLabel = (catalog?.services || []).find((service) => service.code === normalizedCode)?.label;
-    if (AUSPOST_NATURAL_LABELS[normalizedCode]) return AUSPOST_NATURAL_LABELS[normalizedCode];
-    const inferredLabel = inferAusPostServiceLabel(normalizedCode);
-    if (inferredLabel) return inferredLabel;
+    const normalizedCode = typeof code === 'string' ? code.trim().slice(0, 80) : '';
+    const catalogLabel = catalogRows(catalog).find(service => service.code === normalizedCode)?.label;
     if (catalogLabel && catalogLabel !== normalizedCode && !looksLikeCode(catalogLabel)) return catalogLabel;
-    const cleanedFallback = fallback?.trim();
+    if (Object.prototype.hasOwnProperty.call(AUSPOST_NATURAL_LABELS, normalizedCode)) return `${AUSPOST_NATURAL_LABELS[normalizedCode]} (reference only)`;
+    const cleanedFallback = typeof fallback === 'string' ? fallback.trim().slice(0, 200) : '';
     if (cleanedFallback && cleanedFallback !== normalizedCode && !looksLikeCode(cleanedFallback)) return cleanedFallback;
-    return normalizedCode ? `AusPost service ${normalizedCode}` : cleanedFallback || 'AusPost service';
+    return normalizedCode ? `Unknown service ${normalizedCode}` : cleanedFallback || 'Unknown service';
 }
 
 const AUSPOST_NATURAL_LABELS: Record<string, string> = {
@@ -54,27 +50,16 @@ const AUSPOST_NATURAL_LABELS: Record<string, string> = {
     '7E73': 'Express Post satchel',
 };
 
-const GENERIC_AUSPOST_SERVICES = [
-    { code: 'AUS_PARCEL_REGULAR', label: 'Parcel Post' },
-    { code: 'AUS_PARCEL_EXPRESS', label: 'Express Post' },
-    { code: 'AUS_PARCEL_REGULAR_SIGNATURE', label: 'Parcel Post with Signature' },
-    { code: 'AUS_PARCEL_EXPRESS_SIGNATURE', label: 'Express Post with Signature' },
-];
+function catalogRows(catalog: AusPostServiceCatalogResponse | undefined): Array<{ code: string; label: string }> {
+    if (!catalog || !Array.isArray(catalog.services) || catalog.services.length > 500) return [];
+    const rows = catalog.services;
+    if (rows.some(row => !row || typeof row.code !== 'string' || !/^[A-Z0-9_-]{1,80}$/.test(row.code) || typeof row.label !== 'string' || !row.label.trim() || row.label.length > 200)) return [];
+    if (new Set(rows.map(row => row.code)).size !== rows.length) return [];
+    return rows;
+}
 
 function looksLikeCode(value: string) {
     return /^[A-Z0-9_-]{4,}$/.test(value.trim());
-}
-
-function inferAusPostServiceLabel(code: string) {
-    const match = code.match(/^([37])([A-Z])(55|61|67|73)$/);
-    if (!match) return null;
-
-    if (match[1] === '3' && match[2] === 'D') return 'Parcel Post + Signature';
-    if (match[1] === '3' && match[2] === 'J') return 'Express Post + Signature';
-
-    const service = match[1] === '7' ? 'Express Post' : 'Parcel Post';
-    const packageType = match[2] === 'D' || match[2] === 'E' ? ' satchel' : '';
-    return `${service}${packageType}`;
 }
 
 function uniqueStrings(values: string[]): string[] {

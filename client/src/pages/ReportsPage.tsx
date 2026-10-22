@@ -36,6 +36,10 @@ interface CustomerGrowth {
 }
 
 export function ReportsPage() {
+    const { token, user } = useAuth(), { currentAccount } = useAccount();
+    return <ScopedReportsPage key={JSON.stringify([user?.id, token, currentAccount?.id])} />;
+}
+function ScopedReportsPage() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const isAdvancedReportsEnabled = useAccountFeature('ADVANCED_REPORTS');
@@ -96,12 +100,18 @@ export function ReportsPage() {
     const handleDeleteTemplate = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
         if (!token || !currentAccount) return;
-        if (!confirm('Are you sure?')) return;
+        const version = templates.find(template => template.id === id)?.updatedAt;
+        if (!version) throw new Error('Template version unavailable');
+        const operationId = crypto.randomUUID();
         try {
-            await fetch(`/api/analytics/templates/${id}`, {
+            const response = await fetch(`/api/analytics/templates/${encodeURIComponent(id)}`, {
                 method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ operationId, version })
             });
+            if (!response.ok) throw new Error('Template deletion not acknowledged');
+            const ack = await response.json();
+            if (ack.success !== true || ack.operationId !== operationId || ack.accountId !== currentAccount.id || ack.resourceId !== id) throw new Error('Template deletion scope acknowledgement unavailable');
             if (selectedTemplateId === id) {
                 setSelectedTemplateId(undefined);
                 setCustomReportConfig(undefined);
@@ -109,7 +119,7 @@ export function ReportsPage() {
             }
             fetchTemplates();
             showToast('Template deleted', 'success');
-        } catch (e) { Logger.error('Delete failed', { error: e }); showToast('Failed to delete template'); }
+        } catch (e) { Logger.error('Delete failed', { error: e }); showToast('Failed to delete template'); throw e; }
     };
 
     const handleTemplateSaved = useCallback(() => {
@@ -144,8 +154,9 @@ export function ReportsPage() {
     }, [currentAccount, token, dateOption, showToast]);
 
     useEffect(() => {
-        fetchTemplates();
-        fetchData();
+        let active = true;
+        queueMicrotask(() => { if (active) { void fetchTemplates(); void fetchData(); } });
+        return () => { active = false; };
     }, [fetchTemplates, fetchData]);
 
     const dateRange = getDateRange(dateOption);

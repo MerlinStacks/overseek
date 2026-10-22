@@ -9,6 +9,7 @@ import { NotificationEngine } from '../NotificationEngine';
 import { prisma } from '../../utils/prisma';
 import { PushNotificationService } from '../PushNotificationService';
 import { canonicalInvoiceAttachmentService } from '../CanonicalInvoiceAttachmentService';
+import { getDefaultEmailAccount } from '../../utils/getDefaultEmailAccount';
 
 // Mock prisma - note: actual implementation uses prisma.notification, not inAppNotification
 vi.mock('../../utils/prisma', () => ({
@@ -78,17 +79,34 @@ vi.mock('../events', async () => {
         EventBus: {
             on: vi.fn(),
             emit: vi.fn(),
+            subscribeRequired: vi.fn(() => () => undefined),
         },
     };
 });
 
 describe('NotificationEngine', () => {
     beforeEach(() => {
-        vi.clearAllMocks();
+        vi.resetAllMocks();
+        vi.mocked(getDefaultEmailAccount).mockResolvedValue({ id: 'email_account_1' } as any);
+        (NotificationEngine as any).emailService.sendEmail.mockResolvedValue({ id: 'email_1' });
+        vi.mocked(prisma.account.findUnique).mockResolvedValue(null);
         (prisma.emailLog.findFirst as any).mockResolvedValue(null);
     });
 
     describe('handleOrderCreated', () => {
+        it('does not invent a zero/dollar amount when monetary evidence is absent', async () => {
+            vi.mocked(prisma.notification.create).mockResolvedValue({ id: 'notification' } as any);
+            vi.mocked(PushNotificationService.sendToAccountWithDiagnostics).mockResolvedValue({ sent: 0, failed: 0, diagnostics: {} } as any);
+            await (NotificationEngine as any).handleOrderCreated({ accountId: 'a', order: { id: 'o', number: '7' } });
+            const message = vi.mocked(prisma.notification.create).mock.calls[0][0].data.message;
+            expect(message).toContain('monetary basis unavailable'); expect(message).not.toContain('$0');
+        });
+        it('surfaces partial push failure for durable reconciliation instead of claiming complete delivery', async () => {
+            vi.mocked(prisma.notification.create).mockResolvedValue({ id: 'notification' } as any);
+            vi.mocked(PushNotificationService.sendToAccountWithDiagnostics).mockResolvedValue({ sent: 1, failed: 1, diagnostics: {} } as any);
+            await expect((NotificationEngine as any).handleOrderCreated({ accountId: 'a', order: { id: 'o', number: '7', total: '0', currency: 'AUD' } })).rejects.toThrow('partially failed');
+            expect(prisma.notification.create).toHaveBeenCalledOnce();
+        });
         it('should create in-app notification with product list and send push', async () => {
             const mockOrder = {
                 id: 'order_1',

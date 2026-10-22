@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { Logger } from '../utils/logger';
+import { changeBlockedContact } from '../lib/blockedContactCommand';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -423,19 +424,10 @@ export function useInbox() {
             if (!selectedId || !token || !currentAccount) throw new Error('Select an account and conversation first');
             const conversationId = selectedId;
             const accountId = currentAccount.id;
-            const res = await fetch(`/api/chat/${conversationId}/block`, {
-                method: 'POST',
-                signal,
-                headers: buildHeaders(token, currentAccount.id, true),
-                body: JSON.stringify({ reason: 'Blocked from inbox' }),
-            });
+            await changeBlockedContact(token, accountId, { conversationId }, true, signal);
             if (signal?.aborted || selectedIdRef.current !== conversationId || accountIdRef.current !== accountId) return;
-            if (res.ok) {
-                dismissConversation(conversationId);
-                await fetchConversations();
-            } else {
-                throw new Error('Failed to block contact');
-            }
+            dismissConversation(conversationId);
+            await fetchConversations();
         };
     }, [dismissConversation, fetchConversations, recipientEmail, selectedId, token, currentAccount]);
 

@@ -29,20 +29,12 @@ export const AI_LIMITS = {
     API_ENDPOINT: 'https://openrouter.ai/api/v1/chat/completions',
     /** OpenRouter models endpoint */
     MODELS_ENDPOINT: 'https://openrouter.ai/api/v1/models',
-    /**
-     * Model ID prefixes known to support tool/function calling on OpenRouter.
-     * Models outside these prefixes will be called without tool definitions
-     * to avoid "No endpoints found that support tool use" 404 errors.
-     */
-    TOOL_CAPABLE_PREFIXES: [
-        'openai/',
-        'anthropic/',
-        'google/',
-        'mistralai/mistral-large',
-        'mistralai/mistral-medium',
-        'mistralai/mistral-small',
-        'cohere/',
-        'meta-llama/llama-3',
+    /** Explicit configured tool-capable model IDs. Not a guarantee of provider
+     * availability; unsupported/unknown IDs are unavailable, never prefix-inferred. */
+    TOOL_CAPABLE_MODELS: [
+        'openai/gpt-4o',
+        'openai/gpt-4o-mini',
+        'anthropic/claude-sonnet-4',
     ] as readonly string[],
 } as const;
 
@@ -74,7 +66,7 @@ export const QUEUE_LIMITS = {
     RETRY_DELAY_MS: 2_000,
     /** Keep last N completed jobs per queue */
     COMPLETED_JOBS_KEEP: 100,
-    /** Remove failed jobs after N seconds (24 hours) */
+    /** Legacy diagnostic value only; failed work must survive for reconciliation. */
     FAILED_JOBS_TTL_SECONDS: 86_400,
     /** Default lock duration in milliseconds (30 seconds) */
     DEFAULT_LOCK_DURATION_MS: 30_000,
@@ -82,8 +74,7 @@ export const QUEUE_LIMITS = {
     LONG_RUNNING_LOCK_DURATION_MS: 300_000,
     /** Stall check interval for long-running jobs (2 minutes) */
     LONG_RUNNING_STALL_INTERVAL_MS: 120_000,
-    /** EDGE CASE FIX: Maximum waiting jobs per queue before dropping oldest
-     * Prevents OOM when Redis reconnects with large backlog */
+    /** Backpressure threshold. Never permission to drop admitted work. */
     MAX_QUEUE_DEPTH: 500,
 } as const;
 

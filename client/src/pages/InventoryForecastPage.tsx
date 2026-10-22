@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Link } from 'react-router-dom';
@@ -8,6 +8,8 @@ import {
     ArrowUpRight, Info
 } from 'lucide-react';
 import { ForecastChart } from '../components/ForecastChart';
+import { api } from '../services/api';
+import { forecastErrorMessage } from '../utils/forecastErrorMessage';
 
 // Types matching backend
 type StockoutRisk = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
@@ -65,6 +67,7 @@ export function InventoryForecastPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [revenueRefreshKey, setRevenueRefreshKey] = useState(0);
+    const activeRequest = useRef<AbortController | null>(null);
 
     // Sorting
     const [sortField, setSortField] = useState<SortField>('daysUntilStockout');
@@ -100,46 +103,33 @@ export function InventoryForecastPage() {
 
     const fetchData = useCallback(async () => {
         if (!currentAccount || !token) return;
+        activeRequest.current?.abort();
+        const controller = new AbortController();
+        activeRequest.current = controller;
         setIsLoading(true);
         setError(null);
         setAlerts(null);
+        setForecasts([]);
 
         try {
-            const headers = {
-                'Authorization': `Bearer ${token}`,
-                'X-Account-ID': currentAccount.id
-            };
+            const options = { token, accountId: currentAccount.id, cache: 'no-store' as const, signal: controller.signal };
 
             // Parallel fetch with cache bypass to ensure fresh data on refresh
-            const [forecastRes, alertRes] = await Promise.all([
-                fetch('/api/analytics/inventory/sku-forecasts?days=30', {
-                    headers,
-                    cache: 'no-store'
-                }),
-                fetch('/api/analytics/inventory/stockout-alerts?threshold=30', {
-                    headers,
-                    cache: 'no-store'
-                })
+            const [forecastData, alertData] = await Promise.all([
+                api.request<SkuForecast[]>('/api/analytics/inventory/sku-forecasts?days=30', options),
+                api.request<StockoutAlerts>('/api/analytics/inventory/stockout-alerts?threshold=30', options)
             ]);
-
-            if (forecastRes.ok) {
-                const data = await forecastRes.json();
-                setForecasts(data);
-            } else {
-                throw new Error('Failed to fetch forecasts');
-            }
-
-            if (alertRes.ok) {
-                const data = await alertRes.json();
-                setAlerts(data);
-            } else {
-                throw new Error('Failed to fetch stockout alerts');
-            }
+            if (controller.signal.aborted) return;
+            setForecasts(forecastData);
+            setAlerts(alertData);
         } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : 'Failed to load forecast data');
+            if (controller.signal.aborted) return;
+            setError(forecastErrorMessage(err));
         } finally {
-            setIsLoading(false);
-            setRevenueRefreshKey(key => key + 1);
+            if (!controller.signal.aborted) {
+                setIsLoading(false);
+                setRevenueRefreshKey(key => key + 1);
+            }
         }
     }, [currentAccount, token]);
 
@@ -147,6 +137,7 @@ export function InventoryForecastPage() {
         if (currentAccount && token) {
             fetchData();
         }
+        return () => activeRequest.current?.abort();
     }, [currentAccount, token, fetchData]);
 
     // Sorting handler

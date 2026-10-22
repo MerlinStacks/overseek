@@ -1,457 +1,123 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { z } from 'zod';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { Logger } from '../utils/logger';
+import { readBoundedBytes } from '../utils/boundedResponse';
 
-interface PushPreferences {
-    notifyNewMessages: boolean;
-    notifyNewOrders: boolean;
-    notifyLowStock: boolean;
-    notifyDailySummary: boolean;
+const preferenceSchema = z.object({ notifyNewMessages: z.boolean(), notifyNewOrders: z.boolean(), notifyLowStock: z.boolean(), notifyDailySummary: z.boolean() }).strict();
+type PushPreferences = z.infer<typeof preferenceSchema>;
+const defaults: PushPreferences = { notifyNewMessages: false, notifyNewOrders: false, notifyLowStock: false, notifyDailySummary: false };
+const endpointSchema = z.string().url().max(2000).refine(value => { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password; });
+function supported() {
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const standalone = window.matchMedia?.('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone;
+    return window.isSecureContext !== false && 'Notification' in window && 'PushManager' in window && 'serviceWorker' in navigator && (!ios || !!standalone);
+}
+function bytesToBase64(value: ArrayBuffer | null) {
+    if (!value || value.byteLength > 1000) throw new Error('Push key unavailable');
+    return btoa(String.fromCharCode(...new Uint8Array(value)));
+}
+function vapidBytes(value: unknown) {
+    const key = z.string().regex(/^[A-Za-z0-9_-]{80,100}$/).parse(value);
+    const bytes = Uint8Array.from(atob(key.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - key.length % 4) % 4)), char => char.charCodeAt(0));
+    if (bytes.length !== 65 || bytes[0] !== 4) throw new Error('VAPID key unavailable');
+    return bytes;
 }
 
-interface UsePushNotificationsReturn {
-    isSupported: boolean;
-    isSubscribed: boolean;
-    isLoading: boolean;
-    preferences: PushPreferences;
-    permissionState: NotificationPermission | 'unsupported';
-    subscribe: () => Promise<boolean>;
-    unsubscribe: () => Promise<boolean>;
-    updatePreferences: (prefs: Partial<PushPreferences>) => Promise<boolean>;
-}
-
-interface StandaloneNavigator extends Navigator {
-    standalone?: boolean;
-}
-
-interface CapacitorBridge {
-    isNativePlatform?: () => boolean;
-    platform?: string;
-}
-
-const DEFAULT_PUSH_PREFERENCES: PushPreferences = {
-    notifyNewMessages: true,
-    notifyNewOrders: true,
-    notifyLowStock: false,
-    notifyDailySummary: false
-};
-
-/**
- * React hook for managing Web Push notification subscriptions.
- * 
- * Handles service worker registration, VAPID subscription, and syncs with backend.
- */
-export function usePushNotifications(): UsePushNotificationsReturn {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-
-    const [isSupported, setIsSupported] = useState(false);
-    const [isSubscribed, setIsSubscribed] = useState(false);
-    const [isLoading, setIsLoading] = useState(true);
-    const [preferences, setPreferences] = useState<PushPreferences>(DEFAULT_PUSH_PREFERENCES);
-    const [permissionState, setPermissionState] = useState<NotificationPermission | 'unsupported'>('default');
-    const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
-    const [currentEndpoint, setCurrentEndpoint] = useState<string | null>(null);
-
-    // Check browser support
+/** Passive initialization never repairs, subscribes, unsubscribes or resets prefs.
+ * Browser and account outcomes are separate; a partial command is reconciliation-only. */
+export function usePushNotifications() {
+    const { token, user } = useAuth(), { currentAccount } = useAccount();
+    const accountId = currentAccount?.id;
+    const key = JSON.stringify([user?.id, token, currentAccount?.id]);
+    const scopeRef = useRef(key), pendingRef = useRef(false), uncertainRef = useRef(new Set<string>());
+    const [snapshot, setSnapshot] = useState<{ key: string; isSubscribed: boolean; preferences: PushPreferences; loading: boolean; state: string }>({ key: '', isSubscribed: false, preferences: defaults, loading: true, state: 'unavailable' });
+    const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(() => supported() ? Notification.permission : 'unsupported');
+    const isSupported = supported();
+    useLayoutEffect(() => { scopeRef.current = key; return () => { scopeRef.current = ''; }; }, [key]);
+    const ready = !!token && !!user?.id && !!currentAccount;
+    const request = useCallback(async (path: string, options: RequestInit = {}) => {
+        if (!ready) throw new Error('Push scope unavailable');
+        const response = await fetch(`/api/notifications${path}`, { ...options, redirect: 'error', signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000), headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId!, 'Content-Type': 'application/json' } });
+        if (!response.ok) throw new Error('Push acknowledgement unavailable');
+        const data = JSON.parse(new TextDecoder().decode(await readBoundedBytes(response, 64000)));
+        if (options.method && options.method !== 'GET') z.object({ success: z.literal(true) }).parse(data);
+        return data;
+    }, [ready, token, accountId]);
     useEffect(() => {
-        const checkSupport = () => {
-            const hasSW = 'serviceWorker' in navigator;
-            const hasPushManager = 'PushManager' in window;
-
-            // Detect if running inside Capacitor native app
-            // Capacitor injects a global object that we can check for
-            const capacitor = (window as Window & { Capacitor?: CapacitorBridge }).Capacitor;
-            const isCapacitorNative = capacitor?.isNativePlatform?.() ?? !!capacitor?.platform;
-
-            // Detect iOS
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-
-            // Check if running as installed PWA (standalone mode)
-            const standaloneNavigator = window.navigator as StandaloneNavigator;
-            const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
-                standaloneNavigator.standalone === true;
-
-            // On iOS, push only works when:
-            // 1. Installed to Home Screen as PWA (standalone mode), OR
-            // 2. Running inside a Capacitor native app
-            // Safari in browser shows PushManager but it won't work until installed
-            if (isIOS && !isStandalone && !isCapacitorNative) {
-                setIsSupported(false);
-                setPermissionState('unsupported');
-                Logger.debug('[usePushNotifications] iOS detected but not in standalone/native mode - push not available');
-                setIsLoading(false);
-                return;
-            }
-
-            const supported = hasSW && hasPushManager;
-            setIsSupported(supported);
-
-            if (!supported) {
-                setPermissionState('unsupported');
-                setIsLoading(false);
-                return;
-            }
-
-            setPermissionState(Notification.permission);
-        };
-
-        checkSupport();
-    }, []);
-
-
-    // Register service worker and check subscription status
-    useEffect(() => {
-        if (!isSupported || !token || !currentAccount) {
-            setIsLoading(false);
-            return;
-        }
-
-        // Why extracted: defining the handler outside init() lets us remove it
-        // in the cleanup return. Without this, each re-mount adds another listener.
-        const handleSwMessage = (event: MessageEvent) => {
-            if (event.data?.type === 'SW_UPDATED') {
-                Logger.debug('[usePushNotifications] New SW version available', { version: event.data.version });
-                window.dispatchEvent(new CustomEvent('pwa-update-available', {
-                    detail: { version: event.data.version }
-                }));
-            }
-        };
-
-        const init = async () => {
+        let active = true; const controller = new AbortController();
+        if (!isSupported || !ready) return;
+        void (async () => {
             try {
-                // Register service worker with cache bypass
-                const registration = await navigator.serviceWorker.register('/push-sw.js', {
-                    updateViaCache: 'none' // Force fetch SW on each check
-                });
-                setSwRegistration(registration);
-                Logger.debug('[usePushNotifications] Service worker registered');
-
-                // Check for updates periodically and on refresh
-                registration.update().catch(err => Logger.warn('[usePushNotifications] SW update check failed', { err }));
-
-                // Listen for SW update messages
-                navigator.serviceWorker.addEventListener('message', handleSwMessage);
-
-                // Check existing subscription from browser
-                const subscription = await registration.pushManager.getSubscription();
-                const browserEndpoint = subscription?.endpoint || null;
-                Logger.debug('[usePushNotifications] Browser subscription', { exists: !!browserEndpoint });
-
-                if (browserEndpoint) {
-                    setCurrentEndpoint(browserEndpoint);
-                }
-
-                const saveSubscription = async (pushSubscription: PushSubscription) => {
-                    const subRes = await fetch('/api/notifications/push/subscribe', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`,
-                            'x-account-id': currentAccount.id
-                        },
-                        body: JSON.stringify({
-                            subscription: {
-                                endpoint: pushSubscription.endpoint,
-                                keys: {
-                                    p256dh: arrayBufferToBase64(pushSubscription.getKey('p256dh')),
-                                    auth: arrayBufferToBase64(pushSubscription.getKey('auth'))
-                                }
-                            },
-                            preferences: DEFAULT_PUSH_PREFERENCES
-                        })
-                    });
-
-                    if (!subRes.ok) {
-                        const errorData = await subRes.json().catch(() => ({}));
-                        Logger.error('[usePushNotifications] Subscription repair failed', { status: subRes.status, errorData });
-                        return false;
-                    }
-
-                    setCurrentEndpoint(pushSubscription.endpoint);
-                    setIsSubscribed(true);
-                    return true;
-                };
-
-                const repairSubscription = async () => {
-                    if (Notification.permission !== 'granted') return false;
-
-                    const keyRes = await fetch('/api/notifications/vapid-public-key', {
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'x-account-id': currentAccount.id
-                        }
-                    });
-
-                    if (!keyRes.ok) return false;
-
-                    const { publicKey } = await keyRes.json();
-                    const applicationServerKey = urlBase64ToUint8Array(publicKey) as BufferSource;
-                    const existingKey = subscription?.options.applicationServerKey;
-
-                    if (subscription && existingKey && buffersEqual(existingKey, applicationServerKey)) {
-                        return saveSubscription(subscription);
-                    }
-
-                    if (subscription) {
-                        await subscription.unsubscribe();
-                    }
-
-                    const repairedSubscription = await registration.pushManager.subscribe({
-                        userVisibleOnly: true,
-                        applicationServerKey
-                    });
-
-                    return saveSubscription(repairedSubscription);
-                };
-
-                // Fetch status from backend - pass browser endpoint for device-specific check
-                const url = browserEndpoint
-                    ? `/api/notifications/push/subscription?endpoint=${encodeURIComponent(browserEndpoint)}`
-                    : '/api/notifications/push/subscription';
-
-                const res = await fetch(url, {
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'x-account-id': currentAccount.id
-                    }
-                });
-
-                if (res.ok) {
-                    const data = await res.json();
-                    Logger.debug('[usePushNotifications] Backend status', { data });
-
-                    // If we have a browser subscription, check if backend knows about THIS device
-                    if (browserEndpoint) {
-                        if (data.isSubscribed) {
-                            setIsSubscribed(true);
-                        } else {
-                            const repaired = await repairSubscription();
-                            setIsSubscribed(repaired);
-                        }
-                        if (data.preferences) {
-                            setPreferences(data.preferences);
-                        }
-                    } else {
-                        // Permission was already granted, so recreate a missing browser
-                        // subscription silently instead of making users toggle after deploys.
-                        const repaired = await repairSubscription();
-                        setIsSubscribed(repaired);
-                    }
-                } else {
-                    Logger.error('[usePushNotifications] Backend status check failed', { status: res.status });
-                }
-            } catch (error) {
-                Logger.error('[usePushNotifications] Init failed', { error });
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        init();
-
-        return () => {
-            navigator.serviceWorker?.removeEventListener('message', handleSwMessage);
-        };
-    }, [isSupported, token, currentAccount]);
-
-    /**
-     * Subscribe to push notifications.
-     */
-    const subscribe = useCallback(async (): Promise<boolean> => {
-        if (!isSupported || !swRegistration || !token || !currentAccount) {
-            return false;
-        }
-
-        setIsLoading(true);
-
+                const registration = await navigator.serviceWorker.getRegistration('/push-sw.js');
+                const browser = await registration?.pushManager.getSubscription();
+                if (!active || scopeRef.current !== key) return;
+                if (!browser) { setSnapshot({ key, isSubscribed: false, preferences: defaults, loading: false, state: 'browser-unsubscribed' }); return; }
+                const endpoint = endpointSchema.parse(browser.endpoint);
+                const data = z.object({ isSubscribed: z.boolean(), preferences: preferenceSchema.nullish() }).parse(await request(`/push/subscription?endpoint=${encodeURIComponent(endpoint)}`, { signal: controller.signal }));
+                if (active && scopeRef.current === key) setSnapshot({ key, isSubscribed: data.isSubscribed, preferences: data.preferences ?? defaults, loading: false, state: data.isSubscribed ? 'observed' : 'browser-server-mismatch' });
+            } catch { if (active && scopeRef.current === key) setSnapshot({ key, isSubscribed: false, preferences: defaults, loading: false, state: 'unavailable' }); }
+        })();
+        return () => { active = false; controller.abort(); };
+    }, [key, ready, isSupported, request]);
+    const command = async (action: 'subscribe' | 'unsubscribe' | 'preferences', changes?: Partial<PushPreferences>) => {
+        if (!ready || !isSupported || pendingRef.current || uncertainRef.current.has(key)) return false;
+        const admittedKey = key;
+        pendingRef.current = true;
+        setSnapshot(previous => ({ ...previous, key, loading: true }));
+        let consequential = false;
         try {
-            // Request notification permission
-            const permission = await Notification.requestPermission();
-            setPermissionState(permission);
-
-            if (permission !== 'granted') {
-                setIsLoading(false);
-                return false;
+            const permissionWork = action === 'subscribe' ? Notification.requestPermission() : null;
+            let registration = await navigator.serviceWorker.getRegistration('/push-sw.js');
+            if (scopeRef.current !== admittedKey) return false;
+            if (action === 'subscribe') {
+                const result = await permissionWork!;
+                if (scopeRef.current !== admittedKey) return false;
+                setPermission(result); if (result !== 'granted') return false;
+                registration ??= await navigator.serviceWorker.register('/push-sw.js', { updateViaCache: 'none' });
             }
-
-            // Get VAPID public key from backend
-            const keyRes = await fetch('/api/notifications/vapid-public-key', {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
+            if (!registration || scopeRef.current !== admittedKey) return false;
+            let browser = await registration.pushManager.getSubscription();
+            if (scopeRef.current !== admittedKey) return false;
+            if (action === 'subscribe') {
+                const data = z.object({ publicKey: z.string() }).parse(await request('/vapid-public-key'));
+                const applicationServerKey = vapidBytes(data.publicKey);
+                if (scopeRef.current !== admittedKey) return false;
+                if (browser?.options.applicationServerKey) {
+                    const current = new Uint8Array(browser.options.applicationServerKey);
+                    if (current.length !== applicationServerKey.length || current.some((byte, index) => byte !== applicationServerKey[index])) throw new Error('Key mismatch requires explicit browser/server reconciliation, not silent replacement');
                 }
-            });
-
-            if (!keyRes.ok) {
-                Logger.error('[usePushNotifications] Failed to get VAPID key');
-                setIsLoading(false);
-                return false;
-            }
-
-            const { publicKey } = await keyRes.json();
-
-            // Subscribe to push manager
-            const subscription = await swRegistration.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource
-            });
-
-            // Send subscription to backend
-            const subRes = await fetch('/api/notifications/push/subscribe', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
-                },
-                body: JSON.stringify({
-                    subscription: {
-                        endpoint: subscription.endpoint,
-                        keys: {
-                            p256dh: arrayBufferToBase64(subscription.getKey('p256dh')),
-                            auth: arrayBufferToBase64(subscription.getKey('auth'))
-                        }
-                    },
-                    preferences
-                })
-            });
-
-            if (subRes.ok) {
-                const subData = await subRes.json();
-                Logger.debug('[usePushNotifications] Subscription saved', { subData });
-                setCurrentEndpoint(subscription.endpoint);
-                setIsSubscribed(true);
-                setIsLoading(false);
-                return true;
+                consequential = true;
+                browser ??= await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+                if (scopeRef.current !== admittedKey) throw new Error('Scope abandoned after browser mutation');
+                const endpoint = endpointSchema.parse(browser.endpoint);
+                const observed = z.object({ isSubscribed: z.boolean(), preferences: preferenceSchema.nullish() }).parse(await request(`/push/subscription?endpoint=${encodeURIComponent(endpoint)}`));
+                const preferences = observed.preferences ?? defaults;
+                await request('/push/subscribe', { method: 'POST', body: JSON.stringify({ subscription: { endpoint, keys: { p256dh: bytesToBase64(browser.getKey('p256dh')), auth: bytesToBase64(browser.getKey('auth')) } }, preferences }) });
+                if (scopeRef.current === admittedKey) setSnapshot({ key, isSubscribed: true, preferences, loading: false, state: 'registration-acknowledged-not-delivery' });
             } else {
-                const errorData = await subRes.json().catch(() => ({}));
-                Logger.error('[usePushNotifications] Subscribe request failed', { status: subRes.status, errorData });
+                if (!browser) throw new Error('Browser endpoint unavailable; server state requires review');
+                const endpoint = endpointSchema.parse(browser.endpoint);
+                consequential = true;
+                if (action === 'unsubscribe') {
+                    await request('/push/subscribe', { method: 'DELETE', body: JSON.stringify({ endpoint }) });
+                    // The browser endpoint is shared across accounts. Remove only
+                    // this server registration; never silently revoke other accounts.
+                    if (scopeRef.current !== admittedKey) throw new Error('Scope abandoned after account removal');
+                    if (scopeRef.current === admittedKey) setSnapshot({ key, isSubscribed: false, preferences: defaults, loading: false, state: 'removal-acknowledged' });
+                } else {
+                    const preferences = preferenceSchema.parse({ ...(snapshot.key === key ? snapshot.preferences : defaults), ...preferenceSchema.partial().parse(changes) });
+                    await request('/push/preferences', { method: 'PATCH', body: JSON.stringify({ endpoint, preferences }) });
+                    if (scopeRef.current === admittedKey) setSnapshot({ key, isSubscribed: true, preferences, loading: false, state: 'preferences-acknowledged' });
+                }
             }
-        } catch (error) {
-            Logger.error('[usePushNotifications] Subscribe failed', { error });
-        }
-
-        setIsLoading(false);
-        return false;
-    }, [isSupported, swRegistration, token, currentAccount, preferences]);
-
-    /**
-     * Unsubscribe from push notifications.
-     */
-    const unsubscribe = useCallback(async (): Promise<boolean> => {
-        if (!swRegistration || !token || !currentEndpoint) {
+            return scopeRef.current === admittedKey;
+        } catch {
+            if (consequential) uncertainRef.current.add(admittedKey);
+            if (scopeRef.current === admittedKey) setSnapshot(previous => ({ ...previous, key, isSubscribed: false, loading: false, state: consequential ? 'partial-or-uncertain-reconcile' : 'unavailable' }));
             return false;
-        }
-
-        setIsLoading(true);
-
-        try {
-            // Unsubscribe from push manager
-            const subscription = await swRegistration.pushManager.getSubscription();
-            if (subscription) {
-                await subscription.unsubscribe();
-            }
-
-            // Remove from backend
-            await fetch('/api/notifications/push/subscribe', {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || ''
-                },
-                body: JSON.stringify({ endpoint: currentEndpoint })
-            });
-
-            setIsSubscribed(false);
-            setCurrentEndpoint(null);
-            setIsLoading(false);
-            return true;
-        } catch (error) {
-            Logger.error('[usePushNotifications] Unsubscribe failed', { error });
-        }
-
-        setIsLoading(false);
-        return false;
-    }, [swRegistration, token, currentEndpoint, currentAccount]);
-
-    /**
-     * Update notification preferences.
-     */
-    const updatePreferences = useCallback(async (newPrefs: Partial<PushPreferences>): Promise<boolean> => {
-        if (!token || !currentEndpoint) {
-            return false;
-        }
-
-        const updatedPrefs = { ...preferences, ...newPrefs };
-
-        try {
-            const res = await fetch('/api/notifications/push/preferences', {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || ''
-                },
-                body: JSON.stringify({
-                    endpoint: currentEndpoint,
-                    preferences: newPrefs
-                })
-            });
-
-            if (res.ok) {
-                setPreferences(updatedPrefs);
-                return true;
-            }
-        } catch (error) {
-            Logger.error('[usePushNotifications] Update preferences failed', { error });
-        }
-
-        return false;
-    }, [token, currentEndpoint, preferences, currentAccount]);
-
-    return {
-        isSupported,
-        isSubscribed,
-        isLoading,
-        preferences,
-        permissionState,
-        subscribe,
-        unsubscribe,
-        updatePreferences
+        } finally { pendingRef.current = false; if (scopeRef.current === admittedKey) setSnapshot(previous => ({ ...previous, loading: false })); }
     };
-}
-
-// Helper: Convert VAPID public key from base64 to Uint8Array
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-    const padding = '='.repeat((4 - base64String.length % 4) % 4);
-    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-    for (let i = 0; i < rawData.length; ++i) {
-        outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray;
-}
-
-// Helper: Convert ArrayBuffer to base64 string
-function arrayBufferToBase64(buffer: ArrayBuffer | null): string {
-    if (!buffer) return '';
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
-    }
-    return window.btoa(binary);
-}
-
-function buffersEqual(a: BufferSource, b: BufferSource): boolean {
-    const aBytes = a instanceof ArrayBuffer ? new Uint8Array(a) : new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
-    const bBytes = b instanceof ArrayBuffer ? new Uint8Array(b) : new Uint8Array(b.buffer, b.byteOffset, b.byteLength);
-
-    if (aBytes.byteLength !== bBytes.byteLength) return false;
-
-    return aBytes.every((value, index) => value === bBytes[index]);
+    const visible = snapshot.key === key ? snapshot : { isSubscribed: false, preferences: defaults, loading: ready, state: 'unavailable' };
+    return { isSupported, isSubscribed: visible.isSubscribed, isLoading: isSupported && ready && visible.loading, preferences: visible.preferences, permissionState: permission, evidenceState: visible.state, subscribe: () => command('subscribe'), unsubscribe: () => command('unsubscribe'), updatePreferences: (prefs: Partial<PushPreferences>) => command('preferences', prefs) };
 }

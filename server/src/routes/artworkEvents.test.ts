@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../utils/prisma', () => ({
     prisma: {
+        $transaction: vi.fn(async work => work({ $queryRaw: vi.fn(), scopedOperation: { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn() } })),
         account: { findUnique: vi.fn() },
         accountFeature: { findUnique: vi.fn() },
         emailAccount: { findMany: vi.fn() }
@@ -94,7 +95,7 @@ describe('artwork events', () => {
             headers: { authorization: 'Bearer artwork-secret' },
             payload: {
                 account_id: 'account-1',
-                event: { event_status: 'approved', order_id: 1001 }
+                event: { event_id: 'compat-approved', event_status: 'approved', order_id: 1001 }
             }
         });
 
@@ -120,6 +121,7 @@ describe('artwork events', () => {
             payload: {
                 event: {
                     event_status: 'changes_requested',
+                    event_id: 'changes-v2',
                     customer_email: 'buyer@example.com',
                     metadata: { proofVersion: 'V2' }
                 }

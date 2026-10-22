@@ -1,647 +1,82 @@
-import { FormEvent, useEffect, useState } from 'react';
-import { Cog, Printer, Save, ShieldCheck } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
-import { useAccount } from '../../context/AccountContext';
-import { useAuth } from '../../context/AuthContext';
-import { useApiMutation, useApiQuery } from '../../hooks/useApiQuery';
-import { serviceCodeLabelFormatter, serviceCodeOptionsFromCatalog } from './auspostServiceCatalog';
-import { ShippingComingSoonCard, ShippingPageShell } from './ShippingPageShell';
-import { AusPostServiceCatalogResponse, shippingFetch, ShippingMethodCandidatesResponse, ShippingPrintStation, ShippingSettingsResponse } from './shippingApi';
+import { useEffect, useRef, useState } from 'react';
+import { z } from 'zod';
+import { usePermissions } from '../../hooks/usePermissions';
+import { ShippingPageShell } from './ShippingPageShell';
+import { ShippingBoundary, ShippingReadState, identity, date, useDraftUnload, useShippingRead, type ShippingScope } from './shippingWorkspace';
+import { shippingFetch } from './shippingApi';
 
-const AUSPOST_DEFAULT_BASE_URL = 'https://digitalapi.auspost.com.au/shipping/v1';
-const TRACKING_TRIGGER_OPTIONS = [
-    'SHIPMENT_RECEIVED_BY_CARRIER',
-    'SHIPMENT_IN_TRANSIT',
-    'SHIPMENT_OUT_FOR_DELIVERY',
-    'SHIPMENT_DELIVERY_ATTEMPTED',
-    'SHIPMENT_DELIVERED',
-    'SHIPMENT_EXCEPTION',
-] as const;
-const AUSPOST_DEFAULT_ENDPOINTS = {
-    testEndpointPath: '/accounts/{account_number}',
-    ratesEndpointPath: '/prices/shipments',
-    labelsEndpointPath: '/labels',
-    labelPdfEndpointPath: '/labels/{request_id}',
-    trackingEndpointPath: '/track?tracking_ids={tracking_ids}',
-    cancellationEndpointPath: '/shipments/{shipment_id}',
+const configSchema = z.record(z.string().max(100), z.unknown());
+const settingsSchema = z.object({ accountId: identity, credentialsConfigured: z.boolean(), carrierAccount: z.object({ id: identity, updatedAt: date, displayName: z.string().max(120), isEnabled: z.boolean(), config: configSchema.nullish(), senderAddress: configSchema.nullish() }).nullable() });
+const stationSchema = z.object({ id: identity, name: z.string().max(120), updatedAt: date, status: z.string().max(80), lastSeenAt: date.nullish() });
+function decodeSettings(value: unknown) { return settingsSchema.parse(value); }
+function decodeStations(value: unknown) { return z.object({ accountId: identity, printStations: z.array(stationSchema).max(100), partial: z.boolean() }).parse(value); }
+const defaults: Record<string, string | boolean | number> = {
+    apiProduct: 'SHIPPING_AND_TRACKING', apiEnvironment: 'sandbox', apiBaseUrl: 'https://digitalapi.auspost.com.au/shipping/v1',
+    testEndpointPath: '/accounts/{account_number}', ratesEndpointPath: '/prices/shipments', labelsEndpointPath: '/labels', labelPdfEndpointPath: '/labels/{request_id}', trackingEndpointPath: '/track?tracking_ids={tracking_ids}', cancellationEndpointPath: '/shipments/{shipment_id}',
+    accountNumber: '', paymentMethod: '', dispatchStatus: 'In Dispatch', defaultDomesticService: '', defaultExpressService: '', defaultInternationalService: '', defaultPackagePresetId: '', defaultPrintStationId: '', labelFormat: 'PDF', labelPrintGroup: 'Parcel Post', labelLayout: 'A6-1pp', labelPaperType: 'single_shipping_label', printDeliveryMethod: 'open_pdf', labelBranded: false, wooFulfillmentBehavior: 'keep_in_dispatch', trackingSyncEnabled: false, trackingPollIntervalMinutes: 30, trackingPollFailureBackoffMinutes: 60,
 };
+const enums: Record<string, string[]> = { apiEnvironment: ['sandbox', 'production'], paymentMethod: ['', 'CHARGE_ACCOUNT', 'CREDIT_CARD', 'PAYPAL'], wooFulfillmentBehavior: ['keep_in_dispatch', 'label_created', 'print_success'], printDeliveryMethod: ['open_pdf', 'remote_print'], labelPrintGroup: ['Parcel Post', 'Express Post'], labelLayout: ['A4-1pp', 'A4-3pp', 'A4-4pp', 'A6-1pp'], labelPaperType: ['a4_label_sheet', 'single_shipping_label'], labelFormat: ['PDF'] };
+const senderFields = ['name', 'company', 'phone', 'email', 'address1', 'address2', 'suburb', 'state', 'postcode', 'country'];
+const triggers = ['SHIPMENT_RECEIVED_BY_CARRIER', 'SHIPMENT_IN_TRANSIT', 'SHIPMENT_OUT_FOR_DELIVERY', 'SHIPMENT_DELIVERY_ATTEMPTED', 'SHIPMENT_DELIVERED', 'SHIPMENT_EXCEPTION'];
 
-type TabId = 'carrier' | 'services' | 'print';
-const VALID_TABS: TabId[] = ['carrier', 'services', 'print'];
-
-interface SettingsFormState {
-    displayName: string;
-    isEnabled: boolean;
-    apiKey: string;
-    apiSecret: string;
-    apiProduct: string;
-    apiEnvironment: 'sandbox' | 'production';
-    apiBaseUrl: string;
-    testEndpointPath: string;
-    ratesEndpointPath: string;
-    labelsEndpointPath: string;
-    labelPdfEndpointPath: string;
-    trackingEndpointPath: string;
-    cancellationEndpointPath: string;
-    accountNumber: string;
-    paymentMethod: '' | 'CHARGE_ACCOUNT' | 'CREDIT_CARD' | 'PAYPAL';
-    dispatchStatus: string;
-    senderName: string;
-    senderCompany: string;
-    senderPhone: string;
-    senderEmail: string;
-    senderAddress1: string;
-    senderAddress2: string;
-    senderSuburb: string;
-    senderState: string;
-    senderPostcode: string;
-    senderCountry: string;
-    defaultDomesticService: string;
-    defaultExpressService: string;
-    defaultInternationalService: string;
-    shippingMethodServiceMappings: ShippingMethodServiceMapping[];
-    labelFormat: string;
-    labelPrintGroup: 'Parcel Post' | 'Express Post';
-    labelLayout: 'A4-1pp' | 'A4-3pp' | 'A4-4pp' | 'A6-1pp';
-    labelPaperType: 'a4_label_sheet' | 'single_shipping_label';
-    printDeliveryMethod: 'remote_print' | 'open_pdf';
-    labelBranded: boolean;
-    wooFulfillmentBehavior: string;
-    trackingSyncEnabled: boolean;
-    trackingAutomationAllowlist: string;
-    trackingPollIntervalMinutes: string;
-    trackingPollFailureBackoffMinutes: string;
+export function ShippingSettingsPage() { return <ShippingBoundary>{scope => <SettingsRead scope={scope} />}</ShippingBoundary>; }
+function SettingsRead({ scope }: { scope: ShippingScope }) {
+    const { hasPermission } = usePermissions();
+    return hasPermission('manage_shipping_settings') ? <AdmittedSettingsRead scope={scope} /> : <p role="alert">Shipping settings management access required.</p>;
 }
-
-const defaultForm: SettingsFormState = {
-    displayName: 'Australia Post',
-    isEnabled: true,
-    apiKey: '',
-    apiSecret: '',
-    apiProduct: 'SHIPPING_AND_TRACKING',
-    apiEnvironment: 'production',
-    apiBaseUrl: AUSPOST_DEFAULT_BASE_URL,
-    testEndpointPath: AUSPOST_DEFAULT_ENDPOINTS.testEndpointPath,
-    ratesEndpointPath: AUSPOST_DEFAULT_ENDPOINTS.ratesEndpointPath,
-    labelsEndpointPath: AUSPOST_DEFAULT_ENDPOINTS.labelsEndpointPath,
-    labelPdfEndpointPath: AUSPOST_DEFAULT_ENDPOINTS.labelPdfEndpointPath,
-    trackingEndpointPath: AUSPOST_DEFAULT_ENDPOINTS.trackingEndpointPath,
-    cancellationEndpointPath: AUSPOST_DEFAULT_ENDPOINTS.cancellationEndpointPath,
-    accountNumber: '',
-    paymentMethod: '',
-    dispatchStatus: 'In Dispatch',
-    senderName: '',
-    senderCompany: '',
-    senderPhone: '',
-    senderEmail: '',
-    senderAddress1: '',
-    senderAddress2: '',
-    senderSuburb: '',
-    senderState: '',
-    senderPostcode: '',
-    senderCountry: 'AU',
-    defaultDomesticService: '',
-    defaultExpressService: '',
-    defaultInternationalService: '',
-    shippingMethodServiceMappings: [],
-    labelFormat: 'PDF',
-    labelPrintGroup: 'Parcel Post',
-    labelLayout: 'A6-1pp',
-    labelPaperType: 'single_shipping_label',
-    printDeliveryMethod: 'remote_print',
-    labelBranded: true,
-    wooFulfillmentBehavior: 'keep_in_dispatch',
-    trackingSyncEnabled: true,
-    trackingAutomationAllowlist: TRACKING_TRIGGER_OPTIONS.join(', '),
-    trackingPollIntervalMinutes: '30',
-    trackingPollFailureBackoffMinutes: '60',
-};
-
-export function ShippingSettingsPage() {
-    const [searchParams, setSearchParams] = useSearchParams();
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const [form, setForm] = useState<SettingsFormState>(defaultForm);
-    const [stationName, setStationName] = useState('Dispatch PC');
-    const [stationPrinter, setStationPrinter] = useState('');
-    const [newStationToken, setNewStationToken] = useState<string | null>(null);
-    const [testResult, setTestResult] = useState<string | null>(null);
-    const [importResult, setImportResult] = useState<string | null>(null);
-    const [shippingMethodOptions, setShippingMethodOptions] = useState<string[]>([]);
-
-    const tabFromUrl = searchParams.get('tab');
-    const activeTab: TabId = tabFromUrl && VALID_TABS.includes(tabFromUrl as TabId) ? tabFromUrl as TabId : 'carrier';
-    const setActiveTab = (tab: TabId) => {
-        setSearchParams((prev) => {
-            const next = new URLSearchParams(prev);
-            next.set('tab', tab);
-            return next;
-        }, { replace: true });
-    };
-    const uniqueSortedStrings = (values: string[]): string[] => Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
-
-    const canFetch = Boolean(token && currentAccount?.id);
-    const settingsQuery = useApiQuery<ShippingSettingsResponse>({
-        queryKey: ['shipping-settings', currentAccount?.id],
-        enabled: canFetch,
-        queryFn: () => shippingFetch('/settings', token!, currentAccount!.id),
-    });
-    const printStationsQuery = useApiQuery<{ printStations: ShippingPrintStation[] }>({
-        queryKey: ['shipping-print-stations', currentAccount?.id],
-        enabled: canFetch,
-        queryFn: () => shippingFetch('/print-stations', token!, currentAccount!.id),
-    });
-    const serviceCatalogQuery = useApiQuery<AusPostServiceCatalogResponse>({
-        queryKey: ['shipping-auspost-service-catalog', currentAccount?.id],
-        enabled: canFetch,
-        queryFn: () => shippingFetch('/settings/auspost-service-catalog', token!, currentAccount!.id),
-    });
-
-    useEffect(() => {
-        const settings = settingsQuery.data?.carrierAccount;
-        if (!settings) return;
-        const config = settings.config || {};
-        const sender = settings.senderAddress || {};
-        queueMicrotask(() => {
-            const normalizedMappings = normalizeShippingMethodMappings(config.shippingMethodServiceMappings);
-            const mappedMethods = normalizedMappings.map((mapping) => mapping.wooShippingMethod).filter(Boolean);
-            setShippingMethodOptions((prev) => uniqueSortedStrings([...prev, ...mappedMethods]));
-            setForm(prev => ({
-                ...prev,
-                displayName: settings.displayName || prev.displayName,
-                isEnabled: settings.isEnabled,
-                apiProduct: String(config.apiProduct || 'SHIPPING_AND_TRACKING'),
-                apiEnvironment: config.apiEnvironment === 'sandbox' ? 'sandbox' : 'production',
-                apiBaseUrl: String(config.apiBaseUrl || AUSPOST_DEFAULT_BASE_URL),
-                testEndpointPath: String(config.testEndpointPath || AUSPOST_DEFAULT_ENDPOINTS.testEndpointPath),
-                ratesEndpointPath: String(config.ratesEndpointPath || AUSPOST_DEFAULT_ENDPOINTS.ratesEndpointPath),
-                labelsEndpointPath: String(config.labelsEndpointPath || AUSPOST_DEFAULT_ENDPOINTS.labelsEndpointPath),
-                labelPdfEndpointPath: String(config.labelPdfEndpointPath || AUSPOST_DEFAULT_ENDPOINTS.labelPdfEndpointPath),
-                trackingEndpointPath: String(config.trackingEndpointPath || AUSPOST_DEFAULT_ENDPOINTS.trackingEndpointPath),
-                cancellationEndpointPath: String(config.cancellationEndpointPath || AUSPOST_DEFAULT_ENDPOINTS.cancellationEndpointPath),
-                accountNumber: String(config.accountNumber || ''),
-                paymentMethod: ['CHARGE_ACCOUNT', 'CREDIT_CARD', 'PAYPAL'].includes(String(config.paymentMethod || ''))
-                    ? String(config.paymentMethod) as SettingsFormState['paymentMethod']
-                    : '',
-                dispatchStatus: String(config.dispatchStatus || 'In Dispatch'),
-                senderName: String(sender.name || ''),
-                senderCompany: String(sender.company || ''),
-                senderPhone: String(sender.phone || ''),
-                senderEmail: String(sender.email || ''),
-                senderAddress1: String(sender.address1 || ''),
-                senderAddress2: String(sender.address2 || ''),
-                senderSuburb: String(sender.suburb || ''),
-                senderState: String(sender.state || ''),
-                senderPostcode: String(sender.postcode || ''),
-                senderCountry: String(sender.country || 'AU'),
-                defaultDomesticService: String(config.defaultDomesticService || ''),
-                defaultExpressService: String(config.defaultExpressService || ''),
-                defaultInternationalService: String(config.defaultInternationalService || ''),
-                shippingMethodServiceMappings: normalizedMappings,
-                labelFormat: String(config.labelFormat || 'PDF'),
-                labelPrintGroup: config.labelPrintGroup === 'Express Post' ? 'Express Post' : 'Parcel Post',
-                labelLayout: ['A4-1pp', 'A4-3pp', 'A4-4pp', 'A6-1pp'].includes(String(config.labelLayout)) ? String(config.labelLayout) as SettingsFormState['labelLayout'] : 'A6-1pp',
-                labelPaperType: config.labelPaperType === 'a4_label_sheet' || config.labelLayout === 'A4-4pp' ? 'a4_label_sheet' : 'single_shipping_label',
-                printDeliveryMethod: config.printDeliveryMethod === 'open_pdf' ? 'open_pdf' : 'remote_print',
-                labelBranded: config.labelBranded !== false,
-                wooFulfillmentBehavior: String(config.wooFulfillmentBehavior || 'keep_in_dispatch'),
-                trackingSyncEnabled: config.trackingSyncEnabled !== false,
-                trackingAutomationAllowlist: Array.isArray(config.trackingAutomationAllowlist) ? config.trackingAutomationAllowlist.join(', ') : TRACKING_TRIGGER_OPTIONS.join(', '),
-                trackingPollIntervalMinutes: String(config.trackingPollIntervalMinutes || 30),
-                trackingPollFailureBackoffMinutes: String(config.trackingPollFailureBackoffMinutes || 60),
-            }));
-        });
-    }, [settingsQuery.data]);
-
-    const saveSettings = useApiMutation<ShippingSettingsResponse, SettingsFormState>({
-        invalidateQueries: [['shipping-settings', currentAccount?.id], ['shipping-auspost-service-catalog', currentAccount?.id]],
-        mutationFn: (values) => shippingFetch('/settings', token!, currentAccount!.id, {
-            method: 'PATCH',
-            body: JSON.stringify({
-                displayName: values.displayName,
-                isEnabled: values.isEnabled,
-                apiKey: values.apiKey || undefined,
-                apiSecret: values.apiSecret || undefined,
-                apiProduct: values.apiProduct,
-                apiEnvironment: values.apiEnvironment,
-                apiBaseUrl: values.apiBaseUrl || undefined,
-                testEndpointPath: values.testEndpointPath || undefined,
-                ratesEndpointPath: values.ratesEndpointPath || undefined,
-                labelsEndpointPath: values.labelsEndpointPath || undefined,
-                labelPdfEndpointPath: values.labelPdfEndpointPath || undefined,
-                trackingEndpointPath: values.trackingEndpointPath || undefined,
-                cancellationEndpointPath: values.cancellationEndpointPath || undefined,
-                accountNumber: values.accountNumber,
-                paymentMethod: values.paymentMethod,
-                dispatchStatus: values.dispatchStatus,
-                senderAddress: {
-                    name: values.senderName,
-                    company: values.senderCompany,
-                    phone: values.senderPhone,
-                    email: values.senderEmail,
-                    address1: values.senderAddress1,
-                    address2: values.senderAddress2,
-                    suburb: values.senderSuburb,
-                    state: values.senderState,
-                    postcode: values.senderPostcode,
-                    country: values.senderCountry,
-                },
-                defaultDomesticService: values.defaultDomesticService,
-                defaultExpressService: values.defaultExpressService,
-                defaultInternationalService: values.defaultInternationalService,
-                shippingMethodServiceMappings: values.shippingMethodServiceMappings
-                    .map((mapping) => ({
-                        wooShippingMethod: mapping.wooShippingMethod.trim(),
-                        auspostServiceCode: mapping.auspostServiceCode.trim(),
-                        matchType: mapping.matchType === 'contains' ? 'contains' : 'exact',
-                    }))
-                    .filter((mapping) => mapping.wooShippingMethod && mapping.auspostServiceCode),
-                labelFormat: values.labelFormat,
-                labelPrintGroup: values.labelPrintGroup,
-                labelPaperType: values.labelPaperType,
-                labelLayout: values.labelLayout,
-                printDeliveryMethod: values.printDeliveryMethod,
-                labelBranded: values.labelBranded,
-                wooFulfillmentBehavior: values.wooFulfillmentBehavior,
-                trackingSyncEnabled: values.trackingSyncEnabled,
-                trackingAutomationAllowlist: values.trackingAutomationAllowlist
-                    .split(',')
-                    .map((item) => item.trim())
-                    .filter((item): item is typeof TRACKING_TRIGGER_OPTIONS[number] => TRACKING_TRIGGER_OPTIONS.includes(item as typeof TRACKING_TRIGGER_OPTIONS[number])),
-                trackingPollIntervalMinutes: Number(values.trackingPollIntervalMinutes || 30),
-                trackingPollFailureBackoffMinutes: Number(values.trackingPollFailureBackoffMinutes || 60),
-            }),
-        }),
-        onSuccess: () => setForm(prev => ({ ...prev, apiKey: '', apiSecret: '' })),
-    });
-
-    const createPrintStation = useApiMutation<{ printStation: ShippingPrintStation; token: string }, { name: string; defaultPrinterName: string }>({
-        invalidateQueries: [['shipping-print-stations', currentAccount?.id]],
-        mutationFn: (values) => shippingFetch('/print-stations', token!, currentAccount!.id, {
-            method: 'POST',
-            body: JSON.stringify({ name: values.name, defaultPrinterName: values.defaultPrinterName || null }),
-        }),
-        onSuccess: (data) => {
-            setNewStationToken(data.token);
-            setStationName('Dispatch PC');
-            setStationPrinter('');
-        },
-    });
-    const rotatePrintStationToken = useApiMutation<{ printStation: ShippingPrintStation; token: string }, string>({
-        invalidateQueries: [['shipping-print-stations', currentAccount?.id]],
-        mutationFn: (id) => shippingFetch(`/print-stations/${id}/rotate-token`, token!, currentAccount!.id, { method: 'POST' }),
-        onSuccess: (data) => setNewStationToken(data.token),
-    });
-    const testConnection = useApiMutation<{ ok: boolean; status: string; message: string }, void>({
-        invalidateQueries: [['shipping-settings', currentAccount?.id], ['shipping-auspost-service-catalog', currentAccount?.id]],
-        mutationFn: () => shippingFetch('/settings/test-connection', token!, currentAccount!.id, { method: 'POST' }),
-        onSuccess: (data) => setTestResult(data.message),
-    });
-    const importShippingMethods = useApiMutation<ShippingMethodCandidatesResponse, void>({
-        mutationFn: () => shippingFetch('/settings/shipping-method-candidates', token!, currentAccount!.id),
-        onSuccess: (data) => {
-            let added = 0;
-            setForm((prev) => {
-                const existing = new Set(prev.shippingMethodServiceMappings.map((mapping) => mapping.wooShippingMethod.trim().toLowerCase()).filter(Boolean));
-                const additions = data.shippingMethods
-                    .map((name) => name.trim())
-                    .filter((name) => name && !existing.has(name.toLowerCase()))
-                    .map((wooShippingMethod) => ({ wooShippingMethod, auspostServiceCode: '', matchType: 'exact' as const }));
-                added = additions.length;
-                return { ...prev, shippingMethodServiceMappings: [...prev.shippingMethodServiceMappings, ...additions] };
-            });
-            setShippingMethodOptions((prev) => uniqueSortedStrings([...prev, ...data.shippingMethods]));
-            setImportResult(added > 0
-                ? `Imported ${added} shipping method${added === 1 ? '' : 's'} from ${data.sampledOrders} recent orders.`
-                : `No new shipping methods found in ${data.sampledOrders} recent orders.`);
-        },
-    });
-    const refreshServiceCodes = useApiMutation<AusPostServiceCatalogResponse, void>({
-        invalidateQueries: [['shipping-auspost-service-catalog', currentAccount?.id]],
-        mutationFn: () => shippingFetch('/settings/auspost-service-catalog?refresh=true', token!, currentAccount!.id),
-        onSuccess: (data) => {
-            const count = Array.isArray(data.services) ? data.services.length : 0;
-            setImportResult(`Service code catalog refreshed. ${count} code${count === 1 ? '' : 's'} available (${data.source || 'unknown source'}).`);
-        },
-    });
-
-    const update = (key: keyof SettingsFormState, value: string | boolean) => setForm(prev => ({ ...prev, [key]: value }));
-    const updateShippingMethodMapping = (index: number, key: keyof ShippingMethodServiceMapping, value: string) => {
-        setForm((prev) => ({
-            ...prev,
-            shippingMethodServiceMappings: prev.shippingMethodServiceMappings.map((mapping, rowIndex) => rowIndex === index ? {
-                ...mapping,
-                [key]: key === 'matchType' ? (value === 'contains' ? 'contains' : 'exact') : value,
-            } : mapping),
-        }));
-    };
-    const addShippingMethodMapping = () => {
-        setForm((prev) => ({
-            ...prev,
-            shippingMethodServiceMappings: [...prev.shippingMethodServiceMappings, { wooShippingMethod: '', auspostServiceCode: '', matchType: 'exact' }],
-        }));
-    };
-    const removeShippingMethodMapping = (index: number) => {
-        setForm((prev) => ({
-            ...prev,
-            shippingMethodServiceMappings: prev.shippingMethodServiceMappings.filter((_, rowIndex) => rowIndex !== index),
-        }));
-    };
-    const handleSubmit = (event: FormEvent) => {
-        event.preventDefault();
-        saveSettings.mutate(form);
-    };
-
-    const serviceCodeOptions = serviceCodeOptionsFromCatalog(serviceCatalogQuery.data);
-    const formatServiceCodeOption = serviceCodeLabelFormatter(serviceCatalogQuery.data);
-    const catalogSourceLabel = serviceCatalogQuery.data?.source === 'live_account'
-        ? 'Live account codes'
-        : serviceCatalogQuery.data?.source === 'live_account_cached'
-            ? 'Live account codes (cached)'
-            : serviceCatalogQuery.data?.source === 'static_fallback'
-                ? 'Static fallback catalog'
-                : 'Catalog source unknown';
-    const catalogSourceTone = serviceCatalogQuery.data?.source === 'static_fallback'
-        ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200'
-        : 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200';
-
-    const tabs: Array<{ id: TabId; label: string; icon: React.ElementType; description: string }> = [
-        { id: 'carrier', label: 'Carrier Setup', icon: ShieldCheck, description: 'Credentials, sender details, and API paths.' },
-        { id: 'services', label: 'Rules & Tracking', icon: Cog, description: 'Service defaults, mappings, fulfillment, and polling.' },
-        { id: 'print', label: 'Print Stations', icon: Printer, description: 'Agent registration and station status.' },
-    ];
-
-    return (
-        <ShippingPageShell
-            title="Settings"
-            description="Configure AusPost credentials, sender details, payment method, dispatch status, label format, print stations, and tracking sync behavior."
-        >
-            <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="lg:hidden">
-                    <div className="flex overflow-x-auto border-b border-slate-200 dark:border-slate-700 no-scrollbar -mx-4 px-4">
-                        {tabs.map((tab) => {
-                            const Icon = tab.icon;
-                            const isActive = activeTab === tab.id;
-                            return (
-                                <button
-                                    key={tab.id}
-                                    type="button"
-                                    onClick={() => setActiveTab(tab.id)}
-                                    className={`flex items-center gap-2 px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap transition-colors ${isActive ? 'border-blue-600 dark:border-blue-400 text-blue-600 dark:text-blue-400' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
-                                >
-                                    <Icon size={16} />
-                                    {tab.label}
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                <div className="lg:flex lg:gap-8">
-                    <aside className="hidden w-64 shrink-0 px-1 lg:block">
-                        <nav className="sticky top-24 space-y-2">
-                            <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-3 mb-2">Shipping Hub</h3>
-                            {tabs.map((tab) => {
-                                const Icon = tab.icon;
-                                const isActive = activeTab === tab.id;
-                                return (
-                                    <button
-                                        key={tab.id}
-                                        type="button"
-                                        onClick={() => setActiveTab(tab.id)}
-                                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-                                    >
-                                        <span className="flex items-center gap-2"><Icon size={16} />{tab.label}</span>
-                                    </button>
-                                );
-                            })}
-                        </nav>
-                    </aside>
-
-                    <div className="min-w-0 flex-1 space-y-6">
-                        <p className="text-sm text-slate-600 dark:text-slate-300">{tabs.find((tab) => tab.id === activeTab)?.description}</p>
-
-                {activeTab === 'carrier' ? <div className="grid gap-6 xl:grid-cols-2">
-                <ShippingComingSoonCard>
-                    <div className="mb-4 flex items-center gap-3">
-                        <ShieldCheck className="text-indigo-600" size={22} />
-                        <h2 className="text-lg font-bold text-slate-900 dark:text-white">AusPost Credentials</h2>
-                    </div>
-                    <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">Enter the AusPost Shipping and Tracking API credentials here. Secrets are encrypted server-side and are never returned to the browser after saving.</p>
-                    {settingsQuery.data?.credentialsConfigured ? <p className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Credentials are configured. Leave API fields blank to keep existing secrets.</p> : null}
-                    <div className="space-y-4">
-                        <TextField label="Display name" value={form.displayName} onChange={(v) => update('displayName', v)} />
-                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">API product<select value={form.apiProduct} onChange={(event) => update('apiProduct', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"><option value="SHIPPING_AND_TRACKING">Shipping and Tracking API</option></select></label>
-                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Environment<select value={form.apiEnvironment} onChange={(event) => update('apiEnvironment', event.target.value as 'sandbox' | 'production')} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"><option value="production">Production</option><option value="sandbox">Sandbox</option></select></label>
-                        <TextField label="API base URL" value={form.apiBaseUrl} onChange={(v) => update('apiBaseUrl', v)} placeholder={AUSPOST_DEFAULT_BASE_URL} />
-                        <TextField label="API key" value={form.apiKey} onChange={(v) => update('apiKey', v)} autoComplete="off" />
-                        <TextField label="API password / secret" value={form.apiSecret} onChange={(v) => update('apiSecret', v)} type="password" autoComplete="new-password" />
-                        <TextField label="AusPost account number / charge account" value={form.accountNumber} onChange={(v) => update('accountNumber', v)} />
-                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                            Payment method
-                            <select
-                                value={form.paymentMethod}
-                                onChange={(event) => update('paymentMethod', event.target.value as SettingsFormState['paymentMethod'])}
-                                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"
-                            >
-                                <option value="">Use carrier default</option>
-                                <option value="CHARGE_ACCOUNT">AusPost Charge Account (Automatic)</option>
-                                <option value="CREDIT_CARD">Credit Card (Automatic)</option>
-                                <option value="PAYPAL">PayPal (Manual)</option>
-                            </select>
-                        </label>
-                        <TextField label="Dispatch status trigger" value={form.dispatchStatus} onChange={(v) => update('dispatchStatus', v)} />
-                        <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
-                            <p className="font-semibold text-slate-900 dark:text-white">Advanced API endpoint mapping</p>
-                            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Defaults are from the AusPost reference. Use <code>{'{tracking_ids}'}</code> or <code>{'{trackingNumber}'}</code> in the tracking path.</p>
-                            <div className="mt-3 grid gap-3 md:grid-cols-2">
-                                <TextField label="Credential test path" value={form.testEndpointPath} onChange={(v) => update('testEndpointPath', v)} />
-                                <TextField label="Tracking path" value={form.trackingEndpointPath} onChange={(v) => update('trackingEndpointPath', v)} />
-                                <TextField label="Rates path" value={form.ratesEndpointPath} onChange={(v) => update('ratesEndpointPath', v)} />
-                                <TextField label="Label creation path" value={form.labelsEndpointPath} onChange={(v) => update('labelsEndpointPath', v)} />
-                                <TextField label="Label PDF path" value={form.labelPdfEndpointPath} onChange={(v) => update('labelPdfEndpointPath', v)} />
-                                <TextField label="Cancellation path" value={form.cancellationEndpointPath} onChange={(v) => update('cancellationEndpointPath', v)} />
-                            </div>
-                        </div>
-                        <button type="button" onClick={() => testConnection.mutate()} className="rounded-lg border border-indigo-200 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-500/40 dark:text-indigo-300 dark:hover:bg-indigo-500/10">Test saved credentials</button>
-                        {testResult ? <p className="text-sm text-slate-600 dark:text-slate-300">{testResult}</p> : null}
-                        {testConnection.error ? <p className="text-sm text-red-600">{testConnection.error.message}</p> : null}
-                    </div>
-                </ShippingComingSoonCard>
-
-                <ShippingComingSoonCard>
-                    <h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">Sender Details</h2>
-                    <div className="grid gap-4 md:grid-cols-2">
-                        <TextField label="Sender name" value={form.senderName} onChange={(v) => update('senderName', v)} />
-                        <TextField label="Company" value={form.senderCompany} onChange={(v) => update('senderCompany', v)} />
-                        <TextField label="Phone" value={form.senderPhone} onChange={(v) => update('senderPhone', v)} />
-                        <TextField label="Email" value={form.senderEmail} onChange={(v) => update('senderEmail', v)} />
-                        <TextField label="Address 1" value={form.senderAddress1} onChange={(v) => update('senderAddress1', v)} />
-                        <TextField label="Address 2" value={form.senderAddress2} onChange={(v) => update('senderAddress2', v)} />
-                        <TextField label="Suburb" value={form.senderSuburb} onChange={(v) => update('senderSuburb', v)} />
-                        <TextField label="State" value={form.senderState} onChange={(v) => update('senderState', v)} />
-                        <TextField label="Postcode" value={form.senderPostcode} onChange={(v) => update('senderPostcode', v)} />
-                        <TextField label="Country" value={form.senderCountry} onChange={(v) => update('senderCountry', v)} />
-                    </div>
-                </ShippingComingSoonCard>
-                </div> : null}
-
-                {activeTab === 'services' ? <ShippingComingSoonCard>
-                    <h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">AusPost Service Defaults</h2>
-                    <div className="space-y-4">
-                        <p className="text-sm text-slate-600 dark:text-slate-300">These AusPost product IDs are discovered from your connected account and are used to auto-select the label service from the WooCommerce order shipping method. Express shipping uses the express default; non-AU addresses use the international default; all other domestic orders use the domestic default.</p>
-                        {serviceCatalogQuery.data ? (
-                            <div className="flex flex-wrap items-center gap-2 text-xs">
-                                <span className={`inline-flex items-center rounded-full border px-2 py-1 font-semibold ${catalogSourceTone}`}>{catalogSourceLabel}</span>
-                                <span className="text-slate-500 dark:text-slate-400">Updated {new Date(serviceCatalogQuery.data.updatedAt).toLocaleString()}</span>
-                                <button type="button" onClick={() => refreshServiceCodes.mutate()} disabled={refreshServiceCodes.isPending} className="rounded-lg border border-slate-300 px-2 py-1 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">Refresh service codes now</button>
-                            </div>
-                        ) : null}
-                        {serviceCatalogQuery.data?.warning ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">{serviceCatalogQuery.data.warning}</p> : null}
-                        {serviceCatalogQuery.error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">{serviceCatalogQuery.error.message}</p> : null}
-                        {refreshServiceCodes.error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">{refreshServiceCodes.error.message}</p> : null}
-                        <div className="grid gap-3 md:grid-cols-3">
-                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Default domestic AusPost service code
-                                <select value={form.defaultDomesticService} onChange={(event) => update('defaultDomesticService', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900">
-                                    <option value="">Select service code</option>
-                                    {serviceCodeOptions.map((option) => <option key={`domestic-${option}`} value={option}>{formatServiceCodeOption(option)}</option>)}
-                                </select>
-                            </label>
-                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Default express AusPost service code
-                                <select value={form.defaultExpressService} onChange={(event) => update('defaultExpressService', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900">
-                                    <option value="">Select service code</option>
-                                    {serviceCodeOptions.map((option) => <option key={`express-${option}`} value={option}>{formatServiceCodeOption(option)}</option>)}
-                                </select>
-                            </label>
-                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Default international AusPost service code
-                                <select value={form.defaultInternationalService} onChange={(event) => update('defaultInternationalService', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900">
-                                    <option value="">Select service code</option>
-                                    {serviceCodeOptions.map((option) => <option key={`international-${option}`} value={option}>{formatServiceCodeOption(option)}</option>)}
-                                </select>
-                            </label>
-                        </div>
-                        <div className="space-y-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
-                            <div className="flex items-center justify-between gap-3">
-                                <p className="text-sm font-semibold text-slate-900 dark:text-white">Shipping method service mappings</p>
-                                <div className="flex items-center gap-2">
-                                    <button type="button" onClick={() => importShippingMethods.mutate()} className="rounded-lg border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">Import from orders</button>
-                                    <button type="button" onClick={addShippingMethodMapping} className="rounded-lg border border-indigo-200 px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-500/40 dark:text-indigo-300 dark:hover:bg-indigo-500/10">Add Mapping</button>
-                                </div>
-                            </div>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">Match WooCommerce shipping method text to an AusPost service code before fallback defaults are used.</p>
-                            {importResult ? <p className="text-xs text-emerald-700 dark:text-emerald-300">{importResult}</p> : null}
-                            {importShippingMethods.error ? <p className="text-xs text-red-600">{importShippingMethods.error.message}</p> : null}
-                            {shippingMethodOptions.length === 0 ? <p className="text-xs text-amber-700 dark:text-amber-300">No shipping methods available yet. Use "Import from orders" first.</p> : null}
-                            {serviceCodeOptions.length === 0 ? <p className="text-xs text-amber-700 dark:text-amber-300">No usable service codes were discovered yet. Confirm credentials, account number, sender address, and environment, then test and save settings.</p> : null}
-                            {form.shippingMethodServiceMappings.length === 0 ? <p className="text-xs text-slate-500 dark:text-slate-400">No mappings added yet.</p> : null}
-                            {form.shippingMethodServiceMappings.map((mapping, index) => (
-                                <div key={`${index}-${mapping.wooShippingMethod}-${mapping.auspostServiceCode}`} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-7 dark:border-slate-700">
-                                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 md:col-span-3">Woo shipping method
-                                        <select value={mapping.wooShippingMethod} onChange={(event) => updateShippingMethodMapping(index, 'wooShippingMethod', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-900">
-                                            <option value="">Select shipping method</option>
-                                            {shippingMethodOptions.map((option) => <option key={option} value={option}>{option}</option>)}
-                                        </select>
-                                    </label>
-                                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 md:col-span-2">AusPost service code
-                                        <select value={mapping.auspostServiceCode} onChange={(event) => updateShippingMethodMapping(index, 'auspostServiceCode', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-900">
-                                            <option value="">Select service code</option>
-                                            {serviceCodeOptions.map((option) => <option key={option} value={option}>{formatServiceCodeOption(option)}</option>)}
-                                        </select>
-                                    </label>
-                                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 md:col-span-1">Match
-                                        <select value={mapping.matchType} onChange={(event) => updateShippingMethodMapping(index, 'matchType', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-900"><option value="exact">Exact</option><option value="contains">Contains</option></select>
-                                    </label>
-                                    <div className="flex items-end md:col-span-1">
-                                        <button type="button" onClick={() => removeShippingMethodMapping(index)} className="w-full rounded-lg border border-rose-200 px-2 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-500/10">Remove</button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                        <TextField label="Label format" value={form.labelFormat} onChange={(v) => update('labelFormat', v)} />
-                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Label print group<select value={form.labelPrintGroup} onChange={(event) => update('labelPrintGroup', event.target.value as SettingsFormState['labelPrintGroup'])} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"><option value="Parcel Post">Parcel Post</option><option value="Express Post">Express Post</option></select></label>
-                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Label paper<select value={form.labelPaperType} onChange={(event) => update('labelPaperType', event.target.value as SettingsFormState['labelPaperType'])} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"><option value="single_shipping_label">Single standard shipping label</option><option value="a4_label_sheet">A4 label sheets</option></select></label>
-                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">After label creation<select value={form.printDeliveryMethod} onChange={(event) => update('printDeliveryMethod', event.target.value as SettingsFormState['printDeliveryMethod'])} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"><option value="remote_print">Send to remote print agent</option><option value="open_pdf">Open PDF on screen</option></select></label>
-                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                            Woo fulfilment checkpoint
-                            <select
-                                value={form.wooFulfillmentBehavior}
-                                onChange={(event) => update('wooFulfillmentBehavior', event.target.value)}
-                                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"
-                            >
-                                <option value="keep_in_dispatch">Keep in dispatch (no auto-complete)</option>
-                                <option value="label_created">Complete when label is created</option>
-                                <option value="print_success">Complete when print succeeds</option>
-                            </select>
-                        </label>
-                        <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200"><input type="checkbox" checked={form.isEnabled} onChange={(e) => update('isEnabled', e.target.checked)} /> Enable AusPost shipping</label>
-                        <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200"><input type="checkbox" checked={form.labelBranded} onChange={(e) => update('labelBranded', e.target.checked)} /> Include AusPost branding on labels</label>
-                        <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200"><input type="checkbox" checked={form.trackingSyncEnabled} onChange={(e) => update('trackingSyncEnabled', e.target.checked)} /> Enable tracking polling</label>
-                        <TextField label="Automation allowlist (comma-separated trigger types)" value={form.trackingAutomationAllowlist} onChange={(v) => update('trackingAutomationAllowlist', v)} placeholder={TRACKING_TRIGGER_OPTIONS.join(', ')} />
-                        <TextField label="Tracking poll interval minutes" value={form.trackingPollIntervalMinutes} onChange={(v) => update('trackingPollIntervalMinutes', v)} />
-                        <TextField label="Tracking failure backoff minutes" value={form.trackingPollFailureBackoffMinutes} onChange={(v) => update('trackingPollFailureBackoffMinutes', v)} />
-                    </div>
-                </ShippingComingSoonCard> : null}
-
-                {activeTab === 'print' ? <ShippingComingSoonCard>
-                    <h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">Print Agent</h2>
-                    <p className="text-sm text-slate-600 dark:text-slate-300">Register the local computer that will run the OverSeek Print Agent. The token is shown once.</p>
-                    <div className="mt-4 space-y-3">
-                        <TextField label="Station name" value={stationName} onChange={setStationName} />
-                        <TextField label="Default printer name" value={stationPrinter} onChange={setStationPrinter} />
-                        <button type="button" onClick={() => createPrintStation.mutate({ name: stationName, defaultPrinterName: stationPrinter })} className="rounded-lg border border-indigo-200 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-500/40 dark:text-indigo-300 dark:hover:bg-indigo-500/10">Register Print Station</button>
-                        {newStationToken ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><p className="font-bold">Copy this station token now. It will not be shown again.</p><code className="mt-2 block break-all rounded bg-white p-2">{newStationToken}</code></div> : null}
-                    </div>
-                    <div className="mt-5 space-y-2">
-                        {printStationsQuery.data?.printStations.map((station) => (
-                            <div key={station.id} className="rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-700">
-                                <div className="flex items-center justify-between gap-3">
-                                    <p className="font-semibold text-slate-900 dark:text-white">{station.name}</p>
-                                    <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold uppercase text-slate-600 dark:bg-slate-700 dark:text-slate-200">{station.status}</span>
-                                </div>
-                                <p className="mt-1 text-slate-500 dark:text-slate-400">Printer: {station.defaultPrinterName || 'Not set'} · Last seen: {station.lastSeenAt ? new Date(station.lastSeenAt).toLocaleString() : 'Never'}</p>
-                                {station.lastErrorMessage ? <p className="mt-1 text-red-600">{station.lastErrorMessage}</p> : null}
-                                <button type="button" onClick={() => rotatePrintStationToken.mutate(station.id)} className="mt-2 text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-300">Rotate station token</button>
-                            </div>
-                        ))}
-                    </div>
-                </ShippingComingSoonCard> : null}
-
-                        {saveSettings.error ? <p className="text-sm text-red-600">{saveSettings.error.message}</p> : null}
-                        <div className="sticky bottom-4 z-10 flex justify-end">
-                            <button type="submit" disabled={saveSettings.isPending} className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-indigo-700 disabled:opacity-60"><Save size={16} /> Save Settings</button>
-                        </div>
-                    </div>
-                </div>
-
-            </form>
-        </ShippingPageShell>
-    );
+function AdmittedSettingsRead({ scope }: { scope: ShippingScope }) {
+    const read = useShippingRead('/settings', scope, decodeSettings);
+    if (read.loading || read.error || !read.data) return <ShippingReadState loading={read.loading} retry={read.retry} />;
+    return <SettingsDraft key={JSON.stringify(read.data)} scope={scope} snapshot={read.data} reload={read.retry} />;
 }
-
-function TextField({ label, value, onChange, type = 'text', autoComplete, placeholder }: { label: string; value: string; onChange: (value: string) => void; type?: string; autoComplete?: string; placeholder?: string }) {
-    return <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">{label}<input type={type} value={value} autoComplete={autoComplete} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900" /></label>;
-}
-
-interface ShippingMethodServiceMapping {
-    wooShippingMethod: string;
-    auspostServiceCode: string;
-    matchType: 'exact' | 'contains';
-}
-
-function normalizeShippingMethodMappings(value: unknown): ShippingMethodServiceMapping[] {
-    if (!Array.isArray(value)) return [];
-    return value
-        .filter((item) => item && typeof item === 'object')
-        .map((item) => {
-            const record = item as Record<string, unknown>;
-            const wooShippingMethod = String(record.wooShippingMethod || '').trim();
-            const auspostServiceCode = String(record.auspostServiceCode || '').trim();
-            if (!wooShippingMethod || !auspostServiceCode) return null;
-            return {
-                wooShippingMethod,
-                auspostServiceCode,
-                matchType: record.matchType === 'contains' ? 'contains' : 'exact',
-            };
-        })
-        .filter((item): item is ShippingMethodServiceMapping => Boolean(item));
+function SettingsDraft({ scope, snapshot, reload }: { scope: ShippingScope; snapshot: z.infer<typeof settingsSchema>; reload: () => void }) {
+    const settings = snapshot.carrierAccount, observed = settings?.config ?? {};
+    const { hasPermission } = usePermissions();
+    const stations = useShippingRead('/settings/stations', scope, decodeStations);
+    const [config, setConfig] = useState<Record<string, string | boolean | number>>(() => Object.fromEntries(Object.entries(defaults).map(([key, fallback]) => [key, observed[key] === undefined ? fallback : typeof observed[key] === typeof fallback ? observed[key] as string | boolean | number : 'unknown'])));
+    const [sender, setSender] = useState<Record<string, string>>(() => Object.fromEntries(senderFields.map(key => [key, typeof settings?.senderAddress?.[key] === 'string' ? String(settings.senderAddress[key]) : ''])));
+    const [displayName, setDisplayName] = useState(settings?.displayName ?? 'Australia Post'), [enabled, setEnabled] = useState(settings?.isEnabled ?? false);
+    const [mappings, setMappings] = useState(() => JSON.stringify(observed.shippingMethodServiceMappings ?? [], null, 2)), [allowlist, setAllowlist] = useState(() => JSON.stringify(observed.trackingAutomationAllowlist ?? []));
+    const [apiKey, setApiKey] = useState(''), [apiSecret, setApiSecret] = useState('');
+    const [name, setName] = useState(''), [printer, setPrinter] = useState(''), [token, setToken] = useState<string | null>(null);
+    const [busy, setBusy] = useState(false), [blocked, setBlocked] = useState(false), [message, setMessage] = useState('');
+    const pendingRef = useRef(false), activeRef = useRef(true);
+    const [operationId, setOperationId] = useState(() => crypto.randomUUID());
+    const current = JSON.stringify([config, sender, displayName, enabled, mappings, allowlist, apiKey, apiSecret]);
+    const [baseline] = useState(current), dirty = baseline !== current;
+    useDraftUnload(dirty || busy || blocked || !!token);
+    useEffect(() => { activeRef.current = true; return () => { activeRef.current = false; }; }, []);
+    useEffect(() => { if (!token) return; const timer = setTimeout(() => setToken(null), 60000); return () => clearTimeout(timer); }, [token]);
+    const editable = hasPermission('manage_shipping_settings') && !busy && !blocked;
+    const run = async (action: 'save' | 'test' | 'refresh' | 'create' | 'rotate', resource?: z.infer<typeof stationSchema>) => {
+        if (!editable || pendingRef.current) return;
+        if (action !== 'save' && dirty) { setMessage('Save or deliberately discard the draft first. Tests/refresh use saved credentials only.'); return; }
+        let data: unknown = {};
+        if (action === 'save') {
+            try {
+                const parsedMappings = z.array(z.object({ wooShippingMethod: z.string().trim().min(1).max(180), auspostServiceCode: z.string().trim().min(1).max(80), matchType: z.enum(['exact', 'contains']) }).strict()).max(200).parse(JSON.parse(mappings));
+                const parsedAllowlist = z.array(z.enum(triggers as [string, ...string[]])).max(6).parse(JSON.parse(allowlist));
+                for (const [key, options] of Object.entries(enums)) if (!options.includes(String(config[key]))) throw new Error('Unknown policy');
+                if (!/^[A-Z]{2}$/.test(sender.country)) throw new Error('Country required');
+                data = { ...config, senderAddress: sender, displayName, isEnabled: enabled, shippingMethodServiceMappings: parsedMappings, trackingAutomationAllowlist: parsedAllowlist, ...(apiKey ? { apiKey } : {}), ...(apiSecret ? { apiSecret } : {}) };
+            } catch { setMessage('Review supported policy values, explicit sender country and bounded mapping/trigger JSON arrays. No unknown value will be silently replaced.'); return; }
+        }
+        if (action === 'create') data = { name: name.trim(), defaultPrinterName: printer.trim() || null };
+        if (!window.confirm(action === 'save' ? 'Save this reviewed settings snapshot, including environment, endpoints, tracking and fulfillment policy? Missing values shown as draft defaults are included. No provider test or print is requested.' : action === 'test' || action === 'refresh' ? `Run a saved-credential provider ${action}? This may make external requests. Lost acknowledgement requires reconciliation, not a new operation.` : `${action === 'rotate' ? 'Rotate this station token and invalidate its previous credential' : 'Create this print station credential'}? The token is shown once for 60 seconds; this does not print.`)) return;
+        pendingRef.current = true; setBusy(true); setToken(null); setMessage('');
+        try {
+            const path = action === 'save' ? '/settings' : action === 'test' ? '/settings/test-connection' : action === 'refresh' ? '/settings/auspost-service-catalog' : action === 'create' ? '/print-stations' : `/print-stations/${encodeURIComponent(resource!.id)}/rotate-token`;
+            const result = z.object({ accountId: identity, operationId: z.string().uuid(), value: z.unknown() }).parse(await shippingFetch(path, scope.token, scope.accountId, { method: action === 'save' ? 'PATCH' : 'POST', body: JSON.stringify({ operationId, resourceId: resource?.id ?? settings?.id ?? null, version: resource?.updatedAt ?? settings?.updatedAt ?? null, data }) }));
+            if (result.accountId !== scope.accountId || result.operationId !== operationId) throw new Error('Acknowledgement mismatch');
+            if (!activeRef.current) return;
+            if (action === 'save') { setApiKey(''); setApiSecret(''); reload(); }
+            else if (action === 'create' || action === 'rotate') {
+                const value = z.object({ token: z.string().regex(/^[a-f0-9]{64}$/), printStation: z.object({ id: identity }) }).parse(result.value);
+                setToken(value.token); stations.retry();
+            } else setMessage(action === 'refresh' ? 'Catalog refresh acknowledged. Provider result is not shipment eligibility; review the saved account and service code before use.' : 'Provider test acknowledged. This is not label creation, tracking or print evidence.');
+            setOperationId(crypto.randomUUID());
+        } catch { if (activeRef.current) { setBlocked(true); setMessage(`Operation ${operationId} unconfirmed/conflicted. Preserve draft and reconcile; abort/closing is not rollback. No automatic retry admitted.`); } }
+        finally { pendingRef.current = false; if (activeRef.current) setBusy(false); }
+    };
+    return <ShippingPageShell title="Shipping settings" description="Scoped versioned configuration and deliberate provider/station actions. Opening this page makes no provider calls."><div className="space-y-5"><p>Saved credentials: {snapshot.credentialsConfigured ? 'configured (not exposed)' : 'not observed'}. Missing configuration is shown as draft defaults, not observed production policy. New drafts disable carrier/tracking, have no automation triggers and use PDF preparation.</p>{message && <p role={blocked ? 'alert' : 'status'}>{message}</p>}<button type="button" disabled={busy} onClick={() => { if ((!dirty && !blocked && !token) || window.confirm('Discard local draft/secrets and reload? Any unconfirmed operation remains recorded; do not repeat it.')) reload(); }}>Discard draft / reload observations</button><form className="space-y-4" onSubmit={event => { event.preventDefault(); void run('save'); }}><fieldset disabled={!editable} className="space-y-3"><label className="block">Display name<input className="block w-full border dark:bg-slate-800" value={displayName} maxLength={120} onChange={event => setDisplayName(event.target.value)} /></label><label className="block"><input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} /> Enable carrier</label><h2 className="font-semibold">Credentials (blank retains saved secret)</h2><label className="block">New API key<input type="password" autoComplete="new-password" className="block w-full border dark:bg-slate-800" value={apiKey} maxLength={1000} onChange={event => setApiKey(event.target.value)} /></label><label className="block">New API secret<input type="password" autoComplete="new-password" className="block w-full border dark:bg-slate-800" value={apiSecret} maxLength={1000} onChange={event => setApiSecret(event.target.value)} /></label><h2 className="font-semibold">Carrier and output policy</h2><div className="grid gap-3 sm:grid-cols-2">{Object.entries(config).map(([key, value]) => <label key={key} className="block">{key} {observed[key] === undefined && <span className="text-xs">(draft default)</span>}{typeof value === 'boolean' ? <input className="ml-2" type="checkbox" checked={value} onChange={event => setConfig({ ...config, [key]: event.target.checked })} /> : enums[key] ? <select className="block w-full border dark:bg-slate-800" value={String(value)} onChange={event => setConfig({ ...config, [key]: event.target.value })}>{!enums[key].includes(String(value)) && <option value={String(value)}>Unknown saved policy; select explicitly</option>}{enums[key].map(option => <option key={option} value={option}>{option || 'Not configured'}</option>)}</select> : <input className="block w-full border dark:bg-slate-800" type={typeof defaults[key] === 'number' ? 'number' : 'text'} maxLength={255} value={String(value)} onChange={event => setConfig({ ...config, [key]: typeof defaults[key] === 'number' ? Number(event.target.value) : event.target.value })} />}</label>)}</div><h2 className="font-semibold">Sender</h2><div className="grid gap-3 sm:grid-cols-2">{senderFields.map(key => <label key={key}>{key}<input className="block w-full border dark:bg-slate-800" value={sender[key]} maxLength={key === 'country' ? 2 : 200} onChange={event => setSender({ ...sender, [key]: event.target.value })} /></label>)}</div><label className="block">Shipping method mappings (JSON array: wooShippingMethod, auspostServiceCode, matchType)<textarea className="block w-full border font-mono dark:bg-slate-800" rows={5} maxLength={80000} value={mappings} onChange={event => setMappings(event.target.value)} /></label><label className="block">Opted-in tracking automation trigger IDs (JSON array; default empty)<textarea className="block w-full border dark:bg-slate-800" rows={3} maxLength={2000} value={allowlist} onChange={event => setAllowlist(event.target.value)} /></label><p className="text-sm">Supported triggers: {triggers.join(', ')}. Reference service names/codes do not prove live account eligibility. Configure exact verified codes; no inferred services are inserted.</p></fieldset><button type="submit" disabled={!editable || !dirty}>Save reviewed settings</button></form><div className="flex flex-wrap gap-3"><button type="button" disabled={!editable || dirty || !settings} onClick={() => void run('test')}>Review saved-credential test</button><button type="button" disabled={!editable || dirty || !settings} onClick={() => void run('refresh')}>Review provider catalog refresh</button></div><section className="space-y-3"><h2 className="font-semibold">Print stations (local observations, up to 100)</h2>{stations.loading ? <p role="status">Loading stations…</p> : stations.error || !stations.data ? <p role="alert">Stations unavailable; no offline/online conclusion inferred.</p> : <>{stations.data.partial && <p>Station window is partial.</p>}{stations.data.printStations.map(station => <div key={station.id} className="rounded border p-3"><p>{station.name} · recorded {station.status} · heartbeat {station.lastSeenAt ? new Date(station.lastSeenAt).toLocaleString() : 'not observed'}</p><button type="button" disabled={!editable || dirty} onClick={() => void run('rotate', station)}>Review token rotation for {station.name}</button></div>)}</>}<label className="block">New station name<input className="block border dark:bg-slate-800" disabled={!editable} maxLength={120} value={name} onChange={event => setName(event.target.value)} /></label><label className="block">Default printer name<input className="block border dark:bg-slate-800" disabled={!editable} maxLength={200} value={printer} onChange={event => setPrinter(event.target.value)} /></label><button type="button" disabled={!editable || dirty || !name.trim()} onClick={() => void run('create')}>Review station registration</button>{token && <div className="rounded border p-3"><p>Transient station token. Save securely; hidden in 60 seconds. Not stored in replay receipts.</p><code className="break-all">{token}</code><button type="button" onClick={() => setToken(null)}>Dismiss token now</button></div>}</section></div></ShippingPageShell>;
 }

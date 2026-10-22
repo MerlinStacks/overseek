@@ -1,0 +1,21 @@
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, expect, it, vi } from 'vitest';
+const m = vi.hoisted(() => ({ accountId: 'a' }));
+vi.mock('../../context/AuthContext', () => ({ useAuth: () => ({ token: 't', user: { id: 'u' } }) }));
+vi.mock('../../context/AccountContext', () => ({ useAccount: () => ({ currentAccount: { id: m.accountId } }) }));
+vi.mock('../../hooks/usePermissions', () => ({ usePermissions: () => ({ hasPermission: () => true }) }));
+import { ShippingSettingsPage } from './ShippingSettingsPage';
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); m.accountId = 'a'; });
+it('opens only passive reads, resets secrets on scope changes and never defaults tracking opt-in', async () => {
+    const fetch = vi.fn().mockImplementation(async (url: string) => new Response(JSON.stringify(url.includes('stations') ? { accountId: m.accountId, printStations: [], partial: false } : url.includes('policy') ? { accountId: m.accountId, carrierAccount: null } : { accountId: m.accountId, carrierAccount: null, credentialsConfigured: false }), { headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetch);
+    const view = render(<MemoryRouter><ShippingSettingsPage /></MemoryRouter>);
+    const key = await screen.findByLabelText('New API key');
+    fireEvent.change(key, { target: { value: 'do-not-carry' } });
+    expect(screen.getByLabelText(/trackingSyncEnabled/)).not.toBeChecked();
+    expect(fetch.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
+    expect(fetch.mock.calls.some(([url]) => url.includes('auspost-service-catalog'))).toBe(false);
+    m.accountId = 'b'; view.rerender(<MemoryRouter><ShippingSettingsPage /></MemoryRouter>);
+    expect(await screen.findByLabelText('New API key')).toHaveValue('');
+});

@@ -1,6 +1,7 @@
 import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import crypto from 'crypto';
 import { EventBus, EVENTS } from '../services/events';
+import { recordCriticalEvent } from '../services/CriticalEventOutbox';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { decrypt } from '../utils/encryption';
@@ -210,6 +211,8 @@ async function handleArtworkEvent(
         rawEvent: event,
     };
 
+    if (typeof event.event_id !== 'string' || !event.event_id.trim() || event.event_id.length > 200) return reply.code(422).send({ error: 'A stable bounded source event_id is required' });
+    await prisma.$transaction(tx => recordCriticalEvent(tx, mapped.eventName, { accountId, artwork: triggerData }, `artwork:${event.event_id}`));
     EventBus.emit(mapped.eventName, { accountId, artwork: triggerData });
 
     Logger.info('[ArtworkEvents] Artwork event accepted', {

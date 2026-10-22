@@ -105,13 +105,14 @@ function mockOpenConversationFetch(action: 'resolve' | 'block', actionStatus = 2
         }
         if (url === '/api/chat/open-1/read') return response(204);
         if (url === '/api/chat/open-1/available-channels') return response(200, { channels: [] });
+        if (url === '/api/chat/open-1/block-state') return new Response(JSON.stringify({ accountId: 'account-1', email: 'customer@example.com', version: null, conversationVersion: '2026-08-07T00:00:00.000Z' }), { headers: { 'content-type': 'application/json' } });
         if (action === 'resolve' && url === '/api/chat/open-1' && init?.method === 'PUT') {
             if (actionStatus < 300) removed = true;
             return response(actionStatus);
         }
         if (action === 'block' && url === '/api/chat/open-1/block' && init?.method === 'POST') {
             if (actionStatus < 300) removed = true;
-            return response(actionStatus);
+            return actionStatus < 300 ? new Response(JSON.stringify({ success: true, accountId: 'account-1', email: 'customer@example.com', blocked: true, operationId: JSON.parse(String(init.body)).operationId }), { headers: { 'content-type': 'application/json' } }) : response(actionStatus);
         }
         throw new Error(`Unexpected request: ${url}`);
     });

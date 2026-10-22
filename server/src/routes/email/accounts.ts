@@ -8,6 +8,11 @@ import { EmailService } from '../../services/EmailService';
 import { decrypt } from '../../utils/encryption';
 import { getEmailAccountIdOrReply, parseBodyOrReply } from './routeHelpers';
 import { PermissionService } from '../../services/PermissionService';
+import { z } from 'zod';
+import { EmailCommandMetaSchema } from './schemas';
+import { emailAccountCommand } from '../../services/EmailAccountCommand';
+const commandSchema = EmailCommandMetaSchema.extend({ data: z.unknown() }).strict();
+import { admittedEmailTest, requireEmailTestDestination } from '../../services/EmailConnectionTest';
 
 const emailService = new EmailService();
 
@@ -85,12 +90,18 @@ async function resolveTestPassword(
 
 const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
+    fastify.addHook('preHandler', async (request, reply) => {
+        const accountId = request.accountId, actorId = request.user?.id;
+        const permission = request.method === 'GET' ? 'view_email_settings' : 'manage_email_settings';
+        if (!accountId || !actorId || !await PermissionService.hasPermission(actorId, accountId, permission)) return reply.code(403).send({ error: 'Email settings permission required' });
+    });
 
     fastify.get('/accounts', async (request, reply) => {
         const accountId = getEmailAccountIdOrReply(request, reply);
         if (!accountId) return;
         try {
-            const accounts = await prisma.emailAccount.findMany({ where: { accountId } });
+            const accounts = await prisma.emailAccount.findMany({ where: { accountId }, take: 101, orderBy: { id: 'asc' } });
+            if (accounts.length > 100) return reply.code(409).send({ error: 'Email account list exceeds supported window; use an operator-reviewed bounded workflow' });
             return accounts.map(maskPasswords);
         } catch (error: any) {
             Logger.error('Failed to list email accounts', { error });
@@ -101,14 +112,16 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/accounts', async (request, reply) => {
         const accountId = getEmailAccountIdOrReply(request, reply);
         if (!accountId) return;
-        const body = parseBodyOrReply(reply, EmailAccountBodySchema.safeParse(request.body));
+        const command = parseBodyOrReply(reply, commandSchema.safeParse(request.body));
+        if (!command) return;
+        const body = parseBodyOrReply(reply, EmailAccountBodySchema.safeParse(command.data));
         if (!body) return;
         if (!body.name || !body.email) {
             return reply.code(400).send({ error: 'Name and email are required' });
         }
         try {
             const baseData = buildEmailAccountBaseData(body);
-            const account = await prisma.emailAccount.create({
+            return await emailAccountCommand(accountId, request.user!.id, null, 'create', command, body, async tx => maskPasswords(await tx.emailAccount.create({
                 data: {
                     accountId,
                     ...baseData,
@@ -116,8 +129,7 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
                     imapPassword: body.imapPassword ? encrypt(body.imapPassword) : null,
                     relayApiKey: body.relayApiKey ? encrypt(body.relayApiKey) : null,
                 }
-            });
-            return maskPasswords(account);
+            })));
         } catch (error: any) {
             Logger.error('Failed to create email account', { error });
             return reply.code(500).send({ error: 'Failed to create email account' });
@@ -128,7 +140,9 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
         const accountId = getEmailAccountIdOrReply(request, reply);
         if (!accountId) return;
         const { id } = request.params as { id: string };
-        const body = parseBodyOrReply(reply, EmailAccountBodySchema.safeParse(request.body));
+        const command = parseBodyOrReply(reply, commandSchema.safeParse(request.body));
+        if (!command) return;
+        const body = parseBodyOrReply(reply, EmailAccountBodySchema.safeParse(command.data));
         if (!body) return;
         const existing = await prisma.emailAccount.findFirst({ where: { id, accountId } });
         if (!existing) return reply.code(404).send({ error: 'Account not found' });
@@ -146,8 +160,7 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
         if (relayApiKey) updateData.relayApiKey = relayApiKey;
 
         try {
-            const updated = await prisma.emailAccount.update({ where: { id }, data: updateData });
-            return maskPasswords(updated);
+            return await emailAccountCommand(accountId, request.user!.id, id, 'update', command, body, async tx => maskPasswords(await tx.emailAccount.update({ where: { id }, data: { ...updateData, updatedAt: new Date(Math.max(Date.now(), existing.updatedAt.getTime() + 1)) } })));
         } catch (error: any) {
             Logger.error('Failed to update email account', { error });
             return reply.code(500).send({ error: 'Failed to update email account' });
@@ -159,9 +172,12 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
         if (!accountId) return;
         const { id } = request.params as { id: string };
         try {
-            const result = await prisma.emailAccount.deleteMany({ where: { id, accountId } });
-            if (result.count === 0) return reply.code(404).send({ error: 'Account not found' });
-            return { success: true };
+            const command = EmailCommandMetaSchema.parse(request.body);
+            return await emailAccountCommand(accountId, request.user!.id, id, 'delete', command, {}, async tx => {
+                const result = await tx.emailAccount.deleteMany({ where: { id, accountId } });
+                if (result.count !== 1) throw new Error('Email account changed');
+                return { success: true };
+            });
         } catch (error: any) {
             Logger.error('Failed to delete email account', { error });
             return reply.code(500).send({ error: 'Failed to delete account' });
@@ -178,10 +194,12 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(400).send({ error: 'Default email account must be configured for sending' });
         }
         try {
-            await prisma.$transaction([
-                prisma.emailAccount.updateMany({ where: { accountId, isDefault: true }, data: { isDefault: false } }),
-                prisma.emailAccount.update({ where: { id }, data: { isDefault: true } })
-            ]);
+            const command = EmailCommandMetaSchema.parse(request.body);
+            await emailAccountCommand(accountId, request.user!.id, id, 'default', command, {}, async tx => {
+                await tx.emailAccount.updateMany({ where: { accountId, isDefault: true }, data: { isDefault: false } });
+                await tx.emailAccount.update({ where: { id }, data: { isDefault: true, updatedAt: new Date(Math.max(Date.now(), target.updatedAt.getTime() + 1)) } });
+                return { success: true };
+            });
             Logger.info('Set default email account', { accountId, emailAccountId: id });
             return { success: true };
         } catch (error: any) {
@@ -192,9 +210,17 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.post('/test', async (request, reply) => {
         const accountId = request.accountId;
-        const parsed = parseBodyOrReply(reply, TestConnectionBodySchema.safeParse(request.body));
+        if (!request.user?.id || !accountId || !await PermissionService.hasPermission(request.user.id, accountId, '*')) return reply.code(403).send({ error: 'Admin permission required for network tests' });
+        const command = parseBodyOrReply(reply, commandSchema.safeParse(request.body));
+        if (!command) return;
+        const parsed = parseBodyOrReply(reply, TestConnectionBodySchema.safeParse(command.data));
         if (!parsed) return;
         const { id, protocol, host, port, username, password, isSecure } = parsed;
+        if (id && password === '••••••••') {
+            const saved = await prisma.emailAccount.findFirst({ where: { id, accountId } });
+            const smtp = protocol === 'SMTP';
+            if (!saved || (smtp ? saved.smtpHost : saved.imapHost) !== host || (smtp ? saved.smtpPort : saved.imapPort) !== port || ((smtp ? saved.smtpUsername : saved.imapUsername) || saved.email) !== username) return reply.code(400).send({ error: 'Saved credentials may only be tested with their saved destination and identity' });
+        }
         const passwordToTest = await resolveTestPassword(accountId, protocol, id, password);
         const mockAccount = {
             host,
@@ -205,8 +231,8 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
             isSecure: Boolean(isSecure)
         };
         try {
-            const success = await emailService.verifyConnection(mockAccount);
-            return { success };
+            requireEmailTestDestination(host);
+            return await admittedEmailTest(accountId, request.user.id, id, command, parsed, async () => ({ success: await emailService.verifyConnection(mockAccount) }));
         } catch (error: any) {
             Logger.error('Connection test failed', { error: error.message });
             return reply.code(400).send({ success: false, error: error.message });
@@ -220,11 +246,14 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
         if (!userId || !(await PermissionService.hasPermission(userId, accountId, '*'))) {
             return reply.code(403).send({ success: false, error: 'Admin permission required' });
         }
-        const parsed = parseBodyOrReply(reply, TestRelayBodySchema.safeParse(request.body));
+        const command = parseBodyOrReply(reply, commandSchema.safeParse(request.body));
+        if (!command) return;
+        const parsed = parseBodyOrReply(reply, TestRelayBodySchema.safeParse(command.data));
         if (!parsed) return;
         const { relayEndpoint, relayApiKey, relayProfileId, emailAccountId, testEmail } = parsed;
         const parsedUrl = parseHttpsUrlOrReply(relayEndpoint, reply);
         if (!parsedUrl) return;
+        try { requireEmailTestDestination(parsedUrl.origin, true); } catch { return reply.code(400).send({ error: 'Relay network tests require an operator-allowlisted HTTPS origin' }); }
         let apiKeyToUse = relayApiKey;
         if (!apiKeyToUse || apiKeyToUse === '••••••••') {
             if (!emailAccountId || !accountId) {
@@ -256,8 +285,10 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
             test_mode: true
         };
         try {
+            return await admittedEmailTest(accountId, userId, emailAccountId, command, parsed, async () => {
             const response = await fetch(parsedUrl.toString(), {
                 method: 'POST',
+                signal: AbortSignal.timeout(15000),
                 redirect: 'error',
                 headers: {
                     'Content-Type': 'application/json',
@@ -266,14 +297,15 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
                 },
                 body: JSON.stringify(testPayload)
             });
-            const responseData = await response.json().catch(() => ({}));
+            await response.body?.cancel().catch(() => undefined);
             if (response.ok) {
-                return { success: true, message: 'Relay connection test successful! API key authenticated.', data: responseData };
+                return { success: true, message: 'Relay HTTP acceptance observed; customer delivery is not established.' };
             } else if (response.status === 401 || response.status === 403) {
                 return { success: false, error: 'API key authentication failed. Check your relay API key.' };
             } else {
-                return { success: false, error: `Relay returned status ${response.status}: ${responseData.message || responseData.code || 'Unknown error'}` };
+                return { success: false, error: `Relay returned status ${response.status}; no successful delivery asserted` };
             }
+            });
         } catch (error: any) {
             Logger.error('Relay test failed', { error: error.message });
             return reply.code(400).send({ success: false, error: error.message });

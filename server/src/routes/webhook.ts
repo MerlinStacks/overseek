@@ -14,6 +14,7 @@ import { parseWooDate } from '../utils/wooDates';
 import { IndexingService } from '../services/search/IndexingService';
 import { WebhookDeliveryService } from '../services/WebhookDeliveryService';
 import { EventBus, EVENTS } from '../services/events';
+import { recordCriticalEvent, recordOrderLifecycle } from '../services/CriticalEventOutbox';
 import { redisClient } from '../utils/redis';
 import { isExcludedOrderStatus, normalizeOrderStatus } from '../constants/orderStatus';
 import { campaignTrackingService } from '../services/CampaignTrackingService';
@@ -188,6 +189,7 @@ export async function processWebhookPayload(
                     }
                 });
                 deliveryEstimateSnapshot = await importOrderSnapshot(tx, accountId, Number(order.id), order.meta_data, persisted?.deliveryEstimateSnapshot);
+                await recordOrderLifecycle(tx, accountId, { ...order, deliveryEstimateSnapshot }, existingOrder?.status ?? null);
                 const contact = await materializeContact(tx, accountId, {
                     source: 'ORDER', sourceKey: `order:${order.id}`, wooCustomerId, email: billingEmail,
                     firstName: order.billing?.first_name, lastName: order.billing?.last_name
@@ -367,12 +369,14 @@ export async function processWebhookPayload(
             }
 
             persistedCustomer = await withOrderTotalsTransaction(accountId, async tx => {
+                const priorCustomer = await tx.wooCustomer.findUnique({ where: { accountId_wooId: { accountId, wooId: Number(body.id) } }, select: { id: true } });
                 const contact = await materializeContact(tx, accountId, {
                     source: 'WOO_CUSTOMER', wooCustomerId: Number(body.id), email: (body as any).email,
                     firstName: (body as any).first_name, lastName: (body as any).last_name, remoteData: body as any
                 });
                 await updateCustomerTotals(tx, accountId, [], [contact.id]);
                 await queueContactProjection(tx, accountId, [contact.id]);
+                if (!priorCustomer && topic === 'customer.created') await recordCriticalEvent(tx, EVENTS.CUSTOMER.CREATED, { accountId, customer: body });
                 return contact;
             });
 

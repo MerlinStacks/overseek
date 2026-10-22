@@ -3,7 +3,7 @@ import { prisma } from '../utils/prisma';
 import { z } from 'zod';
 export const scopeId = z.string().trim().min(1).max(200);
 /** Admission is charged even on failure: provider cost/acknowledgement may be ambiguous. */
-export async function claimProviderWork(accountId: string, namespace: 'chat' | 'embedding', units: number) {
+export async function claimProviderWork(accountId: string, namespace: 'chat' | 'embedding' | 'email-test', units: number) {
     scopeId.parse(accountId);
     if (!Number.isInteger(units) || units < 1 || units > 100) throw new Error('Invalid work units');
     const id = `provider-budget:${namespace}:${accountId}`, owner = randomUUID(), now = Date.now(), window = Math.floor(now / 3600000);

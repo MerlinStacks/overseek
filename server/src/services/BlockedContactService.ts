@@ -1,185 +1,86 @@
-/**
- * Blocked Contact Service
- * 
- * Manages blocked contacts for inbox filtering.
- * Blocked contacts have their messages auto-resolved without autoreplies.
- * 
- * OPTIMIZATION: Uses Redis set caching for O(1) blocked contact lookups during
- * email ingestion. Cache is invalidated on block/unblock operations.
- */
-
+import { createHash } from 'crypto';
+import { z } from 'zod';
 import { prisma } from '../utils/prisma';
-import { Logger } from '../utils/logger';
-import { redisClient as redis } from '../utils/redis';
 import { invalidateCache } from '../utils/cache';
+import { Logger } from '../utils/logger';
 
-// Cache TTL: 5 minutes - allows quick updates while avoiding constant DB queries
-const BLOCKED_CACHE_TTL = 300;
-
-/**
- * Get Redis key for blocked contacts set
- */
-function getBlockedSetKey(accountId: string): string {
-    return `blocked:emails:${accountId}`;
+const scope = z.string().min(1).max(200);
+export function canonicalBlockedEmail(value: unknown): string {
+    return z.string().trim().max(254).email().parse(value).toLowerCase();
 }
-
+export const blockCommandSchema = z.object({ operationId: z.string().uuid(), version: z.string().datetime().nullable(), reason: z.string().trim().max(500).optional(), conversationVersion: z.string().datetime().optional() }).strict();
+type Command = z.infer<typeof blockCommandSchema>;
+const conflict = () => Object.assign(new Error('Block state changed or acknowledgement unavailable; reconcile original operation'), { statusCode: 409 });
+const headId = (accountId: string, email: string) => `blocked-contact-version:${createHash('sha256').update(JSON.stringify([accountId, email])).digest('hex')}`;
 export class BlockedContactService {
-    /**
-     * Check if an email is blocked for a given account.
-     * 
-     * PERFORMANCE: Uses Redis set membership check (O(1)) with fallback to DB.
-     * The blocked emails set is populated on first check and cached.
-     */
+    /** Authoritative decision at read time. DB failure propagates and must not
+     * authorize an autoreply. Redis negative caches are never delivery evidence. */
     static async isBlocked(accountId: string, email: string): Promise<boolean> {
-        const normalizedEmail = email.toLowerCase();
-        const cacheKey = getBlockedSetKey(accountId);
-
-        try {
-            // Check if set exists and check membership in one call
-            const [exists, isMember] = await Promise.all([
-                redis.exists(cacheKey),
-                redis.sismember(cacheKey, normalizedEmail)
-            ]);
-
-            if (exists) {
-                return isMember === 1;
-            }
-
-            // Cache miss - populate from database
-            const blocked = await prisma.blockedContact.findMany({
-                where: { accountId },
-                select: { email: true }
-            });
-
-            // Populate Redis set (or create empty marker)
-            if (blocked.length > 0) {
-                await redis.sadd(cacheKey, ...blocked.map(b => b.email));
-            } else {
-                // Use a special marker to indicate "set exists but is empty"
-                await redis.sadd(cacheKey, '__EMPTY_SET__');
-            }
-            await redis.expire(cacheKey, BLOCKED_CACHE_TTL);
-
-            return blocked.some(b => b.email === normalizedEmail);
-        } catch (_redisError) {
-            // Redis unavailable - fall back to database
-            Logger.debug('[BlockedContact] Redis unavailable, falling back to DB', { accountId });
-            const blocked = await prisma.blockedContact.findUnique({
-                where: {
-                    accountId_email: { accountId, email: normalizedEmail }
-                }
-            });
-            return !!blocked;
-        }
+        scope.parse(accountId);
+        return !!await prisma.blockedContact.findUnique({ where: { accountId_email: { accountId, email: canonicalBlockedEmail(email) } }, select: { id: true } });
     }
-
-    /**
-     * Block a contact by email.
-     * 
-     * NOTE: Invalidates cache to ensure consistency.
-     */
-    static async blockContact(
-        accountId: string,
-        email: string,
-        blockedBy?: string,
-        reason?: string
-    ): Promise<{ success: boolean; error?: string }> {
-        try {
-            await prisma.blockedContact.upsert({
-                where: {
-                    accountId_email: { accountId, email: email.toLowerCase() }
-                },
-                create: {
-                    accountId,
-                    email: email.toLowerCase(),
-                    blockedBy,
-                    reason
-                },
-                update: {
-                    blockedBy,
-                    reason,
-                    blockedAt: new Date()
-                }
-            });
-
-            // Invalidate cache so next check repopulates
-            try {
-                await redis.del(getBlockedSetKey(accountId));
-            } catch { /* Redis unavailable is fine */ }
-            await invalidateCache('inbox', `conversations:${accountId}`);
-
-            Logger.info('[BlockedContact] Contact blocked', { accountId, email });
-            return { success: true };
-        } catch (error) {
-            Logger.error('[BlockedContact] Failed to block contact', { error, accountId, email });
-            return { success: false, error: 'Failed to block contact' };
-        }
-    }
-
-    /**
-     * Unblock a contact by email.
-     * 
-     * NOTE: Invalidates cache to ensure consistency.
-     */
-    static async unblockContact(
-        accountId: string,
-        email: string
-    ): Promise<{ success: boolean; error?: string }> {
-        try {
-            await prisma.blockedContact.deleteMany({
-                where: {
-                    accountId,
-                    email: email.toLowerCase()
-                }
-            });
-
-            // Invalidate cache so next check repopulates
-            try {
-                await redis.del(getBlockedSetKey(accountId));
-            } catch { /* Redis unavailable is fine */ }
-            await invalidateCache('inbox', `conversations:${accountId}`);
-
-            Logger.info('[BlockedContact] Contact unblocked', { accountId, email });
-            return { success: true };
-        } catch (error) {
-            Logger.error('[BlockedContact] Failed to unblock contact', { error, accountId, email });
-            return { success: false, error: 'Failed to unblock contact' };
-        }
-    }
-
-    /**
-     * List all blocked contacts for an account.
-     */
-    static async listBlocked(accountId: string) {
-        return prisma.blockedContact.findMany({
-            where: { accountId },
-            include: {
-                blocker: { select: { id: true, fullName: true } }
-            },
-            orderBy: { blockedAt: 'desc' }
-        });
-    }
-
-    static async listBlockedEmails(accountId: string): Promise<string[]> {
-        const blocked = await prisma.blockedContact.findMany({
-            where: { accountId },
-            select: { email: true }
-        });
-
-        return blocked.map((contact) => contact.email.toLowerCase());
-    }
-
-    /**
-     * Get a single blocked contact.
-     */
     static async getBlockedContact(accountId: string, email: string) {
-        return prisma.blockedContact.findUnique({
-            where: {
-                accountId_email: { accountId, email: email.toLowerCase() }
-            },
-            include: {
-                blocker: { select: { id: true, fullName: true } }
-            }
+        scope.parse(accountId);
+        return prisma.blockedContact.findUnique({ where: { accountId_email: { accountId, email: canonicalBlockedEmail(email) } }, include: { blocker: { select: { id: true, fullName: true } } } });
+    }
+    /** Persisted tombstone versions prevent an absent→blocked→absent cycle from
+     * admitting an old create/unblock command against the same null version. */
+    static async getBlockObservation(accountId: string, email: string) {
+        scope.parse(accountId); const normalized = canonicalBlockedEmail(email);
+        return prisma.$transaction(async tx => {
+            await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${`block-contact:${accountId}:${normalized}`}, 0))`;
+            const contact = await tx.blockedContact.findUnique({ where: { accountId_email: { accountId, email: normalized } } });
+            const head = await tx.scopedOperation.findUnique({ where: { id: headId(accountId, normalized) } });
+            return { contact, version: head ? z.object({ version: z.string().datetime() }).parse(head.result).version : contact?.blockedAt.toISOString() ?? null };
         });
+    }
+    static async blockContact(accountId: string, email: string, actorId?: string, reason?: string, command?: Command, conversationId?: string) {
+        return this.command(accountId, email, actorId, true, { ...command, reason: reason ?? command?.reason }, conversationId);
+    }
+    static async unblockContact(accountId: string, email: string, actorId?: string, command?: Command) {
+        return this.command(accountId, email, actorId, false, command);
+    }
+    private static async command(accountId: string, email: string, actorId: string | undefined, blocked: boolean, input: unknown, conversationId?: string) {
+        scope.parse(accountId); scope.parse(actorId);
+        const normalized = canonicalBlockedEmail(email), body = blockCommandSchema.parse(input);
+        const digest = createHash('sha256').update(JSON.stringify([actorId, normalized, blocked, body, conversationId])).digest('hex');
+        const id = `block-contact:${accountId}:${body.operationId}`;
+        const snapshot = await prisma.$transaction(async tx => {
+            await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${`block-contact:${accountId}:${normalized}`}, 0))`;
+            const receipt = await tx.scopedOperation.findUnique({ where: { id } });
+            if (receipt) { const value = receipt.result as any; if (value.digest !== digest) throw conflict(); return value.snapshot; }
+            const previous = await tx.blockedContact.findUnique({ where: { accountId_email: { accountId, email: normalized } } });
+            const versionId = headId(accountId, normalized);
+            const head = await tx.scopedOperation.findUnique({ where: { id: versionId } });
+            const observedVersion = head ? z.object({ version: z.string().datetime() }).parse(head.result).version : previous?.blockedAt.toISOString() ?? null;
+            if (observedVersion !== body.version) throw conflict();
+            if (conversationId) {
+                scope.parse(conversationId);
+                const conversation = await tx.conversation.findFirst({ where: { id: conversationId, accountId }, include: { wooCustomer: { select: { email: true } } } });
+                if (!conversation || conversation.updatedAt.toISOString() !== body.conversationVersion || canonicalBlockedEmail(conversation.wooCustomer?.email || conversation.guestEmail) !== normalized) throw conflict();
+                const changed = await tx.conversation.updateMany({ where: { id: conversationId, accountId, updatedAt: conversation.updatedAt }, data: { status: 'CLOSED' } });
+                if (changed.count !== 1) throw conflict();
+            }
+            const when = new Date(Math.max(Date.now(), (previous?.blockedAt.getTime() ?? 0) + 1, observedVersion ? Date.parse(observedVersion) + 1 : 0));
+            if (blocked) await tx.blockedContact.upsert({ where: { accountId_email: { accountId, email: normalized } }, create: { accountId, email: normalized, blockedBy: actorId, reason: body.reason, blockedAt: when }, update: { blockedBy: actorId, reason: body.reason, blockedAt: when } });
+            else await tx.blockedContact.deleteMany({ where: { accountId, email: normalized, ...(previous ? { blockedAt: previous.blockedAt } : {}) } });
+            await tx.scopedOperation.upsert({ where: { id: versionId }, create: { id: versionId, accountId, kind: 'blocked-contact-version', result: { version: when.toISOString() } }, update: { result: { version: when.toISOString() } } });
+            const result = { success: true, accountId, email: normalized, blocked, version: when.toISOString(), operationId: body.operationId };
+            await tx.scopedOperation.create({ data: { id, accountId, kind: 'blocked-contact', result: { digest, snapshot: result } } });
+            return result;
+        });
+        // Cache notification is best effort after commit, never a false mutation failure.
+        try { await invalidateCache('inbox', `conversations:${accountId}`); } catch { Logger.warn('[BlockedContact] Inbox cache refresh unavailable', { accountId }); }
+        return snapshot;
+    }
+    static async listBlocked(accountId: string, cursor?: string) {
+        scope.parse(accountId); if (cursor) scope.parse(cursor);
+        return prisma.blockedContact.findMany({ where: { accountId }, take: 101, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}), include: { blocker: { select: { id: true, fullName: true } } }, orderBy: { id: 'asc' } });
+    }
+    static async listBlockedEmails(accountId: string): Promise<string[]> {
+        scope.parse(accountId);
+        const contacts = await prisma.blockedContact.findMany({ where: { accountId }, select: { email: true }, take: 10001 });
+        if (contacts.length > 10000) throw new Error('Blocked-contact filter coverage exceeds supported window');
+        return contacts.map(contact => canonicalBlockedEmail(contact.email));
     }
 }

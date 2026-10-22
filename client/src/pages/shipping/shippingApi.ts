@@ -152,7 +152,7 @@ export interface AusPostServiceCatalogResponse {
 }
 
 export interface ShippingTrackingHealthSummary {
-    status: 'healthy' | 'degraded' | 'attention';
+    status: 'healthy' | 'observed' | 'unavailable' | 'degraded' | 'attention';
     windowHours: number;
     activeTrackedLabels: number;
     staleTrackedLabels: number;

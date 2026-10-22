@@ -1,10 +1,12 @@
 import { prisma } from '../../utils/prisma';
 import type { Prisma } from '@prisma/client';
 import { Logger } from '../../utils/logger';
-import { automationEngine } from '../AutomationEngine';
 import { ausPostShippingTrackingAdapter } from './AusPostShippingTrackingAdapter';
 import { z } from 'zod';
 import { admittedTracking } from './TrackingAdmission';
+import { recordCriticalEvent } from '../CriticalEventOutbox';
+import { EVENTS } from '../events';
+import { createHash } from 'crypto';
 
 type ShipmentTriggerType =
     | 'SHIPMENT_RECEIVED_BY_CARRIER'
@@ -32,36 +34,23 @@ interface NormalizedTrackingEvent {
 }
 
 const TERMINAL_STATES = new Set(['delivered', 'returned', 'cancelled', 'expired']);
-const DEFAULT_TRIGGER_ALLOWLIST: ShipmentTriggerType[] = [
-    'SHIPMENT_RECEIVED_BY_CARRIER',
-    'SHIPMENT_IN_TRANSIT',
-    'SHIPMENT_OUT_FOR_DELIVERY',
-    'SHIPMENT_DELIVERY_ATTEMPTED',
-    'SHIPMENT_DELIVERED',
-    'SHIPMENT_EXCEPTION',
-];
-const ACTIVE_TRACKING_STATUSES = ['cancelled', 'delivered', 'returned', 'expired', 'exception'];
+const ACTIVE_TRACKING_STATUSES = ['cancelled', 'delivered', 'returned', 'expired'];
 
 export class ShippingTrackingService {
     async getTrackingHealthSummary(accountId: string) {
         const now = Date.now();
         const last24Hours = new Date(now - 24 * 60 * 60 * 1000);
         const staleBefore = new Date(now - 30 * 60 * 1000);
+        const activeWhere: Prisma.ShippingLabelWhereInput = { accountId, trackingNumber: { not: null }, status: { notIn: ACTIVE_TRACKING_STATUSES }, AND: [{ OR: [{ latestTrackingStatus: null }, { latestTrackingStatus: { notIn: ACTIVE_TRACKING_STATUSES } }] }] };
 
         const [activeTrackedLabels, staleTrackedLabels, recentPollFailures, recentAdapterUnavailable] = await Promise.all([
             prisma.shippingLabel.count({
-                where: {
-                    accountId,
-                    trackingNumber: { not: null },
-                    status: { notIn: ACTIVE_TRACKING_STATUSES },
-                },
+                where: activeWhere,
             }),
             prisma.shippingLabel.count({
                 where: {
-                    accountId,
-                    trackingNumber: { not: null },
-                    status: { notIn: ACTIVE_TRACKING_STATUSES },
-                    OR: [{ trackingSyncedAt: null }, { trackingSyncedAt: { lt: staleBefore } }],
+                    ...activeWhere,
+                    OR: [{ trackingSyncedAt: null }, { trackingSyncedAt: { lt: staleBefore } }, { trackingSyncedAt: { gt: new Date(now) } }, { trackingLastOutcome: { in: ['partial', 'failed-or-uncertain'] } }],
                 },
             }),
             prisma.shippingAuditEvent.count({
@@ -84,7 +73,7 @@ export class ShippingTrackingService {
             ? 'attention'
             : staleTrackedLabels > 0
                 ? 'degraded'
-                : 'healthy';
+                : activeTrackedLabels > 0 ? 'observed' : 'unavailable';
 
         return {
             status,
@@ -127,7 +116,9 @@ export class ShippingTrackingService {
                 } as any,
             },
         });
-        return { labelId: label.id, trackingNumber: label.trackingNumber, eventsImported: imported, eventsTotal: events.length, hadErrors: hadError };
+        await prisma.shippingLabel.update({ where: { id: label.id, accountId }, data: hadError ? { trackingLastOutcome: 'partial' } : { trackingSyncedAt: new Date(), trackingLastOutcome: 'complete', trackingNextAttemptAt: null } });
+        if (hadError) throw new Error('Tracking import partial; reconcile original occurrence');
+        return { labelId: label.id, trackingNumber: label.trackingNumber, eventsImported: imported, eventsTotal: events.length, hadErrors: false };
     }
 
     async pollActiveLabels(accountId: string, limit = 25) {
@@ -139,6 +130,7 @@ export class ShippingTrackingService {
                 accountId,
                 trackingNumber: { not: null },
                 status: { notIn: ACTIVE_TRACKING_STATUSES },
+                AND: [{ OR: [{ latestTrackingStatus: null }, { latestTrackingStatus: { notIn: ACTIVE_TRACKING_STATUSES } }] }, { OR: [{ trackingNextAttemptAt: null }, { trackingNextAttemptAt: { lte: new Date() } }] }],
                 OR: [
                     { trackingSyncedAt: null },
                     { trackingSyncedAt: { lt: staleBefore } },
@@ -170,7 +162,7 @@ export class ShippingTrackingService {
                     Logger.warn('[ShippingTrackingService] Tracking poll failed', { accountId, labelId: label.id, error: error?.message || error });
                     await prisma.shippingLabel.update({
                         where: { id: label.id, accountId },
-                        data: { trackingSyncedAt: new Date(Date.now() + pollingConfig.failureBackoffMinutes * 60 * 1000) },
+                        data: { trackingNextAttemptAt: new Date(Date.now() + pollingConfig.failureBackoffMinutes * 60 * 1000), trackingLastOutcome: 'failed-or-uncertain' },
                     });
                     await prisma.shippingAuditEvent.create({
                         data: {
@@ -191,15 +183,25 @@ export class ShippingTrackingService {
     }
 
     async recordTrackingEvent(accountId: string, labelId: string, input: TrackingInput) {
+        z.string().min(1).max(200).parse(accountId); z.string().min(1).max(200).parse(labelId);
+        input = z.object({ eventCode: z.string().max(200).nullish(), status: z.string().max(200).nullish(), description: z.string().max(2000).nullish(), location: z.string().max(1000).nullish(), occurredAt: z.union([z.string().datetime({ offset: true }), z.date()]), rawEvent: z.record(z.string(), z.unknown()).optional() }).strict().parse(input);
+        if (JSON.stringify(input).length > 64000) throw new Error('Tracking observation exceeds bounds');
         const label = await prisma.shippingLabel.findFirst({ where: { id: labelId, accountId } });
         if (!label) throw new Error('Label not found');
 
         const normalized = this.normalizeTrackingEvent(input);
-        const occurredAt = input.occurredAt ? new Date(input.occurredAt) : new Date();
-        if (isNaN(occurredAt.getTime())) throw new Error('Invalid occurredAt date');
-        const eventCode = input.eventCode || `${normalized.normalizedState}:${occurredAt.toISOString()}`;
+        const occurredAt = new Date(input.occurredAt!);
+        if (isNaN(occurredAt.getTime()) || occurredAt.getTime() > Date.now() + 300000) throw new Error('Invalid occurredAt date');
+        if (![input.eventCode, input.status, input.description].some(value => typeof value === 'string' && value.trim())) throw new Error('Tracking source observation unavailable');
+        const eventCode = input.eventCode || `observed:${createHash('sha256').update(JSON.stringify([input.status ?? null, input.description ?? null, input.location ?? null, occurredAt.toISOString()])).digest('hex')}`;
 
-        const event = await prisma.shippingTrackingEvent.upsert({
+        const event = await prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${`tracking-observation:${accountId}:${labelId}`}, 0))`;
+        const current = await tx.shippingLabel.findFirst({ where: { id: labelId, accountId } });
+        if (!current) throw new Error('Label changed');
+        const latestKnown = current.latestTrackingOccurredAt ?? (await tx.shippingTrackingEvent.findFirst({ where: { labelId, accountId }, orderBy: { occurredAt: 'desc' }, select: { occurredAt: true } }))?.occurredAt ?? null;
+        const prior = await tx.shippingTrackingEvent.findUnique({ where: { labelId_eventCode_occurredAt: { labelId, eventCode, occurredAt } }, select: { id: true } });
+        const saved = await tx.shippingTrackingEvent.upsert({
             where: { labelId_eventCode_occurredAt: { labelId, eventCode, occurredAt } },
             update: {
                 normalizedState: normalized.normalizedState,
@@ -225,38 +227,54 @@ export class ShippingTrackingService {
             },
         });
 
-        await prisma.shippingLabel.update({
+        if (!latestKnown || occurredAt.getTime() > latestKnown.getTime()) await tx.shippingLabel.update({
             where: { id: label.id, accountId },
             data: {
                 latestTrackingStatus: normalized.normalizedState,
                 latestTrackingSummary: input.description || input.status || normalized.normalizedState,
-                trackingSyncedAt: new Date(),
+                latestTrackingOccurredAt: occurredAt,
             },
         });
-
-        if (normalized.triggerType && normalized.customerEmailSafe && await this.isAutomationTriggerAllowed(accountId, normalized.triggerType)) {
-            await this.dispatchAutomationForEvent(accountId, label.id, event.id, normalized.triggerType);
+        if (!prior && normalized.triggerType && normalized.customerEmailSafe && (!latestKnown || occurredAt.getTime() > latestKnown.getTime())) {
+            const settings = await tx.shippingCarrierAccount.findFirst({ where: { accountId, carrier: 'AUSPOST' }, select: { config: true } });
+            const allowlist = (settings?.config as Record<string, unknown> | null)?.trackingAutomationAllowlist;
+            if (Array.isArray(allowlist) && allowlist.includes(normalized.triggerType)) {
+                const order = await tx.wooOrder.findUnique({ where: { accountId_wooId: { accountId, wooId: current.wooOrderId } } });
+                const raw = order?.rawData as Record<string, unknown> | null;
+                const email = order?.billingEmail;
+                if (email && z.string().email().max(254).safeParse(email).success) {
+                    const eventName = EVENTS.SHIPMENT[normalized.triggerType.replace('SHIPMENT_', '') as keyof typeof EVENTS.SHIPMENT];
+                    await recordCriticalEvent(tx, eventName, { accountId, shippingLabelId: labelId, shipment: { ...(raw ?? {}), id: current.wooOrderId, orderId: order!.id, wooOrderId: current.wooOrderId, orderNumber: order!.number, email, trackingNumber: current.trackingNumber, trackingUrl: current.trackingUrl, carrier: current.carrier, serviceName: current.serviceName, shipmentStatus: normalized.normalizedState, scanEventCode: eventCode, scanEventDescription: input.description ?? null, scanEventOccurredAt: occurredAt.toISOString(), labelId } }, `tracking:${saved.id}:${normalized.triggerType}`);
+                }
+            }
         }
+        return saved;
+        });
 
         return { event, normalized };
     }
 
     normalizeTrackingEvent(input: TrackingInput): NormalizedTrackingEvent {
-        const text = `${input.eventCode || ''} ${input.status || ''} ${input.description || ''}`.toLowerCase();
-
-        if (/(out[\s_-]*for[\s_-]*delivery|on[\s_-]*board[\s_-]*for[\s_-]*delivery|onboard[\s_-]*for[\s_-]*delivery)/.test(text)) return this.result('out_for_delivery', 'out_for_delivery', 'SHIPMENT_OUT_FOR_DELIVERY');
-        if (/(delivered|successfully delivered)/.test(text)) return this.result('delivered', 'delivered', 'SHIPMENT_DELIVERED');
-        if (/(attempted|card left|awaiting collection|collection point)/.test(text)) return this.result(text.includes('awaiting collection') ? 'awaiting_collection' : 'delivery_attempted', 'delivery_attempted', 'SHIPMENT_DELIVERY_ATTEMPTED');
-        if (/(lodged|accepted|received|picked up|pickup|we've got it|we have got it)/.test(text)) return this.result('received_by_carrier', 'received_by_carrier', 'SHIPMENT_RECEIVED_BY_CARRIER');
-        if (/(delay|delayed|held|exception|return to sender|returned|damaged|lost|address issue|failed)/.test(text)) {
-            const state = /(returned|return to sender)/.test(text) ? 'returned' : 'exception';
-            return this.result(state, 'exception', 'SHIPMENT_EXCEPTION');
-        }
-        if (/(cancelled|canceled)/.test(text)) return this.result('cancelled', null, null, false);
-        if (/(expired)/.test(text)) return this.result('expired', null, null, false);
-        if (/(transit|processed|sorted|transferred|facility|depot)/.test(text)) return this.result('in_transit', 'in_transit', 'SHIPMENT_IN_TRANSIT');
-
-        return this.result('pending', null, null, false);
+        const source = input.eventCode || input.status || input.description || '';
+        const text = source.toLowerCase().trim().replace(/[_-]+/g, ' ');
+        const known: Record<string, [string, string | null, ShipmentTriggerType | null, boolean?]> = {
+            'aus lodged': ['received_by_carrier', 'received_by_carrier', 'SHIPMENT_RECEIVED_BY_CARRIER'],
+            'received by australia post': ['received_by_carrier', 'received_by_carrier', 'SHIPMENT_RECEIVED_BY_CARRIER'],
+            'in transit': ['in_transit', 'in_transit', 'SHIPMENT_IN_TRANSIT'],
+            'on board for delivery': ['out_for_delivery', 'out_for_delivery', 'SHIPMENT_OUT_FOR_DELIVERY'],
+            'onboard for delivery': ['out_for_delivery', 'out_for_delivery', 'SHIPMENT_OUT_FOR_DELIVERY'],
+            'out for delivery': ['out_for_delivery', 'out_for_delivery', 'SHIPMENT_OUT_FOR_DELIVERY'],
+            'on board for delivery, expected to be delivered today': ['out_for_delivery', 'out_for_delivery', 'SHIPMENT_OUT_FOR_DELIVERY'],
+            'delivered': ['delivered', 'delivered', 'SHIPMENT_DELIVERED'],
+            'delivery attempted': ['delivery_attempted', 'delivery_attempted', 'SHIPMENT_DELIVERY_ATTEMPTED'],
+            'return to sender': ['returned', 'exception', 'SHIPMENT_EXCEPTION'],
+            'cancelled by carrier': ['cancelled', null, null, false],
+            'cancelled': ['cancelled', null, null, false],
+            'expired': ['expired', null, null, false],
+            'delayed due to address issue': ['exception', 'exception', 'SHIPMENT_EXCEPTION'],
+        };
+        const match = Object.prototype.hasOwnProperty.call(known, text) ? known[text] : undefined;
+        return match ? this.result(...match) : this.result('unknown', null, null, false);
     }
 
     private result(normalizedState: string, normalizedMilestone: string | null, triggerType: ShipmentTriggerType | null, customerEmailSafe = true): NormalizedTrackingEvent {
@@ -267,97 +285,6 @@ export class ShippingTrackingService {
             terminal: TERMINAL_STATES.has(normalizedState),
             customerEmailSafe,
         };
-    }
-
-    private async dispatchAutomationForEvent(accountId: string, labelId: string, trackingEventId: string, triggerType: ShipmentTriggerType) {
-        const label = await prisma.shippingLabel.findFirst({
-            where: { id: labelId, accountId },
-            include: { trackingEvents: { where: { id: trackingEventId }, take: 1 } },
-        });
-        if (!label) return;
-        const event = label.trackingEvents[0];
-        if (!event) return;
-
-        const order = await prisma.wooOrder.findUnique({ where: { accountId_wooId: { accountId, wooId: label.wooOrderId } } });
-        const raw = (order?.rawData as any) || {};
-        const email = order?.billingEmail || raw.billing?.email;
-        if (!email) {
-            Logger.warn('[ShippingTrackingService] Skipping shipment automation without email', { accountId, labelId, trackingEventId });
-            return;
-        }
-
-        const existing = await prisma.shippingAutomationDispatch.findUnique({
-            where: { accountId_trackingEventId_triggerType_email: { accountId, trackingEventId, triggerType, email } },
-        });
-        if (existing) return;
-
-        await prisma.shippingAutomationDispatch.create({
-            data: { accountId, labelId, trackingEventId, triggerType, email, status: 'dispatching' },
-        });
-
-        try {
-            await automationEngine.processTrigger(accountId, triggerType, {
-                id: label.wooOrderId,
-                orderId: order?.id || String(label.wooOrderId),
-                wooId: label.wooOrderId,
-                wooOrderId: label.wooOrderId,
-                orderNumber: order?.number || String(label.wooOrderId),
-                email,
-                billing: raw.billing,
-                order: {
-                    ...raw,
-                    id: order?.id || String(label.wooOrderId),
-                    orderNumber: order?.number || String(label.wooOrderId),
-                    lineItems: raw.line_items || raw.lineItems || raw.items || [],
-                },
-                customerName: [raw.billing?.first_name, raw.billing?.last_name].filter(Boolean).join(' '),
-                trackingNumber: label.trackingNumber,
-                trackingUrl: label.trackingUrl,
-                carrier: label.carrier,
-                serviceName: label.serviceName,
-                shipmentStatus: event.normalizedState || event.status,
-                scanEventCode: event.eventCode,
-                scanEventDescription: event.description,
-                scanEventLocation: event.location,
-                scanEventOccurredAt: event.occurredAt,
-                labelId: label.id,
-                shippingLabelId: label.id,
-                shipment: {
-                    trackingNumber: label.trackingNumber,
-                    trackingUrl: label.trackingUrl,
-                    carrier: label.carrier,
-                    serviceName: label.serviceName,
-                    status: event.normalizedState || event.status,
-                    latestScanDescription: event.description,
-                    latestScanLocation: event.location,
-                    latestScanTime: event.occurredAt,
-                },
-            });
-
-            await prisma.shippingAutomationDispatch.update({
-                where: { accountId_trackingEventId_triggerType_email: { accountId, trackingEventId, triggerType, email } },
-                data: { status: 'dispatched', dispatchedAt: new Date() },
-            });
-            await prisma.shippingTrackingEvent.update({ where: { id: trackingEventId }, data: { automationDispatchedAt: new Date(), automationTriggerType: triggerType } });
-        } catch (error: any) {
-            await prisma.shippingAutomationDispatch.update({
-                where: { accountId_trackingEventId_triggerType_email: { accountId, trackingEventId, triggerType, email } },
-                data: { status: 'failed', errorMessage: error?.message || 'Automation dispatch failed' },
-            });
-            throw error;
-        }
-    }
-
-    private async isAutomationTriggerAllowed(accountId: string, triggerType: ShipmentTriggerType) {
-        const settings = await prisma.shippingCarrierAccount.findFirst({
-            where: { accountId, carrier: 'AUSPOST' },
-            select: { config: true },
-        });
-        const config = (settings?.config as Record<string, unknown> | null) || {};
-        const configured = Array.isArray(config.trackingAutomationAllowlist)
-            ? config.trackingAutomationAllowlist.map((entry) => String(entry))
-            : DEFAULT_TRIGGER_ALLOWLIST;
-        return configured.includes(triggerType);
     }
 
     private async getPollingConfig(accountId: string) {

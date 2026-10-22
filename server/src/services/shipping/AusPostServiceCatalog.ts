@@ -1,11 +1,11 @@
 export interface AusPostServiceCatalogItem {
-    code: string;
-    label: string;
+    readonly code: string;
+    readonly label: string;
 }
 
 export const AUSPOST_SERVICE_CATALOG_UPDATED_AT = '2026-05-22';
 
-export const AUSPOST_SERVICE_CATALOG: AusPostServiceCatalogItem[] = [
+export const AUSPOST_SERVICE_CATALOG: readonly AusPostServiceCatalogItem[] = Object.freeze([
     { code: 'AUS_PARCEL_REGULAR', label: 'Parcel Post' },
     { code: 'AUS_PARCEL_EXPRESS', label: 'Express Post' },
     { code: 'AUS_PARCEL_REGULAR_SIGNATURE', label: 'Parcel Post with Signature' },
@@ -25,11 +25,13 @@ export const AUSPOST_SERVICE_CATALOG: AusPostServiceCatalogItem[] = [
     { code: 'INT_PARCEL_STD', label: 'International Standard' },
     { code: 'INT_PARCEL_EXP', label: 'International Express' },
     { code: 'INT_PARCEL_COURIER', label: 'International Courier' },
-];
+].map(item => Object.freeze(item)));
 
 export function listAusPostServiceCatalog() {
     return {
-        services: AUSPOST_SERVICE_CATALOG,
+        services: AUSPOST_SERVICE_CATALOG.map(item => ({ ...item })),
         updatedAt: AUSPOST_SERVICE_CATALOG_UPDATED_AT,
+        source: 'static-reference' as const,
+        eligibility: 'not-established' as const,
     };
 }

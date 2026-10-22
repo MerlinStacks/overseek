@@ -1,182 +1,70 @@
-import { useState, useMemo } from 'react';
-import { BarChart3, Trash2, Search, DollarSign, Globe, Users, TrendingUp, PieChart, Plus } from 'lucide-react';
-import { ReportTemplate } from '../../types/analytics';
+import { useState } from 'react';
+import { z } from 'zod';
+import type { ReportTemplate } from '../../types/analytics';
+import { useAuth } from '../../context/AuthContext';
+import { useAccount } from '../../context/AccountContext';
+import { usePermissions } from '../../hooks/usePermissions';
+import { useScopedMutation } from '../../hooks/useScopedMutation';
 
-interface ReportsSidebarProps {
+interface Props {
     templates: ReportTemplate[];
     selectedTemplateId?: string;
     onSelect: (template: ReportTemplate) => void;
-    onDelete: (e: React.MouseEvent, id: string) => void;
+    onDelete: (event: React.MouseEvent, id: string) => void | Promise<void>;
     onCreateCustom: () => void;
 }
+const templateSchema = z.object({
+    id: z.string().min(1).max(200), name: z.string().min(1).max(200),
+    type: z.enum(['SYSTEM', 'SYSTEM_CLONE', 'CUSTOM']),
+    updatedAt: z.string().datetime({ offset: true }).optional(),
+    category: z.string().max(80).optional(),
+    config: z.object({ dimension: z.string().min(1).max(80), dateRange: z.string().min(1).max(100), metrics: z.array(z.string().max(80)).max(30) }),
+});
+const categories = new Set(['Sales', 'Traffic', 'Customer', 'Conversion']);
 
-/** Icon mapping for template categories */
-const CATEGORY_ICONS: Record<string, React.ReactNode> = {
-    Sales: <DollarSign size={14} />,
-    Traffic: <Globe size={14} />,
-    Customer: <Users size={14} />,
-    Conversion: <TrendingUp size={14} />
-};
-
-/** Color mapping for template categories */
-const CATEGORY_COLORS: Record<string, { bg: string; text: string; ring: string }> = {
-    Sales: { bg: 'bg-blue-500/10', text: 'text-blue-600', ring: 'ring-blue-500/20' },
-    Traffic: { bg: 'bg-green-500/10', text: 'text-green-600', ring: 'ring-green-500/20' },
-    Customer: { bg: 'bg-orange-500/10', text: 'text-orange-600', ring: 'ring-orange-500/20' },
-    Conversion: { bg: 'bg-purple-500/10', text: 'text-purple-600', ring: 'ring-purple-500/20' }
-};
-
-export function ReportsSidebar({ templates, selectedTemplateId, onSelect, onDelete, onCreateCustom }: ReportsSidebarProps) {
-    const [searchTerm, setSearchTerm] = useState('');
-
-    // Filter templates by search term
-    const filteredTemplates = useMemo(() =>
-        templates.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase())),
-        [templates, searchTerm]
-    );
-
-    // Group system templates by category
-    const systemByCategory = useMemo(() => {
-        const grouped: Record<string, ReportTemplate[]> = {
-            Sales: [],
-            Traffic: [],
-            Customer: [],
-            Conversion: []
-        };
-
-        filteredTemplates
-            .filter(t => t.type.includes('SYSTEM'))
-            .forEach(t => {
-                const category = t.category || 'Sales';
-                if (grouped[category]) {
-                    grouped[category].push(t);
-                }
-            });
-
-        return grouped;
-    }, [filteredTemplates]);
-
-    // Get custom templates
-    const customTemplates = useMemo(() =>
-        filteredTemplates.filter(t => t.type === 'CUSTOM'),
-        [filteredTemplates]
-    );
-
-    const renderTemplateButton = (t: ReportTemplate) => {
-        const isActive = selectedTemplateId === t.id;
-        const isSystem = t.type.includes('SYSTEM');
-        const category = t.category || 'Sales';
-        const colors = CATEGORY_COLORS[category] || CATEGORY_COLORS.Sales;
-
-        return (
-            <div key={t.id} className="relative group/item">
-                <button
-                    onClick={() => onSelect(t)}
-                    className={`w-full text-left p-3 rounded-xl transition-all duration-200 relative overflow-hidden ${isActive
-                        ? `${colors.bg} ${colors.text} shadow-xs ring-1 ${colors.ring}`
-                        : 'hover:bg-white/60 text-gray-600 hover:text-gray-900 border border-transparent hover:border-white/40'
-                        }`}
-                >
-                    {isActive && <div className={`absolute left-0 top-0 bottom-0 w-1 ${colors.bg.replace('/10', '')} rounded-l-xl`} />}
-                    <div className="flex items-center gap-3 relative z-10">
-                        <div className={`p-1.5 rounded-lg transition-all ${isActive
-                            ? `${colors.bg} ${colors.text}`
-                            : 'bg-gray-100 text-gray-400 group-hover/item:bg-white group-hover/item:shadow-xs'
-                            }`}>
-                            {isSystem && CATEGORY_ICONS[category] ? CATEGORY_ICONS[category] : <BarChart3 size={14} />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm truncate">{t.name}</div>
-                            <div className="text-[10px] opacity-60 truncate mt-0.5">
-                                {t.config.dimension.toUpperCase()} • {t.config.dateRange}
-                            </div>
-                        </div>
-                    </div>
-                </button>
-
-                {/* Delete button for custom templates */}
-                {!isSystem && (
-                    <button
-                        onClick={(e) => onDelete(e, t.id)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover/item:opacity-100 transition-all z-20"
-                        title="Delete Template"
-                    >
-                        <Trash2 size={14} />
-                    </button>
-                )}
-            </div>
-        );
+export function ReportsSidebar(props: Props) {
+    const { token, user } = useAuth(), { currentAccount } = useAccount();
+    return <Library key={JSON.stringify([user?.id, token, currentAccount?.id])} {...props} />;
+}
+function Library({ templates, selectedTemplateId, onSelect, onDelete, onCreateCustom }: Props) {
+    const [search, setSearch] = useState(''), [blocked, setBlocked] = useState(false);
+    const mutation = useScopedMutation(), { hasPermission } = usePermissions();
+    const canManage = hasPermission('*');
+    const parsed = z.array(templateSchema).max(500).safeParse(templates);
+    if (!parsed.success || new Set(parsed.data.map(row => row.id)).size !== parsed.data.length) return <p role="alert">Report library observations unavailable.</p>;
+    const rows = parsed.data;
+    const filtered = rows.filter(row => row.id === selectedTemplateId || row.name.toLowerCase().includes(search.trim().toLowerCase()));
+    const groups = new Map<string, typeof rows>();
+    for (const row of filtered) {
+        const category = row.type === 'CUSTOM' ? 'My templates' : row.category && categories.has(row.category) ? row.category : 'Unknown category';
+        groups.set(category, [...(groups.get(category) ?? []), row]);
+    }
+    const remove = async (event: React.MouseEvent, row: typeof rows[number]) => {
+        if (!canManage || blocked || mutation.isPending() || !row.updatedAt || !window.confirm(`Delete custom report ${row.name}? Linked schedules or a changed version will block deletion.`)) return;
+        const result = await mutation.run(async () => onDelete(event, row.id), 'Deletion unacknowledged. Reconcile the original operation before repeating.');
+        if (!result.ok && mutation.isActive()) setBlocked(true);
     };
-
     return (
-        <div className="flex max-h-[32rem] w-full shrink-0 flex-col overflow-y-auto rounded-2xl border border-gray-200 bg-white/70 shadow-lg backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/70 lg:sticky lg:top-0 lg:h-[calc(100vh-12rem)] lg:max-h-none lg:w-80">
-
-            {/* Search Header */}
-            <div className="sticky top-0 z-10 border-b border-gray-100/70 bg-white/85 p-4 backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/85">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                    <div>
-                        <h2 className="text-sm font-bold text-gray-950 dark:text-white">Report Library</h2>
-                        <p className="text-xs text-gray-500 dark:text-slate-400">{templates.length} templates available</p>
-                    </div>
-                    <button
-                        onClick={onCreateCustom}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-blue-700"
-                    >
-                        <Plus size={14} />
-                        New
-                    </button>
-                </div>
-                <div className="relative">
-                    <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
-                    <input
-                        type="text"
-                        placeholder="Search reports..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full rounded-xl border border-gray-200/60 bg-gray-50/70 py-2 pl-9 pr-4 text-sm outline-hidden transition-all focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                    />
-                </div>
-            </div>
-
-            <div className="p-3 space-y-4 flex-1">
-
-                {/* System Templates by Category */}
-                {Object.entries(systemByCategory).map(([category, categoryTemplates]) => (
-                    categoryTemplates.length > 0 && (
-                        <div key={category}>
-                            <h3 className="px-3 text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-                                {CATEGORY_ICONS[category]}
-                                {category}
-                            </h3>
-                            <div className="space-y-1">
-                                {categoryTemplates.map(renderTemplateButton)}
-                            </div>
+        <aside className="w-full space-y-4 rounded-2xl border bg-white/80 p-4 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 lg:w-80">
+            <h2 className="font-semibold">Report library</h2>
+            <p className="text-sm">{rows.length} supplied template observations (window capped at 500); source coverage and report readiness are not established.</p>
+            <label className="block">Search reports<input className="block w-full rounded border p-2 dark:bg-slate-800" maxLength={200} value={search} onChange={event => setSearch(event.target.value)} /></label>
+            {canManage && <button type="button" disabled={mutation.busy || blocked} onClick={onCreateCustom}>New custom report</button>}
+            {mutation.error && <p role="alert">{mutation.error}</p>}
+            {[...groups].map(([category, group]) => (
+                <section key={category}>
+                    <h3 className="text-sm font-semibold">{category}</h3>
+                    {group.map(row => (
+                        <div key={row.id} className="my-2 rounded border p-2">
+                            <button type="button" aria-pressed={row.id === selectedTemplateId} disabled={mutation.busy} className="w-full rounded p-2 text-left aria-pressed:bg-indigo-100 dark:aria-pressed:bg-indigo-950" onClick={() => onSelect(structuredClone(row) as ReportTemplate)}>
+                                <strong>{row.name}</strong><p className="text-xs">{row.config.dimension} · {row.config.dateRange}</p>
+                            </button>
+                            {row.type === 'CUSTOM' && canManage && <button type="button" disabled={mutation.busy || blocked || !row.updatedAt} aria-label={`Delete report ${row.name}`} onClick={event => void remove(event, row)}>Delete</button>}
                         </div>
-                    )
-                ))}
-
-                {/* Custom Templates */}
-                {customTemplates.length > 0 && (
-                    <div className="pt-2 border-t border-gray-100">
-                        <h3 className="px-3 text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-                            <PieChart size={12} />
-                            My Templates
-                        </h3>
-                        <div className="space-y-1">
-                            {customTemplates.map(renderTemplateButton)}
-                        </div>
-                    </div>
-                )}
-
-                {/* Empty State */}
-                {filteredTemplates.length === 0 && (
-                    <div className="flex flex-col items-center justify-center py-12 text-center text-gray-400">
-                        <Search size={32} className="mb-3 opacity-50" />
-                        <p className="text-sm font-medium">No reports found</p>
-                        <p className="text-xs mt-1">Try a different search term</p>
-                    </div>
-                )}
-            </div>
-        </div>
+                    ))}
+                </section>
+            ))}
+            {!filtered.length && <p>No matching supplied templates.</p>}
+        </aside>
     );
 }

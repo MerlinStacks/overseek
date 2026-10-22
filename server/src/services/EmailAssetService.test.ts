@@ -16,7 +16,7 @@ describe('immutable email assets', () => {
         expect(await publishEmailAsset('account-one', bytes)).toEqual(first);
         const second = await publishEmailAsset('account-two', bytes);
         expect(second.url).not.toBe(first.url); expect(second.hash).toBe(first.hash);
-        const stored = await readFile(path.join(directory, new URL(first.url).pathname.replace('/uploads/', '')));
+        const stored = await readFile(path.join(directory, 'public', new URL(first.url).pathname.replace('/uploads/', '')));
         expect(await sharp(stored).metadata()).toMatchObject({ format: 'png', width: 8, height: 6 });
         expect(first).toMatchObject({ immutable: true, type: 'image/png' });
     });

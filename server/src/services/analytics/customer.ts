@@ -50,7 +50,9 @@ export class CustomerAnalytics {
                             format: 'yyyy-MM-dd',
                             time_zone: timezone,
                             min_doc_count: 0,
-                            ...(start && end ? { extended_bounds: { min: start, max: end } } : {})
+                            // String bounds are parsed using the histogram's output format.
+                            // Epoch milliseconds preserve exact timezone-adjusted instants.
+                            ...(start && end ? { extended_bounds: { min: Date.parse(start), max: Date.parse(end) } } : {})
                         },
                     }
                 }

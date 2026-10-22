@@ -2,7 +2,7 @@ import sharp from 'sharp';
 import { createHash } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
-import { getUploadsDir } from '../utils/uploadPaths';
+import { getPublicUploadsDir } from '../utils/uploadPaths';
 
 export async function publishEmailAsset(accountId: string, bytes: Buffer) {
     const base = new URL(process.env.PUBLIC_ASSET_URL || process.env.API_URL || '');
@@ -17,7 +17,7 @@ export async function publishEmailAsset(accountId: string, bytes: Buffer) {
     if (data.length > 10 * 1024 * 1024) throw new Error('Normalized email image exceeds 10 MB');
     const owner = createHash('sha256').update(accountId).digest('hex').slice(0, 24);
     const hash = createHash('sha256').update(data).digest('hex');
-    const directory = path.join(getUploadsDir(), 'email-assets', owner);
+    const directory = path.join(getPublicUploadsDir(), 'email-assets', owner);
     await mkdir(directory, { recursive: true });
     try { await writeFile(path.join(directory, `${hash}.png`), data, { flag: 'wx' }); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }

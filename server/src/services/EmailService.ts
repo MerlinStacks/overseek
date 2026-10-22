@@ -746,6 +746,9 @@ export class EmailService {
                 const useImplicitTLS = account.port === 465;
                 const transporter = nodemailer.createTransport({
                     host: account.host,
+                    connectionTimeout: 10000,
+                    greetingTimeout: 10000,
+                    socketTimeout: 15000,
                     port: account.port,
                     secure: useImplicitTLS,
                     requireTLS: !useImplicitTLS && account.isSecure,
@@ -758,8 +761,7 @@ export class EmailService {
                         servername: account.host
                     }
                 });
-                await transporter.verify();
-                transporter.close();
+                try { await transporter.verify(); } finally { transporter.close(); }
                 return true;
             } catch (error) {
                 Logger.error('SMTP Verify Error', { error });
@@ -770,6 +772,9 @@ export class EmailService {
                 const useImplicitTLS = account.port === 993;
                 const client = new ImapFlow({
                     host: account.host,
+                    connectionTimeout: 10000,
+                    greetingTimeout: 10000,
+                    socketTimeout: 15000,
                     port: account.port,
                     secure: useImplicitTLS,
                     auth: {
@@ -782,8 +787,7 @@ export class EmailService {
                     } as any
                 });
 
-                await client.connect();
-                await client.logout();
+                try { await client.connect(); await client.logout(); } finally { client.close(); }
                 return true;
             } catch (error) {
                 Logger.error('IMAP Verify Error', { error });
@@ -946,7 +950,10 @@ export class EmailService {
                         const fromAddress = parsed.from?.value[0];
                         const fromEmail = fromAddress?.address || '';
                         const fromName = fromAddress?.name || '';
-                        const messageId = parsed.messageId || message.envelope.messageId || `local-${Date.now()}`;
+                        const sourceDigest = crypto.createHash('sha256').update(message.source).digest('hex');
+                        const mailboxEpoch = client.mailbox ? String(client.mailbox.uidValidity) : '';
+                        if (!mailboxEpoch) throw new Error('IMAP mailbox occurrence identity unavailable');
+                        const messageId = parsed.messageId || message.envelope.messageId || `local-${mailboxEpoch}-${message.uid}-${sourceDigest}`;
                         const inReplyTo = parsed.inReplyTo || message.envelope.inReplyTo || undefined;
 
                         let references: string | undefined;
@@ -961,7 +968,10 @@ export class EmailService {
 
                         Logger.info(`[checkEmails] Processing email`, { fromEmail, subject, hasHtml: !!html, attachments: processedAttachments.length });
 
-                        EventBus.emit(EVENTS.EMAIL.RECEIVED, {
+                        await EventBus.publishRequired(EVENTS.EMAIL.RECEIVED, {
+                            accountId: account.accountId,
+                            occurrenceId: `email:${emailAccountId}:${crypto.createHash('sha256').update(messageId).digest('hex')}`,
+                            sourceDigest,
                             emailAccountId,
                             fromEmail,
                             fromName,
@@ -974,7 +984,7 @@ export class EmailService {
                             attachments: processedAttachments
                         });
 
-                        Logger.info(`[checkEmails] Emitted EMAIL.RECEIVED event`, { fromEmail, subject });
+                        Logger.info('[checkEmails] Incoming email ingestion acknowledged', { emailAccountId });
                         // Leave messages unread for retry if parsing or file storage failed.
                         // Flag updates must happen outside the IMAP fetch loop to avoid deadlocks.
                         processedUids.push(message.uid);

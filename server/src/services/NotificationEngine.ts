@@ -15,6 +15,7 @@ import { getDefaultEmailAccount } from '../utils/getDefaultEmailAccount';
 import { EmailService } from './EmailService';
 import { canonicalInvoiceAttachmentService } from './CanonicalInvoiceAttachmentService';
 import { normalizeOrderStatus } from '../constants/orderStatus';
+const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!));
 
 interface NotificationConfig {
     accountId: string;
@@ -41,6 +42,8 @@ interface NotificationConfig {
 
 export class NotificationEngine {
     private static initialized = false;
+    private static disposers: Array<() => void> = [];
+    static dispose() { for (const dispose of this.disposers.splice(0)) dispose(); this.initialized = false; }
     private static readonly emailService = new EmailService();
     private static readonly INVOICE_EMAIL_ORDER_STATUSES = new Set(['processing']);
 
@@ -57,11 +60,11 @@ export class NotificationEngine {
         Logger.info('[NotificationEngine] Initializing notification engine');
 
         // Order Events
-        EventBus.on(EVENTS.ORDER.CREATED, this.handleOrderCreated.bind(this));
-        EventBus.on(EVENTS.ORDER.STATUS_CHANGED, this.handleOrderStatusChanged.bind(this));
+        this.disposers.push(EventBus.subscribeRequired(EVENTS.ORDER.CREATED, 'notification:created', this.handleOrderCreated.bind(this)));
+        this.disposers.push(EventBus.subscribeRequired(EVENTS.ORDER.STATUS_CHANGED, 'notification:status', this.handleOrderStatusChanged.bind(this)));
 
         // Review Events
-        EventBus.on(EVENTS.REVIEW.LEFT, this.handleReviewLeft.bind(this));
+        this.disposers.push(EventBus.subscribeRequired(EVENTS.REVIEW.LEFT, 'notification:review', this.handleReviewLeft.bind(this)));
 
         // Email Events
         EventBus.on(EVENTS.EMAIL.RECEIVED, this.handleEmailReceived.bind(this));
@@ -106,7 +109,7 @@ export class NotificationEngine {
         const itemCount = lineItems?.length || 0;
         const itemText = itemCount === 1 ? '1 item' : `${itemCount} items`;
         const orderNumber = order.number || order.id;
-        const total = parseFloat(String(order.total)) || 0;
+        const total = /^\d+(?:\.\d{1,4})?$/.test(String(order.total)) ? Number(order.total) : NaN;
 
         // Build a concise product list (cap at 5 to keep notifications readable)
         const MAX_VISIBLE = 5;
@@ -129,7 +132,8 @@ export class NotificationEngine {
             .join(', ')
             + (itemCount > MAX_VISIBLE ? `, +${itemCount - MAX_VISIBLE} more` : '');
 
-        const headline = `Order #${orderNumber} - $${total} (${itemText})`;
+        const amount = /^[A-Z]{3}$/.test(order.currency ?? '') && Number.isFinite(total) ? `${order.currency} ${order.total}` : 'monetary basis unavailable';
+        const headline = `Order #${orderNumber} - ${amount} (${itemText})`;
 
         await this.sendNotification({
             accountId,
@@ -186,7 +190,7 @@ export class NotificationEngine {
         }
 
         const orderNumber = order?.number || order?.id;
-        const total = parseFloat(String(order?.total)) || 0;
+        const total = /^\d+(?:\.\d{1,4})?$/.test(String(order?.total)) ? Number(order.total) : NaN;
 
         await this.sendInvoiceEmailIfEnabled({
             accountId,
@@ -251,7 +255,7 @@ export class NotificationEngine {
                     accountId,
                     orderId: order.id
                 });
-                return;
+                throw new Error('Invoice sending account unavailable');
             }
 
             let absolutePath = '';
@@ -271,21 +275,21 @@ export class NotificationEngine {
                     accountId,
                     orderId: order.id,
                 });
-                return;
+                throw new Error('Invoice artifact unavailable; reconcile occurrence');
             }
             const recipientName = order.billing?.first_name
                 ? `${order.billing.first_name} ${order.billing.last_name || ''}`.trim()
                 : null;
             const subject = `Invoice for Order #${orderNumber}`;
-            const orderTotalText = Number.isFinite(total) ? total.toFixed(2) : String(order.total || '0.00');
+            const orderTotalText = Number.isFinite(total) && /^[A-Z]{3}$/.test(order.currency ?? '') ? `${order.currency} ${order.total}` : 'Monetary basis unavailable';
             const safeStoreName = account.name || 'Your Store';
 
             const html = `
                 <p>Hello,</p>
-                <p>A new order was received in ${safeStoreName}.</p>
-                <p><strong>Order #:</strong> ${orderNumber}<br />
-                <strong>Customer:</strong> ${recipientName || 'Guest'}<br />
-                <strong>Total:</strong> $${orderTotalText}</p>
+                <p>A new order was received in ${escapeHtml(safeStoreName)}.</p>
+                <p><strong>Order #:</strong> ${escapeHtml(orderNumber)}<br />
+                <strong>Customer:</strong> ${escapeHtml(recipientName || 'Identity unavailable')}<br />
+                <strong>Total:</strong> ${escapeHtml(orderTotalText)}</p>
                 <p>The invoice PDF is attached to this email.</p>
             `;
 
@@ -303,7 +307,8 @@ export class NotificationEngine {
                 {
                     source: 'ORDER_INVOICE',
                     sourceId: String(order.id),
-                    category: 'TRANSACTIONAL'
+                    category: 'TRANSACTIONAL',
+                    idempotencyKey: `order-invoice:${accountId}:${order.id}`
                 }
             );
         } catch (error) {
@@ -312,6 +317,7 @@ export class NotificationEngine {
                 orderId: order?.id,
                 error
             });
+            throw error;
         }
     }
 
@@ -351,6 +357,7 @@ export class NotificationEngine {
      * Handle email received event
      */
     private static async handleEmailReceived(data: { accountId: string; conversationId: string; fromEmail?: string; fromName?: string; subject?: string }): Promise<void> {
+        if (!data.accountId || !data.conversationId) return; // Raw IMAP admission is not a second ingested conversation.
         const { accountId, conversationId, fromEmail, fromName, subject } = data;
 
         await this.sendNotification({
@@ -728,7 +735,8 @@ export class NotificationEngine {
             }
 
         } catch (error) {
-            Logger.error('[NotificationEngine] Notification delivery failed', { error, config });
+            Logger.error('[NotificationEngine] Notification delivery failed', { error, accountId: config.accountId, eventType: config.eventType });
+            throw error;
         }
 
         // Log delivery for debugging
@@ -740,6 +748,7 @@ export class NotificationEngine {
             subscriptionLookup,
             payload: config.payload
         });
+        if (Object.values(results).some(value => value && typeof value === 'object' && ('error' in value || 'failed' in value && Number(value.failed) > 0))) throw new Error('Notification partially failed; reconcile delivery evidence without replay');
     }
 
     /**
@@ -792,19 +801,12 @@ export class NotificationEngine {
                     ...(sanitizedPayload !== undefined && { payload: sanitizedPayload as Prisma.InputJsonValue })
                 }
             });
-        } catch (error: any) {
-            // Don't fail the notification if logging fails
+        } catch {
             Logger.error('[NotificationEngine] Failed to log delivery', {
-                error,
-                errorMessage: error?.message || String(error),
-                errorName: error?.name,
-                debugData: {
-                    accountId: data.accountId,
-                    eventType: data.eventType,
-                    channelsType: typeof data.channels,
-                    resultsType: typeof data.results
-                }
+                accountId: data.accountId,
+                eventType: data.eventType
             });
+            throw new Error('Notification outcome log unacknowledged; reconcile before replay');
         }
     }
 }

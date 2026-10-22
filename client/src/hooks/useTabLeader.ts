@@ -1,167 +1,58 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 
-/**
- * Unique identifier for this browser tab instance.
- * Generated once per page load to ensure consistent identity.
- */
-const TAB_ID = `tab-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-
-/**
- * Heartbeat interval for leader election (ms).
- * Leader broadcasts heartbeat at this interval; followers detect leader loss after 2x this value.
- */
-const HEARTBEAT_INTERVAL = 2000;
-const LEADER_TIMEOUT = HEARTBEAT_INTERVAL * 2.5;
-
-interface TabMessage {
-    type: 'heartbeat' | 'claim' | 'resign';
-    tabId: string;
-    timestamp: number;
+const HEARTBEAT_MS = 2000;
+const TIMEOUT_MS = 5000;
+interface Message { type: 'claim' | 'heartbeat' | 'resign'; tabId: string; timestamp: number }
+function validMessage(value: unknown): value is Message {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const row = value as Record<string, unknown>;
+    return Object.keys(row).length === 3 && ['claim', 'heartbeat', 'resign'].includes(String(row.type)) && typeof row.tabId === 'string' && /^[a-zA-Z0-9-]{1,80}$/.test(row.tabId) && typeof row.timestamp === 'number' && Number.isFinite(row.timestamp) && Math.abs(Date.now() - row.timestamp) <= TIMEOUT_MS;
 }
 
-function postMessageSafely(channel: BroadcastChannel, message: TabMessage): void {
-    try {
-        channel.postMessage(message);
-    } catch (error) {
-        if (!(error instanceof DOMException) || error.name !== 'InvalidStateError') {
-            throw error;
-        }
-    }
-}
-
-/**
- * Hook for cross-tab leader election using BroadcastChannel.
- * Only ONE tab becomes the leader; others become followers.
- * 
- * Uses lowest-ID-wins algorithm with heartbeat-based failure detection.
- * 
- * @param channelName - Unique channel name for this leader election group
- * @returns { isLeader, tabId } - Whether this tab is the leader and its unique ID
- * 
- * @example
- * const { isLeader, tabId } = useTabLeader('overseek-polling');
- * if (isLeader) {
- *   // Only this tab should poll the API
- * }
- */
+/** Advisory polling load reduction only. Suspension, message loss or hostile same-origin
+ * peers can produce multiple/no leaders. NEVER use this as mutation authority. Each hook
+ * owns its candidacy so disposing a sibling cannot resign a still-live instance. */
 export function useTabLeader(channelName: string): { isLeader: boolean; tabId: string } {
-    const [isLeader, setIsLeader] = useState(() => typeof BroadcastChannel === 'undefined');
-    const channelRef = useRef<BroadcastChannel | null>(null);
-    const knownTabsRef = useRef<Map<string, number>>(new Map());
-    const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const leaderCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-    /**
-     * Determines if this tab should be leader based on lowest-ID-wins algorithm.
-     * Why: Deterministic election without coordination overhead.
-     */
-    const determineLeadership = useCallback(() => {
-        const now = Date.now();
-        // Filter out stale tabs (no heartbeat within timeout)
-        const activeTabs: string[] = [];
-        knownTabsRef.current.forEach((timestamp, tabId) => {
-            if (now - timestamp < LEADER_TIMEOUT) {
-                activeTabs.push(tabId);
-            } else {
-                knownTabsRef.current.delete(tabId);
-            }
-        });
-
-        // Add self if not present
-        if (!activeTabs.includes(TAB_ID)) {
-            activeTabs.push(TAB_ID);
-        }
-
-        // Lowest ID wins
-        activeTabs.sort();
-        const shouldBeLeader = activeTabs[0] === TAB_ID;
-
-        setIsLeader(shouldBeLeader);
-    }, []);
-
-    /**
-     * Broadcasts a heartbeat message to all tabs.
-     */
-    const sendHeartbeat = useCallback(() => {
-        const channel = channelRef.current;
-        if (channel) {
-            const message: TabMessage = {
-                type: 'heartbeat',
-                tabId: TAB_ID,
-                timestamp: Date.now(),
-            };
-            postMessageSafely(channel, message);
-        }
-        // Update own timestamp
-        knownTabsRef.current.set(TAB_ID, Date.now());
-    }, []);
-
+    const [tabId] = useState(() => `tab-${crypto.randomUUID()}`);
+    const [observation, setObservation] = useState({ channel: '', leader: false });
     useEffect(() => {
-        // BroadcastChannel not supported in all environments (e.g., SSR, older browsers)
-        if (typeof BroadcastChannel === 'undefined') {
-            return;
-        }
-
-        const channel = new BroadcastChannel(channelName);
-        channelRef.current = channel;
-
-        // Handle incoming messages
-        channel.onmessage = (event: MessageEvent<TabMessage>) => {
-            const { type, tabId, timestamp } = event.data;
-
-            if (type === 'heartbeat' || type === 'claim') {
-                knownTabsRef.current.set(tabId, timestamp);
-                determineLeadership();
-            } else if (type === 'resign') {
-                knownTabsRef.current.delete(tabId);
-                determineLeadership();
-            }
+        let active = true;
+        let channel: BroadcastChannel | undefined;
+        const peers = new Map<string, number>();
+        const update = (leader: boolean) => { if (active) setObservation({ channel: channelName, leader }); };
+        const send = (type: Message['type']) => {
+            try { channel?.postMessage({ type, tabId, timestamp: Date.now() }); } catch { /* advisory transport failure is not authority */ }
         };
-
-        // Register self immediately
-        knownTabsRef.current.set(TAB_ID, Date.now());
-
-        // Claim leadership candidacy on mount
-        const claimMessage: TabMessage = {
-            type: 'claim',
-            tabId: TAB_ID,
-            timestamp: Date.now(),
+        const elect = () => {
+            const now = performance.now();
+            for (const [id, received] of peers) if (now - received >= TIMEOUT_MS) peers.delete(id);
+            update(![...peers.keys()].some(id => id < tabId));
         };
-        postMessageSafely(channel, claimMessage);
-
-        // Start heartbeat
-        heartbeatIntervalRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
-
-        // Periodically check for stale leaders
-        leaderCheckIntervalRef.current = setInterval(determineLeadership, HEARTBEAT_INTERVAL);
-
-        // Initial leadership determination
-        queueMicrotask(determineLeadership);
-
-        // Cleanup on unmount
+        try {
+            if (!channelName || channelName.length > 200) throw new Error('Invalid channel');
+            channel = new BroadcastChannel(channelName);
+            channel.onmessage = event => {
+                if (!active || !validMessage(event.data) || event.data.tabId === tabId) return;
+                const message = event.data;
+                if (message.type === 'resign') peers.delete(message.tabId);
+                else if (peers.has(message.tabId) || peers.size < 100) peers.set(message.tabId, performance.now());
+                if (message.type === 'claim') send('heartbeat');
+                elect();
+            };
+            send('claim');
+        } catch { channel = undefined; }
+        const timer = setInterval(() => { if (active) { send('heartbeat'); elect(); } }, HEARTBEAT_MS);
+        const resume = () => { peers.clear(); send('claim'); elect(); };
+        document.addEventListener('visibilitychange', resume);
+        queueMicrotask(() => { if (active) elect(); });
         return () => {
-            if (heartbeatIntervalRef.current) {
-                clearInterval(heartbeatIntervalRef.current);
-                heartbeatIntervalRef.current = null;
-            }
-            if (leaderCheckIntervalRef.current) {
-                clearInterval(leaderCheckIntervalRef.current);
-                leaderCheckIntervalRef.current = null;
-            }
-
-            // Notify other tabs this tab is leaving
-            if (channelRef.current === channel) {
-                const resignMessage: TabMessage = {
-                    type: 'resign',
-                    tabId: TAB_ID,
-                    timestamp: Date.now(),
-                };
-                postMessageSafely(channel, resignMessage);
-                channelRef.current = null;
-                channel.close();
-            }
+            active = false;
+            clearInterval(timer);
+            document.removeEventListener('visibilitychange', resume);
+            send('resign');
+            if (channel) { channel.onmessage = null; try { channel.close(); } catch { /* best effort */ } }
+            peers.clear();
         };
-    }, [channelName, determineLeadership, sendHeartbeat]);
-
-    return { isLeader, tabId: TAB_ID };
+    }, [channelName, tabId]);
+    return { isLeader: observation.channel === channelName && observation.leader, tabId };
 }

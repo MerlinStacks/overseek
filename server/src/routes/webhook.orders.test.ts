@@ -7,6 +7,8 @@ import { EventBus } from '../services/events';
 import { materializeContact } from '../services/ContactMaterialization';
 import { queueContactProjection } from '../services/ContactProjection';
 import { snapshotFixture, snapshotMetadata } from '../services/deliveryEstimates/__tests__/snapshotFixture';
+import { recordOrderLifecycle } from '../services/CriticalEventOutbox';
+vi.mock('../services/CriticalEventOutbox', () => ({ recordOrderLifecycle: vi.fn(), recordCriticalEvent: vi.fn() }));
 
 vi.mock('../services/ContactMaterialization', () => ({ materializeContact: vi.fn() }));
 vi.mock('../services/ContactProjection', () => ({ queueContactProjection: vi.fn() }));
@@ -38,6 +40,7 @@ const order = { id: 12, number: '12', status: 'completed', total: '12.34', curre
 describe('order webhook customer totals', () => {
     beforeEach(() => {
         vi.resetAllMocks();
+        vi.mocked(recordOrderLifecycle).mockImplementation(async () => { expect(state.inTransaction).toBe(true); });
         vi.mocked(materializeContact).mockResolvedValue({ id: 'contact' } as any);
         vi.mocked(prisma.$transaction).mockImplementation(async (work: any) => {
             state.inTransaction = true;

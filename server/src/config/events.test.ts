@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { subscribeEventBus } from './events';
 import { EventBus, EVENTS } from '../services/events';
 import { NotificationEngine } from '../services/NotificationEngine';
+vi.mock('../utils/prisma', () => {
+    const tx = { $queryRaw: vi.fn(), scopedOperation: { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn(), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }), findMany: vi.fn().mockResolvedValue([]) } };
+    return { prisma: { ...tx, $transaction: vi.fn(async work => work(tx)) } };
+});
 
 vi.mock('../utils/logger', () => ({
     Logger: {
@@ -44,7 +48,7 @@ describe('event bus automation subscriptions', () => {
 
         expect(automationEngine.processTrigger).not.toHaveBeenCalled();
 
-        EventBus.emit(EVENTS.ORDER.PAID, { accountId: 'account-1', order });
+        await EventBus.publishRequired(EVENTS.ORDER.PAID, { accountId: 'account-1', occurrenceId: 'paid-1', order });
 
         await vi.waitFor(() => {
             expect(automationEngine.processTrigger).toHaveBeenCalledWith('account-1', 'ORDER_CREATED', order);
@@ -67,7 +71,7 @@ describe('event bus automation subscriptions', () => {
         };
 
         subscribeEventBus(chatService as any, automationEngine as any);
-        EventBus.emit(EVENTS.ORDER.PAID, { accountId: 'account-1', order });
+        await EventBus.publishRequired(EVENTS.ORDER.PAID, { accountId: 'account-1', occurrenceId: 'paid-2', order });
 
         await vi.waitFor(() => {
             expect(automationEngine.processTrigger).toHaveBeenCalledWith('account-1', 'ORDER_PAID', order);
@@ -90,7 +94,7 @@ describe('event bus automation subscriptions', () => {
         };
 
         subscribeEventBus(chatService as any, automationEngine as any);
-        EventBus.emit(EVENTS.ARTWORK.APPROVAL_REQUESTED, { accountId: 'account-1', artwork });
+        await EventBus.publishRequired(EVENTS.ARTWORK.APPROVAL_REQUESTED, { accountId: 'account-1', occurrenceId: 'artwork-1', artwork });
 
         await vi.waitFor(() => {
             expect(automationEngine.processTrigger).toHaveBeenCalledWith(
@@ -121,7 +125,7 @@ describe('event bus automation subscriptions', () => {
         };
 
         subscribeEventBus(chatService as any, automationEngine as any);
-        EventBus.emit(EVENTS.ARTWORK.UPLOADED, { accountId: 'account-1', artwork });
+        await EventBus.publishRequired(EVENTS.ARTWORK.UPLOADED, { accountId: 'account-1', occurrenceId: 'artwork-2', artwork });
 
         await vi.waitFor(() => {
             expect(automationEngine.processTrigger).toHaveBeenCalledWith(

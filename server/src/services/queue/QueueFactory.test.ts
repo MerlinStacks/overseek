@@ -33,14 +33,14 @@ vi.mock('@bull-board/fastify', () => ({
     }
 }));
 
-import { QueueFactory } from './QueueFactory';
+import { QueueFactory, queueWorkPolicy, QUEUES } from './QueueFactory';
 
 describe('QueueFactory queue depth', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
-    it('counts and trims prioritized jobs', async () => {
+    it('backpressures prioritized backlog without deleting admitted work', async () => {
         const jobs = [
             { timestamp: 1, remove: vi.fn().mockResolvedValue(undefined) },
             { timestamp: 2, remove: vi.fn().mockResolvedValue(undefined) }
@@ -50,11 +50,13 @@ describe('QueueFactory queue depth', () => {
             states.includes('prioritized') ? jobs : []
         );
 
-        const removed = await QueueFactory.enforceMaxQueueDepth('test-priority-depth');
-
-        expect(removed).toBe(2);
-        expect(mocks.queue.getJobs).toHaveBeenCalledWith(['prioritized'], 0, 1, true);
-        expect(jobs[0].remove).toHaveBeenCalledOnce();
-        expect(jobs[1].remove).toHaveBeenCalledOnce();
+        await expect(QueueFactory.enforceMaxQueueDepth('test-priority-depth')).rejects.toThrow('backlog');
+        expect(mocks.queue.getJobs).not.toHaveBeenCalled();
+        expect(jobs[0].remove).not.toHaveBeenCalled();
+        expect(jobs[1].remove).not.toHaveBeenCalled();
+    });
+    it('retains failures and restricts automatic retries to named sync work', () => {
+        expect(queueWorkPolicy(QUEUES.ORDERS)).toMatchObject({ attempts: 2, removeOnFail: false });
+        for (const name of [QUEUES.CAMPAIGNS, QUEUES.AUTOMATIONS, QUEUES.BOM_SYNC, 'unknown']) expect(queueWorkPolicy(name)).toMatchObject({ attempts: 1, removeOnComplete: false, removeOnFail: false });
     });
 });

@@ -9,6 +9,8 @@ import { requireAuthFastify } from '../../middleware/auth';
 import { getOrderRequestAccountIdOrReply } from './helpers';
 import { isValidWooOrderStatusSlug, normalizeOrderStatus } from '../../constants/orderStatus';
 import { EventBus, EVENTS } from '../../services/events';
+import { recordOrderLifecycle } from '../../services/CriticalEventOutbox';
+import { withOrderTotalsTransaction } from '../../services/sync/orderCustomerTotals';
 
 const PAID_EVENT_STATUSES = ['processing', 'on-hold'];
 
@@ -103,33 +105,20 @@ const bulkRoutes: FastifyPluginAsync = async (fastify) => {
                     : [];
 
                 if (successfulIds.length > 0) {
-                    await prisma.wooOrder.updateMany({
-                        where: {
-                            accountId,
-                            wooId: { in: successfulIds }
-                        },
-                        data: { status: normalizedStatus }
+                    await withOrderTotalsTransaction(accountId, async tx => {
+                        for (const update of successfulUpdates) {
+                            const prior = await tx.wooOrder.findUnique({ where: { accountId_wooId: { accountId, wooId: update.wooId } } });
+                            if (!prior) throw new Error('Synced order unavailable; reconcile provider occurrence');
+                            const changed = await tx.wooOrder.updateMany({ where: { accountId, id: prior.id, updatedAt: prior.updatedAt }, data: { status: normalizedStatus } });
+                            if (changed.count !== 1) throw new Error('Local source changed; reconcile provider occurrence');
+                            await recordOrderLifecycle(tx, accountId, buildOrderEventPayload(update.order, prior, normalizedStatus), prior.status);
+                        }
                     });
                 }
             } catch (batchError) {
-                // Fallback to individual updates if batch fails (older WooCommerce versions)
                 const batchErrMsg = batchError instanceof Error ? batchError.message : String(batchError);
-                Logger.warn('Batch API failed, falling back to individual updates', { error: batchErrMsg });
-
-                for (const orderId of body.orderIds) {
-                    try {
-                        const updatedOrder = await woo.updateOrder(orderId, { status: normalizedStatus });
-                        await prisma.wooOrder.updateMany({
-                            where: { accountId, wooId: orderId },
-                            data: { status: normalizedStatus }
-                        });
-                        successfulUpdates.push({ wooId: orderId, order: updatedOrder });
-                        updated++;
-                    } catch (err) {
-                        failed++;
-                        errors.push(`Order #${orderId}: ${err instanceof Error ? err.message : String(err)}`);
-                    }
-                }
+                Logger.warn('Batch outcome unconfirmed; individual replay is disabled', { error: batchErrMsg });
+                return reply.code(409).send({ error: 'Provider/local batch outcome uncertain; reconcile original orders before repeating. No automatic individual replay was performed.' });
             }
 
             for (const successfulUpdate of successfulUpdates) {

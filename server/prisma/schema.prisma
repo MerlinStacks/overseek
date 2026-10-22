@@ -3646,6 +3646,9 @@ model ShippingLabel {
   latestTrackingStatus String?
   latestTrackingSummary String?
   trackingSyncedAt     DateTime?
+  latestTrackingOccurredAt DateTime?
+  trackingNextAttemptAt DateTime?
+  trackingLastOutcome String?
   serviceCode          String?
   serviceName          String?
   status               String @default("created")

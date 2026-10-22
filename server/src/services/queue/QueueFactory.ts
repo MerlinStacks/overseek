@@ -29,6 +29,13 @@ export const QUEUES = {
 const queues = new Map<string, Queue>();
 const workers = new Set<Worker>();
 
+/** Only read/sync work is automatically retried. Side effects and unknown queues
+ * retain evidence and require occurrence-aware reconciliation after failure. */
+export function queueWorkPolicy(name: string) {
+    const replayable = [QUEUES.ORDERS, QUEUES.PRODUCTS, QUEUES.REVIEWS, QUEUES.CUSTOMERS, QUEUES.PAGES, QUEUES.BLOG_POSTS].includes(name);
+    return { replayable, attempts: replayable ? QUEUE_LIMITS.MAX_RETRIES : 1, removeOnComplete: replayable ? { count: QUEUE_LIMITS.COMPLETED_JOBS_KEEP } : false as const, removeOnFail: false as const };
+}
+
 export class QueueFactory {
 
     static init() {
@@ -45,13 +52,11 @@ export class QueueFactory {
         const queue = new Queue(name, {
             connection: redisClient as any,
             defaultJobOptions: {
-                attempts: QUEUE_LIMITS.MAX_RETRIES,
+                ...queueWorkPolicy(name),
                 backoff: {
                     type: 'exponential',
                     delay: QUEUE_LIMITS.RETRY_DELAY_MS,
                 },
-                removeOnComplete: { count: QUEUE_LIMITS.COMPLETED_JOBS_KEEP },
-                removeOnFail: { age: QUEUE_LIMITS.FAILED_JOBS_TTL_SECONDS },
             },
         });
 
@@ -65,9 +70,8 @@ export class QueueFactory {
     }
 
     /**
-     * EDGE CASE FIX: Enforce max queue depth to prevent OOM on Redis reconnect.
-     * When the queue has more waiting jobs than MAX_QUEUE_DEPTH, removes oldest jobs.
-     * Should be called periodically or before adding new jobs.
+     * Non-destructive backpressure check. It is an observation, not atomic
+     * reservation: producers still need stable job identities and scoped budgets.
      */
     static async enforceMaxQueueDepth(name: string): Promise<number> {
         const queue = this.getQueue(name);
@@ -78,38 +82,7 @@ export class QueueFactory {
             return 0;
         }
 
-        const excessCount = waitingCount - QUEUE_LIMITS.MAX_QUEUE_DEPTH;
-        // BullMQ stores priority > 0 jobs separately. Read enough oldest
-        // candidates from both states, then trim by creation time globally.
-        const rangeEnd = Math.max(0, excessCount - 1);
-        const [regularJobs, priorityJobs] = await Promise.all([
-            queue.getJobs(['waiting'], 0, rangeEnd, true),
-            queue.getJobs(['prioritized'], 0, rangeEnd, true)
-        ]);
-        const waitingJobs = [...regularJobs, ...priorityJobs]
-            .sort((a, b) => a.timestamp - b.timestamp)
-            .slice(0, excessCount);
-
-        let removed = 0;
-        for (const job of waitingJobs) {
-            try {
-                await job.remove();
-                removed++;
-            } catch {
-                // Job may have started processing, skip
-            }
-        }
-
-        if (removed > 0) {
-            Logger.warn(`[QueueFactory] Trimmed ${removed} oldest jobs from ${name} queue (was ${waitingCount}, max ${QUEUE_LIMITS.MAX_QUEUE_DEPTH})`, {
-                queueName: name,
-                removed,
-                previousCount: waitingCount,
-                maxDepth: QUEUE_LIMITS.MAX_QUEUE_DEPTH
-            });
-        }
-
-        return removed;
+        throw Object.assign(new Error('Queue admission deferred: reconcile backlog; existing jobs retained'), { code: 'QUEUE_BACKPRESSURE', queueName: name });
     }
 
     static createWorker(name: string, processor: (job: any) => Promise<void>) {
@@ -129,6 +102,7 @@ export class QueueFactory {
         }, {
             connection: createWorkerConnection() as any,
             concurrency: QUEUE_LIMITS.WORKER_CONCURRENCY,
+            maxStalledCount: queueWorkPolicy(name).replayable ? 1 : 0,
             lockDuration: isLongRunning
                 ? QUEUE_LIMITS.LONG_RUNNING_LOCK_DURATION_MS
                 : QUEUE_LIMITS.DEFAULT_LOCK_DURATION_MS,

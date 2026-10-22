@@ -1,6 +1,7 @@
 import { prisma } from '../../../utils/prisma';
 import { getHistoricalSales } from './sales';
 import type { BOMComponentMapping } from './types';
+import { UnsupportedBOMForecastError } from './errors';
 
 export async function getBOMComponentMappings(accountId: string, productIds: string[], variationWooIds: number[],
     products: Array<{ id: string; wooId: number; isVariation?: boolean; productId?: string }>): Promise<BOMComponentMapping[]> {
@@ -14,7 +15,7 @@ export async function getBOMComponentMappings(accountId: string, productIds: str
     if (items.length > 10000) throw new Error('BOM forecast coverage limit exceeded');
     const parentIds = [...new Set(items.map(item => item.bom.productId))];
     // A one-level forecast cannot truthfully resolve a component of another bundle.
-    if (parentIds.length && await prisma.bOMItem.findFirst({ where: { isActive: true, childProductId: { in: parentIds }, bom: { product: { accountId } } }, select: { id: true } })) throw new Error('BOM forecast unavailable: nested/cyclic component demand requires multi-level planning');
+    if (parentIds.length && await prisma.bOMItem.findFirst({ where: { isActive: true, childProductId: { in: parentIds }, bom: { product: { accountId } } }, select: { id: true } })) throw new UnsupportedBOMForecastError();
     const mappings = new Map<string, BOMComponentMapping>();
     for (const item of items) {
         if (item.childVariationId && !variationWooIds.includes(item.childVariationId)) continue; // Never substitute parent stock for an unrequested variation.

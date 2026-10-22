@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Logger } from '../utils/logger';
+import { changeBlockedContact } from '../lib/blockedContactCommand';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -187,17 +188,7 @@ export function CustomersPage() {
 
         setUnblockingEmail(email);
         try {
-            const response = await fetch(`/api/chat/block/${encodeURIComponent(email)}`, {
-                method: 'DELETE',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
-                }
-            });
-            if (!response.ok) {
-                const payload = await response.json().catch(() => null) as { error?: string } | null;
-                throw new Error(payload?.error || 'Failed to unblock contact');
-            }
+            await changeBlockedContact(token, currentAccount.id, { email }, false);
             toast.success(`${email} unblocked.`);
             await fetchContacts();
         } catch (error) {

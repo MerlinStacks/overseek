@@ -19,7 +19,7 @@ describe('customer growth analytics', () => {
         expect(mocks.search).toHaveBeenCalledWith(expect.objectContaining({
             query: { bool: { must: [{ term: { accountId: 'tenant-1' } }, { range: { dateCreated: { gte: '2025-12-31T13:00:00.000Z', lte: '2026-03-31T12:59:59.999Z' } } }] } },
             aggs: { growth_over_time: { date_histogram: { field: 'dateCreated', calendar_interval: 'month', format: 'yyyy-MM-dd', time_zone: 'Australia/Sydney', min_doc_count: 0,
-                extended_bounds: { min: '2025-12-31T13:00:00.000Z', max: '2026-03-31T12:59:59.999Z' } } } },
+                extended_bounds: { min: Date.parse('2025-12-31T13:00:00.000Z'), max: Date.parse('2026-03-31T12:59:59.999Z') } } } },
         }));
     });
     it('preserves explicit timestamp ranges and normalizes invalid timezones to UTC', async () => {
@@ -27,7 +27,7 @@ describe('customer growth analytics', () => {
         await CustomerAnalytics.getCustomerGrowth('tenant-1', '2026-01-01T01:00:00Z', '2026-01-02T02:00:00Z');
         const histogram = mocks.search.mock.calls[0][0].aggs.growth_over_time.date_histogram;
         expect(histogram.time_zone).toBe('UTC');
-        expect(histogram.extended_bounds).toEqual({ min: '2026-01-01T01:00:00.000Z', max: '2026-01-02T02:00:00.000Z' });
+        expect(histogram.extended_bounds).toEqual({ min: Date.parse('2026-01-01T01:00:00.000Z'), max: Date.parse('2026-01-02T02:00:00.000Z') });
     });
     it('omits empty range filters and bounds when dates are not supplied', async () => {
         await CustomerAnalytics.getCustomerGrowth('tenant-1');

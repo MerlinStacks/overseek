@@ -11,6 +11,13 @@ const artifact = { ...identity, status: 'pending', renderer: 'pending', updatedA
 describe('canonical generation admission and readiness', () => {
     const service = new CanonicalInvoiceService();
     beforeEach(() => { vi.resetAllMocks(); });
+    it('reports an unavailable order without weakening account scope or queueing generation', async () => {
+        m.template.mockResolvedValue({ id: 'template', layout: {} });
+        m.order.mockResolvedValue(null);
+        await expect(service.getOrQueue('account', '94156')).rejects.toMatchObject({ name: 'InvoiceOrderUnavailableError' });
+        expect(m.order).toHaveBeenCalledWith({ where: { accountId: 'account', OR: [{ id: '94156' }, { wooId: 94156 }] }, select: { id: true, updatedAt: true } });
+        expect(m.queue).not.toHaveBeenCalled();
+    });
     it('polls by the entire immutable scope', async () => { m.find.mockResolvedValue({ ...artifact, status: 'uncertain' }); expect(await service.waitForReady(identity, 0)).toMatchObject({ status: 'uncertain' }); expect(m.find).toHaveBeenCalledWith({ where: identity }); });
     it('rejects bare-ID polling and unbounded waits', async () => { await expect(service.waitForReady('artifact' as never, 0)).rejects.toThrow('identity'); await expect(service.waitForReady(identity, 16000)).rejects.toThrow('bounds'); expect(m.find).not.toHaveBeenCalled(); });
     it('does not render if another worker owns the conditional claim', async () => { m.find.mockResolvedValue(artifact); m.update.mockResolvedValue({ count: 0 }); await service.processGenerationJob({ artifactId: identity.id, ...identity }); expect(m.render).not.toHaveBeenCalled(); expect(m.update).toHaveBeenCalledWith({ where: { ...identity, status: 'pending', updatedAt: new Date(0) }, data: { status: 'generating' } }); });

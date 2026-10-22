@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -7,6 +7,8 @@ import { EmailAccountList } from './EmailAccountList';
 import { RefreshCw } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { RichTextEditor } from '../common/RichTextEditor';
+import { z } from 'zod';
+import { readBoundedBytes } from '../../utils/boundedResponse';
 
 const buildDefaultEmailFooterHtml = (accountName: string) => `<p>You are receiving this email from ${accountName}.<br /><a href="{{unsubscribe_url}}">Unsubscribe</a></p>`;
 const EMAIL_FOOTER_MERGE_TAGS = [
@@ -25,6 +27,11 @@ const EMAIL_FOOTER_MERGE_TAGS = [
  * Email Settings page - manages unified email accounts with SMTP/IMAP.
  */
 export function EmailSettings() {
+    const { token, user } = useAuth(), { currentAccount } = useAccount();
+    return <ScopedEmailSettings key={JSON.stringify([user?.id, token, currentAccount?.id])} />;
+}
+function ScopedEmailSettings() {
+    const commandPending = useRef(false), commandBlocked = useRef(false);
     const { token } = useAuth();
     const { currentAccount, refreshAccounts } = useAccount();
     const toast = useToast();
@@ -36,7 +43,7 @@ export function EmailSettings() {
     const [isSyncing, setIsSyncing] = useState(false);
     const [testResult, setTestResult] = useState<{ success: boolean; message?: string } | null>(null);
     const [syncResult, setSyncResult] = useState<{ success: boolean; message?: string; checked?: number } | null>(null);
-    const [emailFooterHtml, setEmailFooterHtml] = useState('');
+    const [emailFooterHtml, setEmailFooterHtml] = useState(() => currentAccount?.appearance?.emailFooterHtml || buildDefaultEmailFooterHtml(currentAccount?.appearance?.appName || currentAccount?.name || 'Your Store'));
     const [isSavingFooter, setIsSavingFooter] = useState(false);
 
     const [editingAccount, setEditingAccount] = useState<Partial<EmailAccount> | null>(null);
@@ -56,7 +63,8 @@ export function EmailSettings() {
                 throw new Error(payload?.error || 'Failed to load email accounts');
             }
 
-            const data = await res.json();
+            const data = z.array(z.object({ id: z.string().min(1).max(200), accountId: z.string().min(1).max(200), name: z.string().max(120), email: z.string().email().max(254), updatedAt: z.string().datetime(), smtpEnabled: z.boolean(), imapEnabled: z.boolean() }).passthrough()).max(100).parse(JSON.parse(new TextDecoder().decode(await readBoundedBytes(res, 512000))));
+            if (data.some(account => account.accountId !== currentAccount.id) || new Set(data.map(account => account.id)).size !== data.length) throw new Error('Email account scope mismatch');
             setAccounts(data);
         } catch (error) {
             Logger.error('An error occurred', { error: error });
@@ -69,15 +77,10 @@ export function EmailSettings() {
     }, [currentAccount, token, toast]);
 
     useEffect(() => {
-        if (currentAccount && token) {
-            fetchAccounts();
-        }
+        let active = true;
+        queueMicrotask(() => { if (active && currentAccount && token) void fetchAccounts(); });
+        return () => { active = false; };
     }, [currentAccount, token, fetchAccounts]);
-
-    useEffect(() => {
-        if (!currentAccount) return;
-        setEmailFooterHtml(currentAccount.appearance?.emailFooterHtml || buildDefaultEmailFooterHtml(currentAccount.appearance?.appName || currentAccount.name || 'Your Store'));
-    }, [currentAccount]);
 
     const handleSaveFooter = async () => {
         if (!currentAccount || !token) return;
@@ -124,37 +127,48 @@ export function EmailSettings() {
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': currentAccount.id
                 },
-                body: JSON.stringify(accountData)
+                body: JSON.stringify({ operationId: accountData.operationId, version: accountData.version ?? null, data: Object.fromEntries(Object.entries(accountData).filter(([key]) => !['id', 'accountId', 'createdAt', 'updatedAt', 'isDefault', 'operationId', 'version'].includes(key))) })
             });
 
             if (!res.ok) throw new Error('Failed to save account');
+            const acknowledged = z.object({ id: z.string(), accountId: z.string(), operationId: z.string().uuid(), updatedAt: z.string().datetime() }).parse(JSON.parse(new TextDecoder().decode(await readBoundedBytes(res, 64000))));
+            if (acknowledged.accountId !== currentAccount.id || acknowledged.operationId !== accountData.operationId || accountData.id && accountData.id !== acknowledged.id || acknowledged.updatedAt === accountData.version) throw new Error('Email save acknowledgement mismatch');
 
             await fetchAccounts();
             setEditingAccount(null);
         } catch (error) {
             Logger.error('An error occurred', { error: error });
             toast.error('Failed to save email account.');
+            throw error;
         } finally {
             setIsSaving(false);
         }
     };
 
     const handleDelete = async (id: string) => {
+        if (commandPending.current || commandBlocked.current) return;
         if (!confirm('Are you sure you want to delete this account?')) return;
         if (!currentAccount) return;
 
+        const operationId = crypto.randomUUID(); commandPending.current = true;
         try {
-            await fetch(`/api/email/accounts/${id}`, {
+            const response = await fetch(`/api/email/accounts/${encodeURIComponent(id)}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
-                }
+                    'x-account-id': currentAccount.id,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ operationId, version: accounts.find(account => account.id === id)?.updatedAt ?? null })
             });
+            if (!response.ok) throw new Error('Delete unacknowledged');
             setAccounts(accounts.filter(a => a.id !== id));
         } catch (error) {
             Logger.error('An error occurred', { error: error });
-            toast.error('Failed to delete email account.');
+            commandBlocked.current = true;
+            toast.error(`Email account command ${operationId} unconfirmed; reconcile before repeating.`);
+        } finally {
+            commandPending.current = false;
         }
     };
 
@@ -171,11 +185,11 @@ export function EmailSettings() {
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': currentAccount.id
                 },
-                body: JSON.stringify(testData)
+                body: JSON.stringify({ operationId: (testData as typeof testData & { operationId?: string }).operationId, version: (testData as typeof testData & { version?: string }).version ?? null, data: Object.fromEntries(Object.entries(testData).filter(([key]) => !['operationId', 'version'].includes(key))) })
             });
 
             const data = await res.json();
-            const result = { success: data.success, message: data.error };
+            const result = { success: res.ok && data.success === true, message: typeof data.error === 'string' ? data.error : undefined };
             setTestResult(result);
             return result;
         } catch (error) {
@@ -215,20 +229,28 @@ export function EmailSettings() {
     };
 
     const handleSetDefault = async (id: string) => {
+        if (commandPending.current || commandBlocked.current) return;
         if (!currentAccount || !token) return;
+        const operationId = crypto.randomUUID(); commandPending.current = true;
         try {
             const res = await fetch(`/api/email/accounts/${id}/default`, {
                 method: 'PATCH',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
-                }
+                    'x-account-id': currentAccount.id,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ operationId, version: accounts.find(account => account.id === id)?.updatedAt ?? null })
             });
             if (res.ok) {
                 await fetchAccounts();
-            }
+            } else throw new Error('Default change unacknowledged');
         } catch (error) {
             Logger.error('An error occurred', { error: error });
+            commandBlocked.current = true;
+            toast.error(`Email account command ${operationId} unconfirmed; reconcile before repeating.`);
+        } finally {
+            commandPending.current = false;
         }
     };
 

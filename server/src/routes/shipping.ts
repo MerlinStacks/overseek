@@ -7,13 +7,15 @@ import { SHIPPING_FEATURE_KEY, shippingService } from '../services/shipping/Ship
 import { PermissionService } from '../services/PermissionService';
 import { shippingTrackingService } from '../services/shipping/ShippingTrackingService';
 import { shippingWorkspaceRoutes } from './shippingWorkspace';
+import { runShippingSettingsCommand, settingsCommandSchema } from '../services/shipping/ShippingSettingsCommand';
+import { listAusPostServiceCatalog } from '../services/shipping/AusPostServiceCatalog';
 
 const listQuerySchema = z.object({
     limit: z.coerce.number().int().positive().max(200).default(50),
 });
 
 const serviceCatalogQuerySchema = z.object({
-    refresh: z.coerce.boolean().optional(),
+    refresh: z.enum(['true', 'false']).optional(),
 });
 
 const orderParamsSchema = z.object({
@@ -64,11 +66,11 @@ const itemOverrideUpdateSchema = itemOverrideSchema.partial().refine((value) => 
     message: 'At least one override field is required',
 });
 
-const settingsSchema = z.object({
+export const settingsSchema = z.object({
     displayName: z.string().min(1).max(120).optional(),
     isEnabled: z.boolean().optional(),
-    apiKey: z.string().min(1).optional(),
-    apiSecret: z.string().min(1).optional(),
+    apiKey: z.string().min(1).max(1000).optional(),
+    apiSecret: z.string().min(1).max(1000).optional(),
     apiProduct: z.string().max(80).optional(),
     apiEnvironment: z.enum(['sandbox', 'production']).optional(),
     apiBaseUrl: z.string().url().max(255).optional(),
@@ -81,7 +83,7 @@ const settingsSchema = z.object({
     accountNumber: z.string().max(120).optional(),
     paymentMethod: z.enum(['', 'CHARGE_ACCOUNT', 'CREDIT_CARD', 'PAYPAL']).optional(),
     dispatchStatus: z.string().max(80).optional(),
-    senderAddress: z.record(z.string(), z.unknown()).optional(),
+    senderAddress: z.object({ name: z.string().max(200), company: z.string().max(200), phone: z.string().max(80), email: z.string().max(254), address1: z.string().max(200), address2: z.string().max(200), suburb: z.string().max(100), state: z.string().max(100), postcode: z.string().max(20), country: z.string().regex(/^[A-Z]{2}$/) }).strict().optional(),
     defaultDomesticService: z.string().max(80).optional(),
     defaultExpressService: z.string().max(80).optional(),
     defaultInternationalService: z.string().max(80).optional(),
@@ -711,9 +713,8 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const denied = await requireShippingPermission(request, reply, 'manage_shipping_settings');
             if (denied) return denied;
-            const parsed = printStationSchema.safeParse(request.body);
-            if (!parsed.success) return reply.code(400).send({ error: 'Invalid print station payload', details: parsed.error.flatten() });
-            return reply.code(201).send(await shippingService.createPrintStation(request.accountId!, parsed.data.name, parsed.data.defaultPrinterName));
+            const command = settingsCommandSchema.parse(request.body), data = printStationSchema.parse(command.data);
+            return reply.code(201).send(await runShippingSettingsCommand(request.accountId!, request.user!.id, 'station-create', { ...command, data }, (_data, tx) => shippingService.createPrintStation(request.accountId!, data.name, data.defaultPrinterName, tx)));
         } catch (error: any) {
             Logger.error('[ShippingRoutes] Failed to create print station', { error: error?.message || error });
             return reply.code(500).send({ error: 'Failed to create print station' });
@@ -726,7 +727,9 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
             if (denied) return denied;
             const params = idParamsSchema.safeParse(request.params);
             if (!params.success) return reply.code(400).send({ error: 'Invalid print station id' });
-            return await shippingService.rotatePrintStationToken(request.accountId!, params.data.id);
+            const command = settingsCommandSchema.parse(request.body);
+            if (command.resourceId !== params.data.id) return reply.code(400).send({ error: 'Station scope mismatch' });
+            return await runShippingSettingsCommand(request.accountId!, request.user!.id, 'station-rotate', command, (_data, tx) => shippingService.rotatePrintStationToken(request.accountId!, params.data.id, tx));
         } catch (error: any) {
             Logger.error('[ShippingRoutes] Failed to rotate print station token', { error: error?.message || error });
             const status = error?.message === 'Print station not found' ? 404 : 500;
@@ -736,13 +739,19 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.get('/settings', async (request, reply) => {
         try {
-            const denied = await requireShippingPermission(request, reply, 'view_shipping');
+            const denied = await requireShippingPermission(request, reply, 'manage_shipping_settings');
             if (denied) return denied;
-            return await shippingService.getSafeSettings(request.accountId!);
+            return { accountId: request.accountId!, ...await shippingService.getSafeSettings(request.accountId!) };
         } catch (error: any) {
             Logger.error('[ShippingRoutes] Failed to fetch settings', { error: error?.message || error });
             return reply.code(500).send({ error: 'Failed to fetch shipping settings' });
         }
+    });
+    fastify.get('/settings/stations', async (request, reply) => {
+        const denied = await requireShippingPermission(request, reply, 'manage_shipping_settings');
+        if (denied) return denied;
+        const rows = await shippingService.listPrintStations(request.accountId!);
+        return { accountId: request.accountId!, printStations: rows.slice(0, 100), partial: rows.length > 100 };
     });
 
     fastify.get('/settings/shipping-method-candidates', async (request, reply) => {
@@ -761,7 +770,8 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
             const denied = await requireShippingPermission(request, reply, 'view_shipping');
             if (denied) return denied;
             const query = serviceCatalogQuerySchema.parse(request.query || {});
-            return await shippingService.listAusPostServiceCatalog(request.accountId!, { forceRefresh: query.refresh === true });
+            if (query.refresh === 'true') return reply.code(410).send({ error: 'Provider refresh requires a versioned POST command' });
+            return { accountId: request.accountId!, ...listAusPostServiceCatalog() };
         } catch (error: any) {
             Logger.error('[ShippingRoutes] Failed to fetch AusPost service catalog', { error: error?.message || error });
             return reply.code(500).send({ error: 'Failed to fetch AusPost service catalog' });
@@ -772,9 +782,8 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const denied = await requireShippingPermission(request, reply, 'manage_shipping_settings');
             if (denied) return denied;
-            const parsed = settingsSchema.safeParse(request.body);
-            if (!parsed.success) return reply.code(400).send({ error: 'Invalid settings payload', details: parsed.error.flatten() });
-            return await shippingService.saveSettings(request.accountId!, parsed.data);
+            const command = settingsCommandSchema.parse(request.body), data = settingsSchema.strict().parse(command.data);
+            return await runShippingSettingsCommand(request.accountId!, request.user!.id, 'save', { ...command, data }, (_data, tx) => shippingService.saveSettings(request.accountId!, data, tx));
         } catch (error: any) {
             Logger.error('[ShippingRoutes] Failed to save settings', { error: error?.message || error });
             return reply.code(500).send({ error: 'Failed to save shipping settings' });
@@ -785,13 +794,24 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const denied = await requireShippingPermission(request, reply, 'manage_shipping_settings');
             if (denied) return denied;
-            return await shippingService.testAusPostSettings(request.accountId!);
+            const command = settingsCommandSchema.parse(request.body);
+            z.object({}).strict().parse(command.data);
+            return await runShippingSettingsCommand(request.accountId!, request.user!.id, 'test', command, () => shippingService.testAusPostSettings(request.accountId!));
         } catch (error: any) {
             Logger.error('[ShippingRoutes] Failed to test AusPost settings', { error: error?.message || error });
             const known = ['AusPost credentials are not configured', 'AusPost API key is not configured', 'AusPost account number is not configured'];
             const status = known.includes(error?.message) ? 400 : 500;
             return reply.code(status).send({ error: error?.message || 'Failed to test AusPost settings' });
         }
+    });
+    fastify.post('/settings/auspost-service-catalog', async (request, reply) => {
+        const denied = await requireShippingPermission(request, reply, 'manage_shipping_settings');
+        if (denied) return denied;
+        try {
+            const command = settingsCommandSchema.parse(request.body);
+            z.object({}).strict().parse(command.data);
+            return await runShippingSettingsCommand(request.accountId!, request.user!.id, 'refresh', command, () => shippingService.listAusPostServiceCatalog(request.accountId!, { forceRefresh: true }));
+        } catch { return reply.code(409).send({ error: 'Catalog refresh unconfirmed/conflicted; reconcile original operation' }); }
     });
 };
 

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../utils/prisma', () => ({
     prisma: {
+        $transaction: vi.fn(async work => work({ $queryRaw: vi.fn(), scopedOperation: { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn() } })),
         account: { findUnique: vi.fn(), findMany: vi.fn() },
         accountFeature: { findUnique: vi.fn(), findMany: vi.fn() },
         emailAccount: { findMany: vi.fn() },
@@ -86,7 +87,7 @@ describe('tracking email event authentication', () => {
             method: 'POST',
             url: '/account-1',
             headers: { authorization: 'Bearer tracking-secret' },
-            payload: { event: { event_status: 'delivered' } }
+            payload: { event: { event_status: 'delivered', tracking_number: 'synthetic-1', occurred_at: '2026-10-22T00:00:00.000Z' } }
         });
 
         expect(response.statusCode).toBe(202);
@@ -110,7 +111,7 @@ describe('tracking email event authentication', () => {
             method: 'POST',
             url: '/account-1',
             headers: { authorization: 'Bearer workflow-secret' },
-            payload: { event: { event_status: 'delivered' } }
+            payload: { event: { event_status: 'delivered', tracking_number: 'synthetic-2', occurred_at: '2026-10-22T00:00:00.000Z' } }
         });
 
         expect(response.statusCode).toBe(202);

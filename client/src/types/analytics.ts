@@ -71,6 +71,7 @@ export interface ReportResult {
 
 export interface ReportTemplate {
     id: string;
+    updatedAt?: string;
     name: string;
     type: 'CUSTOM' | 'SYSTEM' | 'SYSTEM_CLONE';
     category?: 'Sales' | 'Traffic' | 'Customer' | 'Conversion';

@@ -242,7 +242,7 @@ class AusPostShippingTrackingAdapter {
                 error: reason,
             });
             return {
-                services: AUSPOST_SERVICE_CATALOG,
+                services: AUSPOST_SERVICE_CATALOG.map(service => ({ ...service })),
                 updatedAt: AUSPOST_SERVICE_CATALOG_UPDATED_AT,
                 source: 'static_fallback',
                 warning: `Live account service discovery failed. Showing static catalog values. Reason: ${reason}`,

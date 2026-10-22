@@ -13,6 +13,7 @@ import type {
 import { getManagedStockProducts, getOrderedInventory } from './inventory-forecast/queries';
 import { getHistoricalSales } from './inventory-forecast/sales';
 import { getBOMComponentMappings, calculateBOMDerivedDemand } from './inventory-forecast/bom';
+import { UnsupportedBOMForecastError } from './inventory-forecast/errors';
 import {
     calculateProductSeasonality,
     aggregateToDailySales,
@@ -145,6 +146,7 @@ export class InventoryForecastService {
 
             return sortByRisk(forecasts);
         } catch (error) {
+            if (error instanceof UnsupportedBOMForecastError) throw error;
             Logger.error('[InventoryForecastService] Error generating SKU forecasts', { error, accountId });
             throw error;
         }

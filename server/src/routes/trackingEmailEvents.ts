@@ -2,6 +2,7 @@ import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import crypto from 'crypto';
 import { prisma } from '../utils/prisma';
 import { EventBus, EVENTS } from '../services/events';
+import { recordCriticalEvent } from '../services/CriticalEventOutbox';
 import { Logger } from '../utils/logger';
 import { decrypt } from '../utils/encryption';
 
@@ -361,6 +362,9 @@ async function handleTrackingEmailEvent(
         rawEvent: event,
     };
 
+    if (!event.tracking_number || event.tracking_number.length > 200 || !event.occurred_at || !Number.isFinite(Date.parse(event.occurred_at))) return reply.code(422).send({ error: 'Stable tracking number and source scan time are required' });
+    const occurrence = crypto.createHash('sha256').update(JSON.stringify([event.tracking_number, event.occurred_at, normalizedStatus, event.provider ?? null, event.order_id ?? null])).digest('hex');
+    await prisma.$transaction(tx => recordCriticalEvent(tx, mapped.eventName, { accountId, shipment: triggerData }, `shipment:${occurrence}`));
     EventBus.emit(mapped.eventName, { accountId, shipment: triggerData });
 
     Logger.info('[TrackingEmailEvents] Shipment event accepted', {

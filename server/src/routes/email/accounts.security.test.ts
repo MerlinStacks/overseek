@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const { prismaMock, decryptMock } = vi.hoisted(() => ({
     prismaMock: {
         emailAccount: { findFirst: vi.fn() },
+        scopedOperation: { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn(), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+        $transaction: vi.fn(),
     },
     decryptMock: vi.fn(() => 'stored-secret'),
 }));
@@ -25,6 +27,7 @@ vi.mock('../../services/PermissionService', () => ({
 vi.mock('../../services/EmailService', () => ({
     EmailService: class { verifyConnection = vi.fn(); },
 }));
+vi.mock('../../services/BoundedProviderWork', () => ({ claimProviderWork: vi.fn(async () => async () => undefined) }));
 vi.mock('../../utils/encryption', () => ({
     encrypt: vi.fn((value: string) => value),
     decrypt: decryptMock,
@@ -37,6 +40,8 @@ describe('email relay test security', () => {
     let app: ReturnType<typeof Fastify>;
 
     beforeEach(async () => {
+        vi.stubEnv('EMAIL_RELAY_TEST_ORIGINS', 'https://relay.example,https://attacker.example');
+        prismaMock.$transaction.mockImplementation(async work => work({ ...prismaMock, $queryRaw: vi.fn() }));
         app = Fastify();
         await app.register(emailAccountRoutes, { prefix: '/email' });
         await app.ready();
@@ -46,6 +51,7 @@ describe('email relay test security', () => {
     afterEach(async () => {
         await app.close();
         vi.unstubAllGlobals();
+        vi.unstubAllEnvs();
         vi.clearAllMocks();
     });
 
@@ -61,6 +67,7 @@ describe('email relay test security', () => {
     it('does not decrypt a stored key for a newly supplied endpoint', async () => {
         vi.mocked(PermissionService.hasPermission).mockResolvedValue(true);
         prismaMock.emailAccount.findFirst.mockResolvedValue({
+            id: 'email-account-1', updatedAt: new Date('2026-01-01T00:00:00.000Z'),
             relayApiKey: 'encrypted-secret',
             relayEndpoint: 'https://relay.example/send',
         });
@@ -75,6 +82,7 @@ describe('email relay test security', () => {
     it('reuses a stored key only with its saved endpoint', async () => {
         vi.mocked(PermissionService.hasPermission).mockResolvedValue(true);
         prismaMock.emailAccount.findFirst.mockResolvedValue({
+            id: 'email-account-1', updatedAt: new Date('2026-01-01T00:00:00.000Z'),
             relayApiKey: 'encrypted-secret',
             relayEndpoint: 'https://relay.example/send',
         });
@@ -99,9 +107,12 @@ describe('email relay test security', () => {
             url: '/email/test-relay',
             headers: { 'x-account-id': 'account-1' },
             payload: {
+                operationId: '58205113-2154-4f77-a486-7ff9d5671d92', version: '2026-01-01T00:00:00.000Z',
+                data: {
                 relayEndpoint,
                 relayApiKey: '••••••••',
                 emailAccountId: 'email-account-1',
+                },
             },
         });
     }

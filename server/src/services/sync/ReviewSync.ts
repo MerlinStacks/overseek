@@ -2,6 +2,7 @@ import { BaseSync, SyncResult } from './BaseSync';
 import { WooService } from '../woo';
 import { prisma } from '../../utils/prisma';
 import { EventBus, EVENTS } from '../events';
+import { recordCriticalEvent } from '../CriticalEventOutbox';
 import { Logger } from '../../utils/logger';
 import { IndexingService } from '../search/IndexingService';
 import { WooReviewSchema, WooReview } from './wooSchemas';
@@ -335,7 +336,10 @@ export class ReviewSync extends BaseSync {
                     });
                 }
 
-                await prisma.wooReview.upsert({
+                await prisma.$transaction(async tx => {
+                await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${`review-event:${accountId}:${r.id}`}, 0))`;
+                const prior = await tx.wooReview.findUnique({ where: { accountId_wooId: { accountId, wooId: r.id } }, select: { id: true } });
+                await tx.wooReview.upsert({
                     where: { accountId_wooId: { accountId, wooId: r.id } },
                     update: {
                         status: r.status,
@@ -364,6 +368,8 @@ export class ReviewSync extends BaseSync {
                         wooOrderId,
                         matchStatus // Track match status for filtering
                     }
+                });
+                if (!prior && !isBaselineSync && Date.now() - reviewDate.getTime() >= 0 && Date.now() - reviewDate.getTime() < 86400000) await recordCriticalEvent(tx, EVENTS.REVIEW.LEFT, { accountId, review: r });
                 });
 
                 // Emit Event

@@ -190,10 +190,11 @@ export class PushNotificationService {
     /**
      * Removes a push subscription.
      */
-    static async unsubscribe(userId: string, endpoint: string): Promise<boolean> {
+    static async unsubscribe(userId: string, endpoint: string, accountId?: string): Promise<boolean> {
+        if (!accountId) return false;
         try {
             await prisma.pushSubscription.deleteMany({
-                where: { userId, endpoint }
+                where: { userId, endpoint, accountId }
             });
             Logger.info('[PushNotificationService] Unsubscribed', { userId });
             return true;
