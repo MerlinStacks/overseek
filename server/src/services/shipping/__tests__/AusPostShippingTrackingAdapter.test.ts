@@ -57,15 +57,11 @@ describe('AusPostShippingTrackingAdapter', () => {
     });
 
     it('extracts tracking events from configured tracking endpoint responses', async () => {
-        (fetch as any).mockResolvedValueOnce({
-            ok: true,
-            status: 200,
-            text: async () => JSON.stringify({
+        (fetch as any).mockResolvedValueOnce(new Response(JSON.stringify({
                 trackingEvents: [
                     { eventCode: 'LODGE', description: 'Received by carrier', location: 'Sydney', eventDateTime: '2026-05-19T10:00:00.000Z' },
                 ],
-            }),
-        });
+            }), { headers: { 'content-type': 'application/json' } }));
 
         const events = await ausPostShippingTrackingAdapter.refreshTracking('account-1', 'ABC123');
 

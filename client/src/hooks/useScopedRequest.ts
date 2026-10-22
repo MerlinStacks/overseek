@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 /** Mount the caller under an account/auth/resource key to hide old data immediately. */
-export function useScopedRequest<T>(url: string | null, accountId: string, token: string, decode: (value: unknown) => T) {
+export function useScopedRequest<T>(url: string | null, accountId: string, token: string, decode: (value: unknown) => T, transport?: (signal: AbortSignal) => Promise<unknown>) {
     const [data, setData] = useState<T | null>(null);
     const [loading, setLoading] = useState(Boolean(url));
     const [error, setError] = useState(false);
@@ -16,15 +16,19 @@ export function useScopedRequest<T>(url: string | null, accountId: string, token
             setLoading(true); setError(false);
             void (async () => {
                 try {
-                    const response = await fetch(url, { signal: controller.signal, headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId } });
-                    if (!response.ok) throw new Error('Request failed');
-                    const result = decode(await response.json());
+                    let value: unknown;
+                    if (transport) value = await transport(controller.signal);
+                    else {
+                        const response = await fetch(url, { signal: controller.signal, headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId } });
+                        if (!response.ok) throw new Error('Request failed'); value = await response.json();
+                    }
+                    const result = decode(value);
                     if (!disposed && !controller.signal.aborted) setData(result);
                 } catch { if (!disposed) setError(true); }
                 finally { clearTimeout(timeout); if (!disposed) setLoading(false); }
             })();
         });
         return () => { disposed = true; controller.abort(); clearTimeout(timeout); };
-    }, [url, accountId, token, decode, attempt]);
+    }, [url, accountId, token, decode, transport, attempt]);
     return { data, loading, error, retry: () => setAttempt(value => value + 1) };
 }

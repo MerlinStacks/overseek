@@ -1,410 +1,49 @@
-/**
- * ProductSearchInput - Combobox for searching and selecting products
- * 
- * Fetches products via the existing search API and allows selection.
- * Variants are flattened into the same list for single-click selection.
- * SKU matches are prioritized in results.
- */
-
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { z } from 'zod';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Search, Package, X, Loader2 } from 'lucide-react';
-import { Logger } from '../../utils/logger';
-
-export interface ProductSelection {
-    productId: string;        // Internal UUID
-    wooId: number;            // WooCommerce ID
-    variationWooId?: number;  // Variant WooId if selected
-    name: string;
-    sku?: string;
-    price?: number;
-    cogs?: number;
-    image?: string;
+import { usePermissions } from '../../hooks/usePermissions';
+import { readBoundedBytes } from '../../utils/boundedResponse';
+export interface ProductSelection { productId: string; wooId: number; variationWooId?: number; name: string; sku?: string; price?: number; cogs?: number; image?: string }
+interface Props { onSelect: (product: ProductSelection) => void; onClear?: () => void; placeholder?: string; disabled?: boolean; initialValue?: string }
+const text = z.string().max(500), id = z.number().int().positive().safe();
+const productSchema = z.object({ id: text.min(1), woo_id: id.optional(), wooId: id.optional(), name: text.min(1), sku: text.nullish(), type: z.string().max(50).optional(), hasBOM: z.boolean().optional(), searchableVariants: z.array(z.object({ wooId: id, sku: text.nullish(), attributeString: text.optional() })).max(100).optional() }).refine(value => (value.woo_id ?? value.wooId) !== undefined && (value.woo_id === undefined || value.wooId === undefined || value.woo_id === value.wooId));
+export function ProductSearchInput(props: Props) {
+    const { token, user } = useAuth(), { currentAccount } = useAccount();
+    return <SearchScope key={JSON.stringify([user?.id, token, currentAccount?.id, props.initialValue, props.disabled])} {...props} token={token ?? ''} accountId={currentAccount?.id ?? ''} />;
 }
-
-interface ProductResult {
-    id: string;
-    woo_id?: number;
-    name: string;
-    sku?: string;
-    price?: number;
-    cogs?: number;
-    stock_quantity?: number;
-    stock_status?: string;
-    images?: { src: string }[];
-    main_image?: string;
-    type?: string;
-    variations?: VariationResult[];
-    searchableVariants?: SearchableVariant[];
-    hasBOM?: boolean;
-}
-
-interface VariationResult {
-    wooId: number;
-    sku?: string;
-    price?: number;
-    cogs?: number;
-    attributes?: { name: string; option: string }[];
-    stock_quantity?: number;
-}
-
-interface SearchableVariant {
-    wooId: number;
-    sku?: string;
-    price?: number;
-    cogs?: number;
-    stockQuantity?: number;
-    stock_quantity?: number;
-    attributeString?: string;
-    attributes?: { name: string; option: string }[];
-}
-
-/** Flattened item for display - can be a simple product or a variant */
-interface FlatItem {
-    productId: string;
-    wooId: number;
-    variationWooId?: number;
-    name: string;
-    sku?: string;
-    price?: number;
-    cogs?: number;
-    stock?: number;
-    image?: string;
-    isVariant: boolean;
-    parentName?: string;
-}
-
-interface ProductSearchInputProps {
-    onSelect: (product: ProductSelection) => void;
-    onClear?: () => void;
-    placeholder?: string;
-    disabled?: boolean;
-    initialValue?: string;
-}
-
-export function ProductSearchInput({
-    onSelect,
-    onClear,
-    placeholder = 'Search by SKU or product name...',
-    disabled = false,
-    initialValue = ''
-}: ProductSearchInputProps) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-
-    const [query, setQuery] = useState(initialValue);
-    const [flatResults, setFlatResults] = useState<FlatItem[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
-    const [isOpen, setIsOpen] = useState(false);
-    const [highlightedIndex, setHighlightedIndex] = useState(-1);
-
-    const inputRef = useRef<HTMLInputElement>(null);
-    const dropdownRef = useRef<HTMLDivElement>(null);
-    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
+function SearchScope({ onSelect, onClear, placeholder = 'Search by SKU or product name', disabled = false, initialValue = '', token, accountId }: Props & { token: string; accountId: string }) {
+    const { hasPermission } = usePermissions(), allowed = !disabled && !!token && !!accountId && hasPermission('view_products');
+    const [query, setQuery] = useState(initialValue), [committed, setCommitted] = useState(!!initialValue), [open, setOpen] = useState(false), [selected, setSelected] = useState(-1);
+    const [result, setResult] = useState<{ query: string; items: ProductSelection[]; state: string }>({ query: '', items: [], state: 'idle' });
+    const listId = useId(), inputId = useId();
     useEffect(() => {
-        setQuery(initialValue);
-    }, [initialValue]);
-
-    /**
-     * Flatten products + their variants into a single list.
-     * SKU matches are prioritized to the top.
-     */
-    const flattenAndSort = (products: ProductResult[], searchQuery: string): FlatItem[] => {
-        const items: FlatItem[] = [];
-        const queryLower = searchQuery.toLowerCase().trim();
-
-        for (const product of products) {
-            // Skip BOM products
-            if (product.hasBOM) continue;
-
-            // Use searchableVariants (contains full variant data with COGS) over variations (only WooCommerce IDs)
-            const searchableVariants = product.searchableVariants || [];
-            const hasVariations = product.type === 'variable' && searchableVariants.length > 0;
-
-            if (hasVariations) {
-                // Add each variant as a separate item
-                for (const variation of searchableVariants) {
-                    const variantLabel = variation.attributeString ||
-                        variation.attributes?.map((attr) => attr.option).join(' / ') ||
-                        `Variant ${variation.wooId}`;
-
-                    items.push({
-                        productId: product.id,
-                        wooId: product.woo_id || 0,
-                        variationWooId: variation.wooId,
-                        name: `${product.name} - ${variantLabel}`,
-                        sku: variation.sku || product.sku,
-                        price: variation.price || product.price,
-                        cogs: variation.cogs || product.cogs,
-                        stock: variation.stockQuantity ?? variation.stock_quantity,
-                        image: product.main_image || product.images?.[0]?.src,
-                        isVariant: true,
-                        parentName: product.name
-                    });
-                }
-            } else {
-                // Simple product
-                items.push({
-                    productId: product.id,
-                    wooId: product.woo_id || 0,
-                    name: product.name,
-                    sku: product.sku,
-                    price: product.price,
-                    cogs: product.cogs,
-                    stock: product.stock_quantity,
-                    image: product.main_image || product.images?.[0]?.src,
-                    isVariant: false
-                });
-            }
-        }
-
-        // Sort: SKU exact match first, then SKU contains, then name match
-        items.sort((a, b) => {
-            const aSkuExact = a.sku?.toLowerCase() === queryLower ? 1 : 0;
-            const bSkuExact = b.sku?.toLowerCase() === queryLower ? 1 : 0;
-            if (aSkuExact !== bSkuExact) return bSkuExact - aSkuExact;
-
-            const aSkuContains = a.sku?.toLowerCase().includes(queryLower) ? 1 : 0;
-            const bSkuContains = b.sku?.toLowerCase().includes(queryLower) ? 1 : 0;
-            if (aSkuContains !== bSkuContains) return bSkuContains - aSkuContains;
-
-            return 0;
-        });
-
-        return items;
-    };
-
-    const searchProducts = useCallback(async (searchQuery: string) => {
-        if (!searchQuery.trim() || !token || !currentAccount) {
-            setFlatResults([]);
-            return;
-        }
-
-        setIsLoading(true);
-        try {
-            const res = await fetch(`/api/products?q=${encodeURIComponent(searchQuery)}&limit=20`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
-                }
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                const products = data.products || data || [];
-                const flattened = flattenAndSort(products, searchQuery);
-                setFlatResults(flattened.slice(0, 15)); // Cap at 15 items
-            }
-        } catch (error) {
-            Logger.error('Product search failed', { error });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [token, currentAccount]);
-
-    useEffect(() => {
-        if (debounceRef.current) {
-            clearTimeout(debounceRef.current);
-        }
-
-        if (query.trim().length >= 2) {
-            debounceRef.current = setTimeout(() => {
-                searchProducts(query);
-            }, 300);
-        } else {
-            setFlatResults([]);
-        }
-
-        return () => {
-            if (debounceRef.current) {
-                clearTimeout(debounceRef.current);
-            }
-        };
-    }, [query, searchProducts]);
-
-    useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-                setIsOpen(false);
-            }
-        }
-        function handleEscape(event: KeyboardEvent) {
-            if (event.key === 'Escape') {
-                setIsOpen(false);
-            }
-        }
-
-        document.addEventListener('mousedown', handleClickOutside);
-        document.addEventListener('keydown', handleEscape);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-            document.removeEventListener('keydown', handleEscape);
-        };
-    }, []);
-
-    const handleSelect = (item: FlatItem) => {
-        onSelect({
-            productId: item.productId,
-            wooId: item.wooId,
-            variationWooId: item.variationWooId,
-            name: item.name,
-            sku: item.sku,
-            price: item.price,
-            cogs: item.cogs,
-            image: item.image
-        });
-
-        setQuery(item.name);
-        setIsOpen(false);
-        setFlatResults([]);
-        setHighlightedIndex(-1);
-    };
-
-    /**
-     * Handle keyboard navigation in the dropdown
-     */
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (!isOpen || flatResults.length === 0) return;
-
-        switch (e.key) {
-            case 'ArrowDown':
-                e.preventDefault();
-                setHighlightedIndex(prev =>
-                    prev < flatResults.length - 1 ? prev + 1 : 0
-                );
-                break;
-            case 'ArrowUp':
-                e.preventDefault();
-                setHighlightedIndex(prev =>
-                    prev > 0 ? prev - 1 : flatResults.length - 1
-                );
-                break;
-            case 'Enter':
-                e.preventDefault();
-                if (highlightedIndex >= 0 && highlightedIndex < flatResults.length) {
-                    handleSelect(flatResults[highlightedIndex]);
-                }
-                break;
-            case 'Escape':
-                setIsOpen(false);
-                setHighlightedIndex(-1);
-                break;
-        }
-    };
-
-    const clearSelection = () => {
-        setQuery('');
-        setFlatResults([]);
-        onClear?.();
-        inputRef.current?.focus();
-    };
-
-    return (
-        <div className="relative" ref={dropdownRef}>
-            <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                <input
-                    ref={inputRef}
-                    type="text"
-                    value={query}
-                    onChange={(e) => {
-                        setQuery(e.target.value);
-                        setIsOpen(true);
-                        setHighlightedIndex(-1);
-                    }}
-                    onFocus={() => setIsOpen(true)}
-                    onKeyDown={handleKeyDown}
-                    placeholder={placeholder}
-                    disabled={disabled}
-                    className="w-full pl-10 pr-8 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-500"
-                    aria-label="Search products"
-                    aria-activedescendant={highlightedIndex >= 0 ? `product-option-${highlightedIndex}` : undefined}
-                    aria-expanded={isOpen}
-                    role="combobox"
-                />
-                {query && (
-                    <button
-                        type="button"
-                        onClick={clearSelection}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                        <X size={16} />
-                    </button>
-                )}
-            </div>
-
-            {/* Dropdown - Flattened list */}
-            {isOpen && (query.length >= 2 || flatResults.length > 0) && (
-                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 overflow-y-auto">
-                    {isLoading ? (
-                        <div className="p-4 text-center text-gray-500">
-                            <Loader2 className="animate-spin inline mr-2" size={16} />
-                            Searching...
-                        </div>
-                    ) : flatResults.length === 0 ? (
-                        <div className="p-4 text-center text-gray-500 text-sm">
-                            No products found for "{query}"
-                        </div>
-                    ) : (
-                        flatResults.map((item, idx) => (
-                            <button
-                                id={`product-option-${idx}`}
-                                key={`${item.productId}-${item.variationWooId || 'simple'}-${idx}`}
-                                type="button"
-                                onClick={() => handleSelect(item)}
-                                onMouseEnter={() => setHighlightedIndex(idx)}
-                                className={`w-full px-3 py-2.5 text-left flex items-center gap-3 border-b border-gray-100 last:border-0 ${highlightedIndex === idx ? 'bg-blue-50' : 'hover:bg-blue-50'}`}
-                                role="option"
-                                aria-selected={highlightedIndex === idx}
-                            >
-                                {/* Product image */}
-                                <div className="w-10 h-10 bg-gray-100 rounded-md flex-shrink-0 flex items-center justify-center overflow-hidden">
-                                    {item.image ? (
-                                        <img src={item.image} alt="" className="w-full h-full object-cover" />
-                                    ) : (
-                                        <Package size={20} className="text-gray-300" />
-                                    )}
-                                </div>
-
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-medium text-gray-900 truncate">
-                                        {item.name}
-                                    </div>
-                                    <div className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
-                                        {item.sku && (
-                                            <span className="bg-gray-100 px-1.5 py-0.5 rounded font-mono">
-                                                {item.sku}
-                                            </span>
-                                        )}
-                                        {item.stock !== undefined && (
-                                            <span className={item.stock <= 0 ? 'text-red-500' : ''}>
-                                                Stock: {item.stock}
-                                            </span>
-                                        )}
-                                        {item.isVariant && (
-                                            <span className="text-blue-600 text-xs">Variant</span>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="text-right flex-shrink-0">
-                                    {item.cogs !== undefined && item.cogs > 0 ? (
-                                        <span className="text-sm font-medium text-green-700">
-                                            ${Number(item.cogs).toFixed(2)}
-                                        </span>
-                                    ) : item.price !== undefined ? (
-                                        <span className="text-sm text-gray-500">
-                                            ${Number(item.price).toFixed(2)}
-                                        </span>
-                                    ) : null}
-                                </div>
-                            </button>
-                        ))
-                    )}
-                </div>
-            )}
-        </div>
-    );
+        if (!allowed || query.trim().length < 2 || committed) return;
+        const controller = new AbortController(); let disposed = false;
+        const timer = setTimeout(() => {
+            setResult({ query, items: [], state: 'loading' });
+            void (async () => {
+                try {
+                    const response = await fetch(`/api/products?q=${encodeURIComponent(query.trim())}&limit=20`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]), headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId } });
+                    if (!response.ok) { await response.body?.cancel().catch(() => undefined); throw new Error('Unavailable'); } const data = JSON.parse(new TextDecoder().decode(await readBoundedBytes(response, 1048576)));
+                    const products = z.array(productSchema).max(20).parse(Array.isArray(data) ? data : data?.products);
+                    const items: ProductSelection[] = [];
+                    for (const product of products) {
+                        if (product.hasBOM) continue;
+                        if (product.type === 'variable') {
+                            if (new Set(product.searchableVariants?.map(value => value.wooId)).size !== product.searchableVariants?.length) throw new Error('Duplicate variation');
+                            for (const variation of product.searchableVariants ?? []) items.push({ productId: product.id, wooId: (product.woo_id ?? product.wooId)!, variationWooId: variation.wooId, name: `${product.name} — ${variation.attributeString || `Variation ${variation.wooId}`}`, sku: variation.sku ?? undefined });
+                        } else if (product.type === 'simple') items.push({ productId: product.id, wooId: (product.woo_id ?? product.wooId)!, name: product.name, sku: product.sku ?? undefined });
+                    }
+                    if (new Set(items.map(item => `${item.productId}:${item.variationWooId ?? ''}`)).size !== items.length) throw new Error('Duplicate identity');
+                    items.sort((a, b) => Number(b.sku?.toLowerCase() === query.trim().toLowerCase()) - Number(a.sku?.toLowerCase() === query.trim().toLowerCase()));
+                    if (!disposed) setResult({ query, items: items.slice(0, 50), state: 'observed' });
+                } catch { if (!disposed) setResult({ query, items: [], state: 'unavailable' }); }
+            })();
+        }, 300);
+        return () => { disposed = true; clearTimeout(timer); controller.abort(); };
+    }, [query, allowed, committed, token, accountId]);
+    const items = allowed && result.query === query && !committed ? result.items : [];
+    const choose = (index: number) => { if (!allowed || !items[index]) return; const item = items[index]; onSelect(item); setQuery(item.name); setCommitted(true); setOpen(false); setSelected(-1); };
+    return <div className="relative text-slate-900 dark:text-slate-100"><label htmlFor={inputId} className="sr-only">Search products</label><input id={inputId} role="combobox" aria-autocomplete="list" aria-controls={listId} aria-expanded={open && allowed} aria-activedescendant={open && items[selected] ? `${listId}-${selected}` : undefined} className="w-full rounded border p-2 dark:bg-slate-800" maxLength={200} value={query} placeholder={placeholder} disabled={!allowed} onFocus={() => setOpen(true)} onBlur={event => { if (!event.currentTarget.parentElement?.contains(event.relatedTarget as Node)) setOpen(false); }} onChange={event => { if (committed) onClear?.(); setCommitted(false); setQuery(event.target.value); setSelected(-1); setOpen(true); }} onKeyDown={event => { if (event.key === 'Escape') { setOpen(false); setSelected(-1); } if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true); setSelected(value => items.length ? (value + (event.key === 'ArrowDown' ? 1 : items.length - 1) + items.length) % items.length : -1); } if (event.key === 'Enter' && open) { event.preventDefault(); choose(selected); } }} /><button type="button" aria-label="Clear product selection" disabled={!allowed} onClick={() => { setQuery(''); setCommitted(false); setOpen(false); setSelected(-1); onClear?.(); }}>Clear</button>{open && allowed && !committed && query.trim().length >= 2 && <div className="absolute z-50 max-h-80 w-full overflow-auto rounded border bg-white p-2 shadow-lg dark:bg-slate-900"><p role="status">{result.query !== query || result.state === 'loading' ? 'Searching…' : result.state === 'unavailable' ? 'Product search unavailable; no selection is admitted.' : `${items.length} selectable rows from up to 20 local products / 50 rows. BOMs, unknown types and unresolved variants excluded. Coverage is partial; costs/currency not established.`}</p><div role="listbox" id={listId}>{items.map((item, index) => <button type="button" role="option" aria-selected={selected === index} id={`${listId}-${index}`} key={`${item.productId}:${item.variationWooId ?? ''}`} className="block w-full rounded p-2 text-left hover:bg-slate-100 dark:hover:bg-slate-800" onMouseDown={event => event.preventDefault()} onClick={() => choose(index)}>{item.name}{item.sku ? ` · ${item.sku}` : ''}</button>)}</div></div>}</div>;
 }

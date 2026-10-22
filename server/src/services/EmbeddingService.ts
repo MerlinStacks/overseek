@@ -1,291 +1,87 @@
-/**
- * EmbeddingService - pgvector Semantic Search
- * 
- * Generates and stores vector embeddings for products using OpenRouter
- * and performs similarity search using pgvector.
- */
-
 import { prisma } from '../utils/prisma';
-import { Logger } from '../utils/logger';
-
-// Default embedding model
-const DEFAULT_EMBEDDING_MODEL = 'openai/text-embedding-3-small';
-
-async function safeOpenRouterJson(response: Response, context: string): Promise<any> {
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-        const bodySnippet = (await response.text()).slice(0, 200);
-        Logger.warn('OpenRouter embeddings returned non-JSON response', { context, status: response.status, contentType, bodySnippet });
-        throw new Error('OpenRouter returned a non-JSON response');
-    }
-
-    return response.json();
-}
-
-interface EmbeddingResult {
-    id: string;
-    name: string;
-    similarity: number;
-}
-
+import { z } from 'zod';
+import { claimProviderWork, providerJson, scopeId } from './BoundedProviderWork';
+const MODEL = 'openai/text-embedding-3-small', DIMENSIONS = 1536;
+interface EmbeddingResult { id: string; name: string; similarity: number }
+function limitValue(value: number) { return z.number().int().min(1).max(100).parse(value); }
 export class EmbeddingService {
-    /**
-     * Tracks whether the embedding column exists in the database.
-     * Why: The pgvector migration may not have been applied yet, so all
-     * raw SQL queries against the `embedding` column would fail. We check
-     * once and cache the result to avoid repeated error log spam.
-     */
-    private static columnExists: boolean | null = null;
-
-    private static async hasEmbeddingColumn(): Promise<boolean> {
-        if (this.columnExists !== null) return this.columnExists;
+    static async hasEmbeddingColumn(): Promise<boolean> {
+        const rows = await prisma.$queryRaw<{ count: bigint }[]>`SELECT count(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'WooProduct' AND column_name IN ('embedding', 'embeddingSourceVersion', 'embeddingModelId', 'embeddingDimensions')`;
+        return Number(rows[0]?.count) === 4;
+    }
+    static async generateEmbeddings(texts: string[], apiKey: string, model = MODEL): Promise<number[][]> {
+        z.array(z.string().min(1).max(8000)).min(1).max(100).parse(texts);
+        if (texts.reduce((sum, value) => sum + Buffer.byteLength(value), 0) > 200000 || model !== MODEL || !apiKey) throw new Error('Unsupported embedding input/model');
+        const data = z.object({ data: z.array(z.object({ index: z.number().int().nonnegative(), embedding: z.array(z.number().finite()).length(DIMENSIONS) })).length(texts.length) }).parse(await providerJson('https://openrouter.ai/api/v1/embeddings', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, input: texts, dimensions: DIMENSIONS }) }, 8000000));
+        const sorted = data.data.sort((a, b) => a.index - b.index);
+        if (sorted.some((row, index) => row.index !== index || !row.embedding.some(value => value !== 0))) throw new Error('Incomplete embedding coverage');
+        return sorted.map(row => row.embedding);
+    }
+    static async generateEmbedding(text: string, apiKey: string, model = MODEL) { return (await this.generateEmbeddings([text], apiKey, model))[0]; }
+    static getProductSearchText(input: unknown): string {
+        const product = z.object({ name: z.string(), sku: z.string().nullish(), description: z.string().nullish(), shortDescription: z.string().nullish(), categories: z.array(z.object({ name: z.string() })).max(100).optional(), tags: z.array(z.object({ name: z.string() })).max(100).optional() }).parse(input);
+        const text = [product.name, product.sku, product.description, product.shortDescription, product.categories?.map(c => c.name).join(' '), product.tags?.map(t => t.name).join(' ')].filter(Boolean).join(' ');
+        return z.string().min(1).max(8000).parse(text); // Oversize is unsupported, not silently truncated coverage.
+    }
+    private static async account(accountId: string) {
+        scopeId.parse(accountId);
+        if (!await this.hasEmbeddingColumn()) throw new Error('Embedding projection unavailable; provenance migration required');
+        const account = await prisma.account.findUnique({ where: { id: accountId }, select: { openRouterApiKey: true, embeddingModel: true } });
+        if (!account?.openRouterApiKey || (account.embeddingModel && account.embeddingModel !== MODEL)) throw new Error('Supported embedding configuration required');
+        return account;
+    }
+    private static async requireCoverage(accountId: string, db: Pick<typeof prisma, '$queryRaw'> = prisma) {
+        const [coverage] = await db.$queryRaw<{ total: bigint; current: bigint }[]>`SELECT count(*) AS total, count(*) FILTER (WHERE embedding IS NOT NULL AND "embeddingSourceVersion" = "updatedAt" AND "embeddingModelId" = ${MODEL} AND "embeddingDimensions" = ${DIMENSIONS}) AS current FROM "WooProduct" WHERE "accountId" = ${accountId}`;
+        const parsed = z.object({ total: z.bigint().nonnegative(), current: z.bigint().nonnegative() }).safeParse(coverage);
+        if (!parsed.success || parsed.data.total !== parsed.data.current) throw new Error('Semantic projection coverage incomplete/unavailable; no empty-success search is asserted');
+    }
+    static async updateProductEmbedding(productId: string, accountId: string, _accountData?: unknown, _productData?: unknown): Promise<void> {
+        scopeId.parse(productId);
+        const account = await this.account(accountId);
+        const product = await prisma.wooProduct.findFirst({ where: { id: productId, accountId }, select: { id: true, rawData: true, updatedAt: true } });
+        if (!product) throw new Error('Scoped product unavailable');
+        const release = await claimProviderWork(accountId, 'embedding', 1);
         try {
-            const result = await prisma.$queryRaw<Array<{ exists: boolean }>>`
-                SELECT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'WooProduct' AND column_name = 'embedding'
-                ) as exists
-            `;
-            this.columnExists = result[0]?.exists ?? false;
-            if (!this.columnExists) {
-                Logger.info('[EmbeddingService] Embedding column not found — semantic search disabled. Run pgvector migration to enable.');
-            }
-            return this.columnExists;
-        } catch {
-            this.columnExists = false;
-            return false;
-        }
+            const vector = JSON.stringify(await this.generateEmbedding(this.getProductSearchText(product.rawData), account.openRouterApiKey!, MODEL));
+            const count = await prisma.$executeRaw`UPDATE "WooProduct" SET embedding = ${vector}::vector, "embeddingSourceVersion" = ${product.updatedAt}, "embeddingModelId" = ${MODEL}, "embeddingDimensions" = ${DIMENSIONS} WHERE id = ${productId} AND "accountId" = ${accountId} AND "updatedAt" = ${product.updatedAt}`;
+            if (count !== 1) throw new Error('Embedding source changed; projection not acknowledged');
+        } finally { await release(); }
     }
-
-    /**
-     * Generate embeddings for multiple texts using OpenRouter API
-     */
-    static async generateEmbeddings(texts: string[], apiKey: string, model: string = DEFAULT_EMBEDDING_MODEL): Promise<number[][]> {
-        if (!apiKey) {
-            throw new Error('OpenRouter API key required for embeddings');
-        }
-
+    static async batchUpdateEmbeddings(accountId: string, limit = 100): Promise<number> {
+        limitValue(limit); const account = await this.account(accountId);
+        const products = await prisma.$queryRaw<{ id: string; rawData: unknown; updatedAt: Date }[]>`SELECT id, "rawData", "updatedAt" FROM "WooProduct" WHERE "accountId" = ${accountId} AND (embedding IS NULL OR "embeddingSourceVersion" IS DISTINCT FROM "updatedAt" OR "embeddingModelId" IS DISTINCT FROM ${MODEL}) ORDER BY id LIMIT ${limit}`;
+        if (!products.length) return 0;
+        const release = await claimProviderWork(accountId, 'embedding', products.length);
         try {
-            const response = await fetch('https://openrouter.ai/api/v1/embeddings', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey}`,
-                    'HTTP-Referer': process.env.APP_URL || 'http://localhost:5173',
-                    'X-Title': `${process.env.APP_NAME || 'Commerce Platform'}`
-                },
-                body: JSON.stringify({
-                    model: model,
-                    input: texts.map(t => t.slice(0, 8000)) // Max input length
-                })
-            });
-
-            if (!response.ok) {
-                const error = await safeOpenRouterJson(response, 'generateEmbeddings.error').catch(() => ({}));
-                throw new Error(error.error?.message || 'Embedding generation failed');
-            }
-
-            const data = await safeOpenRouterJson(response, 'generateEmbeddings');
-            return data.data.sort((a: any, b: any) => a.index - b.index).map((d: any) => d.embedding);
-        } catch (error) {
-            Logger.error('Failed to generate embeddings', { error, model, count: texts.length });
-            throw error;
-        }
-    }
-
-    /**
-     * Generate embedding using OpenRouter API
-     */
-    static async generateEmbedding(text: string, apiKey: string, model: string = DEFAULT_EMBEDDING_MODEL): Promise<number[]> {
-        const embeddings = await this.generateEmbeddings([text], apiKey, model);
-        return embeddings[0];
-    }
-
-    /**
-     * Generate searchable text from a product
-     */
-    static getProductSearchText(product: any): string {
-        const parts = [
-            product.name,
-            product.sku,
-            product.description,
-            product.shortDescription,
-            product.categories?.map((c: any) => c.name).join(' '),
-            product.tags?.map((t: any) => t.name).join(' ')
-        ].filter(Boolean);
-
-        return parts.join(' ').slice(0, 8000);
-    }
-
-    /**
-     * Update embedding for a single product
-     */
-    static async updateProductEmbedding(
-        productId: string,
-        accountId: string,
-        accountData?: { openRouterApiKey: string | null; embeddingModel: string | null },
-        productData?: any
-    ): Promise<void> {
-        if (!(await this.hasEmbeddingColumn())) return;
-
-        let account = accountData;
-        if (!account) {
-            account = await prisma.account.findUnique({
-                where: { id: accountId },
-                select: { openRouterApiKey: true, embeddingModel: true }
-            });
-        }
-
-        const apiKey = account?.openRouterApiKey;
-        if (!apiKey) {
-            Logger.warn('No API key available for embeddings', { productId, accountId });
-            return;
-        }
-
-        let product = productData;
-        if (!product) {
-            product = await prisma.wooProduct.findUnique({
-                where: { id: productId }
-            });
-        }
-
-        if (!product) return;
-
-        const searchText = this.getProductSearchText(product.rawData);
-        const model = account?.embeddingModel || DEFAULT_EMBEDDING_MODEL;
-        const embedding = await this.generateEmbedding(searchText, apiKey, model);
-
-        // Store embedding using raw SQL (pgvector)
-        await prisma.$executeRaw`
-            UPDATE "WooProduct" 
-            SET embedding = ${embedding}::vector
-            WHERE id = ${productId}
-        `;
-
-        Logger.debug('Updated product embedding', { productId });
-    }
-
-    /**
-     * Batch update embeddings for all products
-     */
-    static async batchUpdateEmbeddings(accountId: string, limit: number = 100): Promise<number> {
-        if (!(await this.hasEmbeddingColumn())) return 0;
-
-        const account = await prisma.account.findUnique({
-            where: { id: accountId },
-            select: { openRouterApiKey: true, embeddingModel: true }
-        });
-
-        const apiKey = account?.openRouterApiKey;
-        if (!apiKey) {
-            throw new Error('No OpenRouter API key available for embeddings');
-        }
-
-        const model = account.embeddingModel || DEFAULT_EMBEDDING_MODEL;
-
-        // Find products without embeddings
-        const products = await prisma.$queryRaw<{ id: string; rawData: any }[]>`
-            SELECT id, "rawData" 
-            FROM "WooProduct" 
-            WHERE "accountId" = ${accountId} 
-            AND embedding IS NULL
-            LIMIT ${limit}
-        `;
-
-        if (products.length === 0) return 0;
-
-        let updated = 0;
-        try {
-            const searchTexts = products.map(p => this.getProductSearchText(p.rawData));
-            const embeddings = await this.generateEmbeddings(searchTexts, apiKey, model);
-
-            for (let i = 0; i < products.length; i++) {
-                if (embeddings[i]) {
-                    await prisma.$executeRaw`
-                        UPDATE "WooProduct"
-                        SET embedding = ${embeddings[i]}::vector
-                        WHERE id = ${products[i].id}
-                    `;
-                    updated++;
+            const vectors = await this.generateEmbeddings(products.map(product => this.getProductSearchText(product.rawData)), account.openRouterApiKey!, MODEL);
+            await prisma.$transaction(async tx => {
+                for (let index = 0; index < products.length; index++) {
+                    const product = products[index], vector = JSON.stringify(vectors[index]);
+                    const changed = await tx.$executeRaw`UPDATE "WooProduct" SET embedding = ${vector}::vector, "embeddingSourceVersion" = ${product.updatedAt}, "embeddingModelId" = ${MODEL}, "embeddingDimensions" = ${DIMENSIONS} WHERE id = ${product.id} AND "accountId" = ${accountId} AND "updatedAt" = ${product.updatedAt}`;
+                    if (changed !== 1) throw new Error('Embedding batch source changed');
                 }
-            }
-        } catch (error) {
-            Logger.error('Failed to batch update embeddings', { accountId, error });
-        }
-
-        Logger.info('Batch embedding update complete', { accountId, updated });
-        return updated;
+            });
+            return products.length; // Capped projection count, not full-account coverage.
+        } finally { await release(); }
     }
-
-    /**
-     * Semantic search using pgvector cosine similarity
-     */
-    static async semanticSearch(
-        accountId: string,
-        query: string,
-        limit: number = 10
-    ): Promise<EmbeddingResult[]> {
-        if (!(await this.hasEmbeddingColumn())) return [];
-
-        const account = await prisma.account.findUnique({
-            where: { id: accountId },
-            select: { openRouterApiKey: true, embeddingModel: true }
-        });
-
-        const apiKey = account?.openRouterApiKey;
-        if (!apiKey) {
-            throw new Error('No OpenRouter API key available for semantic search');
-        }
-
-        const model = account.embeddingModel || DEFAULT_EMBEDDING_MODEL;
-
-        // Generate embedding for query
-        const queryEmbedding = await this.generateEmbedding(query, apiKey, model);
-
-        // Search using pgvector cosine distance
-        const results = await prisma.$queryRaw<EmbeddingResult[]>`
-            SELECT 
-                id, 
-                name,
-                1 - (embedding <=> ${queryEmbedding}::vector) as similarity
-            FROM "WooProduct"
-            WHERE "accountId" = ${accountId}
-            AND embedding IS NOT NULL
-            ORDER BY embedding <=> ${queryEmbedding}::vector
-            LIMIT ${limit}
-        `;
-
-        return results;
+    static async semanticSearch(accountId: string, query: string, limit = 10): Promise<EmbeddingResult[]> {
+        limitValue(limit); const account = await this.account(accountId); await this.requireCoverage(accountId);
+        const release = await claimProviderWork(accountId, 'embedding', 1);
+        try {
+            const vector = JSON.stringify(await this.generateEmbedding(query, account.openRouterApiKey!, MODEL));
+            return await prisma.$transaction(async tx => {
+                await this.requireCoverage(accountId, tx);
+                return tx.$queryRaw<EmbeddingResult[]>`SELECT id, name, 1 - (embedding <=> ${vector}::vector) AS similarity FROM "WooProduct" WHERE "accountId" = ${accountId} AND embedding IS NOT NULL AND "embeddingSourceVersion" = "updatedAt" AND "embeddingModelId" = ${MODEL} AND "embeddingDimensions" = ${DIMENSIONS} ORDER BY embedding <=> ${vector}::vector, id LIMIT ${limit}`;
+            }, { isolationLevel: 'RepeatableRead' });
+        } finally { await release(); }
     }
-
-    /**
-     * Find similar products to a given product
-     */
-    static async findSimilarProducts(
-        productId: string,
-        accountId: string,
-        limit: number = 5
-    ): Promise<EmbeddingResult[]> {
-        if (!(await this.hasEmbeddingColumn())) return [];
-
-        const results = await prisma.$queryRaw<EmbeddingResult[]>`
-            SELECT 
-                p2.id, 
-                p2.name,
-                1 - (p1.embedding <=> p2.embedding) as similarity
-            FROM "WooProduct" p1
-            JOIN "WooProduct" p2 ON p2."accountId" = p1."accountId"
-            WHERE p1.id = ${productId}
-            AND p2.id != ${productId}
-            AND p1."accountId" = ${accountId}
-            AND p1.embedding IS NOT NULL
-            AND p2.embedding IS NOT NULL
-            ORDER BY p1.embedding <=> p2.embedding
-            LIMIT ${limit}
-        `;
-
-        return results;
+    static async findSimilarProducts(productId: string, accountId: string, limit = 5): Promise<EmbeddingResult[]> {
+        scopeId.parse(productId); limitValue(limit); await this.account(accountId); await this.requireCoverage(accountId);
+        if (!await prisma.wooProduct.findFirst({ where: { id: productId, accountId }, select: { id: true } })) throw new Error('Scoped similarity source unavailable');
+        return prisma.$transaction(async tx => {
+            await this.requireCoverage(accountId, tx);
+            return tx.$queryRaw<EmbeddingResult[]>`SELECT p2.id, p2.name, 1 - (p1.embedding <=> p2.embedding) AS similarity FROM "WooProduct" p1 JOIN "WooProduct" p2 ON p1."accountId" = p2."accountId" WHERE p1.id = ${productId} AND p1."accountId" = ${accountId} AND p2.id != ${productId} AND p1.embedding IS NOT NULL AND p2.embedding IS NOT NULL AND p1."embeddingSourceVersion" = p1."updatedAt" AND p2."embeddingSourceVersion" = p2."updatedAt" AND p1."embeddingModelId" = ${MODEL} AND p2."embeddingModelId" = ${MODEL} AND p1."embeddingDimensions" = ${DIMENSIONS} AND p2."embeddingDimensions" = ${DIMENSIONS} ORDER BY p1.embedding <=> p2.embedding, p2.id LIMIT ${limit}`;
+        }, { isolationLevel: 'RepeatableRead' });
     }
 }
-
 export default EmbeddingService;

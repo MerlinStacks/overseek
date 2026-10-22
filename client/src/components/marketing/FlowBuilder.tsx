@@ -702,14 +702,13 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
         }));
 
         // Update edge references to new node IDs
+        const recipeIds = new Map(recipe.nodes.map((node, index) => [node.id, nodesWithPositions[index].id]));
         const edgesWithIds = recipe.edges.map((edge, index) => {
-            const sourceNode = nodesWithPositions.find(n => n.id.includes(`_${edge.source}_`));
-            const targetNode = nodesWithPositions.find(n => n.id.includes(`_${edge.target}_`));
             return {
                 ...edge,
                 id: `recipe_edge_${index}_${getId()}`,
-                source: sourceNode?.id || edge.source,
-                target: targetNode?.id || edge.target,
+                source: recipeIds.get(edge.source)!,
+                target: recipeIds.get(edge.target)!,
             };
         });
 
@@ -1083,6 +1082,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
 
             {/* Recipe Selector Modal */}
             <RecipeSelectorModal
+                workspaceId={flowId}
                 isOpen={showRecipeSelector}
                 onClose={() => setShowRecipeSelector(false)}
                 onSelect={handleRecipeSelect}

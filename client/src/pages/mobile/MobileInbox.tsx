@@ -412,14 +412,14 @@ export function MobileInbox() {
 
                                     <div className="flex-1 min-w-0 text-left">
                                         <div className="flex items-center justify-between mb-1">
-                                            <span className={`truncate text-base ${convo.unread ? 'font-semibold text-white' : 'font-medium text-slate-300'}`}>
+                                            <span className={`truncate text-base text-white ${convo.unread ? 'font-semibold' : 'font-medium'}`}>
                                                 {convo.customerName}
                                             </span>
-                                            <span className="text-xs text-slate-500 flex-shrink-0 ml-3">
+                                            <span className="text-xs text-slate-400 flex-shrink-0 ml-3">
                                                 {formatTimeAgo(convo.updatedAt)}
                                             </span>
                                         </div>
-                                        <p className={`line-clamp-2 text-sm ${convo.unread ? 'text-slate-300' : 'text-slate-500'}`}>
+                                        <p className="line-clamp-2 text-sm leading-relaxed text-slate-200">
                                             {convo.lastMessage}
                                         </p>
                                         <div className="mt-3 flex items-center gap-2">

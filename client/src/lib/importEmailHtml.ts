@@ -19,62 +19,107 @@ export function importEmailHtml(html: string, options?: { title?: string; previe
         theme.borderRadius = parseFloat(card.style.borderRadius) || 0;
     }
 
-    const blocksFrom = (root: HTMLElement): EmailBlock[] => {
+    const inheritedStyle = (element: HTMLElement, property: string): string => {
+        for (let current: HTMLElement | null = element; current; current = current.parentElement) {
+            const value = current.style.getPropertyValue(property);
+            if (value) return value;
+        }
+        return '';
+    };
+    const alignment = (element: HTMLElement): 'left' | 'center' | 'right' => {
+        for (let current: HTMLElement | null = element; current; current = current.parentElement) {
+            const value = current.style.textAlign || current.getAttribute('align');
+            if (value === 'left' || value === 'center' || value === 'right') return value;
+        }
+        return 'left';
+    };
+    const isHidden = (element: HTMLElement) => element.hidden || element.style.display === 'none';
+    // The designer supports up to four columns, but not row/column spans or data tables.
+    const canImportTable = (table: HTMLTableElement) => !table.querySelector('th,caption')
+        && Array.from(table.rows).every(row => row.cells.length <= 4
+            && Array.from(row.cells).every(cell => cell.colSpan === 1 && cell.rowSpan === 1));
+    const sectionName = (blocks: EmailBlock[]) => {
+        const text = blocks.find(block => block.type === 'text');
+        const label = text?.type === 'text' ? new DOMParser().parseFromString(text.props.html, 'text/html').body.textContent?.trim() : '';
+        return label?.slice(0, 60) || (blocks[0]?.type === 'image' ? 'Image' : blocks[0]?.type === 'button' ? 'Button' : 'Content');
+    };
+
+    const blocksFrom = (root: HTMLElement, includeRoot = false): EmailBlock[] => {
         const blocks: EmailBlock[] = [];
-        const visit = (node: Node, inheritedAlign = root.style.textAlign || root.getAttribute('align') || 'left') => {
+        const visit = (node: Node, inheritedAlign = alignment(root)) => {
             if (node.nodeType === Node.TEXT_NODE) {
                 if (node.textContent?.trim()) blocks.push({ id: createEmailDesignId('text'), type: 'text', props: { html: sanitizeEmailHtml(node.textContent.replace(/&/g, '&amp;').replace(/</g, '&lt;')), padding: '0', align: inheritedAlign as 'left' | 'center' | 'right' } });
                 return;
             }
             if (!(node instanceof HTMLElement) || ['STYLE', 'SCRIPT', 'META', 'TITLE'].includes(node.tagName)) return;
             // Hidden preheaders are represented by the editor's preview-text field.
-            if (node.style.display === 'none' && parseFloat(node.style.maxHeight) === 0) return;
+            if (isHidden(node)) return;
             const style = node.style;
-            const align = (style.textAlign || node.getAttribute('align') || inheritedAlign) as 'left' | 'center' | 'right';
+            const align = alignment(node);
             const id = createEmailDesignId('block');
-            const image = node.tagName === 'IMG' ? node as HTMLImageElement : !node.textContent?.trim() && node.children.length === 1 && node.firstElementChild?.tagName === 'IMG' ? node.firstElementChild as HTMLImageElement : null;
+            const image = node.tagName === 'IMG' ? node as HTMLImageElement : node.tagName === 'A' && !node.textContent?.trim() && node.querySelectorAll('img').length === 1 ? node.querySelector('img') : null;
             if (image) {
                 blocks.push({ id, type: 'image', props: { src: image.getAttribute('src') || '', alt: image.alt, width: parseFloat(image.getAttribute('width') || image.style.width) || undefined, href: node.tagName === 'A' ? node.getAttribute('href') || '' : undefined, align, padding: style.padding || '0' } });
-            } else if (node.tagName === 'A' && (style.backgroundColor || style.background)) {
-                blocks.push({ id, type: 'button', props: { label: node.textContent || '', href: node.getAttribute('href') || '', backgroundColor: style.backgroundColor, color: style.color, borderRadius: parseFloat(style.borderRadius) || 0, padding: style.padding || undefined, align } });
+            } else if (node.tagName === 'A' && (style.backgroundColor || style.background || node.parentElement?.tagName === 'TD' && node.parentElement.style.backgroundColor && node.parentElement.textContent?.trim() === node.textContent?.trim())) {
+                blocks.push({ id, type: 'button', props: { label: node.textContent || '', href: node.getAttribute('href') || '', backgroundColor: style.backgroundColor || node.parentElement?.style.backgroundColor, color: inheritedStyle(node, 'color') || undefined, fontSize: parseFloat(inheritedStyle(node, 'font-size')) || undefined, borderRadius: parseFloat(style.borderRadius || node.parentElement?.style.borderRadius || '') || 0, padding: style.padding || node.parentElement?.style.padding || undefined, align } });
             } else if (node.tagName === 'HR') {
                 blocks.push({ id, type: 'divider', props: { color: style.borderTopColor } });
-            } else if (!['TABLE', 'TBODY', 'THEAD', 'TFOOT', 'TR', 'TD', 'TH'].includes(node.tagName) && !node.querySelector('table,img,hr,style') && !node.querySelector('a[style*="background"]')) {
-                blocks.push({ id, type: 'text', props: { html: sanitizeEmailHtml(node.outerHTML), align, padding: style.padding || '0', color: style.color || undefined, size: parseFloat(style.fontSize) || undefined } });
-            } else if (node.tagName === 'TABLE' && Array.from((node as HTMLTableElement).rows).some(row => row.cells.length > 1)) {
+            } else if (['UL', 'OL'].includes(node.tagName) && Array.from(node.children).every(item => item.tagName === 'LI' && !item.children.length)) {
+                // List blocks store plain text. Keep rich lists as text blocks instead.
+                blocks.push({ id, type: 'list', props: { items: Array.from(node.children).map(item => item.textContent || ''), ordered: node.tagName === 'OL', color: inheritedStyle(node, 'color') || undefined, padding: style.padding || '0' } });
+            } else if (!node.textContent?.replace(/\u00a0/g, '').trim() && !node.children.length && parseFloat(style.height || node.getAttribute('height') || '') > 0) {
+                blocks.push({ id, type: 'spacer', props: { height: parseFloat(style.height || node.getAttribute('height') || '') } });
+            } else if (!['TABLE', 'TBODY', 'THEAD', 'TFOOT', 'TR', 'TD', 'TH'].includes(node.tagName) && !node.querySelector('table,img,hr,style,p,div,h1,h2,h3,h4,h5,h6,ul,ol,section,article') && !node.querySelector('a[style*="background"]')) {
+                blocks.push({ id, type: 'text', props: { html: sanitizeEmailHtml(node.outerHTML), align, padding: style.padding || '0', color: inheritedStyle(node, 'color') || undefined, size: parseFloat(inheritedStyle(node, 'font-size')) || undefined } });
+            } else if (node.tagName === 'TABLE' && (!canImportTable(node as HTMLTableElement) || Array.from((node as HTMLTableElement).rows).some(row => row.cells.length > 1))) {
                 blocks.push({ id, type: 'rawHtml', props: { html: node.outerHTML, migrationWarning: 'Complex imported layout preserved as HTML.' } });
             } else {
                 Array.from(node.childNodes).forEach(child => visit(child, align));
             }
         };
-        Array.from(root.childNodes).forEach(child => visit(child));
+        if (includeRoot) visit(root);
+        else Array.from(root.childNodes).forEach(child => visit(child));
         return blocks;
     };
 
     const sectionElements = Array.from(doc.querySelectorAll<HTMLElement>('.os-email-section'));
-    const sections: EmailSection[] = sectionElements.map((element, index) => {
+    const sections: EmailSection[] = sectionElements.map((element) => {
         const table = element.firstElementChild as HTMLTableElement | null;
         const row = table?.tagName === 'TABLE' ? table.rows[0] : null;
         const cells = row ? Array.from(row.cells) : [element];
+        const columns = cells.map(cell => ({ id: createEmailDesignId('column'), width: parseFloat(cell.getAttribute('width') || '') || 100 / cells.length, padding: cell.style.padding || '0', blocks: blocksFrom(cell) }));
         return {
-            id: createEmailDesignId('section'), name: `Imported section ${index + 1}`,
+            id: createEmailDesignId('section'), name: sectionName(columns.flatMap(column => column.blocks)),
             padding: element.style.padding || '0', backgroundColor: element.style.backgroundColor || undefined,
-            columns: cells.map(cell => ({ id: createEmailDesignId('column'), width: parseFloat(cell.getAttribute('width') || '') || 100 / cells.length, padding: cell.style.padding || '0', blocks: blocksFrom(cell) })),
+            columns,
         };
     });
-    const sectionFrom = (root: HTMLElement): EmailSection => ({
-        id: createEmailDesignId('section'), name: 'Imported email', padding: root.style.padding || '0',
-        backgroundColor: root.style.backgroundColor || undefined,
-        columns: [{ id: createEmailDesignId('column'), width: 100, blocks: blocksFrom(root) }],
-    });
+    const sectionFrom = (root: HTMLElement): EmailSection => {
+        const blocks = blocksFrom(root, true);
+        return {
+            id: createEmailDesignId('section'), name: sectionName(blocks), padding: root.style.padding || '0',
+            backgroundColor: root.style.backgroundColor || undefined,
+            columns: [{ id: createEmailDesignId('column'), width: 100, blocks }],
+        };
+    };
     // Single-column wrapping tables are common in hand-written email HTML.
     // Unwrap those shells, but turn real multi-column rows into designer columns.
     const layoutFrom = (root: HTMLElement): EmailSection[] => {
+        if (isHidden(root) || ['STYLE', 'SCRIPT', 'META', 'TITLE'].includes(root.tagName)) return [];
         const children = Array.from(root.children) as HTMLElement[];
         const hasDirectText = Array.from(root.childNodes).some(node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim());
         const table = root.tagName === 'TABLE' ? root as HTMLTableElement
             : !hasDirectText && children.length === 1 && children[0].tagName === 'TABLE' ? children[0] as HTMLTableElement : null;
-        if (!table) return [sectionFrom(root)];
+        if (!table) {
+            // Descend through ordinary wrappers, preserving the order of text and layout rows.
+            // Nested columns inside a column still use blocksFrom's HTML fallback.
+            if (root.querySelector('table') && !hasDirectText) return children.flatMap(child => layoutFrom(child));
+            return [sectionFrom(root)];
+        }
+        if (!canImportTable(table)) return [{
+            id: createEmailDesignId('section'), name: 'HTML content', padding: '0',
+            columns: [{ id: createEmailDesignId('column'), width: 100, blocks: [{ id: createEmailDesignId('block'), type: 'rawHtml', props: { html: table.outerHTML, migrationWarning: 'Complex imported layout preserved as HTML.' } }] }],
+        }];
         const width = parseFloat(table.style.maxWidth || table.getAttribute('width') || '');
         if (width >= 320 && width <= 1200) theme.contentWidth = width;
         if (table.style.backgroundColor) theme.contentBackgroundColor = table.style.backgroundColor;
@@ -88,7 +133,7 @@ export function importEmailHtml(html: string, options?: { title?: string; previe
             const weights = cells.map(cell => parseFloat(cell.getAttribute('width') || cell.style.width) || 100 / cells.length);
             const total = weights.reduce((sum, weight) => sum + weight, 0);
             return [{
-                id: createEmailDesignId('section'), name: 'Imported row', padding: '0',
+                id: createEmailDesignId('section'), name: sectionName(blocksFrom(cells[0])), padding: '0',
                 columns: cells.map((cell, index) => ({
                     id: createEmailDesignId('column'), width: weights[index] / total * 100,
                     padding: cell.style.padding || '0', backgroundColor: cell.style.backgroundColor || undefined,

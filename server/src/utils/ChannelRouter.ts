@@ -150,7 +150,8 @@ export async function routeMessageToChannel(
     content: string,
     channel: string,
     accountId: string,
-    emailAccountId?: string
+    emailAccountId?: string,
+    metaAuthority?: { actorId: string; operationId: string }
 ): Promise<DeliveryResult> {
     const conversation = await prisma.conversation.findFirst({
         where: { id: conversationId, accountId },
@@ -189,6 +190,7 @@ export async function routeMessageToChannel(
         return { provider: 'EMAIL', providerMessageId: result.messageId };
 
     } else if (channel === 'FACEBOOK' || channel === 'INSTAGRAM') {
+        let metaConversationId = conversation.id;
         let socialAccount = conversation.socialAccount?.platform === channel ? conversation.socialAccount : null;
         let externalId = conversation.externalConversationId;
 
@@ -196,15 +198,18 @@ export async function routeMessageToChannel(
             const merged = conversation.mergedFrom.find(m => m.socialAccount?.platform === channel);
             socialAccount = merged?.socialAccount || null;
             externalId = merged?.externalConversationId || null;
+            metaConversationId = merged?.id || '';
         }
 
         if (socialAccount && externalId) {
-            const recipientId = externalId.split('_')[0];
+            const parts = externalId.split(':');
+            if (parts.length !== 3 || parts[0] !== channel || parts[1] !== socialAccount.externalId || !/^\d{1,100}$/.test(parts[2]) || !metaAuthority) throw new Error('Meta recipient or delivery authority unavailable');
+            const recipientId = parts[2];
             const result = await MetaMessagingService.sendMessage(socialAccount.id, {
                 recipientId,
                 message: content.replace(/<[^>]*>/g, ''),
                 messageType: 'RESPONSE'
-            });
+            }, { ...metaAuthority, accountId, conversationId: metaConversationId });
             if (result) {
                 Logger.info('[ChannelRouter] Meta message sent', { channel, messageId: result.messageId });
                 return { provider: 'META', providerMessageId: result.messageId };

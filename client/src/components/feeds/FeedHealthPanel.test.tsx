@@ -31,13 +31,13 @@ describe('feed health UI', () => {
         expect(fetchMock).not.toHaveBeenCalled();
         fireEvent.click(screen.getByRole('button', { name: 'Check feed health' }));
         await waitFor(() => expect(screen.getByText('Included rows')).toBeInTheDocument());
-        expect(fetchMock).toHaveBeenCalledWith('/api/feeds/meta/health?variationMode=first_variation', { headers: { 'x-account-id': 'account-2', Authorization: 'Bearer test' } });
+        expect(fetchMock).toHaveBeenCalledWith('/api/feeds/meta/health?variationMode=first_variation', { headers: { 'x-account-id': 'account-2', Authorization: 'Bearer test' }, signal: expect.any(AbortSignal) });
         queryClient.clear();
     });
     it('reports a failed health request without showing a successful scan', async () => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
         const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-        render(<QueryClientProvider client={queryClient}><FeedHealthPanel accountId="account-1" channel="google" variationMode="all_variations" headers={{}} /></QueryClientProvider>);
+        render(<QueryClientProvider client={queryClient}><FeedHealthPanel accountId="account-1" channel="google" variationMode="all_variations" headers={{ Authorization: 'Bearer test', 'x-account-id': 'account-1' }} /></QueryClientProvider>);
         fireEvent.click(screen.getByRole('button', { name: 'Check feed health' }));
         expect(await screen.findByRole('alert')).toHaveTextContent('Failed to check feed health');
         expect(screen.queryByText('Included rows')).not.toBeInTheDocument();

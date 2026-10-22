@@ -158,10 +158,11 @@ export class ShippingService {
         return { dispatchStatus, orders: rows };
     }
 
-    async updateDraft(accountId: string, wooOrderId: number, data: ShippingDraftInput, userId?: string) {
+    async updateDraft(accountId: string, wooOrderId: number, data: ShippingDraftInput, userId?: string, expectedVersion?: string) {
         const order = await prisma.wooOrder.findUnique({ where: { accountId_wooId: { accountId, wooId: wooOrderId } } });
         if (!order) throw new Error('Order not found');
         const draft = await this.ensureDraftForOrder(accountId, order, await this.getDispatchStatus(accountId));
+        if (expectedVersion && draft.updatedAt.toISOString() !== expectedVersion) throw new Error('Draft version changed');
         const packageTouched = data.selectedPackagePresetId !== undefined
             || data.manualOuterLengthMm !== undefined
             || data.manualOuterWidthMm !== undefined
@@ -206,7 +207,12 @@ export class ShippingService {
             updatedByUserId: userId,
         };
 
-        const updated = await prisma.shippingShipmentDraft.update({
+        if (expectedVersion) {
+            updateData.readinessStatus = 'pending'; updateData.addressValidationStatus = 'pending'; updateData.lastRateRequest = {}; updateData.lastRateResponse = {};
+            const changed = await prisma.shippingShipmentDraft.updateMany({ where: { accountId, id: draft.id, updatedAt: new Date(expectedVersion) }, data: updateData });
+            if (changed.count !== 1) throw new Error('Draft version changed');
+        }
+        const updated = expectedVersion ? await prisma.shippingShipmentDraft.findFirstOrThrow({ where: { accountId, id: draft.id } }) : await prisma.shippingShipmentDraft.update({
             where: { accountId_wooOrderId: { accountId, wooOrderId } },
             data: updateData,
         });
@@ -223,17 +229,20 @@ export class ShippingService {
         return updated;
     }
 
-    async validateAddress(accountId: string, wooOrderId: number, userId?: string) {
+    async validateAddress(accountId: string, wooOrderId: number, userId?: string, expectedVersion?: string) {
         const order = await prisma.wooOrder.findUnique({ where: { accountId_wooId: { accountId, wooId: wooOrderId } } });
         if (!order) throw new Error('Order not found');
         const draft = await this.ensureDraftForOrder(accountId, order, await this.getDispatchStatus(accountId));
+        if (expectedVersion && draft.updatedAt.toISOString() !== expectedVersion) throw new Error('Draft version changed');
         const address = this.resolveAddress(draft, order);
         const { errors, status, carrierValidation } = await this.validateResolvedAddress(accountId, address);
         const existingReadinessErrors = Array.isArray(draft.readinessErrors) ? draft.readinessErrors as any[] : [];
         const packageErrors = existingReadinessErrors.filter((error) => error?.field === 'package');
         const serviceError = await this.getServiceReadinessError(accountId, draft);
         const readinessErrors = [...errors, ...packageErrors, ...(serviceError ? [serviceError] : [])];
-        const updated = await prisma.shippingShipmentDraft.update({
+        const validationData = { addressValidationStatus: status, addressValidationErrors: errors, readinessErrors, readinessStatus: readinessErrors.length === 0 ? 'ready' : 'blocked' };
+        if (expectedVersion) { const changed = await prisma.shippingShipmentDraft.updateMany({ where: { accountId, id: draft.id, updatedAt: new Date(expectedVersion) }, data: validationData }); if (changed.count !== 1) throw new Error('Draft changed during validation'); }
+        const updated = expectedVersion ? await prisma.shippingShipmentDraft.findFirstOrThrow({ where: { accountId, id: draft.id } }) : await prisma.shippingShipmentDraft.update({
             where: { accountId_wooOrderId: { accountId, wooOrderId } },
             data: { addressValidationStatus: status, addressValidationErrors: errors, readinessErrors, readinessStatus: readinessErrors.length === 0 ? 'ready' : 'blocked' },
         });
@@ -248,12 +257,13 @@ export class ShippingService {
         return updated;
     }
 
-    async requestDraftRates(accountId: string, wooOrderId: number, userId?: string) {
+    async requestDraftRates(accountId: string, wooOrderId: number, userId?: string, expectedVersion?: string) {
         const settings = await prisma.shippingCarrierAccount.findFirst({ where: { accountId, carrier: 'AUSPOST' } });
         if (!settings?.credentialsEncrypted) throw new Error('AusPost credentials are not configured');
         const order = await prisma.wooOrder.findUnique({ where: { accountId_wooId: { accountId, wooId: wooOrderId } } });
         if (!order) throw new Error('Order not found');
         const draft = await this.ensureDraftForOrder(accountId, order, await this.getDispatchStatus(accountId));
+        if (expectedVersion && draft.updatedAt.toISOString() !== expectedVersion) throw new Error('Draft version changed');
         const address = this.resolveAddress(draft, order);
         const selectedPackage = draft.selectedPackagePresetId
             ? await prisma.shippingPackagePreset.findFirst({ where: { id: draft.selectedPackagePresetId, accountId } })
@@ -274,7 +284,8 @@ export class ShippingService {
             rateResponse = { status: 'adapter_mapping_required', message: error?.message || 'AusPost rates endpoint mapping is not configured yet' };
         }
 
-        const updated = await prisma.shippingShipmentDraft.update({
+        if (expectedVersion) { const changed = await prisma.shippingShipmentDraft.updateMany({ where: { accountId, id: draft.id, updatedAt: new Date(expectedVersion) }, data: { lastRateRequest: requestSnapshot as Prisma.InputJsonValue, lastRateResponse: rateResponse as Prisma.InputJsonValue } }); if (changed.count !== 1) throw new Error('Draft changed during rate request'); }
+        const updated = expectedVersion ? await prisma.shippingShipmentDraft.findFirstOrThrow({ where: { accountId, id: draft.id } }) : await prisma.shippingShipmentDraft.update({
             where: { accountId_wooOrderId: { accountId, wooOrderId } },
             data: {
                 lastRateRequest: requestSnapshot as Prisma.InputJsonValue,
@@ -443,10 +454,11 @@ export class ShippingService {
     async getOrderShipments(accountId: string, wooOrderId: number) {
         const labels = await prisma.shippingLabel.findMany({
             where: { accountId, wooOrderId },
-            orderBy: { createdAt: 'desc' },
-            include: { trackingEvents: { orderBy: { occurredAt: 'desc' } } },
+            orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+            take: 51,
+            include: { trackingEvents: { orderBy: [{ occurredAt: 'desc' }, { id: 'asc' }], take: 21 } },
         });
-        return { labels };
+        return { accountId, wooOrderId, hasMoreLabels: labels.length > 50, labels: labels.slice(0, 50).map(label => ({ ...label, hasMoreEvents: label.trackingEvents.length > 20, trackingEvents: label.trackingEvents.slice(0, 20) })) };
     }
 
     async getLabelTracking(accountId: string, labelId: string) {
@@ -560,9 +572,10 @@ export class ShippingService {
         });
     }
 
-    async retryPrintJob(accountId: string, jobId: string, userId?: string) {
+    async retryPrintJob(accountId: string, jobId: string, userId?: string, expectedVersion?: string) {
         const job = await prisma.shippingPrintJob.findFirst({ where: { id: jobId, accountId }, include: { label: true } });
         if (!job) throw new Error('Print job not found');
+        if (expectedVersion && job.updatedAt.toISOString() !== expectedVersion) throw new Error('Print job version changed');
         if (!['failed', 'station_offline'].includes(job.status)) throw new Error('Only failed or offline print jobs can be retried');
         if (job.attempts > 0) throw Object.assign(new Error('Attempted jobs require physical-print reconciliation before retry'), { statusCode: 409 });
         const retried = await prisma.shippingPrintJob.updateMany({
@@ -583,12 +596,13 @@ export class ShippingService {
         return updated;
     }
 
-    async reassignPrintJob(accountId: string, jobId: string, printStationId: string, userId?: string) {
+    async reassignPrintJob(accountId: string, jobId: string, printStationId: string, userId?: string, expectedVersion?: string) {
         const [job, station] = await Promise.all([
             prisma.shippingPrintJob.findFirst({ where: { id: jobId, accountId }, include: { label: true, printStation: true } }),
             prisma.shippingPrintStation.findFirst({ where: { id: printStationId, accountId } }),
         ]);
         if (!job) throw new Error('Print job not found');
+        if (expectedVersion && job.updatedAt.toISOString() !== expectedVersion) throw new Error('Print job version changed');
         if (!station) throw new Error('Print station not found');
         if (job.status === 'printed') throw new Error('Printed jobs cannot be reassigned');
         if (!['queued', 'failed', 'station_offline'].includes(job.status)) throw new Error('Only queued, failed, or offline print jobs can be reassigned');
@@ -742,18 +756,20 @@ export class ShippingService {
         return result;
     }
 
-    async createAndQueueLabelPlaceholder(accountId: string, wooOrderId: number, userId?: string, printStationId?: string | null) {
+    async createAndQueueLabelPlaceholder(accountId: string, wooOrderId: number, userId?: string, printStationId?: string | null, reviewed?: { draftVersion: string; orderVersion: string; policyVersion: string; packageVersion?: string }) {
         const settings = await prisma.shippingCarrierAccount.findFirst({ where: { accountId, carrier: 'AUSPOST' } });
         if (!settings?.credentialsEncrypted) throw new Error('AusPost credentials are not configured');
         const order = await prisma.wooOrder.findUnique({ where: { accountId_wooId: { accountId, wooId: wooOrderId } } });
         if (!order) throw new Error('Order not found');
         const draft = await this.ensureDraftForOrder(accountId, order, await this.getDispatchStatus(accountId));
+        if (reviewed && (draft.updatedAt.toISOString() !== reviewed.draftVersion || order.updatedAt.toISOString() !== reviewed.orderVersion || settings.updatedAt.toISOString() !== reviewed.policyVersion)) throw new Error('Reviewed label dependencies changed');
         try {
             const lockResult = await prisma.shippingShipmentDraft.updateMany({
                 where: {
                     accountId,
                     wooOrderId,
                     status: { not: 'creating_label' },
+                    ...(reviewed ? { updatedAt: new Date(reviewed.draftVersion) } : {}),
                 },
                 data: {
                     status: 'creating_label',
@@ -792,6 +808,7 @@ export class ShippingService {
         const selectedPackage = draft.selectedPackagePresetId
             ? await prisma.shippingPackagePreset.findFirst({ where: { id: draft.selectedPackagePresetId, accountId } })
             : null;
+        if (reviewed && draft.selectedPackagePresetId && (!selectedPackage?.isActive || selectedPackage.updatedAt.toISOString() !== reviewed.packageVersion)) throw new Error('Reviewed package changed');
         const dimensions = this.resolveDimensions(draft, selectedPackage);
         const requestSnapshot = {
             wooOrderId,
@@ -808,7 +825,7 @@ export class ShippingService {
         if (!labelPrintGroup || !['Parcel Post', 'Express Post'].includes(labelPrintGroup)) throw new Error('AusPost label print group must be configured in Shipping Settings');
         if (!labelLayout) throw new Error('AusPost label layout must be configured in Shipping Settings');
         const stationId = printDeliveryMethod === 'remote_print'
-            ? printStationId || draft.selectedPrintStationId || this.stringSetting(config.defaultPrintStationId) || (await prisma.shippingPrintStation.findFirst({ where: { accountId, status: 'online' }, orderBy: { createdAt: 'asc' } }))?.id
+            ? printStationId || draft.selectedPrintStationId || this.stringSetting(config.defaultPrintStationId) || (!reviewed ? (await prisma.shippingPrintStation.findFirst({ where: { accountId, status: 'online' }, orderBy: { createdAt: 'asc' } }))?.id : null)
             : null;
         if (printDeliveryMethod === 'remote_print' && !stationId) throw new Error('Print station not configured');
 
@@ -952,54 +969,8 @@ export class ShippingService {
         };
     }
 
-    async cleanupExpiredStoredLabels(retentionBufferHours = 24) {
-        const cutoff = new Date(Date.now() - retentionBufferHours * 60 * 60 * 1000);
-        const expired = await prisma.shippingLabel.findMany({
-            where: {
-                labelFilePath: { not: null },
-                labelStoredUntil: { not: null, lt: cutoff },
-            },
-            select: { id: true, accountId: true, labelFilePath: true, labelStoredUntil: true },
-            take: 500,
-        });
-
-        let filesDeleted = 0;
-        let recordsUpdated = 0;
-        let skippedUnsafe = 0;
-
-        for (const label of expired) {
-            const labelPath = label.labelFilePath || '';
-            if (!this.isSafeLabelFilePath(labelPath)) {
-                skippedUnsafe++;
-                await this.recordAuditEvent(label.accountId, 'LABEL_STORAGE_CLEANUP_SKIPPED_UNSAFE_PATH', {
-                    labelId: label.id,
-                    metadata: { labelPath },
-                });
-                continue;
-            }
-
-            try {
-                if (fs.existsSync(labelPath)) {
-                    fs.unlinkSync(labelPath);
-                    filesDeleted++;
-                }
-            } catch {
-                // Keep record update attempt below; next cleanup run retries file deletion.
-            }
-
-            await prisma.shippingLabel.update({
-                where: { id: label.id },
-                data: { labelFilePath: null },
-            });
-            recordsUpdated++;
-
-            await this.recordAuditEvent(label.accountId, 'LABEL_STORAGE_CLEANED_UP', {
-                labelId: label.id,
-                metadata: { labelPath, labelStoredUntil: label.labelStoredUntil?.toISOString() || null },
-            });
-        }
-
-        return { checked: expired.length, filesDeleted, recordsUpdated, skippedUnsafe };
+    async cleanupExpiredStoredLabels(_retentionBufferHours = 24) {
+        return { state: 'disabled', checked: 0, filesDeleted: 0, recordsUpdated: 0, skippedUnsafe: 0, reason: 'File/print/recovery ownership must be reconciled before deletion' };
     }
 
     async recoverPendingLabelPdf(accountId: string, labelId: string, printStationId?: string | null, userId?: string, queuePrint = true) {

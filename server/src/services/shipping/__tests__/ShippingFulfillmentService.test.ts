@@ -1,98 +1,24 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, expect, it, vi } from 'vitest';
+const m = vi.hoisted(() => ({ transaction: vi.fn(), query: vi.fn(), receipt: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() }, label: vi.fn(), order: vi.fn(), merge: vi.fn(), updateOrder: vi.fn(), note: vi.fn() }));
+vi.mock('../../../utils/prisma', () => ({ prisma: { $transaction: m.transaction, scopedOperation: m.receipt } }));
+vi.mock('../../woo', () => ({ WooService: { forAccount: async () => ({ updateOrder: m.updateOrder, createOrderNote: m.note }) } }));
 import { shippingFulfillmentService } from '../ShippingFulfillmentService';
-import { prisma } from '../../../utils/prisma';
-import { WooService } from '../../woo';
-
-const updateOrderMock = vi.fn();
-const createOrderNoteMock = vi.fn();
-
-vi.mock('../../../utils/prisma', () => ({
-    prisma: {
-        shippingLabel: {
-            findFirst: vi.fn(),
-        },
-        wooOrder: {
-            findUnique: vi.fn(),
-            update: vi.fn(),
-        },
-    },
-}));
-
-vi.mock('../../woo', () => ({
-    WooService: {
-        forAccount: vi.fn(),
-    },
-}));
-
-vi.mock('../../../utils/logger', () => ({
-    Logger: {
-        warn: vi.fn(),
-    },
-}));
-
-describe('ShippingFulfillmentService', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-        updateOrderMock.mockResolvedValue({});
-        createOrderNoteMock.mockResolvedValue({});
-        (WooService.forAccount as any).mockResolvedValue({
-            updateOrder: updateOrderMock,
-            createOrderNote: createOrderNoteMock,
-        });
-        (prisma.shippingLabel.findFirst as any).mockResolvedValue({
-            id: 'label-1',
-            accountId: 'acct-1',
-            wooOrderId: 123,
-            carrier: 'AUSPOST',
-            serviceCode: 'AUS_PARCEL_EXPRESS',
-            serviceName: 'Express Post',
-            trackingNumber: 'TRACK123',
-            trackingUrl: 'https://tracking.example/TRACK123',
-            costAmount: 9.99,
-            costCurrency: 'AUD',
-        });
-        (prisma.wooOrder.findUnique as any).mockResolvedValue({
-            id: 'order-db-1',
-            accountId: 'acct-1',
-            wooId: 123,
-            status: 'processing',
-            rawData: {
-                shipping_lines: [{ method_title: 'Flat Rate', method_id: 'flat_rate:1' }],
-                meta_data: [{ key: '_some_existing_key', value: 'abc' }],
-            },
-        });
-        (prisma.wooOrder.update as any).mockResolvedValue({});
-    });
-
-    it('syncs fulfillment metadata without overwriting Woo shipping lines', async () => {
-        await shippingFulfillmentService.syncPrintedLabel('acct-1', 'label-1');
-
-        expect(updateOrderMock).toHaveBeenCalledWith(123, expect.objectContaining({
-            status: 'completed',
-            meta_data: expect.any(Array),
-        }));
-        expect(updateOrderMock).toHaveBeenCalledWith(123, expect.not.objectContaining({
-            shipping_lines: expect.anything(),
-        }));
-
-        expect(prisma.wooOrder.update).toHaveBeenCalledWith(expect.objectContaining({
-            where: { id: 'order-db-1' },
-            data: expect.objectContaining({
-                rawData: expect.objectContaining({
-                    shipping_lines: [{ method_title: 'Flat Rate', method_id: 'flat_rate:1' }],
-                }),
-            }),
-        }));
-    });
-
-    it('does not push line items or shipping totals during fulfillment sync', async () => {
-        await shippingFulfillmentService.syncPrintedLabel('acct-1', 'label-1');
-
-        expect(updateOrderMock).toHaveBeenCalledWith(123, expect.not.objectContaining({
-            line_items: expect.anything(),
-        }));
-        expect(updateOrderMock).toHaveBeenCalledWith(123, expect.not.objectContaining({
-            shipping_total: expect.anything(),
-        }));
-    });
+const version = new Date('2026-10-01T00:00:00Z');
+beforeEach(() => {
+    vi.resetAllMocks();
+    m.transaction.mockImplementation(fn => fn({ $queryRaw: m.query, scopedOperation: m.receipt, shippingCarrierAccount: { findFirst: async () => ({ config: { dispatchStatus: 'In Dispatch' } }) }, shippingLabel: { findFirst: m.label }, wooOrder: { findUnique: m.order, findFirst: m.order, updateMany: m.merge } }));
+    m.receipt.findUnique.mockResolvedValue(null);
+    m.label.mockResolvedValue({ id: 'l', accountId: 'a', wooOrderId: 123, carrier: 'AUSPOST', status: 'label_ready', updatedAt: version, printedAt: null, costAmount: 9, costCurrency: null });
+    m.order.mockResolvedValue({ id: 'o', accountId: 'a', wooId: 123, status: 'processing', updatedAt: version, rawData: { shipping_lines: [{ method_title: 'Flat Rate' }], meta_data: [{ key: 'manual', value: 'keep' }] } });
+    m.merge.mockResolvedValue({ count: 1 });
+    m.updateOrder.mockImplementation(async (id, body) => ({ id, ...body, date_modified_gmt: '2026-10-01T00:00:00' }));
+    m.note.mockResolvedValue({ id: 77 });
 });
+it('accepts the configured dispatch status rather than rejecting the real shipping workflow', async () => { const current = { id: 'o', accountId: 'a', wooId: 123, status: 'wc-in-dispatch', updatedAt: version, rawData: {} }; m.order.mockResolvedValue(current); expect((await shippingFulfillmentService.syncPrintedLabel('a', 'l')).wooOrderUpdated).toBe(true); });
+it('merges only acknowledged status/metadata with CAS and never overwrites shipping lines or totals', async () => { const result = await shippingFulfillmentService.syncPrintedLabel('a', 'l'); expect(result).toMatchObject({ wooOrderUpdated: true, localOrderUpdated: true, wooNoteCreated: true, shippingCostRecorded: false }); const payload = m.updateOrder.mock.calls[0][1]; expect(payload).not.toHaveProperty('shipping_lines'); expect(payload).not.toHaveProperty('line_items'); expect(payload).not.toHaveProperty('shipping_total'); expect(m.merge).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'o', accountId: 'a', updatedAt: version }, data: expect.objectContaining({ rawData: expect.objectContaining({ shipping_lines: [{ method_title: 'Flat Rate' }], meta_data: expect.arrayContaining([{ key: 'manual', value: 'keep' }]) }) }) })); });
+it('never fabricates currency or a print timestamp for label-created fulfillment', async () => { await shippingFulfillmentService.syncPrintedLabel('a', 'l'); const meta = m.updateOrder.mock.calls[0][1].meta_data; expect(meta.some((entry: any) => /currency|printed_at|label_cost/.test(entry.key))).toBe(false); expect(m.note.mock.calls[0][1].note).toContain('Print time: unavailable'); expect(m.note.mock.calls[0][1].note).not.toContain('AUD'); });
+it('does not mutate local data or send a note after remote failure', async () => { m.updateOrder.mockRejectedValue(new Error('lost ack')); const result = await shippingFulfillmentService.syncPrintedLabel('a', 'l'); expect(result.wooOrderUpdated).toBe(false); expect(m.merge).not.toHaveBeenCalled(); expect(m.note).not.toHaveBeenCalled(); expect(m.receipt.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: { result: expect.objectContaining({ state: 'uncertain', wooOrderUpdated: false }) } })); });
+it('preserves provider acknowledgement after a local version conflict without stale merges', async () => { m.order.mockResolvedValueOnce({ id: 'o', wooId: 123, status: 'processing', updatedAt: version }).mockResolvedValueOnce(null); const result = await shippingFulfillmentService.syncPrintedLabel('a', 'l'); expect(result).toMatchObject({ wooOrderUpdated: true, localOrderUpdated: false }); expect(m.merge).not.toHaveBeenCalled(); expect(m.note).not.toHaveBeenCalled(); });
+it('preserves separate order/local/note outcomes on a lost note acknowledgement', async () => { m.note.mockRejectedValue(new Error('lost ack')); const result = await shippingFulfillmentService.syncPrintedLabel('a', 'l'); expect(result).toMatchObject({ wooOrderUpdated: true, localOrderUpdated: true, wooNoteCreated: false, error: expect.any(String) }); expect(m.note).toHaveBeenCalledOnce(); });
+it('blocks every existing admitted receipt and invalid label state before provider work', async () => { m.receipt.findUnique.mockResolvedValueOnce({ result: { state: 'uncertain' } }); await expect(shippingFulfillmentService.syncPrintedLabel('a', 'l')).rejects.toThrow('reconcile'); m.label.mockResolvedValueOnce({ status: 'cancelled', cancelledAt: version }); await expect(shippingFulfillmentService.syncPrintedLabel('a', 'l')).rejects.toThrow('eligible'); expect(m.updateOrder).not.toHaveBeenCalled(); });
+it('requires exact provider ID, status and metadata acknowledgement', async () => { m.updateOrder.mockResolvedValue({ id: 456, status: 'completed', meta_data: [] }); const result = await shippingFulfillmentService.syncPrintedLabel('a', 'l'); expect(result.wooOrderUpdated).toBe(false); expect(m.merge).not.toHaveBeenCalled(); });

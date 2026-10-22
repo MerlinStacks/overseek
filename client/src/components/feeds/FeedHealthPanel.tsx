@@ -75,12 +75,18 @@ export function FeedHealthResults({ report }: { report: FeedHealthReport }) {
 export function FeedHealthPanel({ accountId, channel, variationMode, headers }: {
     accountId: string; channel: string; variationMode: string; headers: Record<string, string>;
 }) {
+    return <ScopedFeedHealth key={JSON.stringify([accountId, channel, variationMode, headers.Authorization ?? headers.authorization])} accountId={accountId} channel={channel} variationMode={variationMode} headers={headers} />;
+}
+function ScopedFeedHealth({ accountId, channel, variationMode, headers }: { accountId: string; channel: string; variationMode: string; headers: Record<string, string> }) {
     const [isChecking, setIsChecking] = useState(false);
+    const [scopeKey] = useState(() => crypto.randomUUID());
+    const ready = !!accountId && !!(headers.Authorization ?? headers.authorization);
     const { data, error, refetch } = useApiQuery<FeedHealthReport>({
-        queryKey: ['feed-health', accountId, channel, variationMode],
+        queryKey: ['feed-health', scopeKey, accountId, channel, variationMode],
         enabled: false,
-        queryFn: async () => {
-            const res = await fetch(`/api/feeds/${channel}/health?variationMode=${encodeURIComponent(variationMode)}`, { headers });
+        manual: ready,
+        queryFn: async signal => {
+            const res = await fetch(`/api/feeds/${channel}/health?variationMode=${encodeURIComponent(variationMode)}`, { headers, signal });
             if (!res.ok) throw new Error('Failed to check feed health. Please try again.');
             return res.json();
         },
@@ -89,9 +95,9 @@ export function FeedHealthPanel({ accountId, channel, variationMode, headers }: 
         <section className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-700" aria-label="Feed health">
             <div className="flex items-center justify-between gap-3">
                 <h2 className="font-semibold text-slate-900 dark:text-white">Feed health ({channel})</h2>
-                <button type="button" disabled={isChecking} onClick={async () => {
+                <button type="button" disabled={isChecking || !ready} onClick={async () => {
                     setIsChecking(true);
-                    try { await refetch(); } finally { setIsChecking(false); }
+                    try { await refetch(); } catch { /* The query's error state below is the acknowledgement failure. */ } finally { setIsChecking(false); }
                 }} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm text-white disabled:opacity-50">
                     {isChecking ? 'Checking...' : 'Check feed health'}
                 </button>

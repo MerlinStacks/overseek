@@ -23,6 +23,41 @@ describe('MobileChat composer', () => {
 
     beforeEach(() => vi.clearAllMocks());
 
+    it('renders incoming messages on a light surface with dark text and readable timestamps', () => {
+        useMobileChatMock.mockReturnValue({ ...state(), messages: [{
+            id: 'incoming', direction: 'inbound', body: '<p>Please check my order</p>',
+            createdAt: '2026-10-22T10:00:00Z',
+        }] });
+        render(<MemoryRouter><MobileChat /></MemoryRouter>);
+        const bubble = screen.getByText('Please check my order').parentElement!.parentElement!;
+        expect(bubble).toHaveClass('bg-white', 'text-slate-900');
+        expect(bubble.children[1]).toHaveClass('text-slate-600');
+    });
+
+    it.each(['A reply to the customer', '<p>A reply to the customer</p>'])('renders outgoing messages with consistent high contrast: %s', (body) => {
+        useMobileChatMock.mockReturnValue({ ...state(), messages: [{
+            id: 'outgoing', direction: 'outbound', body,
+            createdAt: '2026-10-22T10:00:00Z',
+        }] });
+        render(<MemoryRouter><MobileChat /></MemoryRouter>);
+        const content = screen.getByText('A reply to the customer');
+        const bubble = body.startsWith('<') ? content.parentElement!.parentElement! : content.parentElement!;
+        expect(bubble).toHaveClass('bg-blue-600', 'text-white');
+        expect(bubble).not.toHaveClass('mobile-brand-solid');
+        expect(bubble.children[1]).toHaveClass('text-blue-50');
+    });
+
+    it.each(['inbound', 'outbound'])('keeps failed %s message timestamps readable on the error surface', (direction) => {
+        useMobileChatMock.mockReturnValue({ ...state(), messages: [{
+            id: 'failed', direction, body: 'Failed message',
+            createdAt: '2026-10-22T10:00:00Z', deliveryStatus: 'FAILED',
+        }] });
+        render(<MemoryRouter><MobileChat /></MemoryRouter>);
+        const bubble = screen.getByText('Failed message').parentElement!;
+        expect(bubble).toHaveClass('text-rose-50');
+        expect(bubble.children[1]).toHaveClass('text-rose-100');
+    });
+
     it('starts multiline and resizes after programmatic draft changes and clearing', () => {
         const chat = state();
         useMobileChatMock.mockReturnValue(chat);

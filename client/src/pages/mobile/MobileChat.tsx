@@ -234,8 +234,8 @@ export function MobileChat() {
                                         className={`max-w-[82%] rounded-3xl px-4 py-3 shadow-lg shadow-black/10 ${msg.deliveryStatus === 'FAILED'
                                             ? 'rounded-br-lg border border-rose-400/40 bg-rose-500/20 text-rose-50'
                                             : msg.direction === 'outbound'
-                                            ? 'mobile-brand-solid rounded-br-lg'
-                                            : 'rounded-bl-lg border border-white/10 bg-slate-900 text-white'
+                                            ? 'border border-blue-500 bg-blue-600 text-white rounded-br-lg'
+                                            : 'rounded-bl-lg border border-slate-200 bg-white text-slate-900'
                                             }`}
                                     >
                                         {/<[a-z][\s\S]*>/i.test(msg.body) ? (
@@ -251,7 +251,7 @@ export function MobileChat() {
                                         ) : (
                                             <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.body}</p>
                                         )}
-                                        <p className={`mt-2 text-[11px] font-medium ${msg.direction === 'outbound' ? 'opacity-80' : 'text-slate-500'}`}>
+                                        <p className={`mt-2 text-[11px] font-medium ${msg.deliveryStatus === 'FAILED' ? 'text-rose-100' : msg.direction === 'outbound' ? 'text-blue-50' : 'text-slate-600'}`}>
                                             {formatTime(msg.createdAt)}
                                         </p>
                                         {msg.deliveryStatus === 'FAILED' && (

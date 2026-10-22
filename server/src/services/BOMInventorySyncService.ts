@@ -865,9 +865,9 @@ export class BOMInventorySyncService {
                 accountId,
                 calculation.productId,
                 'SYSTEM_BOM',
-                calculation.currentWooStock ?? 0,
+                calculation.currentWooStock ?? null,
                 calculation.effectiveStock,
-                'PASSED',
+                options?.requireLiveStock ? 'PASSED' : 'SKIPPED',
                 {
                     trigger: 'BOM_INVENTORY_SYNC',
                     variationId,

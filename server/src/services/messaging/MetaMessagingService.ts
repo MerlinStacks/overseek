@@ -1,389 +1,90 @@
-/**
- * Meta Messaging Service (Facebook Messenger & Instagram DMs)
- * Handles Meta Graph API v24.0 messaging operations.
- * 
- * Why: Enables unified inbox to receive and send messages through
- * Facebook Pages and Instagram Business accounts.
- */
-
 import { prisma } from '../../utils/prisma';
-import { Logger } from '../../utils/logger';
 import { EventBus, EVENTS } from '../events';
-
-const GRAPH_API_VERSION = 'v24.0';
-const GRAPH_API_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
-
-async function safeMetaJson(response: Response, context: string): Promise<any> {
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-        const bodySnippet = (await response.text()).slice(0, 200);
-        Logger.warn('[MetaMessaging] Non-JSON response', { context, status: response.status, contentType, bodySnippet });
-        throw new Error(`Meta returned non-JSON response during ${context}`);
-    }
-
-    return response.json();
-}
-
-interface MetaMessagePayload {
-    recipientId: string;
-    message: string;
-    messageType?: 'RESPONSE' | 'UPDATE' | 'MESSAGE_TAG';
-}
-
-interface MetaWebhookEntry {
-    id: string;
-    time: number;
-    messaging?: MetaWebhookMessage[];
-}
-
-interface MetaWebhookMessage {
-    sender: { id: string };
-    recipient: { id: string };
-    timestamp: number;
-    message?: {
-        mid: string;
-        text?: string;
-        attachments?: Array<{
-            type: string;
-            payload: { url?: string };
-        }>;
-    };
-    read?: { watermark: number };
-    delivery?: { mids: string[]; watermark: number };
-}
-
+import { PermissionService } from '../PermissionService';
+import { providerJson, scopeId } from '../BoundedProviderWork';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
+import { z } from 'zod';
+const BASE = 'https://graph.facebook.com/v24.0';
+const externalId = z.string().regex(/^\d{1,100}$/);
+const httpsUrl = z.string().max(2048).url().refine(value => { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password && !/[\s()<>]/.test(value); });
+const eventSchema = z.object({ sender: z.object({ id: externalId }), recipient: z.object({ id: externalId }), timestamp: z.number().int().nonnegative().max(8640000000000000), message: z.object({ mid: z.string().min(1).max(300), text: z.string().max(20000).optional(), is_echo: z.boolean().optional(), attachments: z.array(z.object({ type: z.string().max(50), payload: z.object({ url: httpsUrl.optional() }) })).max(10).optional() }).optional() });
+const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export class MetaMessagingService {
-    /**
-     * Send a message via Facebook Messenger or Instagram DM.
-     * Requires the page/IG account to be connected with messaging permissions.
-     */
-    static async sendMessage(
-        socialAccountId: string,
-        payload: MetaMessagePayload
-    ): Promise<{ messageId: string } | null> {
+    static async sendMessage(socialAccountId: string, payload: { recipientId: string; message: string; messageType?: 'RESPONSE' | 'UPDATE' | 'MESSAGE_TAG' }, authority?: { accountId: string; actorId: string; conversationId: string; operationId: string }): Promise<{ messageId: string }> {
+        const auth = z.object({ accountId: scopeId, actorId: scopeId, conversationId: scopeId, operationId: scopeId }).parse(authority);
+        const body = z.object({ recipientId: externalId, message: z.string().trim().min(1).max(20000), messageType: z.literal('RESPONSE').optional() }).strict().parse(payload);
+        if (!await PermissionService.hasPermission(auth.actorId, auth.accountId, 'view_inbox')) throw new Error('Inbox permission required');
+        const social = await prisma.socialAccount.findFirst({ where: { id: socialAccountId, accountId: auth.accountId, platform: { in: ['FACEBOOK', 'INSTAGRAM'] }, isActive: true } });
+        if (!social) throw new Error('Scoped Meta channel unavailable'); externalId.parse(social.externalId);
+        const conversation = await prisma.conversation.findFirst({ where: { id: auth.conversationId, accountId: auth.accountId, socialAccountId: social.id, externalConversationId: `${social.platform}:${social.externalId}:${body.recipientId}` } });
+        if (!conversation) throw new Error('Scoped recipient unavailable');
+        const id = `meta-send:${auth.accountId}:${hash([auth.conversationId, auth.operationId])}`, digest = hash([auth, socialAccountId, body]);
+        const replay = await prisma.$transaction(async tx => {
+            await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${id}, 0))`;
+            const previous = await tx.scopedOperation.findUnique({ where: { id } });
+            if (previous) { const result = previous.result as any; if (result.digest !== digest || result.state !== 'complete') throw new Error('Meta delivery requires reconciliation; do not retry'); return { messageId: result.messageId as string }; }
+            await tx.scopedOperation.create({ data: { id, accountId: auth.accountId, kind: 'meta-send', result: { digest, state: 'pending' } } }); return null;
+        });
+        if (replay) return replay;
         try {
-            const socialAccount = await prisma.socialAccount.findUnique({
-                where: { id: socialAccountId },
-            });
-
-            if (!socialAccount || !socialAccount.isActive) {
-                Logger.warn('[MetaMessaging] Social account not found or inactive', { socialAccountId });
-                return null;
-            }
-
-            const { platform, accessToken, externalId } = socialAccount;
-
-            // Determine the correct endpoint based on platform
-            const endpoint = platform === 'INSTAGRAM'
-                ? `${GRAPH_API_BASE}/${externalId}/messages`
-                : `${GRAPH_API_BASE}/${externalId}/messages`;
-
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    recipient: { id: payload.recipientId },
-                    message: { text: payload.message },
-                    messaging_type: payload.messageType || 'RESPONSE',
-                }),
-            });
-
-            if (!response.ok) {
-                const errorData = await safeMetaJson(response, 'sendMessage.error').catch(() => ({}));
-                throw new Error(JSON.stringify(errorData));
-            }
-
-            const data = await safeMetaJson(response, 'sendMessage');
-
-            Logger.info('[MetaMessaging] Message sent', {
-                platform,
-                recipientId: payload.recipientId,
-                messageId: data.message_id,
-            });
-
-            EventBus.emit(EVENTS.SOCIAL.MESSAGE_SENT, {
-                platform,
-                socialAccountId,
-                messageId: data.message_id,
-            });
-
-            return { messageId: data.message_id };
-        } catch (error: any) {
-            Logger.error('[MetaMessaging] Failed to send message', {
-                socialAccountId,
-                error: error.message,
-            });
-            return null;
-        }
+            const result = z.object({ message_id: z.string().min(1).max(300), recipient_id: externalId }).parse(await providerJson(`${BASE}/${social.externalId}/messages`, { method: 'POST', headers: { Authorization: `Bearer ${social.accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ recipient: { id: body.recipientId }, message: { text: body.message }, messaging_type: 'RESPONSE' }) }));
+            if (result.recipient_id !== body.recipientId) throw new Error('Recipient acknowledgement mismatch');
+            await prisma.scopedOperation.update({ where: { id }, data: { result: { digest, state: 'complete', messageId: result.message_id } } });
+            return { messageId: result.message_id };
+        } catch { await prisma.scopedOperation.updateMany({ where: { id }, data: { result: { digest, state: 'uncertain' } } }).catch(() => undefined); throw new Error('Meta delivery uncertain; reconcile the original operation'); }
     }
-
-    /**
-     * Process incoming webhook events from Meta.
-     * Creates or updates conversations based on incoming messages.
-     */
-    static async processWebhookEvent(
-        entries: MetaWebhookEntry[]
-    ): Promise<void> {
+    /** Called only by signature-verified ingress. Atomic storage deduplicates provider mid. */
+    static async processWebhookEvent(input: unknown): Promise<void> {
+        const entries = z.array(z.object({ id: externalId, time: z.number().finite().nonnegative(), messaging: z.array(eventSchema).max(100).optional() })).max(100).parse(input);
+        if (entries.reduce((count, entry) => count + (entry.messaging?.length ?? 0), 0) > 100) throw new Error('Webhook work limit exceeded');
         for (const entry of entries) {
-            const pageId = entry.id;
-
-            // Find the social account by externalId (page ID)
-            const socialAccount = await prisma.socialAccount.findFirst({
-                where: {
-                    externalId: pageId,
-                    platform: { in: ['FACEBOOK', 'INSTAGRAM'] },
-                    isActive: true,
-                },
-                include: { account: true },
-            });
-
-            if (!socialAccount) {
-                Logger.warn('[MetaMessaging] No social account found for page', { pageId });
-                continue;
-            }
-
-            for (const event of entry.messaging || []) {
-                await this.handleMessageEvent(socialAccount, event);
-            }
-        }
-    }
-
-    /**
-     * Handle individual message events (new message, read, delivery).
-     */
-    private static async handleMessageEvent(
-        socialAccount: any,
-        event: MetaWebhookMessage
-    ): Promise<void> {
-        const { sender, message, read, delivery } = event;
-
-        // Skip if it's our own message (sent by the page)
-        if (sender.id === socialAccount.externalId) {
-            return;
-        }
-
-        // Handle read receipts
-        if (read) {
-            Logger.debug('[MetaMessaging] Read receipt', { watermark: read.watermark });
-            return;
-        }
-
-        // Handle delivery confirmations
-        if (delivery) {
-            Logger.debug('[MetaMessaging] Delivery confirmation', { mids: delivery.mids });
-            return;
-        }
-
-        // Handle new incoming message
-        if (message) {
-            await this.handleIncomingMessage(socialAccount, sender.id, message, event.timestamp);
-        }
-    }
-
-    /**
-     * Create or update conversation and add the incoming message.
-     */
-    private static async handleIncomingMessage(
-        socialAccount: any,
-        senderId: string,
-        message: NonNullable<MetaWebhookMessage['message']>,
-        _timestamp: number
-    ): Promise<void> {
-        const accountId = socialAccount.accountId;
-        const platform = socialAccount.platform as 'FACEBOOK' | 'INSTAGRAM';
-        const channel = platform === 'FACEBOOK' ? 'FACEBOOK' : 'INSTAGRAM';
-
-        // Build external conversation ID (platform + page + sender)
-        const externalConversationId = `${platform}:${socialAccount.externalId}:${senderId}`;
-
-        // Find or create conversation
-        let conversation = await prisma.conversation.findFirst({
-            where: {
-                accountId,
-                externalConversationId,
-            },
-        });
-
-        if (!conversation) {
-            // Fetch sender profile for display name
-            const senderProfile = await this.getUserProfile(socialAccount.accessToken, senderId);
-            const guestName = senderProfile?.name || `${platform} User`;
-
-            conversation = await prisma.conversation.create({
-                data: {
-                    accountId,
-                    channel,
-                    externalConversationId,
-                    socialAccountId: socialAccount.id,
-                    guestName,
-                    status: 'OPEN',
-                    priority: 'MEDIUM',
-                },
-            });
-
-            Logger.info('[MetaMessaging] Created new conversation', {
-                conversationId: conversation.id,
-                channel,
-                senderId,
-            });
-        } else {
-            // Re-open conversation if it was closed
-            if (conversation.status !== 'OPEN') {
-                await prisma.conversation.update({
-                    where: { id: conversation.id },
-                    data: { status: 'OPEN', updatedAt: new Date() },
+            const channels = await prisma.socialAccount.findMany({ where: { externalId: entry.id, platform: { in: ['FACEBOOK', 'INSTAGRAM'] }, isActive: true }, take: 2 });
+            if (channels.length !== 1) throw new Error('Meta page ownership unavailable or ambiguous');
+            const social = channels[0];
+            for (const event of entry.messaging ?? []) {
+                if (!event.message || event.message.is_echo || event.sender.id === entry.id) continue;
+                if (event.recipient.id !== entry.id) throw new Error('Webhook recipient mismatch');
+                const externalConversationId = `${social.platform}:${entry.id}:${event.sender.id}`, gate = `meta-conversation:${hash([social.accountId, externalConversationId])}`, id = `meta-incoming:${hash([social.id, event.message.mid])}`, digest = hash(event);
+                const stored = await prisma.$transaction(async tx => {
+                    await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${gate}, 0))`;
+                    const previous = await tx.scopedOperation.findUnique({ where: { id } });
+                    if (previous) { if ((previous.result as any).digest !== digest) throw new Error('Conflicting Meta event identity'); return null; }
+                    // Recheck ownership inside the storage transaction; do not attach to a stale connection.
+                    const owners = await tx.socialAccount.findMany({ where: { externalId: entry.id, platform: { in: ['FACEBOOK', 'INSTAGRAM'] }, isActive: true }, take: 2 });
+                    if (owners.length !== 1 || owners[0].id !== social.id || owners[0].accountId !== social.accountId) throw new Error('Meta ownership changed');
+                    const matches = await tx.conversation.findMany({ where: { accountId: social.accountId, externalConversationId }, take: 2 });
+                    if (matches.length > 1 || matches[0] && matches[0].socialAccountId !== social.id) throw new Error('Ambiguous Meta conversation');
+                    const conversation = matches[0] ?? await tx.conversation.create({ data: { accountId: social.accountId, channel: social.platform as 'FACEBOOK' | 'INSTAGRAM', socialAccountId: social.id, externalConversationId, guestName: `${social.platform} User`, status: 'OPEN', priority: 'MEDIUM' } });
+                    // Late/replayed historical events never reopen a closed conversation automatically.
+                    const message = event.message!;
+                    const content = [message.text, ...(message.attachments ?? []).map(attachment => `Attachment (${attachment.type}): ${attachment.payload.url ?? 'URL unavailable'}`)].filter(Boolean).join('\n');
+                    if (!content) throw new Error('Empty Meta message');
+                    const saved = await tx.message.create({ data: { conversationId: conversation.id, content, contentType: message.attachments?.length ? 'FILE' : 'TEXT', senderType: 'CUSTOMER', senderId: event.sender.id, createdAt: new Date(event.timestamp) } });
+                    await tx.scopedOperation.create({ data: { id, accountId: social.accountId, kind: 'meta-incoming', result: { digest, messageId: saved.id, providerMessageId: message.mid, providerTimestamp: event.timestamp } } });
+                    return { conversationId: conversation.id, messageId: saved.id };
                 });
+                if (stored) EventBus.emit(EVENTS.SOCIAL.MESSAGE_RECEIVED, { accountId: social.accountId, ...stored, platform: social.platform, senderId: event.sender.id });
             }
-        }
-
-        // Build message content
-        let content = message.text || '';
-        if (message.attachments?.length) {
-            const attachmentLinks = message.attachments
-                .filter(a => a.payload?.url)
-                .map(a => `[Attachment: ${a.type}](${a.payload.url})`)
-                .join('\n');
-            content = content ? `${content}\n\n${attachmentLinks}` : attachmentLinks;
-        }
-
-        // Create the message
-        const newMessage = await prisma.message.create({
-            data: {
-                conversationId: conversation.id,
-                content,
-                contentType: message.attachments?.length ? 'FILE' : 'TEXT',
-                senderType: 'CUSTOMER',
-                senderId: senderId,
-            },
-        });
-
-        Logger.info('[MetaMessaging] Message received and stored', {
-            conversationId: conversation.id,
-            messageId: newMessage.id,
-            platform,
-        });
-
-        // Emit event for real-time updates
-        EventBus.emit(EVENTS.SOCIAL.MESSAGE_RECEIVED, {
-            accountId,
-            conversationId: conversation.id,
-            messageId: newMessage.id,
-            platform,
-            senderId,
-        });
-    }
-
-    /**
-     * Fetch user profile from Meta Graph API.
-     */
-    private static async getUserProfile(
-        accessToken: string,
-        userId: string
-    ): Promise<{ name?: string; profilePic?: string } | null> {
-        try {
-            const url = new URL(`${GRAPH_API_BASE}/${userId}`);
-            url.searchParams.set('fields', 'name,profile_pic');
-
-            const response = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } });
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            return await safeMetaJson(response, 'getUserProfile');
-        } catch (error: any) {
-            Logger.warn('[MetaMessaging] Failed to fetch user profile', {
-                userId,
-                error: error.message,
-            });
-            return null;
         }
     }
-
-    /**
-     * Get Instagram Business Account ID linked to a Facebook Page.
-     * Required for IG DM integration.
-     */
-    static async getInstagramBusinessAccount(
-        pageAccessToken: string,
-        pageId: string
-    ): Promise<{ igUserId: string; username: string } | null> {
-        try {
-            const url = new URL(`${GRAPH_API_BASE}/${pageId}`);
-            url.searchParams.set('fields', 'instagram_business_account{id,username}');
-
-            const response = await fetch(url.toString(), { headers: { Authorization: `Bearer ${pageAccessToken}` } });
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-
-            const data = await safeMetaJson(response, 'getInstagramBusinessAccount');
-            const igAccount = data.instagram_business_account;
-            if (!igAccount) {
-                return null;
-            }
-
-            return {
-                igUserId: igAccount.id,
-                username: igAccount.username,
-            };
-        } catch (error: any) {
-            Logger.error('[MetaMessaging] Failed to get Instagram business account', {
-                pageId,
-                error: error.message,
-            });
-            return null;
-        }
+    static async getInstagramBusinessAccount(pageAccessToken: string, pageId: string): Promise<{ igUserId: string; username: string } | null> {
+        externalId.parse(pageId);
+        const data = z.object({ instagram_business_account: z.object({ id: externalId, username: z.string().max(300) }).optional() }).parse(await providerJson(`${BASE}/${pageId}?fields=instagram_business_account{id,username}`, { headers: { Authorization: `Bearer ${pageAccessToken}` } }));
+        return data.instagram_business_account ? { igUserId: data.instagram_business_account.id, username: data.instagram_business_account.username } : null;
     }
-
-    /**
-     * Verify webhook signature for security.
-     */
-    static verifyWebhookSignature(
-        signature: string,
-        payload: string,
-        appSecret: string
-    ): boolean {
-        const crypto = require('crypto');
-        const expectedSignature = 'sha256=' + crypto
-            .createHmac('sha256', appSecret)
-            .update(payload)
-            .digest('hex');
-
-        const actual = Buffer.from(signature);
-        const expected = Buffer.from(expectedSignature);
-        return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+    static verifyWebhookSignature(signature: string, payload: string, appSecret: string): boolean {
+        const actual = Buffer.from(signature), expected = Buffer.from(`sha256=${createHmac('sha256', appSecret).update(payload).digest('hex')}`);
+        return actual.length === expected.length && timingSafeEqual(actual, expected);
     }
-
-    /**
-     * List Facebook Pages the user has access to.
-     * Used during OAuth to let user select which page to connect.
-     */
-    static async listUserPages(
-        userAccessToken: string
-    ): Promise<Array<{ id: string; name: string; accessToken: string }>> {
-        try {
-            const url = new URL(`${GRAPH_API_BASE}/me/accounts`);
-            url.searchParams.set('fields', 'id,name,access_token');
-
-            const response = await fetch(url.toString(), { headers: { Authorization: `Bearer ${userAccessToken}` } });
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-
-            const data = await safeMetaJson(response, 'listUserPages');
-            // Map snake_case from API to camelCase for our code
-            return (data.data || []).map((page: any) => ({
-                id: page.id,
-                name: page.name,
-                accessToken: page.access_token,
-            }));
-        } catch (error: any) {
-            Logger.error('[MetaMessaging] Failed to list user pages', {
-                error: error.message,
-            });
-            return [];
+    static async listUserPages(userAccessToken: string): Promise<Array<{ id: string; name: string; accessToken: string }>> {
+        const result: Array<{ id: string; name: string; accessToken: string }> = [], seen = new Set<string>(); let after: string | undefined;
+        for (let page = 0; page < 5; page++) {
+            const url = new URL(`${BASE}/me/accounts`); url.searchParams.set('fields', 'id,name,access_token'); url.searchParams.set('limit', '100'); if (after) url.searchParams.set('after', after);
+            const data = z.object({ data: z.array(z.object({ id: externalId, name: z.string().max(300), access_token: z.string().min(1).max(5000) })).max(100), paging: z.object({ next: z.string().optional(), cursors: z.object({ after: z.string().min(1).max(2000) }).optional() }).optional() }).parse(await providerJson(url.href, { headers: { Authorization: `Bearer ${userAccessToken}` } }));
+            for (const row of data.data) { if (seen.has(row.id)) throw new Error('Duplicate Meta page'); seen.add(row.id); result.push({ id: row.id, name: row.name, accessToken: row.access_token }); }
+            if (!data.paging?.next) return result;
+            if (!data.paging.cursors?.after || data.paging.cursors.after === after) throw new Error('Incomplete Meta pagination'); after = data.paging.cursors.after;
         }
+        throw new Error('Meta page coverage exceeds review limit');
     }
 }

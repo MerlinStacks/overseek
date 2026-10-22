@@ -428,30 +428,7 @@ export class MarketingScheduler {
      * Dispatch weekly performance digests to all eligible accounts
      */
     static async dispatchWeeklyDigests() {
-        Logger.info('[Scheduler] Starting weekly performance digest dispatch');
-
-        try {
-            const { PerformanceDigestService } = await import('../PerformanceDigestService');
-
-            // Get all accounts with digest enabled (defaulting to all for now)
-            // Note: Could filter by accounts with ad accounts or recent activity
-            const accounts = await prisma.account.findMany({
-                select: { id: true, name: true }
-            });
-
-            Logger.info(`[Scheduler] Sending weekly digests to ${accounts.length} accounts`);
-
-            for (const account of accounts) {
-                try {
-                    await PerformanceDigestService.sendDigest(account.id);
-                    Logger.info(`[Scheduler] Weekly digest sent for ${account.name || account.id}`);
-                } catch (error) {
-                    Logger.error(`[Scheduler] Failed to send digest for account ${account.id}`, { error });
-                }
-            }
-        } catch (error) {
-            Logger.error('[Scheduler] Weekly digest dispatch failed', { error });
-        }
+        Logger.info('[Scheduler] Digest delivery disabled pending explicit opt-in and durable delivery protocol');
     }
 
     static async dispatchAiManagerSuggestions() {

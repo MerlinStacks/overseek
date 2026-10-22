@@ -772,6 +772,14 @@ export class WooService {
      * Cache TTL: 30 seconds to balance freshness with API savings.
      * Throws on API failure so callers can distinguish "store down" from "no variations."
      */
+    /** Exact fresh stock observation, without all-variation pagination or cached fallback. */
+    async getProductVariation(productId: number, variationId: number) {
+        if (!Number.isSafeInteger(productId) || productId <= 0 || !Number.isSafeInteger(variationId) || variationId <= 0) throw new Error('Invalid variation scope');
+        if (this.isDemo) throw new Error('Live variation observation unavailable in demo mode');
+        const response = await this.api.get(`products/${productId}/variations/${variationId}`);
+        return response.data;
+    }
+
     async getProductVariations(productId: number, options: { bypassCache?: boolean } = {}): Promise<any[]> {
         if (this.isDemo) return [];
 

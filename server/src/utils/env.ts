@@ -1,92 +1,27 @@
-
-
 import { Logger } from './logger';
-
-interface EnvConfig {
-
-    name: string;
-
-    required: boolean;
-
-    default?: string;
+import { z } from 'zod';
+const nonblank = z.string().min(1).refine(value => value === value.trim() && ![...value].some(char => char.charCodeAt(0) < 32));
+const defaults = { REDIS_HOST: 'localhost', REDIS_PORT: '6379', ELASTICSEARCH_NODE: 'http://localhost:9200' };
+/** Pure parser. Never rewrites a supplied destination or includes secret values in errors. */
+export function parseEnvironment(input: NodeJS.ProcessEnv): Record<string, string> {
+    const env: NodeJS.ProcessEnv = { ...defaults, ...input }; const invalid: string[] = [];
+    const check = (key: string, test: (value: string) => boolean) => { const value = env[key]; if (typeof value !== 'string' || !nonblank.safeParse(value).success || !test(value)) invalid.push(key); };
+    const url = (value: string, protocols: string[]) => { try { const parsed = new URL(value); return protocols.includes(parsed.protocol) && !!parsed.hostname && !parsed.hash; } catch { return false; } };
+    if (env.NODE_ENV !== undefined) check('NODE_ENV', value => ['development', 'test', 'production'].includes(value));
+    check('DATABASE_URL', value => url(value, ['postgresql:', 'postgres:']));
+    check('JWT_SECRET', value => env.NODE_ENV !== 'production' || value.length >= 32);
+    check('REDIS_HOST', value => /^[a-zA-Z0-9._:[\]-]+$/.test(value));
+    check('REDIS_PORT', value => /^\d{1,5}$/.test(value) && Number(value) >= 1 && Number(value) <= 65535);
+    check('ELASTICSEARCH_NODE', value => url(value, ['http:', 'https:']));
+    // Encryption uses ENCRYPTION_KEY || JWT_SECRET; do not silently change deployed key material.
+    if (env.ENCRYPTION_KEY !== undefined) check('ENCRYPTION_KEY', value => env.NODE_ENV !== 'production' || value.length >= 32);
+    if (invalid.length) throw new Error(`Invalid environment variables: ${invalid.join(', ')}`);
+    return Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
 }
-
-const ENV_CONFIG: EnvConfig[] = [
-    // Critical - server won't function without these
-    { name: 'DATABASE_URL', required: true },
-    { name: 'JWT_SECRET', required: true },
-    { name: 'REDIS_HOST', required: false, default: 'localhost' },
-    { name: 'REDIS_PORT', required: false, default: '6379' },
-
-    // Elasticsearch
-    { name: 'ELASTICSEARCH_NODE', required: false, default: 'http://localhost:9200' },
-
-    // Optional integrations
-    { name: 'ENCRYPTION_KEY', required: false },
-    { name: 'GOLD_API_KEY', required: false },
-];
-
-
 export function validateEnvironment(): void {
-    const missing: string[] = [];
-    const warnings: string[] = [];
-
-    for (const config of ENV_CONFIG) {
-        const value = process.env[config.name];
-
-        if (!value) {
-            if (config.required) {
-                missing.push(config.name);
-            } else if (config.default) {
-                process.env[config.name] = config.default;
-                warnings.push(`${config.name} not set, using default: ${config.default}`);
-            }
-        }
-    }
-
-
-    if (warnings.length > 0) {
-        Logger.warn('[ENV] Using default values', { variables: warnings });
-    }
-
-
-    if (missing.length > 0) {
-        Logger.error('[ENV] Missing required environment variables', { missing });
-        throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
-    }
-
+    const parsed = parseEnvironment(process.env);
+    for (const key of Object.keys(defaults)) if (process.env[key] === undefined) process.env[key] = parsed[key];
     Logger.info('[ENV] Environment validation passed');
-
-    const jwtSecret = process.env.JWT_SECRET;
-    if (jwtSecret) {
-        if (jwtSecret.length < 32 && process.env.NODE_ENV === 'production') {
-            Logger.error('[ENV] JWT_SECRET is too short for production (minimum 32 characters)', {
-                length: jwtSecret.length
-            });
-            throw new Error('JWT_SECRET must be at least 32 characters in production');
-        }
-    }
-
-    // in dev mode, swap Docker hostnames to localhost to avoid ENOTFOUND
-    if (process.env.NODE_ENV === 'development') {
-        if (process.env.REDIS_HOST === 'redis') {
-            Logger.warn('[ENV] REDIS_HOST is "redis" but running in development. Forcing to "localhost".');
-            process.env.REDIS_HOST = 'localhost';
-        }
-
-        if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('@postgres:')) {
-            Logger.warn('[ENV] DATABASE_URL points to "postgres" container but running in development. Replacing with "localhost".');
-            process.env.DATABASE_URL = process.env.DATABASE_URL.replace('@postgres:', '@localhost:');
-        }
-    }
 }
-
-
-export function getEnv(name: string, fallback?: string): string {
-    return process.env[name] || fallback || '';
-}
-
-
-export function isProduction(): boolean {
-    return process.env.NODE_ENV === 'production';
-}
+export function getEnv(name: string, fallback?: string): string { return process.env[name] ?? fallback ?? ''; }
+export function isProduction(): boolean { return process.env.NODE_ENV === 'production'; }

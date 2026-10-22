@@ -1,98 +1,11 @@
-
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, expect, it, vi } from 'vitest';
+const m = vi.hoisted(() => ({ json: vi.fn() }));
+vi.mock('./BoundedProviderWork', async () => ({ ...await vi.importActual('./BoundedProviderWork'), providerJson: m.json }));
+vi.mock('../utils/prisma', () => ({ prisma: {} }));
 import { EmbeddingService } from './EmbeddingService';
-import { prisma } from '../utils/prisma';
-
-// Mock dependencies
-vi.mock('../utils/prisma', () => ({
-    prisma: {
-        account: {
-            findUnique: vi.fn()
-        },
-        wooProduct: {
-            findUnique: vi.fn()
-        },
-        $queryRaw: vi.fn(),
-        $executeRaw: vi.fn()
-    }
-}));
-
-vi.mock('../utils/logger', () => ({
-    Logger: {
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-    }
-}));
-
-// Mock fetch
-const fetchMock = vi.fn();
-global.fetch = fetchMock;
-
-const jsonResponse = (body: unknown) => ({
-    ok: true,
-    status: 200,
-    headers: { get: (name: string) => name.toLowerCase() === 'content-type' ? 'application/json' : null },
-    json: async () => body,
-    text: async () => JSON.stringify(body),
-});
-
-describe('EmbeddingService Benchmark', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-
-        // Setup default mocks
-        (prisma.account.findUnique as any).mockResolvedValue({
-            openRouterApiKey: 'test-key',
-            embeddingModel: 'test-model'
-        });
-
-        // Smart mock for batching
-        fetchMock.mockImplementation(async (_url, options) => {
-            const body = JSON.parse(options.body);
-            const input = body.input;
-            const count = Array.isArray(input) ? input.length : 1;
-
-            return jsonResponse({
-                    data: Array.from({ length: count }, (_, i) => ({
-                        embedding: Array(1536).fill(0.1),
-                        index: i
-                    }))
-            });
-        });
-    });
-
-    it('benchmarks batchUpdateEmbeddings', async () => {
-        const productCount = 5;
-
-        // Mock products
-        const products = Array.from({ length: productCount }, (_, i) => ({
-            id: `prod-${i}`,
-            rawData: {
-                name: `Product ${i}`,
-                sku: `SKU-${i}`,
-                description: `Description for product ${i}`,
-                categories: [{ name: 'Cat1' }],
-                tags: [{ name: 'Tag1' }]
-            }
-        }));
-
-        // First $queryRaw call: hasEmbeddingColumn check → column exists
-        // Second $queryRaw call: fetch products without embeddings
-        (prisma.$queryRaw as any)
-            .mockResolvedValueOnce([{ exists: true }])
-            .mockResolvedValueOnce(products);
-
-        console.time('batchUpdateEmbeddings');
-        const updated = await EmbeddingService.batchUpdateEmbeddings('test-account', productCount);
-        console.timeEnd('batchUpdateEmbeddings');
-
-        expect(updated).toBe(productCount);
-
-        // Verify we made API calls
-        console.log(`Fetch called ${fetchMock.mock.calls.length} times`);
-
-        // Expect only 1 fetch call for the batch
-        expect(fetchMock.mock.calls.length).toBe(1);
-    }, 5000);
-});
+beforeEach(() => vi.resetAllMocks());
+const vector = () => Array(1536).fill(.1);
+it('validates exact indexed coverage, dimensions, finiteness and nonzero vectors', async () => { for (const data of [[{ index: 1, embedding: vector() }], [{ index: 0, embedding: [1] }], [{ index: 0, embedding: Array(1536).fill(0) }], [{ index: 0, embedding: Array(1536).fill(Infinity) }], []]) { m.json.mockResolvedValueOnce({ data }); await expect(EmbeddingService.generateEmbeddings(['a'], 'key')).rejects.toThrow(); } });
+it('sorts complete provider coverage and rejects duplicate indices', async () => { m.json.mockResolvedValueOnce({ data: [{ index: 1, embedding: vector() }, { index: 0, embedding: vector() }] }); expect(await EmbeddingService.generateEmbeddings(['a', 'b'], 'key')).toHaveLength(2); m.json.mockResolvedValueOnce({ data: [{ index: 0, embedding: vector() }, { index: 0, embedding: vector() }] }); await expect(EmbeddingService.generateEmbeddings(['a', 'b'], 'key')).rejects.toThrow('coverage'); });
+it('rejects unsupported models and oversized/empty inputs without provider work', async () => { for (const texts of [[], [''], ['x'.repeat(8001)]]) await expect(EmbeddingService.generateEmbeddings(texts, 'key')).rejects.toThrow(); await expect(EmbeddingService.generateEmbeddings(['a'], 'key', 'other/model')).rejects.toThrow(); expect(m.json).not.toHaveBeenCalled(); });
+it('does not silently truncate product text or trust malformed category data', () => { expect(() => EmbeddingService.getProductSearchText({ name: 'x'.repeat(8001) })).toThrow(); expect(() => EmbeddingService.getProductSearchText({ name: 'a', tags: 'not-an-array' })).toThrow(); expect(EmbeddingService.getProductSearchText({ name: 'a', sku: 'b', categories: [{ name: 'c' }] })).toBe('a b c'); });

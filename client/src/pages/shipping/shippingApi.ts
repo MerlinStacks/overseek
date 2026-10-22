@@ -1,3 +1,4 @@
+import { readBoundedBytes } from '../../utils/boundedResponse';
 export interface ShippingPackagePreset {
     id: string;
     name: string;
@@ -223,49 +224,61 @@ interface ShippingErrorBody {
 }
 
 function formatShippingError(body: ShippingErrorBody, fallback: string): string {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return fallback;
     const baseMessage = body.error === 'Bad Request' && body.message
         ? body.message
         : body.error || body.message || fallback;
-    const details = body.details;
+    const details = body && typeof body === 'object' && body.details && typeof body.details === 'object' ? body.details : undefined;
     if (!details) return baseMessage;
 
     const fieldMessages = Object.entries(details.fieldErrors || {})
-        .flatMap(([field, messages]) => (messages || []).map((message) => `${field}: ${message}`));
-    const formMessages = details.formErrors || [];
+        .slice(0, 20).flatMap(([field, messages]) => Array.isArray(messages) ? messages.filter(message => typeof message === 'string').slice(0, 5).map((message) => `${field}: ${message.slice(0, 200)}`) : []);
+    const formMessages = Array.isArray(details.formErrors) ? details.formErrors.filter(message => typeof message === 'string').slice(0, 10) : [];
     const allMessages = [...formMessages, ...fieldMessages].filter(Boolean);
     if (allMessages.length === 0) return baseMessage;
 
     return `${baseMessage}. ${allMessages.join('; ')}`;
 }
 
+export class ShippingRequestError extends Error {
+    constructor(message: string, public statusCode: number, public uncertain: boolean) { super(message); this.name = 'ShippingRequestError'; }
+}
 export async function shippingFetch<T>(path: string, token: string, accountId: string, options: RequestInit = {}): Promise<T> {
+    try { return await shippingRequest<T>(path, token, accountId, options); }
+    catch (error) {
+        const status = typeof (error as { statusCode?: number })?.statusCode === 'number' ? (error as { statusCode: number }).statusCode : 0;
+        const message = (error as Error)?.message;
+        const safeMessage = typeof message === 'string' && (status !== 0 || /^(Invalid shipping request scope|Shipping authority headers cannot be overridden|Shipping JSON acknowledgement unavailable)$/.test(message)) ? message.slice(0, 1000) : 'Shipping JSON/transport acknowledgement unavailable';
+        throw new ShippingRequestError(safeMessage, status, !!options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase()) && ![400, 401, 403, 404, 410, 422].includes(status));
+    }
+}
+async function shippingRequest<T>(path: string, token: string, accountId: string, options: RequestInit = {}): Promise<T> {
+    if (!/^\/[a-zA-Z0-9/_?=&%.-]*$/.test(path) || path.startsWith('//') || path.includes('..') || /%2[fFeE]|%5[cC]/i.test(path) || !token || !accountId) throw new Error('Invalid shipping request scope');
+    const headers = new Headers(options.headers);
+    if (headers.has('Authorization') || headers.has('X-Account-ID')) throw new Error('Shipping authority headers cannot be overridden');
+    const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000);
     const hasBody = options.body != null;
     const res = await fetch(`/api/shipping${path}`, {
         ...options,
+        signal,
+        redirect: 'error',
         headers: {
             Authorization: `Bearer ${token}`,
             'X-Account-ID': accountId,
             ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
-            ...(options.headers || {}),
+            ...Object.fromEntries(headers.entries()),
         },
     });
 
     if (!res.ok) {
         const contentType = (res.headers.get('content-type') || '').toLowerCase();
         let body: ShippingErrorBody = {};
-        let textBody = '';
+    const textBody = '';
 
         if (contentType.includes('application/json')) {
-            body = await res.json().catch(() => ({} as ShippingErrorBody));
+            try { body = JSON.parse(new TextDecoder().decode(await readBoundedBytes(res, 64000))); } catch { body = {}; }
         } else {
-            textBody = (await res.text().catch(() => '')).trim();
-            if (textBody) {
-                try {
-                    body = JSON.parse(textBody) as ShippingErrorBody;
-                } catch {
-                    // Keep plain text fallback.
-                }
-            }
+            await res.body?.cancel().catch(() => undefined);
         }
 
         const fallback = res.statusText || `Request failed (${res.status})`;
@@ -274,42 +287,54 @@ export async function shippingFetch<T>(path: string, token: string, accountId: s
             ? textBody
             : parsedMessage;
 
-        throw new Error(finalMessage || `Request failed (${res.status})`);
+        throw Object.assign(new Error(typeof finalMessage === 'string' ? finalMessage.slice(0, 1000) : `Request failed (${res.status})`), { statusCode: res.status, uncertain: options.method !== undefined && !['GET', 'HEAD'].includes(options.method.toUpperCase()) });
     }
 
     const ct = res.headers.get('content-type');
-    if (ct && ct.includes('application/json')) return res.json();
-    return {} as T;
+    if (!ct?.includes('application/json')) { await res.body?.cancel().catch(() => undefined); throw new Error('Shipping JSON acknowledgement unavailable'); }
+    return JSON.parse(new TextDecoder().decode(await readBoundedBytes(res, 4 * 1024 * 1024))) as T;
 }
 
 export async function openShippingLabelPdf(labelId: string, token: string, accountId: string): Promise<() => void> {
+    if (!/^[a-zA-Z0-9-]{1,200}$/.test(labelId) || !token || !accountId) throw new Error('Invalid label scope');
     const res = await fetch(`/api/shipping/labels/${labelId}/pdf`, {
+        signal: AbortSignal.timeout(30000), redirect: 'error',
         headers: {
             Authorization: `Bearer ${token}`,
             'X-Account-ID': accountId,
         },
     });
     if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || 'Failed to open label PDF');
+        await res.body?.cancel().catch(() => undefined);
+        throw new Error('Label PDF request was not acknowledged');
     }
-    const blob = await res.blob();
+    if (!res.headers.get('content-type')?.toLowerCase().startsWith('application/pdf')) { await res.body?.cancel().catch(() => undefined); throw new Error('PDF type unavailable'); }
+    const bytes = await readBoundedBytes(res, 10 * 1024 * 1024);
+    if (new TextDecoder().decode(bytes.slice(0, 5)) !== '%PDF-') throw new Error('PDF signature unavailable');
+    const blob = new Blob([bytes], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
-    window.open(url, '_blank', 'noopener,noreferrer');
-    return () => URL.revokeObjectURL(url);
+    // Deliberate review/save panel instead of a post-fetch popup or automatic print.
+    const panel = document.createElement('section'); panel.setAttribute('role', 'status');
+    panel.style.cssText = 'position:fixed;bottom:1rem;left:1rem;right:1rem;z-index:9999;background:#0f172a;color:white;padding:1rem';
+    const link = document.createElement('a'); link.href = url; link.download = `shipping-label-${labelId}.pdf`; link.textContent = 'Save prepared label PDF (no print requested)';
+    const close = document.createElement('button'); close.type = 'button'; close.textContent = 'Dismiss PDF';
+    let disposed = false;
+    const dispose = () => { if (disposed) return; disposed = true; clearTimeout(timer); window.removeEventListener('pagehide', dispose); panel.remove(); URL.revokeObjectURL(url); };
+    close.onclick = dispose; panel.append(link, close); document.body.appendChild(panel); window.addEventListener('pagehide', dispose, { once: true }); const timer = setTimeout(dispose, 120000);
+    return dispose;
 }
 
-export const mmToCm = (value: number | null | undefined) => value != null ? value / 10 : '';
-export const gramsToKg = (value: number | null | undefined) => value != null ? value / 1000 : '';
+export const mmToCm = (value: number | null | undefined) => value == null ? '' : Number.isSafeInteger(value) && value >= 0 && value <= 10000000 ? value / 10 : (() => { throw new Error('Invalid stored millimetres'); })();
+export const gramsToKg = (value: number | null | undefined) => value == null ? '' : Number.isSafeInteger(value) && value >= 0 && value <= 10000000 ? value / 1000 : (() => { throw new Error('Invalid stored grams'); })();
 export const cmToMm = (value: string) => {
     const trimmed = value.trim();
     if (trimmed === '') return null;
-    const n = Number(trimmed);
-    return Number.isFinite(n) ? Math.ceil(n * 10) : null;
+    if (!/^\d+(?:\.\d)?$/.test(trimmed) || Number(trimmed) > 1000000) throw new Error('Use nonnegative centimetres with at most one decimal');
+    return Math.round(Number(trimmed) * 10);
 };
 export const kgToGrams = (value: string) => {
     const trimmed = value.trim();
     if (trimmed === '') return null;
-    const n = Number(trimmed);
-    return Number.isFinite(n) ? Math.ceil(n * 1000) : null;
+    if (!/^\d+(?:\.\d{1,3})?$/.test(trimmed) || Number(trimmed) > 10000) throw new Error('Use nonnegative kilograms with at most three decimals');
+    return Math.round(Number(trimmed) * 1000);
 };

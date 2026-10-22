@@ -348,7 +348,7 @@ class AusPostShippingTrackingAdapter {
     async refreshTracking(accountId: string, trackingNumber: string) {
         const credentials = await this.getCredentials(accountId);
         if (!credentials.endpoints.tracking) throw new Error('AusPost tracking endpoint mapping is not configured yet');
-        const response = await this.request(credentials, this.applyTemplate(credentials.endpoints.tracking, { trackingNumber, tracking_ids: trackingNumber }), { method: 'GET' });
+        const response = await this.request(credentials, this.applyTemplate(credentials.endpoints.tracking, { trackingNumber, tracking_ids: trackingNumber }), { method: 'GET' }, true);
         return this.extractTrackingEvents(response);
     }
 
@@ -410,7 +410,7 @@ class AusPostShippingTrackingAdapter {
         };
     }
 
-    async request<T>(credentials: AusPostCredentials, path: string, init: RequestInit = {}): Promise<T> {
+    async request<T>(credentials: AusPostCredentials, path: string, init: RequestInit = {}, boundedTracking = false): Promise<T> {
         const baseUrl = credentials.baseUrl;
         if (!baseUrl) throw new Error('AusPost API base URL is not configured');
 
@@ -429,7 +429,14 @@ class AusPostShippingTrackingAdapter {
         const timeoutId = setTimeout(() => controller.abort(), 30000);
         try {
             const response = await fetch(`${baseUrl.replace(/\/$/, '')}${endpointPath}`, { ...init, headers, signal: controller.signal });
-            const body = await response.text();
+            let body: string;
+            if (boundedTracking) {
+                if (!response.body) throw new Error('Tracking response stream unavailable');
+                const reader = response.body.getReader(), chunks: Uint8Array[] = []; let length = 0;
+                try { while (true) { const { done, value } = await reader.read(); if (done) break; length += value.byteLength; if (length > 1048576) throw new Error('Tracking response exceeds bounds'); chunks.push(value); } }
+                catch (error) { await reader.cancel().catch(() => undefined); throw error; } finally { reader.releaseLock(); }
+                body = Buffer.concat(chunks).toString('utf8');
+            } else body = await response.text();
             const parsed = body ? this.parseBody(body) : null;
             if (!response.ok) {
                 Logger.error('[AusPostAdapter] Carrier request failed', {

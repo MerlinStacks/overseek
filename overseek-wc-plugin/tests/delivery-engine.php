@@ -98,7 +98,10 @@ $tests['UTC instant converted to store next date'] = static function (): void {
 $tests['legacy IANA aliases accepted by settings retain calculation parity'] = static function (): void {
     foreach (['US/Pacific', 'Asia/Calcutta', 'Europe/Kiev'] as $zone) {
         $i = fixture(); $i['timezone'] = $zone; $i['now'] = '2026-09-21T10:00:00+00:00';
-        same(OverSeek_Delivery_Engine::calculate($i)['status'], 'available');
+        $result = OverSeek_Delivery_Engine::calculate($i);
+        if ($result['status'] !== 'available') {
+            throw new RuntimeException('Timezone alias ' . $zone . ' failed: ' . json_encode($result) . '; timezone database: ' . timezone_version_get());
+        }
     }
     $i = fixture(); $i['timezone'] = 'Factory'; unavailable($i, 'invalid_timezone');
 };

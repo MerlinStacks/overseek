@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const m = vi.hoisted(() => ({ account: { id: 'a' }, request: vi.fn(), connected: true, queries: [] as { query: string; clicks: number; impressions: number; position: number }[], movers: [] as unknown[], analyticsError: null as Error | null }));
@@ -23,11 +23,24 @@ it('groups observed cart currencies without invented USD and counts prototype-li
 it('discards obsolete live responses after a scope change', async () => {
     let resolve!: (value: unknown) => void; m.request.mockImplementationOnce(() => new Promise(done => { resolve = done; })).mockResolvedValue([]);
     const view = render(<MemoryRouter><LiveAnalyticsWidget /></MemoryRouter>); m.account = { id: 'b' }; view.rerender(<MemoryRouter><LiveAnalyticsWidget /></MemoryRouter>);
-    await screen.findByText('0'); await act(async () => resolve([{ country: 'Old', lastActiveAt: new Date().toISOString(), cartValue: 0 }])); expect(screen.queryByText('Old: 1')).toBeNull();
+    expect(await screen.findByLabelText('Returned session count')).toHaveTextContent('0'); await act(async () => resolve([{ country: 'Old', lastActiveAt: new Date().toISOString(), cartValue: 0 }])); expect(screen.queryByText('Old: 1')).toBeNull();
 });
 it('shows live errors instead of fabricating zero activity', async () => {
     m.request.mockRejectedValue(Error('offline')); render(<MemoryRouter><LiveAnalyticsWidget /></MemoryRouter>);
     expect(await screen.findByText('Live observations unavailable.')).toBeInTheDocument(); expect(screen.queryByText('0')).toBeNull();
+});
+it('keeps the live widget layout bounded and its styled refresh action working', async () => {
+    m.request.mockResolvedValue([{ country: 'AU', lastActiveAt: new Date().toISOString(), cartValue: '12', currency: 'AUD' }]);
+    render(<MemoryRouter><LiveAnalyticsWidget className="dashboard-widget" /></MemoryRouter>);
+    expect(await screen.findByText('A$12.00')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Live analytics' })).toHaveClass('flex', 'h-full', 'min-h-0', 'dashboard-widget');
+    expect(screen.getByText('Top Locations').parentElement?.querySelector('ul')).toHaveClass('flex-wrap');
+    const refresh = screen.getByRole('button', { name: 'Refresh observations' });
+    expect(refresh).toHaveClass('rounded-md');
+    await waitFor(() => expect(refresh).toBeEnabled());
+    fireEvent.click(refresh);
+    await waitFor(() => expect(m.request).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('button', { name: 'View Real-time Report' })).toHaveClass('text-blue-600');
 });
 it('impression-weights SEO position and labels neutral movement and the actual comparison', () => {
     m.queries = [{ query: 'one', clicks: 1, impressions: 1, position: 1 }, { query: 'two', clicks: 1, impressions: 99, position: 11 }];

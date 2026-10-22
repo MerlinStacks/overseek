@@ -3,6 +3,8 @@ import type { Prisma } from '@prisma/client';
 import { Logger } from '../../utils/logger';
 import { automationEngine } from '../AutomationEngine';
 import { ausPostShippingTrackingAdapter } from './AusPostShippingTrackingAdapter';
+import { z } from 'zod';
+import { admittedTracking } from './TrackingAdmission';
 
 type ShipmentTriggerType =
     | 'SHIPMENT_RECEIVED_BY_CARRIER'
@@ -98,7 +100,8 @@ export class ShippingTrackingService {
         const label = await prisma.shippingLabel.findFirst({ where: { id: labelId, accountId } });
         if (!label) throw new Error('Label not found');
         if (!label.trackingNumber) throw new Error('Label does not have a tracking number');
-        const events = await ausPostShippingTrackingAdapter.refreshTracking(accountId, label.trackingNumber);
+        const events = z.array(z.object({ eventCode: z.string().max(200).nullish(), status: z.string().max(200).nullish(), description: z.string().max(2000).nullish(), location: z.string().max(1000).nullish(), occurredAt: z.union([z.string().datetime({ offset: true }), z.date()]), rawEvent: z.record(z.string(), z.unknown()).optional() })).max(100).parse(await ausPostShippingTrackingAdapter.refreshTracking(accountId, label.trackingNumber));
+        if (JSON.stringify(events).length > 250000) throw new Error('Tracking import exceeds bounds');
         let imported = 0;
         let hadError = false;
         for (const event of events) {
@@ -128,6 +131,7 @@ export class ShippingTrackingService {
     }
 
     async pollActiveLabels(accountId: string, limit = 25) {
+        z.number().int().min(1).max(25).parse(limit);
         const pollingConfig = await this.getPollingConfig(accountId);
         const staleBefore = new Date(Date.now() - pollingConfig.pollIntervalMinutes * 60 * 1000);
         const labels = await prisma.shippingLabel.findMany({
@@ -142,13 +146,13 @@ export class ShippingTrackingService {
             },
             orderBy: [{ trackingSyncedAt: 'asc' }, { createdAt: 'asc' }],
             take: limit,
-            select: { id: true },
+            select: { id: true, updatedAt: true },
         });
 
         const result = { checked: labels.length, updated: 0, failed: 0, adapterUnavailable: 0 };
         for (const label of labels) {
             try {
-                await this.refreshTrackingFromCarrier(accountId, label.id);
+                await admittedTracking(accountId, label.id, `poll:${Math.floor(Date.now() / 1800000)}`, label.updatedAt.toISOString(), () => this.refreshTrackingFromCarrier(accountId, label.id));
                 result.updated++;
             } catch (error: any) {
                 if (error?.message === 'AusPost tracking endpoint mapping is not configured yet') {

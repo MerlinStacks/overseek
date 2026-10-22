@@ -318,7 +318,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                         userId,
                         clientRequestId: clientRequestId?.trim(),
                         channel: deliveryChannel,
-                        deliver: () => routeMessageToChannel(request.params.id, content.trim(), deliveryChannel, accountId, emailAccountId)
+                        deliver: () => routeMessageToChannel(request.params.id, content.trim(), deliveryChannel, accountId, emailAccountId, { actorId: userId, operationId: clientRequestId!.trim() })
                     });
                     if (result.httpStatus !== 200) {
                         return reply.code(result.httpStatus).send({
@@ -549,7 +549,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                         allowContentRefresh: true,
                         deliver: () => attachments.length > 0 && deliveryChannel === 'EMAIL'
                             ? sendEmailWithAttachments(conversationId, content, attachments, accountId, emailAccountId)
-                            : routeMessageToChannel(conversationId, fullContent.trim(), deliveryChannel, accountId, emailAccountId)
+                            : routeMessageToChannel(conversationId, fullContent.trim(), deliveryChannel, accountId, emailAccountId, { actorId: userId, operationId: clientRequestId!.trim() })
                     });
                     if (result.reused) cleanupAttachments();
                     if (result.httpStatus !== 200) {

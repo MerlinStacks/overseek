@@ -6,6 +6,7 @@ import { Logger } from '../utils/logger';
 import { SHIPPING_FEATURE_KEY, shippingService } from '../services/shipping/ShippingService';
 import { PermissionService } from '../services/PermissionService';
 import { shippingTrackingService } from '../services/shipping/ShippingTrackingService';
+import { shippingWorkspaceRoutes } from './shippingWorkspace';
 
 const listQuerySchema = z.object({
     limit: z.coerce.number().int().positive().max(200).default(50),
@@ -192,7 +193,10 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
         if (!enabled) {
             return reply.code(403).send({ error: 'Shipping Hub feature is disabled for this account' });
         }
+        if (request.method !== 'GET' && /\/(packages|item-overwrites)(\/[^/]+)?\/?$/.test(request.routeOptions.url)) return reply.code(410).send({ error: 'Unversioned catalog writes retired; use the scoped workspace catalog protocol' });
+        if (request.method !== 'GET' && /\/(?:orders\/(?:bulk-labels|[^/]+\/(?:draft|validate-address|rates|labels))|print-jobs\/[^/]+\/(?:retry|reassign))\/?$/.test(request.routeOptions.url)) return reply.code(410).send({ error: 'Unreviewed workspace actions retired; use a versioned single-resource action. Bulk create-and-print is disabled.' });
     });
+    await fastify.register(shippingWorkspaceRoutes);
 
     fastify.get('/hub', async (request, reply) => {
         try {
@@ -607,7 +611,13 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
             if (denied) return denied;
             const params = idParamsSchema.safeParse(request.params);
             if (!params.success) return reply.code(400).send({ error: 'Invalid label id' });
-            return await shippingTrackingService.refreshTrackingFromCarrier(request.accountId!, params.data.id);
+            const body = z.object({ operationId: z.string().uuid(), version: z.string().datetime(), wooOrderId: z.number().int().positive().safe() }).strict().safeParse(request.body);
+            if (!body.success) return reply.code(400).send({ error: 'Tracking operation, order and observed version required' });
+            const { prisma } = await import('../utils/prisma');
+            const scopedLabel = await prisma.shippingLabel.findFirst({ where: { id: params.data.id, accountId: request.accountId!, wooOrderId: body.data.wooOrderId } });
+            if (!scopedLabel) return reply.code(404).send({ error: 'Label not found' });
+            const { admittedTracking } = await import('../services/shipping/TrackingAdmission');
+            return await admittedTracking(request.accountId!, params.data.id, body.data.operationId, body.data.version, () => shippingTrackingService.refreshTrackingFromCarrier(request.accountId!, params.data.id));
         } catch (error: any) {
             Logger.error('[ShippingRoutes] Tracking refresh unavailable', { error: error?.message || error });
             const status = error?.message === 'Label not found'

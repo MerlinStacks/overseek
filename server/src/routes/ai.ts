@@ -14,6 +14,8 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/models', async (request, reply) => {
         try {
             const accountId = request.accountId;
+            if (!accountId || !request.user?.id) return reply.code(400).send({ error: 'Selected account required' });
+            await AIService.authorize(accountId, request.user.id);
             let apiKey = '';
 
             if (accountId) {
@@ -29,8 +31,8 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
             const models = await AIService.getModels(apiKey);
             return models;
         } catch (error) {
-            Logger.error('Models Error', { error });
-            return reply.code(500).send({ error: 'Failed to fetch models' });
+            Logger.warn('Model list unavailable');
+            return reply.code((error as { statusCode?: number })?.statusCode === 403 ? 403 : 503).send({ error: 'Models unavailable or not authorized' });
         }
     });
 
@@ -46,11 +48,12 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
-            const response = await AIService.generateResponse(message, accountId, context);
+            const response = await AIService.generateResponse(message, accountId, context, request.user?.id);
             return response;
         } catch (error) {
-            Logger.error('AI Error', { error });
-            return reply.code(500).send({ error: 'Failed to generate response' });
+            const status = (error as { statusCode?: number })?.statusCode;
+            Logger.warn('AI request unavailable');
+            return reply.code((error as Error)?.name === 'ZodError' ? 400 : status === 403 || status === 429 ? status : 503).send({ error: 'Analysis unavailable, invalid or not authorized' });
         }
     });
 };

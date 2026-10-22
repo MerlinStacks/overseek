@@ -1,74 +1,44 @@
 import { QueueFactory } from '../queue/QueueFactory';
 import { prisma } from '../../utils/prisma';
-import { Logger } from '../../utils/logger';
 import { SHIPPING_FEATURE_KEY } from '../shipping/ShippingService';
-import { shippingService } from '../shipping/ShippingService';
 import { shippingTrackingService } from '../shipping/ShippingTrackingService';
-
+import { admittedTracking } from '../shipping/TrackingAdmission';
 export class ShippingTrackingScheduler {
     private static queue = QueueFactory.createQueue('scheduler');
-
+    private static registered = false;
+    private static registering: Promise<void> | null = null;
     static async register() {
-        if (ShippingTrackingScheduler._registered) {
-            Logger.info('[ShippingTrackingScheduler] Already registered, skipping duplicate registration');
-            return;
-        }
-        ShippingTrackingScheduler._registered = true;
-        await this.queue.add('shipping-tracking-poll', {}, {
-            repeat: { pattern: '*/30 * * * *' },
-            jobId: 'shipping-tracking-poll-30min',
-        });
-        await this.queue.add('shipping-label-storage-cleanup', {}, {
-            repeat: { pattern: '17 2 * * *' },
-            jobId: 'shipping-label-storage-cleanup-daily',
-        });
-        Logger.info('Scheduled Shipping Tracking Poll (Every 30 minutes)');
-        Logger.info('Scheduled Shipping Label Storage Cleanup (Daily)');
+        if (this.registered) return;
+        if (this.registering) return this.registering;
+        this.registering = (async () => {
+            await this.queue.add('shipping-tracking-poll', {}, { repeat: { pattern: '*/30 * * * *' }, jobId: 'shipping-tracking-poll-30min' });
+            // Storage deletion intentionally not scheduled until file/print/recovery ownership is atomic.
+            this.registered = true;
+        })();
+        try { await this.registering; } finally { this.registering = null; }
     }
-
-    private static _registered = false;
-
     static async dispatchTrackingPoll() {
-        const enabledAccounts = await prisma.accountFeature.findMany({
-            where: { featureKey: SHIPPING_FEATURE_KEY, isEnabled: true },
-            select: { accountId: true },
-        });
-
-        Logger.info(`[ShippingTrackingScheduler] Polling tracking for ${enabledAccounts.length} Shipping Hub account(s)`);
-
-        const batch = Promise.allSettled(enabledAccounts.map(async ({ accountId }) => {
-            try {
-                const settings = await prisma.shippingCarrierAccount.findFirst({
-                    where: { accountId, carrier: 'AUSPOST', isEnabled: true },
-                    select: { config: true, credentialsEncrypted: true },
-                });
-                const config = (settings?.config as Record<string, unknown> | null) || {};
-                if (!settings?.credentialsEncrypted || config.trackingSyncEnabled === false) {
-                    return { accountId, result: null, error: null };
+        const deadline = Date.now() + 240000, occurrence = String(Math.floor(Date.now() / 1800000));
+        const outcomes: Array<{ accountId: string; labelId?: string; state: string }> = [];
+        let cursor: string | undefined;
+        for (let page = 0; page < 4 && Date.now() < deadline; page++) {
+            const accounts = await prisma.accountFeature.findMany({ where: { featureKey: SHIPPING_FEATURE_KEY, isEnabled: true, ...(cursor ? { accountId: { gt: cursor } } : {}) }, orderBy: { accountId: 'asc' }, take: 25, select: { accountId: true } });
+            for (const { accountId } of accounts) {
+                if (Date.now() >= deadline) return { state: 'partial', outcomes };
+                const settings = await prisma.shippingCarrierAccount.findFirst({ where: { accountId, carrier: 'AUSPOST', isEnabled: true }, select: { config: true, credentialsEncrypted: true } });
+                if (!settings?.credentialsEncrypted || (settings.config as any)?.trackingSyncEnabled !== true) { outcomes.push({ accountId, state: 'not-explicitly-enabled' }); continue; }
+                const labels = await prisma.shippingLabel.findMany({ where: { accountId, cancelledAt: null, trackingNumber: { not: null }, status: { notIn: ['cancelled', 'delivered', 'returned', 'expired'] }, OR: [{ trackingSyncedAt: null }, { trackingSyncedAt: { lt: new Date(Date.now() - 1800000) } }] }, orderBy: [{ trackingSyncedAt: 'asc' }, { id: 'asc' }], take: 5, select: { id: true, updatedAt: true } });
+                for (const label of labels) {
+                    if (Date.now() >= deadline) return { state: 'partial', outcomes };
+                    try { await admittedTracking(accountId, label.id, `scheduled:${occurrence}`, label.updatedAt.toISOString(), () => shippingTrackingService.refreshTrackingFromCarrier(accountId, label.id)); outcomes.push({ accountId, labelId: label.id, state: 'acknowledged' }); }
+                    catch { outcomes.push({ accountId, labelId: label.id, state: 'unavailable-or-reconciliation-required' }); }
                 }
-                const result = await shippingTrackingService.pollActiveLabels(accountId);
-                Logger.info('[ShippingTrackingScheduler] Tracking poll completed', { accountId, ...result });
-                if (result.failed > 0 || result.adapterUnavailable > 0) {
-                    Logger.warn('[ShippingTrackingScheduler] Tracking poll requires attention', {
-                        accountId,
-                        failed: result.failed,
-                        adapterUnavailable: result.adapterUnavailable,
-                        checked: result.checked,
-                        updated: result.updated,
-                    });
-                }
-                return { accountId, result, error: null };
-            } catch (error) {
-                Logger.error('[ShippingTrackingScheduler] Tracking poll failed', { accountId, error: error instanceof Error ? error.message : error });
-                return { accountId, result: null, error };
+                if (labels.length === 5) outcomes.push({ accountId, state: 'label-window-capped' });
             }
-        }));
-        await batch;
+            if (accounts.length < 25) return { state: 'bounded-window', outcomes };
+            cursor = accounts.at(-1)!.accountId;
+        }
+        return { state: 'partial', outcomes };
     }
-
-    static async dispatchLabelStorageCleanup() {
-        const result = await shippingService.cleanupExpiredStoredLabels();
-        Logger.info('[ShippingTrackingScheduler] Label storage cleanup completed', result);
-        return result;
-    }
+    static async dispatchLabelStorageCleanup() { return { state: 'disabled', reason: 'Reviewed file/print/recovery ownership protocol required; no files or references removed' }; }
 }

@@ -753,6 +753,9 @@ model WooOrder {
 }
 
 model WooProduct {
+  embeddingSourceVersion DateTime?
+  embeddingModelId String?
+  embeddingDimensions Int?
   id        String @id @default(uuid())
   accountId String
 

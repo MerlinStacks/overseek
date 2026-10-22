@@ -5,13 +5,14 @@ const mocks = vi.hoisted(() => ({
     generateResponse: vi.fn(), getModels: vi.fn(), findUnique: vi.fn(),
     authenticated: true, accountId: 'tenant-1' as string | undefined,
 }));
-vi.mock('../services/ai', () => ({ AIService: { generateResponse: mocks.generateResponse, getModels: mocks.getModels } }));
+vi.mock('../services/ai', () => ({ AIService: { generateResponse: mocks.generateResponse, getModels: mocks.getModels, authorize: vi.fn() } }));
 vi.mock('../utils/prisma', () => ({ prisma: { account: { findUnique: mocks.findUnique } } }));
-vi.mock('../utils/logger', () => ({ Logger: { error: vi.fn() } }));
+vi.mock('../utils/logger', () => ({ Logger: { warn: vi.fn(), error: vi.fn() } }));
 vi.mock('../middleware/auth', () => ({
     requireAuthFastify: async (request: FastifyRequest, reply: FastifyReply) => {
         if (!mocks.authenticated) return reply.code(401).send({ error: 'Unauthorized' });
         request.accountId = mocks.accountId;
+        request.user = { id: 'actor-1' } as any;
     },
 }));
 
@@ -53,17 +54,17 @@ describe('AI routes', () => {
 
     it('preserves valid message whitespace, context and service results', async () => {
         const message = '  Explain this order\nplease  ';
-        const context = { path: '/orders/123', additional: 'preserve' };
+        const context = { path: '/orders/123' };
         const response = await app.inject({ method: 'POST', url: '/api/ai/chat', payload: { message, context } });
         expect(response.statusCode).toBe(200);
-        expect(mocks.generateResponse).toHaveBeenCalledExactlyOnceWith(message, 'tenant-1', context);
+        expect(mocks.generateResponse).toHaveBeenCalledExactlyOnceWith(message, 'tenant-1', context, 'actor-1');
         expect(response.json()).toEqual({ message: 'Response', tools: [] });
     });
 
     it('accepts valid messages without context', async () => {
         const response = await app.inject({ method: 'POST', url: '/api/ai/chat', payload: { message: 'Hello' } });
         expect(response.statusCode).toBe(200);
-        expect(mocks.generateResponse).toHaveBeenCalledWith('Hello', 'tenant-1', undefined);
+        expect(mocks.generateResponse).toHaveBeenCalledWith('Hello', 'tenant-1', undefined, 'actor-1');
     });
 
     it('preserves the missing-account guard', async () => {
@@ -86,8 +87,8 @@ describe('AI routes', () => {
     it('preserves generic chat failure responses without leaking provider errors', async () => {
         mocks.generateResponse.mockRejectedValue(new Error('Private provider detail'));
         const response = await app.inject({ method: 'POST', url: '/api/ai/chat', payload: { message: 'Hello' } });
-        expect(response.statusCode).toBe(500);
-        expect(response.json()).toEqual({ error: 'Failed to generate response' });
+        expect(response.statusCode).toBe(503);
+        expect(response.json()).toEqual({ error: 'Analysis unavailable, invalid or not authorized' });
     });
 
     it('lists models using only the selected tenant API key', async () => {
@@ -105,19 +106,19 @@ describe('AI routes', () => {
         expect(mocks.getModels).toHaveBeenCalledExactlyOnceWith('');
     });
 
-    it('preserves model listing without a selected account and avoids an unscoped lookup', async () => {
+    it('requires selected account authority before model listing', async () => {
         mocks.accountId = undefined;
         const response = await app.inject({ method: 'GET', url: '/api/ai/models' });
-        expect(response.statusCode).toBe(200);
+        expect(response.statusCode).toBe(400);
         expect(mocks.findUnique).not.toHaveBeenCalled();
-        expect(mocks.getModels).toHaveBeenCalledExactlyOnceWith('');
+        expect(mocks.getModels).not.toHaveBeenCalled();
     });
 
     it.each(['database', 'provider'])('preserves generic model-list errors for %s failures', async source => {
         if (source === 'database') mocks.findUnique.mockRejectedValue(new Error('Private database detail'));
         else mocks.getModels.mockRejectedValue(new Error('Private provider detail'));
         const response = await app.inject({ method: 'GET', url: '/api/ai/models' });
-        expect(response.statusCode).toBe(500);
-        expect(response.json()).toEqual({ error: 'Failed to fetch models' });
+        expect(response.statusCode).toBe(503);
+        expect(response.json()).toEqual({ error: 'Models unavailable or not authorized' });
     });
 });

@@ -1,183 +1,43 @@
-/**
- * Stock Validation Service
- * 
- * Validates stock levels between OverSeek and WooCommerce before automated writes.
- * Detects mismatches and creates notifications for review.
- */
-
-import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { WooService } from './woo';
-import { EventBus, EVENTS } from './events';
-
+import { z } from 'zod';
+import { scopeId } from './BoundedProviderWork';
+const stock = z.number().finite().min(-1000000000).max(1000000000);
 export interface StockValidationResult {
-    valid: boolean;
-    wooStock: number | null;
-    expectedStock: number;
-    diff: number;
-    productName?: string;
+    valid: boolean; state: 'matched' | 'mismatched' | 'unmanaged' | 'unavailable';
+    wooStock: number | null; expectedStock: number; diff: number | null;
+    productName?: string; observedAt: string | null; authorizesWrite: false;
 }
-
+/** A fresh observation only; never a provider compare-and-swap authorization. */
 export class StockValidationService {
-    /**
-     * Validate stock before writing to WooCommerce.
-     * Compares the expected stock (from local calculation) with actual WooCommerce stock.
-     * 
-     * @param accountId - Account context
-     * @param wooProductId - WooCommerce product ID (parent product ID)
-     * @param expectedCurrentStock - What we expect current stock to be before our change
-     * @param variationId - Optional variation ID to validate variant-level stock
-     * @returns Validation result with mismatch details
-     */
-    static async validateBeforeWrite(
-        accountId: string,
-        wooProductId: number,
-        expectedCurrentStock: number,
-        variationId?: number
-    ): Promise<StockValidationResult> {
+    static async validateBeforeWrite(accountId: string, wooProductId: number, expectedCurrentStock: number, variationId?: number): Promise<StockValidationResult> {
+        scopeId.parse(accountId); z.number().int().positive().safe().parse(wooProductId); stock.parse(expectedCurrentStock);
+        if (variationId !== undefined) z.number().int().positive().safe().parse(variationId);
+        const unavailable: StockValidationResult = { valid: false, state: 'unavailable', wooStock: null, expectedStock: expectedCurrentStock, diff: null, observedAt: null, authorizesWrite: false };
         try {
-            const wooService = await WooService.forAccount(accountId);
-
-            let wooStock: number | null = null;
-            let productName: string | undefined;
-
-            if (variationId && variationId > 0) {
-                // Fetch variation-level stock via the variations endpoint
-                const variations = await wooService.getProductVariations(wooProductId);
-                const target = variations?.find((v: any) => v.id === variationId);
-                if (!target) {
-                    Logger.warn(`[StockValidation] WooCommerce variation ${variationId} not found for product ${wooProductId}`, { accountId });
-                    return {
-                        valid: false,
-                        wooStock: null,
-                        expectedStock: expectedCurrentStock,
-                        diff: 0,
-                        productName: `Variation #${variationId}`
-                    };
-                }
-
-                wooStock = target?.stock_quantity ?? null;
-                productName = target?.name || `Variation #${variationId}`;
-            } else {
-                const wooProduct = await wooService.getProduct(wooProductId);
-                if (!wooProduct) {
-                    Logger.warn(`[StockValidation] WooCommerce product ${wooProductId} not found`, { accountId });
-                    return {
-                        valid: false,
-                        wooStock: null,
-                        expectedStock: expectedCurrentStock,
-                        diff: 0,
-                        productName: `Product #${wooProductId}`
-                    };
-                }
-
-                wooStock = wooProduct.stock_quantity;
-                productName = wooProduct.name;
-            }
-
-            // If WooCommerce doesn't manage stock, we can't validate
-            if (typeof wooStock !== 'number') {
-                Logger.debug(`[StockValidation] Product ${wooProductId}${variationId ? ` variation ${variationId}` : ''} does not have managed stock, skipping validation`);
-                return {
-                    valid: true,
-                    wooStock: null,
-                    expectedStock: expectedCurrentStock,
-                    diff: 0,
-                    productName
-                };
-            }
-
-            const diff = wooStock - expectedCurrentStock;
-            const valid = diff === 0;
-
-            if (!valid) {
-                Logger.warn(`[StockValidation] Stock mismatch for product ${wooProductId}${variationId ? ` variation ${variationId}` : ''}: Woo=${wooStock}, Expected=${expectedCurrentStock}, Diff=${diff}`, { accountId });
-            }
-
-            return {
-                valid,
-                wooStock,
-                expectedStock: expectedCurrentStock,
-                diff,
-                productName
-            };
-        } catch (error: any) {
-            Logger.error(`[StockValidation] Failed to validate stock for product ${wooProductId}${variationId ? ` variation ${variationId}` : ''}`, { error: error.message, accountId });
-            return {
-                valid: false,
-                wooStock: null,
-                expectedStock: expectedCurrentStock,
-                diff: 0
-            };
-        }
+            const woo = await WooService.forAccount(accountId);
+            const raw = variationId === undefined ? await woo.getProduct(wooProductId, { bypassCache: true }) : await woo.getProductVariation(wooProductId, variationId);
+            const parsed = z.object({ id: z.number().int().positive(), name: z.string().max(500).optional(), manage_stock: z.boolean(), stock_quantity: stock.nullable() }).safeParse(raw);
+            if (!parsed.success || parsed.data.id !== (variationId ?? wooProductId)) return unavailable;
+            const row = parsed.data, observedAt = new Date().toISOString();
+            if (!row.manage_stock) return { ...unavailable, state: 'unmanaged', productName: row.name, observedAt };
+            if (row.stock_quantity === null) return unavailable;
+            const diff = row.stock_quantity - expectedCurrentStock;
+            return { ...unavailable, valid: diff === 0, state: diff === 0 ? 'matched' : 'mismatched', wooStock: row.stock_quantity, diff, productName: row.name, observedAt };
+        } catch { return unavailable; }
     }
-
-    /**
-     * Create a notification when a stock mismatch is detected.
-     * Called when we proceed with a write despite mismatch.
-     */
-    static async notifyMismatch(
-        accountId: string,
-        productId: number,
-        productName: string,
-        wooStock: number,
-        expectedStock: number,
-        newStock: number
-    ): Promise<void> {
-        try {
-            // Find the local product to get the internal ID
-            const localProduct = await prisma.wooProduct.findFirst({
-                where: { accountId, wooId: productId }
-            });
-
-            // Emit event for NotificationEngine to handle push and in-app notification
-            EventBus.emit(EVENTS.STOCK.MISMATCH, {
-                accountId,
-                productId,
-                productName,
-                wooStock,
-                expectedStock,
-                newStock,
-                internalProductId: localProduct?.id
-            });
-
-            Logger.info(`[StockValidation] Emitted mismatch event for product ${productId}`, { accountId });
-        } catch (error: any) {
-            Logger.error(`[StockValidation] Failed to send mismatch notification`, { error: error.message, accountId });
-        }
+    static async notifyMismatch(_accountId: string, _productId: number, _productName: string, _wooStock: number, _expectedStock: number, _newStock: number): Promise<never> {
+        throw new Error('Unadmitted mismatch override notifications disabled; a permissioned stock-write receipt is required');
     }
-
-    /**
-     * Log a stock change to the audit trail with validation context.
-     */
-    static async logStockChange(
-        accountId: string,
-        productId: string,
-        source: 'USER' | 'SYSTEM_BOM' | 'SYSTEM_SYNC',
-        previousStock: number | null,
-        newStock: number,
-        validationStatus: 'PASSED' | 'SKIPPED' | 'MISMATCH_OVERRIDE',
-        additionalDetails?: Record<string, any>
-    ): Promise<void> {
-        try {
-            await prisma.auditLog.create({
-                data: {
-                    accountId,
-                    userId: null, // System action
-                    action: 'UPDATE',
-                    resource: 'PRODUCT',
-                    resourceId: productId,
-                    source,
-                    previousValue: previousStock !== null ? { stock_quantity: previousStock } : null,
-                    validationStatus,
-                    details: {
-                        stock_quantity: newStock,
-                        ...additionalDetails
-                    }
-                }
-            });
-        } catch (error: any) {
-            Logger.error(`[StockValidation] Failed to log stock change`, { error: error.message, accountId });
-        }
+    static async logStockChange(accountId: string, productId: string, source: 'USER' | 'SYSTEM_BOM' | 'SYSTEM_SYNC', previousStock: number | null, newStock: number, validationStatus: 'PASSED' | 'SKIPPED' | 'MISMATCH_OVERRIDE', additionalDetails?: Record<string, unknown>, actorId?: string): Promise<void> {
+        scopeId.parse(accountId); scopeId.parse(productId); stock.nullable().parse(previousStock); stock.parse(newStock);
+        if (source === 'USER' || validationStatus === 'MISMATCH_OVERRIDE') throw new Error('User/override audit requires a permissioned stock-write receipt; this system audit cannot authorize it');
+        z.enum(['SYSTEM_BOM', 'SYSTEM_SYNC']).parse(source); z.enum(['PASSED', 'SKIPPED']).parse(validationStatus);
+        const details = z.record(z.string(), z.unknown()).optional().parse(additionalDetails);
+        if (JSON.stringify(details ?? {}).length > 50000) throw new Error('Oversize audit details');
+        const product = await prisma.wooProduct.findFirst({ where: { accountId, id: productId }, select: { id: true, updatedAt: true } });
+        if (!product) throw new Error('Scoped audit product unavailable');
+        if (actorId) throw new Error('System audit cannot attribute a user without a permissioned write receipt');
+        await prisma.auditLog.create({ data: { accountId, userId: null, action: 'UPDATE', resource: 'PRODUCT', resourceId: productId, source, previousValue: previousStock === null ? undefined : { stock_quantity: previousStock }, validationStatus, details: { ...details, stock_quantity: newStock, auditProductVersion: product.updatedAt?.toISOString() ?? null, providerWriteVersion: null, observationOnly: true, authorizesWrite: false } as any } });
     }
 }

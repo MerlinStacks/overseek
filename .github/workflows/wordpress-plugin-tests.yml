@@ -79,6 +79,13 @@ jobs:
       - name: Lint plugin PHP
         run: git ls-files 'overseek-wc-plugin/**.php' | xargs -n1 php -l
 
+      - name: Install legacy IANA timezone aliases
+        # Ubuntu separates backward-compatible aliases from the main tzdata package.
+        # PHP builds using system tzdata need these to support existing store settings.
+        run: |
+          sudo apt-get update
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install --yes tzdata-legacy
+
       - name: Set up Node for storefront behaviour tests
         uses: actions/setup-node@v4
         with:
