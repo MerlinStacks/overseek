@@ -17,7 +17,7 @@ describe('CanonicalInvoiceAttachmentService', () => {
     const service = new CanonicalInvoiceAttachmentService();
 
     beforeEach(() => {
-        vi.clearAllMocks();
+        vi.resetAllMocks();
     });
 
     it('returns ready artifact path without fallback', async () => {
@@ -34,7 +34,7 @@ describe('CanonicalInvoiceAttachmentService', () => {
         expect(canonicalMocks.processGenerationJob).not.toHaveBeenCalled();
     });
 
-    it('processes pending artifact and returns refreshed ready path', async () => {
+    it('leaves pending generation for the admitted queue worker without a duplicate render', async () => {
         canonicalMocks.getOrQueue.mockResolvedValue({ id: 'art_2', templateId: 'tpl_2' });
         canonicalMocks.waitForReady.mockResolvedValue({ id: 'art_2', status: 'pending' });
         canonicalMocks.isReadableReady
@@ -44,14 +44,11 @@ describe('CanonicalInvoiceAttachmentService', () => {
 
         const result = await service.resolveAbsolutePath('acc_2', 'ord_2');
 
-        expect(canonicalMocks.processGenerationJob).toHaveBeenCalledWith({
-            artifactId: 'art_2',
-            accountId: 'acc_2',
-            orderId: 'ord_2',
-            templateId: 'tpl_2',
-        });
+        expect(canonicalMocks.processGenerationJob).not.toHaveBeenCalled();
+        expect(canonicalMocks.getArtifactById).not.toHaveBeenCalled();
+        expect(canonicalMocks.waitForReady).toHaveBeenCalledWith({ id: 'art_2', templateId: 'tpl_2' }, 15000, 300);
         expect(result).toEqual({
-            absolutePath: '/tmp/invoice-2.pdf',
+            absolutePath: null,
             artifactId: 'art_2',
         });
     });

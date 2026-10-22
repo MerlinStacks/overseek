@@ -9,6 +9,7 @@ export interface FeedIssue {
 
 export interface FeedValidationColumn {
     targetField: string;
+    sourceField?: string;
     finalValue: string | null;
     required?: boolean;
 }
@@ -85,7 +86,8 @@ export function validateFeedColumns(channel: string, columns: FeedValidationColu
     if (values.identifier_exists && !['yes', 'no', 'true', 'false'].includes(values.identifier_exists)) add('identifier_exists', 'invalid_identifier_exists', 'Use yes or no for identifier_exists.');
     if (['no', 'false'].includes(values.identifier_exists) && (values.gtin || values.mpn)) {
         add('identifier_exists', 'identifier_conflict', 'Identifiers are supplied but identifier_exists says no. Confirm the correct manufacturer identifiers.');
-    } else if (!values.gtin && !(values.brand && values.mpn) && !['no', 'false'].includes(values.identifier_exists)) {
+    } else if (!values.gtin && !(values.brand && values.mpn) && !['no', 'false'].includes(values.identifier_exists)
+        && columns.some((column) => column.targetField === 'gtin' && (column.sourceField === undefined || column.sourceField === 'gtin'))) {
         add('gtin', 'missing_identifiers', 'Confirm manufacturer identifiers. For genuinely identifier-free goods, set identifier_exists to no in the Google feed.', 'warning');
     }
     if (channel === 'google') {

@@ -68,7 +68,7 @@ export class NodeExecutor {
         const actionType = config?.actionType || 'SEND_EMAIL';
 
         if (actionType === 'SEND_EMAIL') {
-            return this.executeSendEmail(config, enrollment);
+            return this.executeSendEmail(config, enrollment, nodeId);
         }
 
         if (actionType === 'GENERATE_INVOICE') {
@@ -233,7 +233,7 @@ export class NodeExecutor {
     /**
      * Send Email Action
      */
-    private async executeSendEmail(config: any, enrollment: any): Promise<NodeExecutionResult> {
+    private async executeSendEmail(config: any, enrollment: any, nodeId?: string): Promise<NodeExecutionResult> {
         const account = await prisma.account.findFirst({
             where: { id: enrollment.automation.accountId },
             select: { wooUrl: true, domain: true, currency: true }
@@ -381,9 +381,10 @@ export class NodeExecutor {
                             source: 'AUTOMATION',
                             sourceId: enrollment.automationId,
                             category: emailCategory,
-                            fromName: config.overrideFrom ? config.fromName : undefined,
-                            fromEmail: config.overrideFrom ? config.fromEmail : undefined,
-                            replyToEmail: config.overrideFrom ? config.replyToEmail : undefined
+                            idempotencyKey: enrollment.id && nodeId ? `automation:${enrollment.id}:${nodeId}:${recipientEmail.trim().toLowerCase()}` : undefined,
+                            fromName: config.overrideFrom ? resolveCampaignField(config.fromName) : undefined,
+                            fromEmail: config.overrideFrom ? resolveCampaignField(config.fromEmail) : undefined,
+                            replyToEmail: config.overrideFrom ? resolveCampaignField(config.replyToEmail) : undefined
                         }
                     );
 
@@ -395,6 +396,7 @@ export class NodeExecutor {
                     }
 
                     sentCount += 1;
+                    if (sendResult && 'deduplicated' in sendResult && sendResult.deduplicated) continue;
                     if (reviewRequestMarker.request) {
                         await this.recordReviewRequest(
                             enrollment.automation.accountId,

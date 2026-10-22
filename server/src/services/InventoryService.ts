@@ -1,186 +1,83 @@
-/**
- * Inventory Service
- * 
- * Handles stock calculations and health checks.
- * BOM order processing is handled by BOMConsumptionService via workers.
- */
-
 import { prisma } from '../utils/prisma';
-import { BOMInventorySyncService } from './BOMInventorySyncService';
-import {
-    checkInventoryHealth as checkHealth,
-    sendLowStockAlerts as sendAlerts
-} from './InventoryHealthService';
-
+import { checkInventoryHealth as checkHealth, sendLowStockAlerts as sendAlerts } from './InventoryHealthService';
+const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+const stock = (value: unknown): number | null => typeof value === 'number' && Number.isSafeInteger(value) ? value : null;
+function scope(accountId: string, productId: string, variationId = 0) {
+    if (typeof accountId !== 'string' || !accountId.trim() || accountId.length > 200 || typeof productId !== 'string' || !productId.trim() || productId.length > 200 || !Number.isSafeInteger(variationId) || variationId < 0 || variationId > 2147483647) throw new Error('Invalid stock scope');
+}
 export class InventoryService {
-    // Order BOM processing is handled exclusively by BOMConsumptionService
-    // via the worker event listener (EVENTS.ORDER.SYNCED) in workers/index.ts.
-    // That path provides locking, idempotency guards, rollback, and cascade sync.
-
-    /**
-     * Get the effective stock quantity for a product.
-     * Uses local stockQuantity if manageStock is true, otherwise falls back to WooCommerce rawData.
-     */
-    static async getEffectiveStock(product: { stockQuantity: number | null; manageStock: boolean; rawData: any }): Promise<number | null> {
-        if (product.manageStock && product.stockQuantity !== null) {
-            return product.stockQuantity;
-        }
-        const raw = product.rawData as any;
-        if (raw?.manage_stock && typeof raw.stock_quantity === 'number') {
-            return raw.stock_quantity;
-        }
-        return null;
+    static async getEffectiveStock(product: { stockQuantity: number | null; manageStock: boolean; rawData: unknown }): Promise<number | null> {
+        if (product.manageStock !== true) return null;
+        if (product.stockQuantity !== null && product.stockQuantity !== undefined) return stock(product.stockQuantity);
+        const raw = object(product.rawData); return raw.manage_stock === true ? stock(raw.stock_quantity) : null;
     }
-
-    /**
-     * Calculate available stock for a product that has a BOM.
-     * Delegates to BOMInventorySyncService which handles all component types
-     * (WooProduct, ProductVariation, InternalProduct).
-     *
-     * @returns number of buildable units, or null if product has no BOM
-     */
-    static async calculateBOMStock(accountId: string, productId: string, variationId: number = 0): Promise<number | null> {
-        const result = await BOMInventorySyncService.calculateEffectiveStockLocal(accountId, productId, variationId);
-        return result?.effectiveStock ?? null;
-    }
-
-    /**
-     * Get stock info for a product, including whether it's BOM-based.
-     * For variable products, returns stock info per variant.
-     */
-    static async getProductStock(accountId: string, productId: string): Promise<{
-        stockQuantity: number | null;
-        isBOMBased: boolean;
-        manageStock: boolean;
-        isVariable?: boolean;
-        variants?: Array<{
-            wooId: number;
-            sku?: string;
-            stockQuantity: number | null;
-            stockStatus?: string;
-            manageStock: boolean;
-            attributes?: string;
-        }>;
-    }> {
-        const product = await prisma.wooProduct.findFirst({
-            where: { id: productId, accountId },
-            select: {
-                stockQuantity: true,
-                manageStock: true,
-                rawData: true,
-                variations: {
-                    select: {
-                        wooId: true,
-                        sku: true,
-                        stockQuantity: true,
-                        stockStatus: true,
-                        manageStock: true,
-                        rawData: true
-                    }
-                },
-                boms: {
-                    select: {
-                        id: true,
-                        items: {
-                            where: {
-                                OR: [
-                                    { childProductId: { not: null } },
-                                    { internalProductId: { not: null } }
-                                ]
-                            },
-                            select: { id: true }
-                        }
-                    }
-                }
+    /** Local independent buildability only. Missing/ambiguous/nested components are unavailable. */
+    static async calculateBOMStock(accountId: string, productId: string, variationId = 0): Promise<number | null> {
+        scope(accountId, productId, variationId);
+        if (variationId > 0 && !await prisma.productVariation.findFirst({ where: { productId, wooId: variationId, product: { accountId } }, select: { id: true } })) return null;
+        const bom = await prisma.bOM.findFirst({ where: { productId, variationId, product: { accountId } }, include: { items: { where: { isActive: true }, take: 201, include: {
+            childProduct: { include: { boms: { select: { id: true }, take: 1 } } }, childVariation: true, internalProduct: true,
+        } } } });
+        if (!bom || !bom.items.length || bom.items.length > 200) return null;
+        let capacity: number | null = null; const required = new Map<string, { units: number; available: number }>();
+        for (const item of bom.items) {
+            if (item.supplierItemId && !item.childProductId && !item.internalProductId) continue;
+            if (Number(!!item.childProductId) + Number(!!item.internalProductId) !== 1 || item.supplierItemId) return null;
+            const quantity = Number(item.quantity), waste = Number(item.wasteFactor);
+            if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(waste) || waste < 0 || waste > 1) return null;
+            let available: number | null, key: string;
+            if (item.internalProductId) {
+                if (!item.internalProduct || item.internalProduct.accountId !== accountId || item.childVariationId) return null;
+                available = stock(item.internalProduct.stockQuantity); key = `internal:${item.internalProductId}`;
+            } else {
+                const child = item.childProduct;
+                if (!child || child.accountId !== accountId || child.id === productId || child.status === 'trash' || child.boms.length) return null;
+                if (item.childVariationId && (!item.childVariation || item.childVariation.productId !== child.id)) return null;
+                const source = item.childVariationId ? item.childVariation! : child;
+                if (object(source.rawData).status === 'trash') return null;
+                available = await this.getEffectiveStock(source); key = `woo:${child.id}:${item.childVariationId || 0}`;
             }
-        });
-
-        if (!product) throw new Error('Product not found');
-
-        const hasBOMWithChildProducts = product.boms.some(bom => bom.items.length > 0);
-
-        if (hasBOMWithChildProducts) {
-            const bomStock = await this.calculateBOMStock(accountId, productId);
-            return { stockQuantity: bomStock, isBOMBased: true, manageStock: true, isVariable: false };
+            if (available === null) return null;
+            const units = quantity * (1 + waste), previous = required.get(key);
+            required.set(key, { units: units + (previous?.units || 0), available });
         }
-
-        if (product.variations.length > 0) {
-            // Pre-fetch all variant BOMs for this product in one query.
-            // Why: the original loop issued one bOM.findUnique per variation (N+1).
-            const variationWooIds = product.variations.map(v => v.wooId);
-            const variantBOMs = await prisma.bOM.findMany({
-                where: {
-                    productId,
-                    variationId: { in: variationWooIds }
-                },
-                include: {
-                    items: {
-                        where: {
-                            isActive: true,
-                            OR: [{ childProductId: { not: null } }, { internalProductId: { not: null } }]
-                        },
-                        select: { id: true }
-                    }
-                }
-            });
-            // Key: variationId (wooId) → BOM row
-            const bomByVariationId = new Map(
-                variantBOMs.map(b => [b.variationId, b])
-            );
-
-            const variants = [];
-            for (const v of product.variations) {
-                // Map lookup — no per-variation DB query
-                const variantBOM = bomByVariationId.get(v.wooId) ?? null;
-
-                let stockQty: number | null = null;
-                const isBOMVariant = variantBOM && variantBOM.items.length > 0;
-
-                if (isBOMVariant) {
-                    // Use BOM-derived effective stock for this variant
-                    stockQty = await this.calculateBOMStock(accountId, productId, v.wooId);
-                } else if (v.manageStock && v.stockQuantity !== null) {
-                    stockQty = v.stockQuantity;
-                } else {
-                    const raw = v.rawData as any;
-                    if (raw?.manage_stock && typeof raw.stock_quantity === 'number') {
-                        stockQty = raw.stock_quantity;
-                    }
-                }
-
-                const raw = v.rawData as any;
-                const attributes = raw?.attributes?.map((a: any) => a.option).join(' / ') ?? '';
-                variants.push({
-                    wooId: v.wooId,
-                    sku: v.sku ?? undefined,
-                    stockQuantity: stockQty,
-                    stockStatus: v.stockStatus ?? raw?.stock_status,
-                    manageStock: v.manageStock || isBOMVariant,
-                    attributes
-                });
-            }
-
-            const totalStock = variants.reduce((sum, v) => {
-                if (v.stockQuantity !== null) sum += v.stockQuantity;
-                return sum;
-            }, 0);
-
-            return { stockQuantity: totalStock, isBOMBased: false, manageStock: true, isVariable: true, variants };
+        for (const component of required.values()) {
+            if (!Number.isFinite(component.units) || component.units <= 0) return null;
+            const buildable = Math.max(0, Math.floor(component.available / component.units));
+            if (!Number.isSafeInteger(buildable)) return null;
+            capacity = capacity === null ? buildable : Math.min(capacity, buildable);
         }
-
-        const effectiveStock = await this.getEffectiveStock(product);
-        return { stockQuantity: effectiveStock, isBOMBased: false, manageStock: product.manageStock, isVariable: false };
+        return capacity;
     }
-
-    /**
-     * Recursively calculate COGS for a product.
-     * @returns 0 if no BOM (placeholder for future implementation)
-     */
-    static async calculateCompositeCOGS(_accountId: string, _productId: string): Promise<number> {
-        return 0;
+    static async getProductStock(accountId: string, productId: string) {
+        scope(accountId, productId);
+        const product = await prisma.wooProduct.findFirst({ where: { id: productId, accountId }, select: { stockQuantity: true, manageStock: true, rawData: true,
+            variations: { orderBy: { wooId: 'asc' }, take: 101, select: { wooId: true, sku: true, stockQuantity: true, stockStatus: true, manageStock: true, rawData: true } },
+            boms: { where: { product: { accountId } }, orderBy: { variationId: 'asc' }, take: 102, select: { id: true, variationId: true } },
+        } });
+        if (!product) throw Object.assign(new Error('Product not found'), { statusCode: 404 });
+        const raw = object(product.rawData), variable = raw.type === 'variable' || product.variations.length > 0;
+        const parentBOM = product.boms.some(bom => bom.variationId === 0);
+        if (!variable) {
+            const quantity = parentBOM ? await this.calculateBOMStock(accountId, productId) : await this.getEffectiveStock(product);
+            return { stockQuantity: quantity, isBOMBased: parentBOM, manageStock: parentBOM || product.manageStock === true, isVariable: false,
+                coverage: { basis: parentBOM ? 'independent-local-BOM-buildability' : 'local-managed-stock', complete: quantity !== null, liveProviderVerified: false } };
+        }
+        const variants = [];
+        for (const variation of product.variations.slice(0, 100)) {
+            const bom = product.boms.some(b => b.variationId === variation.wooId), data = object(variation.rawData);
+            const attributes = Array.isArray(data.attributes) ? data.attributes.slice(0, 20).flatMap(value => typeof object(value).option === 'string' ? [String(object(value).option).slice(0, 100)] : []).join(' / ') : '';
+            variants.push({ wooId: variation.wooId, sku: variation.sku ?? undefined, stockQuantity: product.boms.length >= 102 ? null : bom ? await this.calculateBOMStock(accountId, productId, variation.wooId) : await this.getEffectiveStock(variation),
+                stockStatus: variation.stockStatus ?? undefined, manageStock: bom || variation.manageStock === true, isBOMBased: bom, attributes });
+        }
+        const complete = product.variations.length <= 100 && product.boms.length < 102, hasBOM = variants.some(value => value.isBOMBased);
+        const known = complete && !hasBOM && variants.length > 0 && variants.every(value => value.stockQuantity !== null);
+        const total = known ? variants.reduce((sum, value) => sum + value.stockQuantity!, 0) : null;
+        return { stockQuantity: total !== null && Number.isSafeInteger(total) ? total : null, isBOMBased: hasBOM, manageStock: variants.length > 0 && variants.every(value => value.manageStock), isVariable: true, variants,
+            coverage: { complete: complete && variants.every(value => value.stockQuantity !== null) && !hasBOM, mappingComplete: complete, variantLimit: 100, liveProviderVerified: false, parentBOMIgnoredForVariants: parentBOM, aggregateBasis: hasBOM ? 'unavailable: variant BOM capacities can share components and cannot be summed' : 'sum-only-when-every-variant-is-known' } };
     }
-
-    // Delegate health checks and alerts to InventoryHealthService
+    /** No costing implementation: unknown cost is not a known zero. */
+    static async calculateCompositeCOGS(accountId: string, productId: string): Promise<null> { scope(accountId, productId); return null; }
     static checkInventoryHealth = checkHealth;
     static sendLowStockAlerts = sendAlerts;
 }

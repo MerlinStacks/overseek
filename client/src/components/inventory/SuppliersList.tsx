@@ -27,20 +27,22 @@ interface Supplier {
     items?: SupplierItem[];
 }
 
+import { CreateSupplierModal } from './CreateSupplierModal';
+
 /** Available currency options for suppliers */
 const CURRENCY_OPTIONS = ['USD', 'EUR', 'GBP', 'AUD', 'CAD', 'NZD', 'CNY', 'JPY'] as const;
 
 export function SuppliersList() {
+    const { token, user } = useAuth(); const { currentAccount } = useAccount();
+    return <ScopedSuppliersList key={JSON.stringify([user?.id, token, currentAccount?.id])} />;
+}
+function ScopedSuppliersList() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [loading, setLoading] = useState(true);
     const [expandedSupplier, setExpandedSupplier] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
-    const [newSupplier, setNewSupplier] = useState({
-        name: '', contactName: '', email: '', phone: '', currency: 'USD',
-        leadTimeMin: '', leadTimeMax: '', paymentTerms: ''
-    });
 
     // Edit State
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -71,31 +73,6 @@ export function SuppliersList() {
         fetchSuppliers();
     }, [fetchSuppliers]);
 
-    async function handleCreateSupplier(e: React.FormEvent) {
-        e.preventDefault();
-        if (!currentAccount?.id) return;
-        try {
-            const res = await fetch('/api/inventory/suppliers', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
-                },
-                body: JSON.stringify(newSupplier)
-            });
-            if (res.ok) {
-                setIsCreating(false);
-                setNewSupplier({
-                    name: '', contactName: '', email: '', phone: '', currency: 'USD',
-                    leadTimeMin: '', leadTimeMax: '', paymentTerms: ''
-                });
-                fetchSuppliers();
-            }
-        } catch (error) {
-            alert('Failed to create supplier');
-        }
-    }
 
     async function handleUpdateSupplier() {
         if (!editingId) return;
@@ -204,38 +181,7 @@ export function SuppliersList() {
                 </button>
             </div>
 
-            {isCreating && (
-                <div className="bg-white p-6 border border-blue-200 rounded-xl shadow-xs mb-6">
-                    <h3 className="font-semibold mb-4">New Supplier</h3>
-                    <form onSubmit={handleCreateSupplier} className="grid grid-cols-2 gap-4">
-                        <input type="text" placeholder="Supplier Name" required className="border p-2 rounded-sm"
-                            value={newSupplier.name} onChange={e => setNewSupplier({ ...newSupplier, name: e.target.value })} />
-                        <input type="text" placeholder="Contact Name" className="border p-2 rounded-sm"
-                            value={newSupplier.contactName} onChange={e => setNewSupplier({ ...newSupplier, contactName: e.target.value })} />
-                        <input type="email" placeholder="Email" className="border p-2 rounded-sm"
-                            value={newSupplier.email} onChange={e => setNewSupplier({ ...newSupplier, email: e.target.value })} />
-                        <input type="tel" placeholder="Phone" className="border p-2 rounded-sm"
-                            value={newSupplier.phone} onChange={e => setNewSupplier({ ...newSupplier, phone: e.target.value })} />
-                        <select className="border p-2 rounded-sm" value={newSupplier.currency} onChange={e => setNewSupplier({ ...newSupplier, currency: e.target.value })}>
-                            {CURRENCY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-
-                        <div className="col-span-2 grid grid-cols-3 gap-4">
-                            <input type="number" placeholder="Min Lead Time (Days)" className="border p-2 rounded-sm"
-                                value={newSupplier.leadTimeMin} onChange={e => setNewSupplier({ ...newSupplier, leadTimeMin: e.target.value })} />
-                            <input type="number" placeholder="Max Lead Time (Days)" className="border p-2 rounded-sm"
-                                value={newSupplier.leadTimeMax} onChange={e => setNewSupplier({ ...newSupplier, leadTimeMax: e.target.value })} />
-                            <input type="text" placeholder="Payment Terms (e.g. Net 30)" className="border p-2 rounded-sm"
-                                value={newSupplier.paymentTerms} onChange={e => setNewSupplier({ ...newSupplier, paymentTerms: e.target.value })} />
-                        </div>
-
-                        <div className="col-span-2 flex justify-end gap-2 mt-2">
-                            <button type="button" onClick={() => setIsCreating(false)} className="px-4 py-2 text-gray-500">Cancel</button>
-                            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-sm">CREATE</button>
-                        </div>
-                    </form>
-                </div>
-            )}
+            <CreateSupplierModal isOpen={isCreating} onClose={() => setIsCreating(false)} onSuccess={() => { setIsCreating(false); void fetchSuppliers(); }} />
 
             <div className="space-y-4">
                 {suppliers.map(supplier => (

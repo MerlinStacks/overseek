@@ -1,9 +1,15 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useState } from 'react';
+import { useRecoveryAttempt } from '../hooks/useRecoveryAttempt';
 import { Link, useSearchParams } from 'react-router-dom';
 
 export function ResetPasswordPage() {
     const [searchParams] = useSearchParams();
-    const token = useMemo(() => searchParams.get('token') || '', [searchParams]);
+    const token = searchParams.getAll('token').length === 1 ? searchParams.get('token') || '' : '';
+    return <ResetPasswordForm key={token} token={token} />;
+}
+function ResetPasswordForm({ token }: { token: string }) {
+    const attempt = useRecoveryAttempt();
+    const validToken = /^[a-f0-9]{64}$/.test(token);
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
@@ -12,14 +18,15 @@ export function ResetPasswordPage() {
 
     const handleSubmit = async (event: FormEvent) => {
         event.preventDefault();
+        if (message) return;
         setError('');
         setMessage('');
 
-        if (!token) {
-            setError('Reset token is missing from the link.');
+        if (!validToken) {
+            setError('Reset link is missing or invalid. Request a new link.');
             return;
         }
-        if (newPassword.length < 8) {
+        if (newPassword.length < 8 || newPassword.length > 1024) {
             setError('Password must be at least 8 characters long.');
             return;
         }
@@ -28,22 +35,27 @@ export function ResetPasswordPage() {
             return;
         }
 
+        const request = attempt.begin(); if (!request) return;
+        const timer = setTimeout(() => request.abort(), 20000);
         setLoading(true);
         try {
             const response = await fetch('/api/auth/reset-password', {
+                signal: request.signal,
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ token, newPassword })
             });
             const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Failed to reset password');
-            setMessage(data.message || 'Password has been reset successfully.');
+            if (!response.ok || !data || typeof data.message !== 'string' || data.message.length > 1000) throw new Error('Invalid acknowledgement');
+            if (!attempt.current(request)) return;
+            setMessage('Password has been reset successfully.');
             setNewPassword('');
             setConfirmPassword('');
         } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : 'Failed to reset password');
+            if (attempt.current(request, true)) setError('Reset was not acknowledged. The link may be expired or already used. Try signing in or request a new link.');
         } finally {
-            setLoading(false);
+            clearTimeout(timer); attempt.finish();
+            if (attempt.current(request, true)) setLoading(false);
         }
     };
 
@@ -54,13 +66,16 @@ export function ResetPasswordPage() {
                 <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">Create a new password for your account.</p>
 
                 <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-                    {error ? <div className="text-sm text-rose-600">{error}</div> : null}
-                    {message ? <div className="text-sm text-emerald-600">{message}</div> : null}
+                    {!validToken && <p role="alert">Reset link is missing or invalid. Request a new link.</p>}
+                    {error ? <div role="alert" className="text-sm text-rose-600">{error}</div> : null}
+                    {message ? <div role="status" className="text-sm text-emerald-600">{message}</div> : null}
 
                     <div>
                         <label htmlFor="new-password" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">New password</label>
                         <input
                             id="new-password"
+                            disabled={loading || !!message || !validToken}
+                            maxLength={1024}
                             type="password"
                             autoComplete="new-password"
                             required
@@ -74,6 +89,8 @@ export function ResetPasswordPage() {
                         <label htmlFor="confirm-password" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Confirm password</label>
                         <input
                             id="confirm-password"
+                            disabled={loading || !!message || !validToken}
+                            maxLength={1024}
                             type="password"
                             autoComplete="new-password"
                             required
@@ -85,7 +102,7 @@ export function ResetPasswordPage() {
 
                     <button
                         type="submit"
-                        disabled={loading || !token}
+                        disabled={loading || !validToken || !!message}
                         className="w-full rounded-lg bg-indigo-600 text-white py-2.5 font-medium disabled:opacity-60"
                     >
                         {loading ? 'Resetting...' : 'Reset password'}

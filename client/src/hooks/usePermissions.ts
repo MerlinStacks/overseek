@@ -1,5 +1,6 @@
 import { useUser } from './useUser';
 import { useAccount } from '../context/AccountContext';
+import { isRecord } from '../utils/responseValidation';
 
 /**
  * Why sourced from AccountContext: The /me endpoint returns resolved
@@ -11,14 +12,17 @@ import { useAccount } from '../context/AccountContext';
  */
 export function usePermissions() {
     const { user } = useUser();
-    const { activePermissions: permissions } = useAccount();
+    const { activePermissions } = useAccount();
+    const permissions: Record<string, boolean> = Object.fromEntries(isRecord(activePermissions)
+        ? Object.entries(activePermissions).filter(([, grant]) => grant === true || grant === false) : []);
+    const granted = (key: string) => Object.prototype.hasOwnProperty.call(permissions, key) && permissions[key] === true;
 
     const hasPermission = (permission: string) => {
         if (!user) return false;
-        if (user.isSuperAdmin) return true;
+        if (user.isSuperAdmin === true) return true;
         // Check for wildcard access (Owner/Admin)
-        if (permissions['*']) return true;
-        return !!permissions[permission];
+        if (granted('*')) return true;
+        return typeof permission === 'string' && granted(permission);
     };
 
     return {

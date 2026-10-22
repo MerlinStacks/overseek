@@ -13,7 +13,7 @@ import { Logger } from '../utils/logger';
 import { adsActionsRoutes } from './ads/actions';
 import { adCopyRoutes } from './ads/copy';
 import intelligenceRoutes from './ads/intelligence';
-import { getAdsAccountIdOrReply, parsePositiveInt } from './ads/routeHelpers';
+import { getAdsAccountIdOrReply, parsePositiveInt, InvalidPositiveInteger } from './ads/routeHelpers';
 import { creativeRoutes } from './ads/creatives';
 
 interface AdAccountBody {
@@ -70,7 +70,7 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
     };
 
     const resolveAdAccountFromParamsOrReply = async (
-        request: { params: { adAccountId: string } },
+        request: { params: { adAccountId: string }; accountId?: string },
         reply: any,
     ) => {
         const accountId = getAdsAccountIdOrReply(request, reply);
@@ -84,14 +84,14 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
     };
 
     const parseDaysQuery = (request: { query: { days?: string } }, fallback: number = 30) =>
-        Math.min(parsePositiveInt(request.query.days, fallback), 365);
+        parsePositiveInt(request.query.days, fallback, 365);
 
     const parseDaysAndLimitQuery = (
         request: { query: { days?: string; limit?: string } },
         defaults: { days?: number; limit?: number } = {},
     ) => {
-        const days = parsePositiveInt(request.query.days, defaults.days ?? 30);
-        const limit = Math.min(parsePositiveInt(request.query.limit, defaults.limit ?? 200), 500);
+        const days = parsePositiveInt(request.query.days, defaults.days ?? 30, 365);
+        const limit = parsePositiveInt(request.query.limit, defaults.limit ?? 200, 500);
         return { days, limit };
     };
 
@@ -190,6 +190,14 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // POST /api/ads/connect - Connect a new ad account
+    fastify.post('/onboarding/meta', async (request, reply) => {
+        const accountId = getAdsAccountIdOrReply(request, reply); if (!accountId || !request.user?.id) return;
+        const { PermissionService } = await import('../services/PermissionService');
+        if (!await PermissionService.hasPermission(request.user.id, accountId, 'manage_marketing')) return reply.code(403).send({ error: 'Marketing management required' });
+        try { const { saveOnboardingMetaConnection } = await import('../services/OnboardingAdConnection'); return await saveOnboardingMetaConnection(accountId, request.user.id, request.body); }
+        catch (error) { return reply.code((error as { statusCode?: number }).statusCode === 409 ? 409 : (error as Error).name === 'ZodError' ? 400 : 503).send({ error: 'Connection not acknowledged; reconcile the same operation in account settings before retrying' }); }
+    });
+
     fastify.post<{ Body: AdAccountBody }>('/connect', async (request, reply) => {
         const accountId = getAdsAccountIdOrReply(request, reply);
         if (!accountId) return;
@@ -328,7 +336,7 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
             return campaigns;
         } catch (error: any) {
             Logger.error('Failed to fetch campaign insights', { error });
-            return reply.code(500).send({ error: error.message });
+            return reply.code(error instanceof InvalidPositiveInteger ? 400 : 500).send({ error: error.message });
         }
     });
 
@@ -354,7 +362,7 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
             return trends;
         } catch (error: any) {
             Logger.error('Failed to fetch daily trends', { error });
-            return reply.code(500).send({ error: error.message });
+            return reply.code(error instanceof InvalidPositiveInteger ? 400 : 500).send({ error: error.message });
         }
     });
 
@@ -376,7 +384,7 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
             return await MetaAdsService.getEntityInsights(resolved.adAccountId, parseDaysQuery(request), level, parentId);
         } catch (error: any) {
             Logger.error('Failed to fetch Meta drill-down', { error });
-            return reply.code(500).send({ error: error.message });
+            return reply.code(error instanceof InvalidPositiveInteger ? 400 : 500).send({ error: error.message });
         }
     });
 
@@ -396,7 +404,7 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
             return products;
         } catch (error: any) {
             Logger.error('Failed to fetch shopping products', { error });
-            return reply.code(500).send({ error: error.message });
+            return reply.code(error instanceof InvalidPositiveInteger ? 400 : 500).send({ error: error.message });
         }
     });
 
@@ -444,7 +452,7 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
             return products;
         } catch (error: any) {
             Logger.error('Failed to fetch campaign products', { error });
-            return reply.code(500).send({ error: error.message });
+            return reply.code(error instanceof InvalidPositiveInteger ? 400 : 500).send({ error: error.message });
         }
     });
 
@@ -471,7 +479,7 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
             };
         } catch (error: any) {
             Logger.error('Failed to fetch ad analysis', { error });
-            return reply.code(500).send({ error: error.message });
+            return reply.code(error instanceof InvalidPositiveInteger ? 400 : 500).send({ error: error.message });
         }
     });
 };

@@ -13,8 +13,48 @@ import { OrderPreviewModal } from './OrderPreviewModal';
 const response = (value: unknown) => ({ ok: true, json: async () => value });
 const fraud = { score: 0, level: 'low', factors: [], warnings: ['Customer order history unavailable'] };
 beforeEach(() => { vi.resetAllMocks(); m.account = { id: 'a', currency: 'EUR' }; m.permission = true; vi.stubGlobal('fetch', m.fetch); });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 describe('fraud indicators', () => {
+    it('renders outside the clipping table and keeps the popup inside the viewport', async () => {
+        let anchorTop = window.innerHeight - 40;
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            return (this.getAttribute('role') === 'region'
+                ? { width: 256, height: 180, top: 0, bottom: 180, left: 0, right: 256 }
+                : { width: 28, height: 28, top: anchorTop, bottom: anchorTop + 28, left: 20, right: 48 }) as DOMRect;
+        });
+        m.fetch.mockResolvedValue(response(fraud));
+        const view = render(<div style={{ overflow: 'hidden' }}><FraudIcon orderId={1} /></div>);
+        fireEvent.click(screen.getByRole('button'));
+        await screen.findByText('Customer order history unavailable');
+        const panel = screen.getByRole('region', { name: 'Fraud risk details' });
+        expect(panel.parentElement).toBe(document.body);
+        expect(view.container).not.toContainElement(panel);
+        expect(panel).toHaveClass('fixed', 'whitespace-normal');
+        expect(panel.style.left).toBe('16px');
+        expect(panel.style.top).toBe(`${anchorTop - 184}px`);
+        anchorTop = 30;
+        fireEvent.scroll(window);
+        expect(panel.style.top).toBe('62px');
+        fireEvent.pointerDown(panel);
+        expect(panel).toBeInTheDocument();
+        fireEvent.pointerDown(document.body);
+        expect(screen.queryByRole('region')).toBeNull();
+    });
+    it('allows hovering from the trigger into the portalled details', async () => {
+        m.fetch.mockResolvedValue(response(fraud)); render(<FraudIcon orderId={1} />);
+        const trigger = screen.getByRole('button');
+        fireEvent.mouseEnter(trigger);
+        await screen.findByText('Customer order history unavailable');
+        vi.useFakeTimers();
+        const panel = screen.getByRole('region');
+        fireEvent.mouseLeave(trigger, { relatedTarget: document.body });
+        fireEvent.mouseEnter(panel);
+        act(() => { vi.advanceTimersByTime(200); });
+        expect(panel).toBeInTheDocument();
+        fireEvent.mouseLeave(panel, { relatedTarget: document.body });
+        act(() => { vi.advanceTimersByTime(200); });
+        expect(screen.queryByRole('region')).toBeNull();
+    });
     it('is neutral and lazy before checking, and exposes limitations by keyboard', async () => {
         m.fetch.mockResolvedValue(response(fraud)); render(<FraudIcon orderId={1} />);
         expect(m.fetch).not.toHaveBeenCalled(); const trigger = screen.getByRole('button', { name: 'Check fraud risk' });

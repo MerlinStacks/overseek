@@ -9,6 +9,8 @@ import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import { handleRouteError } from '../utils/errors';
 import { parseAdvancedFilters } from './routeHelpers';
+import { PermissionService } from '../services/PermissionService';
+import { customerMergeSchema, mergeCustomersSafely } from '../services/customers/SafeCustomerMerge';
 
 const customersRoutes: FastifyPluginAsync = async (fastify) => {
     const AbnSchema = z.string().trim().transform(value => value.replace(/\D/g, '')).refine(value => {
@@ -141,6 +143,8 @@ const customersRoutes: FastifyPluginAsync = async (fastify) => {
     // Find potential duplicate customers
     fastify.get<{ Params: { id: string } }>('/:id/duplicates', async (request, reply) => {
         try {
+            if (!request.accountId || !request.user?.id) return reply.code(400).send({ error: 'Select an account' });
+            if (!await PermissionService.hasPermission(request.user.id, request.accountId, 'view_customers')) return reply.code(403).send({ error: 'Customer view permission required' });
             const accountId = request.accountId!;
             const customerId = request.params.id;
 
@@ -148,6 +152,7 @@ const customersRoutes: FastifyPluginAsync = async (fastify) => {
             return result;
         } catch (error) {
             Logger.error('Find Duplicates Error', { error });
+            if ((error as { statusCode?: number }).statusCode === 404) return reply.code(404).send({ error: 'Customer unavailable' });
             return handleRouteError(error, reply, 'Failed to find duplicates');
         }
     });
@@ -155,18 +160,17 @@ const customersRoutes: FastifyPluginAsync = async (fastify) => {
     // Merge source customer into target
     fastify.post<{ Params: { id: string } }>('/:id/merge', async (request, reply) => {
         try {
+            if (!request.accountId || !request.user?.id) return reply.code(400).send({ error: 'Select an account' });
             const accountId = request.accountId!;
             const targetId = request.params.id;
-            const { sourceId } = request.body as { sourceId: string };
-
-            if (!sourceId) {
-                return reply.code(400).send({ error: 'sourceId is required' });
-            }
-
-            const result = await CustomersService.mergeCustomers(accountId, targetId, sourceId);
+            const body = customerMergeSchema.safeParse(request.body);
+            if (!body.success) return reply.code(400).send({ error: 'Source, both current versions and stable occurrence required' });
+            const result = await mergeCustomersSafely(accountId, request.user.id, targetId, body.data);
             return result;
         } catch (error) {
             Logger.error('Merge Customers Error', { error });
+            const status = (error as { statusCode?: number }).statusCode;
+            if (status === 409 || status === 403 || status === 400) return reply.code(status).send({ error: (error as Error).message });
             return handleRouteError(error, reply, 'Failed to merge customers');
         }
     });

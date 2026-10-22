@@ -12,6 +12,8 @@ import { recalculateCustomerTotals, updateCustomerTotals, withOrderTotalsTransac
 import { materializeContact } from '../ContactMaterialization';
 import { queueContactProjection } from '../ContactProjection';
 import { importOrderSnapshot } from '../deliveryEstimates/importOrderSnapshot';
+import { Prisma } from '@prisma/client';
+import { mergeOrderTags } from '../OrderTaggingService';
 
 const PURCHASE_TRACKING_STATUSES = ['pending', 'processing', 'on-hold', 'completed'];
 
@@ -113,14 +115,20 @@ export class OrderSync extends BaseSync {
             }
 
             const snapshots = new Map<number, unknown>();
+            const manualTags = new Map<number, string[]>();
             const existingOrders = await withOrderTotalsTransaction(accountId, async tx => {
+                await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "WooOrder" WHERE "accountId" = ${accountId} AND "wooId" IN (${Prisma.join(orders.map(order => order.id))}) ORDER BY "id" FOR UPDATE`);
                 const existing = await tx.wooOrder.findMany({
                     where: { accountId, wooId: { in: orders.map(o => o.id) } },
-                    select: { wooId: true, status: true, wooCustomerId: true, billingEmail: true }
+                    select: { wooId: true, status: true, wooCustomerId: true, billingEmail: true, rawData: true }
                 });
-                const associations = [...existing];
+                const associations: Array<{ wooId: number; status: string; wooCustomerId: number | null; billingEmail: string | null }> = [...existing];
                 const contactIds: string[] = [];
                 for (const order of orders) {
+                    const previous = existing.find(row => row.wooId === order.id)?.rawData;
+                    const storedTags = previous && typeof previous === 'object' && !Array.isArray(previous) ? previous.tags ?? [] : [];
+                    const tags = mergeOrderTags(storedTags);
+                    manualTags.set(order.id, tags);
                     const rawEmail = order.billing?.email;
                     const billingEmail = rawEmail && rawEmail.trim() ? rawEmail.toLowerCase().trim() : null;
                     const billingCountry = order.billing?.country || null;
@@ -133,7 +141,7 @@ export class OrderSync extends BaseSync {
                         billingCountry,
                         wooCustomerId,
                         dateModified: new Date(order.date_modified_gmt || order.date_modified || new Date()),
-                        rawData: order as any
+                        rawData: { ...order, tags } as any
                     };
                     associations.push({ wooId: order.id, status: order.status, wooCustomerId, billingEmail });
                     const persisted = await tx.wooOrder.upsert({
@@ -156,18 +164,17 @@ export class OrderSync extends BaseSync {
                 return existing;
             });
             const existingMap = new Map(existingOrders.map(o => [o.wooId, o.status]));
-            const persistedOrders = orders.map(order => ({ ...order, deliveryEstimateSnapshot: snapshots.get(order.id) ?? null }));
+            const persistedOrders = orders.map(order => ({ ...order, tags: manualTags.get(order.id) || [], deliveryEstimateSnapshot: snapshots.get(order.id) ?? null }));
 
             let orderTagsMap: Map<number, string[]> | undefined;
             try {
                 orderTagsMap = await OrderTaggingService.extractTagsForOrders(accountId, persistedOrders);
             } catch (error: any) {
-                Logger.warn('Failed to batch extract tags, falling back to individual extraction', { accountId, syncId, error: error.message });
+                Logger.warn('Tag coverage unavailable; existing search tags will be preserved by skipping this page indexing', { accountId, syncId, error: error.message });
             }
 
 
             // Build tags map (batch or individual fallback)
-            const tagMappings = await OrderTaggingService.getTagMappings(accountId);
             const finalTagsMap = new Map<number, string[]>();
 
             for (const order of persistedOrders) {
@@ -214,18 +221,15 @@ export class OrderSync extends BaseSync {
 
                 // Resolve tags
                 if (orderTagsMap) {
-                    finalTagsMap.set(order.id, orderTagsMap.get(order.id) || []);
-                } else {
-                    try {
-                        const tags = await OrderTaggingService.extractTagsFromOrder(accountId, order, tagMappings);
-                        finalTagsMap.set(order.id, tags);
-                    } catch { finalTagsMap.set(order.id, []); }
+                    const computed = orderTagsMap.get(order.id);
+                    if (!computed) throw new Error('Incomplete order tag batch');
+                    finalTagsMap.set(order.id, mergeOrderTags(order.tags, computed));
                 }
             }
 
             // Bulk index entire page in one ES call
             try {
-                await IndexingService.bulkIndexOrders(accountId, persistedOrders, finalTagsMap);
+                if (orderTagsMap) await IndexingService.bulkIndexOrders(accountId, persistedOrders, finalTagsMap);
             } catch (error: any) {
                 Logger.warn('Bulk index orders failed, skipping ES indexing for this page', { accountId, syncId, error: error.message });
             }

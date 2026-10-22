@@ -71,12 +71,10 @@ describe('OrderTaggingService Performance', () => {
             ]
         };
         (prisma.account.findUnique as any).mockResolvedValue(mockAccount);
-        (prisma.wooProduct.findMany as any).mockResolvedValue([
-            { rawData: { tags: [{ name: 'pt1' }] } }
-        ]);
+        (prisma.wooProduct.findMany as any).mockImplementation(async ({ where }: any) => where.wooId.in.map((wooId: number) => ({ wooId, rawData: { tags: [{ name: 'pt1' }] } })));
 
         const orders = Array.from({ length: 25 }, (_, i) => ({
-            id: i,
+            id: i + 1,
             line_items: [{ product_id: 100 + i }]
         }));
 
@@ -86,9 +84,7 @@ describe('OrderTaggingService Performance', () => {
 
         vi.clearAllMocks();
         (prisma.account.findUnique as any).mockResolvedValue(mockAccount);
-        (prisma.wooProduct.findMany as any).mockResolvedValue([
-            { rawData: { tags: [{ name: 'pt1' }] } }
-        ]);
+        (prisma.wooProduct.findMany as any).mockImplementation(async ({ where }: any) => where.wooId.in.map((wooId: number) => ({ wooId, rawData: { tags: [{ name: 'pt1' }] } })));
 
         for (const order of orders) {
             expect(await OrderTaggingService.extractTagsFromOrder(accountId, order, mappings)).toEqual(['ot1']);
@@ -134,6 +130,7 @@ describe('OrderTaggingService Performance', () => {
         ] } as any);
         vi.mocked(prisma.wooProduct.findMany).mockResolvedValue([
             { wooId: 101, rawData: { tags: [{ name: 'BLUE' }, { name: 'red' }] } },
+            { wooId: 999, rawData: { tags: [] } },
         ] as any);
         const result = await OrderTaggingService.extractTagsForOrders(accountId, [
             { id: 1, line_items: [{ product_id: 101 }, { product_id: 101 }] },
@@ -142,7 +139,7 @@ describe('OrderTaggingService Performance', () => {
         ]);
         expect([...result]).toEqual([[1, ['Colour']], [2, []], [3, []]]);
         expect(prisma.wooProduct.findMany).toHaveBeenCalledWith({
-            where: { accountId, wooId: { in: [101, 999] } }, select: { wooId: true, rawData: true },
+            where: { accountId, wooId: { in: [101, 999] } }, select: { wooId: true, rawData: true }, orderBy: { wooId: 'asc' }, take: 2001,
         });
     });
 

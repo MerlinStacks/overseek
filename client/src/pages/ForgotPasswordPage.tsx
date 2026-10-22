@@ -1,7 +1,9 @@
 import { FormEvent, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useRecoveryAttempt } from '../hooks/useRecoveryAttempt';
 
 export function ForgotPasswordPage() {
+    const attempt = useRecoveryAttempt();
     const [email, setEmail] = useState('');
     const [error, setError] = useState('');
     const [message, setMessage] = useState('');
@@ -9,23 +11,28 @@ export function ForgotPasswordPage() {
 
     const handleSubmit = async (event: FormEvent) => {
         event.preventDefault();
+        if (email.trim().length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('Enter a valid email address.'); return; }
+        const request = attempt.begin(); if (!request) return;
+        const timer = setTimeout(() => request.abort(), 20000);
         setError('');
         setMessage('');
         setLoading(true);
 
         try {
             const response = await fetch('/api/auth/forgot-password', {
+                signal: request.signal,
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email })
+                body: JSON.stringify({ email: email.trim() })
             });
             const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Failed to request password reset');
-            setMessage(data.message || 'If an account exists, a reset link has been sent.');
+            if (!response.ok || !data || typeof data.message !== 'string' || data.message.length > 1000) throw new Error('Invalid acknowledgement');
+            if (attempt.current(request)) setMessage('If an account exists, a reset link has been sent.');
         } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : 'Failed to request password reset');
+            if (attempt.current(request, true)) setError('Request was not acknowledged. Check your inbox before trying again.');
         } finally {
-            setLoading(false);
+            clearTimeout(timer); attempt.finish();
+            if (attempt.current(request, true)) setLoading(false);
         }
     };
 
@@ -36,14 +43,17 @@ export function ForgotPasswordPage() {
                 <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">Enter your account email and we will send a reset link.</p>
 
                 <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-                    {error ? <div className="text-sm text-rose-600">{error}</div> : null}
-                    {message ? <div className="text-sm text-emerald-600">{message}</div> : null}
+                    {error ? <div role="alert" className="text-sm text-rose-600">{error}</div> : null}
+                    {message ? <div role="status" className="text-sm text-emerald-600">{message}</div> : null}
 
                     <div>
                         <label htmlFor="email" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Email</label>
                         <input
                             id="email"
                             type="email"
+                            autoComplete="email"
+                            maxLength={254}
+                            disabled={loading}
                             required
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}

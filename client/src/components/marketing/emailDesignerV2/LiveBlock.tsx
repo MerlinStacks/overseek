@@ -168,7 +168,7 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
         }} style={{ display: 'inline-block', margin: '0 10px', color: block.props.color || theme.primaryColor, fontWeight: 600, outline: 'none', direction: 'ltr', unicodeBidi: 'isolate', writingMode: 'horizontal-tb' }}>{link.label}</span>)}</div>;
     }
     if (block.type === 'footer') {
-        return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', fontSize: 12, lineHeight: 1.6, color: block.props.color || theme.mutedTextColor }} dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(block.props.html || '<p><a href="{{unsubscribe_url}}">Unsubscribe</a></p>') }} />;
+        return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', fontSize: 12, lineHeight: 1.6, color: block.props.color || theme.mutedTextColor }} dangerouslySetInnerHTML={{ __html: sanitizeEmailLayoutHtml(block.props.html || '<p><a href="{{unsubscribe_url}}">Unsubscribe</a></p>') }} />;
     }
     if (block.type === 'divider') return <div style={{ padding: block.props.padding || '16px 0', textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'center', ...responsiveStyle }}><div style={{ borderTop: `1px solid ${block.props.color || '#e2e8f0'}`, fontSize: 0, lineHeight: 0 }}>&nbsp;</div></div>;
     if (block.type === 'spacer') return <div style={{ padding: (block.props as { padding?: string }).padding || '8px 0', textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'center', height: block.props.height, lineHeight: `${block.props.height}px`, fontSize: block.props.height, ...responsiveStyle }}>&nbsp;</div>;

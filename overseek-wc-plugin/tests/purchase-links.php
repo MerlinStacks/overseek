@@ -51,8 +51,9 @@ class OverSeek_Tracking_Transport {
 }
 class Purchase_Order {
     private array $meta = [];
-    public function __construct(private int $id, private string $url) {}
+    public function __construct(private int $id, private string $url, public string $status = 'processing') {}
     public function get_id() { return $this->id; }
+    public function is_paid() { return in_array($this->status, ['processing', 'completed'], true); }
     public function get_checkout_order_received_url() { return $this->url; }
     public function get_meta($key) { return $this->meta[$key] ?? ''; }
     public function update_meta_data($key, $value) { $this->meta[$key] = $value; }
@@ -90,6 +91,23 @@ $tracker->track_purchase(999);
 $tracker->track_purchase_blocks(null);
 check(count(OverSeek_Tracking_Transport::$sent) === 3, 'Invalid orders do not emit purchases');
 echo "Classic and Blocks purchase confirmation links passed.\n";
+
+// Failed and unfinished checkouts must not become purchases just by visiting
+// order-received or reaching the pre-payment Store API hook.
+foreach (['failed', 'pending', 'on-hold', 'cancelled', 'refunded', 'checkout-draft'] as $index => $status) {
+    $id = 200 + $index;
+    $order = $orders[$id] = new Purchase_Order($id, $urls[0], $status);
+    $before = count(OverSeek_Tracking_Transport::$sent);
+    $tracker->track_purchase($id);
+    $tracker->track_purchase_blocks($order);
+    check(count(OverSeek_Tracking_Transport::$sent) === $before, $status . ' order does not emit purchases');
+    check(!$order->get_meta('_overseek_tracked'), $status . ' order remains eligible for a later successful payment');
+    $order->status = $index % 2 === 0 ? 'processing' : 'completed';
+    $tracker->track_purchase($id);
+    $tracker->track_purchase_blocks($order);
+    check(count(OverSeek_Tracking_Transport::$sent) === $before + 1, 'Successful payment after ' . $status . ' emits one purchase');
+}
+echo "Only paid orders emit purchases; successful retries remain tracked once.\n";
 
 $woocommerce = (object) ['session' => new Activity_Session(), 'cart' => null];
 function activity_tracker() {

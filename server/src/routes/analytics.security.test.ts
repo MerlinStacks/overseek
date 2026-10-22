@@ -94,8 +94,8 @@ describe('analytics route permissions', () => {
             });
             expect(res.statusCode).toBe(200);
         }
-        expect(aovService.getAOVTrend).toHaveBeenCalledWith('acct-1', days, 'Pacific/Auckland');
-        expect(aovService.getAOVComparison).toHaveBeenCalledWith('acct-1', days, 'Pacific/Auckland');
+        expect(aovService.getAOVTrend).toHaveBeenCalledWith('acct-1', days, 'Pacific/Auckland', { throwOnError: true });
+        expect(aovService.getAOVComparison).toHaveBeenCalledWith('acct-1', days, 'Pacific/Auckland', { throwOnError: true });
     });
 
     it('denies analytics endpoints before invoking handlers when permission is missing', async () => {

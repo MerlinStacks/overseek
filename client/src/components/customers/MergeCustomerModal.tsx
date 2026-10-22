@@ -1,209 +1,59 @@
-/**
- * MergeCustomerModal - Find and merge duplicate customer records.
- */
-import { useState, useEffect, useCallback } from 'react';
-import { Users, ArrowRight, AlertTriangle, Check } from 'lucide-react';
+import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { usePermissions } from '../../hooks/usePermissions';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+import { useRecoveryAttempt } from '../../hooks/useRecoveryAttempt';
+import { isRecord } from '../../utils/responseValidation';
 import { Modal } from '../ui/Modal';
-import { formatCurrency } from '../../utils/format';
 import { emitCrossTabEvent } from '../../utils/productCrossTabEvents';
-
-interface Customer {
-    id: string;
-    wooId: number;
-    firstName: string;
-    lastName: string;
-    email: string;
-    ordersCount: number;
-    totalSpent: number;
+interface Customer { id: string; wooId: number; firstName: string | null; lastName: string | null; email: string; updatedAt: string }
+interface Props { isOpen: boolean; onClose: () => void; customerId: string; onMergeComplete: () => void }
+function customer(value: unknown): Customer {
+    if (!isRecord(value) || typeof value.id !== 'string' || !value.id || value.id.length > 200 || !Number.isSafeInteger(value.wooId) || Number(value.wooId) <= 0 || typeof value.email !== 'string' || value.email.length > 320 || !['firstName', 'lastName'].every(key => value[key] === null || typeof value[key] === 'string' && String(value[key]).length <= 200) || typeof value.updatedAt !== 'string' || !Number.isFinite(Date.parse(value.updatedAt))) throw new Error('Invalid customer');
+    return value as unknown as Customer;
 }
-
-interface MergeCustomerModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    customerId: string;
-    onMergeComplete: () => void;
+function decode(value: unknown) {
+    if (!isRecord(value) || !Array.isArray(value.duplicates) || value.duplicates.length > 100 || typeof value.truncated !== 'boolean') throw new Error('Invalid candidates');
+    const target = customer(value.target), duplicates = value.duplicates.map(customer);
+    if (duplicates.some(row => row.id === target.id) || new Set(duplicates.map(row => row.id)).size !== duplicates.length) throw new Error('Invalid duplicate identities');
+    return { target, duplicates, truncated: value.truncated };
 }
-
-export function MergeCustomerModal({ isOpen, onClose, customerId, onMergeComplete }: MergeCustomerModalProps) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const [target, setTarget] = useState<Customer | null>(null);
-    const [duplicates, setDuplicates] = useState<Customer[]>([]);
-    const [selectedSource, setSelectedSource] = useState<Customer | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [isMerging, setIsMerging] = useState(false);
-    const [error, setError] = useState('');
-
-    const fetchDuplicates = useCallback(async () => {
-        setIsLoading(true);
-        setError('');
+export function MergeCustomerModal(props: Props) {
+    const { token, user } = useAuth(); const { currentAccount } = useAccount(); const { hasPermission } = usePermissions();
+    if (!props.isOpen) return null;
+    if (!token || !currentAccount || !hasPermission('view_customers')) return <Modal isOpen onClose={props.onClose} title="Merge Duplicate Customers"><p>Selected account and customer view permission required.</p></Modal>;
+    return <ScopedMerge key={JSON.stringify([user?.id, token, currentAccount.id, props.customerId])} {...props} token={token} accountId={currentAccount.id} />;
+}
+function ScopedMerge({ token, accountId, customerId, onClose, onMergeComplete }: Props & { token: string; accountId: string }) {
+    const read = useScopedRequest(`/api/customers/${encodeURIComponent(customerId)}/duplicates`, accountId, token, decode);
+    const { hasPermission } = usePermissions(); const attempt = useRecoveryAttempt();
+    const [selected, setSelected] = useState<Customer | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
+    async function merge() {
+        const target = read.data?.target, source = selected;
+        if (!target || !source || error || !hasPermission('manage_customers') || !window.confirm(`Merge ${source.email} (#${source.wooId}) into #${target.wooId} and delete source? This is a local merge, not a WooCommerce deletion.`)) return;
+        const active = attempt.begin(); if (!active) return; setBusy(true);
+        const timer = setTimeout(() => active.abort(), 30000);
         try {
-            const res = await fetch(`/api/customers/${customerId}/duplicates`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'x-account-id': currentAccount?.id || '' }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setTarget(data.target);
-                setDuplicates(data.duplicates || []);
-            }
-        } catch (e) {
-            setError('Failed to load duplicates');
-        } finally {
-            setIsLoading(false);
-        }
-    }, [currentAccount?.id, customerId, token]);
-
-    useEffect(() => {
-        if (isOpen && customerId) {
-            setSelectedSource(null);
-            setError('');
-            fetchDuplicates();
-        }
-    }, [customerId, fetchDuplicates, isOpen]);
-
-    useEffect(() => {
-        if (isOpen) return;
-        setSelectedSource(null);
-        setError('');
-        setTarget(null);
-        setDuplicates([]);
-    }, [isOpen]);
-
-    const handleMerge = async () => {
-        if (!selectedSource || !target) return;
-
-        setIsMerging(true);
-        try {
-            const res = await fetch(`/api/customers/${target.id}/merge`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || ''
-                },
-                body: JSON.stringify({ sourceId: selectedSource.id })
-            });
-
-            if (res.ok) {
-                if (currentAccount?.id && target?.id) {
-                    emitCrossTabEvent({
-                        resource: 'customer',
-                        type: 'merged',
-                        accountId: currentAccount.id,
-                    });
-                }
-                onMergeComplete();
-                onClose();
-            } else {
-                const err = await res.json();
-                setError(err.error || 'Merge failed');
-            }
-        } catch (e) {
-            setError('Failed to merge customers');
-        } finally {
-            setIsMerging(false);
-        }
-    };
-
-    return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Merge Duplicate Customers" maxWidth="max-w-2xl">
-            <div className="space-y-4">
-                {isLoading ? (
-                    <div className="flex justify-center py-8">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-                    </div>
-                ) : duplicates.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                        <Users size={48} className="mx-auto mb-3 text-gray-300" />
-                        <p className="font-medium">No Duplicates Found</p>
-                        <p className="text-sm mt-1">No other customers match this email or phone.</p>
-                    </div>
-                ) : (
-                    <>
-                        {/* Target Customer */}
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                            <div className="text-xs font-medium text-blue-600 uppercase mb-2">Keep This Customer</div>
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <div className="font-medium text-gray-900">{target?.firstName} {target?.lastName}</div>
-                                    <div className="text-sm text-gray-500">{target?.email}</div>
-                                </div>
-                                <div className="text-right text-sm">
-                                    <div>{target?.ordersCount} orders</div>
-                                    <div className="font-medium text-green-600">{formatCurrency(target?.totalSpent || 0)}</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center justify-center">
-                            <ArrowRight className="text-gray-400" />
-                        </div>
-
-                        {/* Duplicate Customers */}
-                        <div className="space-y-2">
-                            <div className="text-xs font-medium text-gray-500 uppercase">Select Customer to Merge Into Above</div>
-                            {duplicates.map((dup) => (
-                                <button
-                                    key={dup.id}
-                                    onClick={() => setSelectedSource(dup)}
-                                    className={`w-full border rounded-lg p-4 text-left transition-colors ${selectedSource?.id === dup.id
-                                        ? 'border-red-300 bg-red-50'
-                                        : 'border-gray-200 hover:border-gray-300'
-                                        }`}
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            {selectedSource?.id === dup.id && (
-                                                <div className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center">
-                                                    <Check size={12} className="text-white" />
-                                                </div>
-                                            )}
-                                            <div>
-                                                <div className="font-medium text-gray-900">{dup.firstName} {dup.lastName}</div>
-                                                <div className="text-sm text-gray-500">{dup.email}</div>
-                                            </div>
-                                        </div>
-                                        <div className="text-right text-sm">
-                                            <div>{dup.ordersCount} orders</div>
-                                            <div className="font-medium">{formatCurrency(dup.totalSpent)}</div>
-                                        </div>
-                                    </div>
-                                </button>
-                            ))}
-                        </div>
-
-                        {selectedSource && (
-                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
-                                <AlertTriangle size={16} className="text-amber-500 mt-0.5 flex-shrink-0" />
-                                <div className="text-sm text-amber-800">
-                                    <strong>Warning:</strong> This will transfer all orders and conversations from
-                                    <span className="font-medium"> {selectedSource.firstName} {selectedSource.lastName}</span> to
-                                    <span className="font-medium"> {target?.firstName} {target?.lastName}</span>, then delete the merged customer.
-                                </div>
-                            </div>
-                        )}
-
-                        {error && (
-                            <div className="text-red-600 text-sm">{error}</div>
-                        )}
-
-                        <div className="flex justify-end gap-2 pt-2">
-                            <button onClick={onClose} className="btn-white">
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleMerge}
-                                disabled={!selectedSource || isMerging}
-                                className="btn-primary bg-red-600 hover:bg-red-700 disabled:opacity-50"
-                            >
-                                {isMerging ? 'Merging...' : 'Merge & Delete'}
-                            </button>
-                        </div>
-                    </>
-                )}
-            </div>
-        </Modal>
-    );
+            const response = await fetch(`/api/customers/${encodeURIComponent(target.id)}/merge`, { method: 'POST', signal: active.signal, headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId, 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: source.id, sourceVersion: source.updatedAt, targetVersion: target.updatedAt, occurrence: crypto.randomUUID() }) });
+            const result = await response.json();
+            if (!response.ok || !isRecord(result) || result.success !== true || result.targetId !== target.id || result.sourceId !== source.id || !Number.isSafeInteger(result.ordersTransferred)) throw new Error('Merge not acknowledged');
+            if (!attempt.current(active)) return;
+            emitCrossTabEvent({ resource: 'customer', type: 'merged', accountId });
+            onMergeComplete(); onClose();
+        } catch { if (attempt.current(active, true)) setError('Merge not acknowledged or records changed. It may have committed. Close and reconcile both customer records before attempting another merge; do not blindly retry.'); }
+        finally { clearTimeout(timer); attempt.finish(); if (attempt.current(active, true)) setBusy(false); }
+    }
+    return <Modal isOpen onClose={onClose} title="Merge Duplicate Customers" maxWidth="max-w-2xl"><div className="space-y-4 text-slate-900 dark:text-slate-100">
+        {error && <p role="alert">{error}</p>}
+        {read.loading ? <p role="status">Loading duplicate candidates…</p> : read.error ? <p role="alert">Candidates unavailable. <button onClick={read.retry}>Retry candidates</button></p> : read.data && <>
+            <p>Keep: {read.data.target.firstName} {read.data.target.lastName} · {read.data.target.email} · #{read.data.target.wooId}</p>
+            <p>Spend currency and merged totals are unverified. Local changes may be overwritten by a future provider sync. Order indexing is not verified by this operation.</p>
+            {read.data.truncated && <p role="status">Only the first 100 candidates are shown.</p>}
+            {read.data.duplicates.length === 0 && <p>No exact-email duplicate candidates found.</p>}
+            <fieldset disabled={busy || !!error}><legend>Select source customer to delete locally</legend>{read.data.duplicates.map(row => <label className="block p-2" key={row.id}><input type="radio" name="merge-source" checked={selected?.id === row.id} onChange={() => setSelected(row)} /> {row.firstName} {row.lastName} · {row.email} · #{row.wooId}</label>)}</fieldset>
+            {hasPermission('manage_customers') && <button disabled={busy || !!error || !selected} onClick={() => void merge()}>{busy ? 'Merging…' : 'Merge & Delete'}</button>}
+        </>}
+        <button onClick={onClose}>Close</button>
+    </div></Modal>;
 }

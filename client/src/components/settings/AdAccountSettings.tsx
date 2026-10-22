@@ -5,7 +5,7 @@ import { useAccountFeature } from '../../hooks/useAccountFeature';
 import { useScopedRequest } from '../../hooks/useScopedRequest';
 import { useScopedMutation } from '../../hooks/useScopedMutation';
 import { isRecord } from '../../utils/responseValidation';
-import { navigateToSafeUrl } from '../../utils/url';
+import { navigateToOAuthUrl } from '../../utils/url';
 import { AdAccountCard, type AdAccount, type AdInsights } from './AdAccountCard';
 import { EditAdAccountModal, PendingSetupModal } from './AdAccountModals';
 import { AdConnectForm } from './AdConnectForm';
@@ -60,7 +60,7 @@ function ScopedAccounts({ token, accountId }: { token: string; accountId: string
             if (!response.ok || !isRecord(data) || typeof data.authUrl !== 'string') throw new Error('Authorization unavailable');
             return data.authUrl;
         }, 'Could not start authorization. Check the connection before retrying.');
-        if (result.ok && !navigateToSafeUrl(result.value)) setNotice('Invalid OAuth redirect URL.');
+        if (result.ok && !navigateToOAuthUrl(result.value)) setNotice('Invalid OAuth redirect URL.');
     };
     const disconnect = async (id: string) => {
         if (mutation.isPending() || !request.data?.some(account => account.id === id) || !confirm('Disconnect this ad account? This removes its saved connection.')) return;

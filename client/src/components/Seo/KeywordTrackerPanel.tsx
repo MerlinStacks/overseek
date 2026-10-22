@@ -5,7 +5,11 @@
  * Also includes bulk import functionality.
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useId } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { useAccount } from '../../context/AccountContext';
+import { useScopedMutation } from '../../hooks/useScopedMutation';
+import { isRecord } from '../../utils/responseValidation';
 import {
     Plus, Trash2, RefreshCw, TrendingUp, TrendingDown,
     Loader2, Search, ChevronRight, Minus, X, Sparkles,
@@ -39,7 +43,12 @@ const SUB_TABS: { id: TrackerSubTab; label: string; icon: React.ElementType }[] 
     { id: 'digest', label: 'Digest', icon: Mail },
 ];
 
-export function KeywordTrackerPanel() {
+export function KeywordTrackerPanel({ siteUrl }: { siteUrl?: string }) {
+    const { user, token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p>Sign in and select an account to track keywords.</p>;
+    return <ScopedTracker key={JSON.stringify([user?.id, token, currentAccount.id, siteUrl])} siteUrl={siteUrl} />;
+}
+function ScopedTracker({ siteUrl }: { siteUrl?: string }) {
     const status = useSearchConsoleStatus();
     const isConnected = status.data?.connected;
     const hasAuthError = status.data?.authError;
@@ -51,6 +60,7 @@ export function KeywordTrackerPanel() {
             </div>
         );
     }
+    if (status.error) return <p role="alert">Search Console status unavailable. <button type="button" onClick={() => void status.refetch()}>Retry status</button></p>;
 
     if (hasAuthError) {
         return (
@@ -80,11 +90,12 @@ export function KeywordTrackerPanel() {
         );
     }
 
-    return <TrackerContent />;
+    return <TrackerContent siteUrl={siteUrl} />;
 }
 
-function TrackerContent() {
-    const { data, isLoading } = useTrackedKeywords();
+function TrackerContent({ siteUrl }: { siteUrl?: string }) {
+    const { data, isLoading, error: readError, refetch } = useTrackedKeywords();
+    const { run, busy, error } = useScopedMutation();
     const addKeyword = useAddKeyword();
     const deleteKeyword = useDeleteKeyword();
     const refreshKeywords = useRefreshKeywords();
@@ -102,42 +113,48 @@ function TrackerContent() {
 
     const handleAdd = async () => {
         const trimmed = newKeyword.trim();
-        if (!trimmed) return;
+        if (!trimmed || trimmed.length > 200) { setAddError('Enter a keyword of 1–200 characters.'); return; }
         setAddError(null);
-        try {
-            await addKeyword.mutateAsync({ keyword: trimmed });
+        const result = await run(() => addKeyword.mutateAsync({ keyword: trimmed }), 'Could not add keyword. Please retry.');
+        if (result.ok) {
             setNewKeyword('');
             setShowAddForm(false);
-        } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Failed to add keyword';
-            setAddError(message);
         }
     };
 
     const handleDelete = async (id: string, keyword: string) => {
         if (!window.confirm(`Remove "${keyword}" from tracking?`)) return;
-        if (selectedKeywordId === id) setSelectedKeywordId(null);
-        await deleteKeyword.mutateAsync(id);
+        const result = await run(() => deleteKeyword.mutateAsync(id), 'Could not delete keyword. Please retry.');
+        if (result.ok) setSelectedKeywordId(current => current === id ? null : current);
     };
 
     const handleBulkImport = async () => {
-        const kws = bulkText.split('\n').map(k => k.trim()).filter(Boolean);
-        if (kws.length === 0) return;
-        await bulkImport.mutateAsync({ keywords: kws });
-        setBulkText('');
-        setShowBulkImport(false);
+        const kws = [...new Set(bulkText.split('\n').map(k => k.trim().toLowerCase()).filter(Boolean))];
+        if (kws.length === 0 || kws.length > 500 || kws.some(keyword => keyword.length > 200)) { setAddError('Import 1–500 unique keywords, each at most 200 characters.'); return; }
+        setAddError(null);
+        const result = await run(async () => {
+            const value = await bulkImport.mutateAsync({ keywords: kws });
+            if (!isRecord(value) || value.failed !== 0 || typeof value.added !== 'number' || !Number.isSafeInteger(value.added) || value.added < 0 || typeof value.skipped !== 'number' || !Number.isSafeInteger(value.skipped) || value.skipped < 0 || value.added + value.skipped !== kws.length) throw new Error('Incomplete keyword import');
+            return value;
+        }, 'Import did not complete successfully. Your text is retained; already imported keywords are deduplicated by the server.');
+        if (result.ok) { setBulkText(''); setShowBulkImport(false); }
     };
 
     return (
         <div className="space-y-6">
+            <p className="text-sm text-slate-500 dark:text-slate-400">Tracked keywords, history, refreshes and management tabs are account-wide. {siteUrl ? `Suggestions use ${siteUrl}.` : 'No site-specific suggestions selected.'}</p>
+            {(error || addError) && <p role="alert">{error || addError}</p>}
+            {readError && <p role="alert">Tracked keywords unavailable. <button type="button" onClick={() => void refetch()}>Retry tracked keywords</button></p>}
             {/* Sub-Tab Navigation */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex bg-slate-100/80 dark:bg-slate-800/60 backdrop-blur-sm p-1 rounded-xl border border-slate-200/50 dark:border-slate-700/40 overflow-x-auto">
                     {SUB_TABS.map(tab => {
                         const Icon = tab.icon;
                         const isActive = activeSubTab === tab.id;
                         return (
                             <button
+                                type="button"
+                                aria-pressed={isActive}
                                 key={tab.id}
                                 onClick={() => setActiveSubTab(tab.id)}
                                 className={`flex items-center gap-1.5 px-3 py-2 font-medium text-xs rounded-lg transition-all duration-200 whitespace-nowrap ${isActive
@@ -154,14 +171,17 @@ function TrackerContent() {
                 {activeSubTab === 'keywords' && (
                     <div className="flex items-center gap-2 shrink-0 ml-3">
                         <button
-                            onClick={() => refreshKeywords.mutate()}
-                            disabled={refreshKeywords.isPending}
+                            type="button"
+                            onClick={() => void run(async () => { const value = await refreshKeywords.mutateAsync(); if (!isRecord(value) || value.success !== true) throw new Error('Refresh not acknowledged'); }, 'Could not refresh account keywords. Please retry.')}
+                            disabled={busy}
                             className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all duration-200 disabled:opacity-50"
                         >
                             <RefreshCw className={`w-4 h-4 ${refreshKeywords.isPending ? 'animate-spin' : ''}`} />
-                            Refresh
+                            Refresh account keywords
                         </button>
                         <button
+                            type="button"
+                            disabled={busy}
                             onClick={() => setShowBulkImport(!showBulkImport)}
                             className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all duration-200"
                         >
@@ -169,6 +189,8 @@ function TrackerContent() {
                             Bulk
                         </button>
                         <button
+                            type="button"
+                            disabled={busy}
                             onClick={() => setShowAddForm(!showAddForm)}
                             className="btn-gradient btn-shimmer flex items-center gap-1.5 px-4 py-2 text-sm rounded-xl font-semibold"
                         >
@@ -187,11 +209,14 @@ function TrackerContent() {
                             <Upload className="w-4 h-4 text-slate-400" />
                             <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Bulk Import</span>
                         </div>
-                        <button onClick={() => { setShowBulkImport(false); setBulkText(''); }} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                        <button type="button" aria-label="Close keyword import" disabled={busy} onClick={() => { setShowBulkImport(false); setBulkText(''); }} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
                             <X className="w-4 h-4" />
                         </button>
                     </div>
                     <textarea
+                        disabled={busy}
+                        aria-label="Keywords to import, one per line"
+                        maxLength={101000}
                         value={bulkText}
                         onChange={(e) => setBulkText(e.target.value)}
                         placeholder={"Enter keywords, one per line:\ngold necklace\nsilver bracelet\ndiamond ring"}
@@ -201,8 +226,9 @@ function TrackerContent() {
                     <div className="flex items-center justify-between">
                         <span className="text-xs text-slate-400">{bulkText.split('\n').filter(k => k.trim()).length} keywords</span>
                         <button
+                            type="button"
                             onClick={handleBulkImport}
-                            disabled={!bulkText.trim() || bulkImport.isPending}
+                            disabled={!bulkText.trim() || busy}
                             className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
                         >
                             {bulkImport.isPending ? 'Importing...' : 'Import All'}
@@ -221,39 +247,44 @@ function TrackerContent() {
                                 <div className="glass-panel rounded-xl p-4 flex items-center gap-3 mb-4">
                                     <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0" />
                                     <input
+                                        disabled={busy}
                                         type="text"
+                                        aria-label="Keyword to track"
+                                        maxLength={200}
                                         placeholder="Enter a keyword to track (e.g. gold necklace)"
                                         value={newKeyword}
                                         onChange={(e) => setNewKeyword(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void handleAdd(); } }}
                                         className="input-premium flex-1 bg-transparent text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500"
                                         autoFocus
                                     />
                                     <button
+                                        type="button"
                                         onClick={handleAdd}
-                                        disabled={!newKeyword.trim() || addKeyword.isPending}
+                                        disabled={!newKeyword.trim() || busy}
                                         className="px-4 py-1.5 text-sm bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-50 transition-colors font-medium"
                                     >
                                         {addKeyword.isPending ? 'Adding...' : 'Add'}
                                     </button>
                                     <button
+                                        type="button"
+                                        aria-label="Close add keyword"
+                                        disabled={busy}
                                         onClick={() => { setShowAddForm(false); setNewKeyword(''); setAddError(null); }}
                                         className="p-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                                     >
                                         <X className="w-4 h-4" />
                                     </button>
                                 </div>
-                                {addError && <p className="text-xs text-red-500 dark:text-red-400 px-1 -mt-2 mb-4">{addError}</p>}
                             </>
                         )}
 
                         {/* Suggested Keywords */}
                         <SuggestedKeywords
                             trackedKeywords={keywords.map((kw: TrackedKeywordSummary) => kw.keyword.toLowerCase())}
-                            onTrack={async (keyword: string) => {
-                                try { await addKeyword.mutateAsync({ keyword }); } catch { /* swallow */ }
-                            }}
-                            isAdding={addKeyword.isPending}
+                            siteUrl={siteUrl}
+                            onTrack={async (keyword: string) => { await run(() => addKeyword.mutateAsync({ keyword }), 'Could not track suggested keyword. Please retry.'); }}
+                            isAdding={busy}
                         />
 
                         {/* Keyword List + History */}
@@ -263,7 +294,7 @@ function TrackerContent() {
                                     <div className="flex items-center justify-center py-12">
                                         <Loader2 className="w-6 h-6 text-slate-400 dark:text-slate-500 animate-spin" />
                                     </div>
-                                ) : keywords.length === 0 ? (
+                                ) : readError ? <p role="alert" className="p-4">Keyword list unavailable.</p> : keywords.length === 0 ? (
                                     <div className="text-center py-14 px-6">
                                         <Search className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-3 animate-float" />
                                         <p className="text-sm text-slate-500 dark:text-slate-400">No keywords tracked yet.</p>
@@ -282,6 +313,7 @@ function TrackerContent() {
                                                     isSelected={selectedKeywordId === kw.id}
                                                     onSelect={() => setSelectedKeywordId(kw.id)}
                                                     onDelete={() => handleDelete(kw.id, kw.keyword)}
+                                                    disabled={busy}
                                                 />
                                             </div>
                                         ))}
@@ -315,24 +347,24 @@ function TrackerContent() {
 }
 
 /** Single keyword row in the list */
-function KeywordRow({ keyword, isSelected, onSelect, onDelete }: {
+function KeywordRow({ keyword, isSelected, onSelect, onDelete, disabled }: {
     keyword: TrackedKeywordSummary;
     isSelected: boolean;
     onSelect: () => void;
     onDelete: () => void;
+    disabled: boolean;
 }) {
     const pos = keyword.currentPosition;
     const posFormatted = pos ? `#${Math.round(pos)}` : '—';
 
     return (
         <div
-            onClick={onSelect}
             className={`flex items-center justify-between px-4 py-3.5 cursor-pointer transition-all duration-200 border-l-2 ${isSelected
                 ? 'bg-blue-50/80 dark:bg-blue-900/20 border-blue-500 shadow-[inset_0_0_20px_rgba(59,130,246,0.05)]'
                 : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 border-transparent'
                 }`}
         >
-            <div className="flex-1 min-w-0">
+            <button type="button" onClick={onSelect} aria-pressed={isSelected} className="flex-1 min-w-0 text-left">
                 <p className="font-medium text-slate-900 dark:text-slate-200 text-sm truncate">{keyword.keyword}</p>
                 <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                     <span className="flex items-center gap-0.5">
@@ -347,9 +379,11 @@ function KeywordRow({ keyword, isSelected, onSelect, onDelete }: {
                         <span>{keyword.currentImpressions.toLocaleString()} imp</span>
                     )}
                 </div>
-            </div>
+            </button>
             <div className="flex items-center gap-1 shrink-0">
                 <button
+                    type="button"
+                    disabled={disabled}
                     onClick={(e) => { e.stopPropagation(); onDelete(); }}
                     className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-200"
                     title="Remove keyword"
@@ -369,8 +403,9 @@ function KeywordRow({ keyword, isSelected, onSelect, onDelete }: {
  * interactive chart that avoids charting library dependencies.
  */
 function KeywordHistoryChart({ keywordId }: { keywordId: string }) {
+    const gradientId = useId();
     const [days, setDays] = useState(30);
-    const { data, isLoading } = useKeywordHistory(keywordId, days);
+    const { data, isLoading, error, refetch } = useKeywordHistory(keywordId, days);
     const history = useMemo(() => data?.history ?? [], [data?.history]);
 
     // Compute chart dimensions
@@ -390,8 +425,9 @@ function KeywordHistoryChart({ keywordId }: { keywordId: string }) {
         const chartH = height - padding * 2;
 
         // Generate path points (inverted Y because lower position = better)
-        const points = history.map((h: RankHistoryPoint, i: number) => ({
-            x: padding + (i / (history.length - 1)) * chartW,
+        const start = Date.parse(history[0].date); const duration = Date.parse(history[history.length - 1].date) - start;
+        const points = history.map((h: RankHistoryPoint) => ({
+            x: padding + ((Date.parse(h.date) - start) / duration) * chartW,
             y: padding + ((h.position - minPos) / range) * chartH,
             ...h,
         }));
@@ -424,7 +460,7 @@ function KeywordHistoryChart({ keywordId }: { keywordId: string }) {
     /** Format date string for display */
     const formatDate = (dateStr: string) => {
         const d = new Date(dateStr);
-        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
     };
 
     return (
@@ -435,6 +471,8 @@ function KeywordHistoryChart({ keywordId }: { keywordId: string }) {
                 <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-0.5 border border-slate-200/50 dark:border-slate-700/50">
                     {[7, 14, 30, 60].map(d => (
                         <button
+                            type="button"
+                            aria-pressed={days === d}
                             key={d}
                             onClick={() => setDays(d)}
                             className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 ${days === d
@@ -448,7 +486,7 @@ function KeywordHistoryChart({ keywordId }: { keywordId: string }) {
                 </div>
             </div>
 
-            {isLoading ? (
+            {error ? <p role="alert">Position history unavailable. <button type="button" onClick={() => void refetch()}>Retry history</button></p> : isLoading ? (
                 <div className="flex items-center justify-center py-20">
                     <Loader2 className="w-6 h-6 text-slate-400 dark:text-slate-500 animate-spin" />
                 </div>
@@ -495,16 +533,16 @@ function KeywordHistoryChart({ keywordId }: { keywordId: string }) {
                     {/* SVG Chart */}
                     {chartData && (
                         <div className="relative">
-                            <svg viewBox={`0 0 ${chartData.width} ${chartData.height}`} className="w-full h-52">
+                            <svg role="img" aria-label={`Observed keyword position over ${days} days; lower positions are better`} viewBox={`0 0 ${chartData.width} ${chartData.height}`} className="w-full h-52">
                                 {/* Grid lines */}
                                 {[0.25, 0.5, 0.75].map(pct => {
                                     const y = 20 + pct * 160;
                                     return <line key={pct} x1="20" y1={y} x2="580" y2={y} stroke="currentColor" className="text-slate-100 dark:text-slate-800" strokeDasharray="4 4" />;
                                 })}
                                 {/* Area fill */}
-                                <path d={chartData.areaD} fill="url(#posGradient)" opacity="0.25" />
+                                <path d={chartData.areaD} fill={`url(#${gradientId}-area)`} opacity="0.25" />
                                 {/* Position line */}
-                                <path d={chartData.pathD} fill="none" stroke="url(#lineGradient)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+                                <path d={chartData.pathD} fill="none" stroke={`url(#${gradientId}-line)`} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
                                 {/* Data points with native tooltips */}
                                 {chartData.points.map((p: typeof chartData.points[0], i: number) => (
                                     <circle
@@ -514,7 +552,7 @@ function KeywordHistoryChart({ keywordId }: { keywordId: string }) {
                                         r="4"
                                         fill="white"
                                         className="dark:fill-slate-800"
-                                        stroke="url(#lineGradient)"
+                                        stroke={`url(#${gradientId}-line)`}
                                         strokeWidth="2"
                                         style={{ cursor: 'pointer' }}
                                     >
@@ -522,16 +560,17 @@ function KeywordHistoryChart({ keywordId }: { keywordId: string }) {
                                     </circle>
                                 ))}
                                 <defs>
-                                    <linearGradient id="posGradient" x1="0" y1="0" x2="0" y2="1">
+                                    <linearGradient id={`${gradientId}-area`} x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="0%" stopColor="#3b82f6" />
                                         <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0" />
                                     </linearGradient>
-                                    <linearGradient id="lineGradient" x1="0" y1="0" x2="1" y2="0">
+                                    <linearGradient id={`${gradientId}-line`} x1="0" y1="0" x2="1" y2="0">
                                         <stop offset="0%" stopColor="#3b82f6" />
                                         <stop offset="100%" stopColor="#8b5cf6" />
                                     </linearGradient>
                                 </defs>
                             </svg>
+                            <details><summary>Observation data (UTC dates)</summary><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr><th>Date</th><th>Position</th><th>Clicks</th><th>Impressions</th></tr></thead><tbody>{history.map(point => <tr key={point.date}><td>{point.date.slice(0, 10)}</td><td>{point.position}</td><td>{point.clicks}</td><td>{point.impressions}</td></tr>)}</tbody></table></div></details>
                             {/* Y-axis labels */}
                             <div className="absolute top-0 left-0 h-full flex flex-col justify-between py-3 text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                                 <span>#{Math.round(chartData.minPos)}</span>
@@ -560,12 +599,13 @@ function KeywordHistoryChart({ keywordId }: { keywordId: string }) {
  * Why dedup + filter: avoids showing duplicates across data sources
  * and hides keywords the user is already monitoring.
  */
-function SuggestedKeywords({ trackedKeywords, onTrack, isAdding }: {
+function SuggestedKeywords({ trackedKeywords, onTrack, isAdding, siteUrl }: {
     trackedKeywords: string[];
     onTrack: (keyword: string) => void;
     isAdding: boolean;
+    siteUrl?: string;
 }) {
-    const { data, isLoading } = useKeywordRecommendations();
+    const { data, isLoading, error, refetch } = useKeywordRecommendations(siteUrl);
     const [trackingKw, setTrackingKw] = useState<string | null>(null);
 
     const suggestions = useMemo(() => {
@@ -597,7 +637,9 @@ function SuggestedKeywords({ trackedKeywords, onTrack, isAdding }: {
         return result.slice(0, 15);
     }, [data, trackedKeywords]);
 
-    if (isLoading || suggestions.length === 0) return null;
+    if (error) return <p role="alert">Suggestions unavailable. <button type="button" onClick={() => void refetch()}>Retry suggestions</button></p>;
+    if (isLoading) return null;
+    if (!suggestions.length) return data?.warnings?.length ? <p role="status">Some recommendation sources are unavailable. Empty suggestions do not establish that no opportunities exist.</p> : null;
 
     const handleTrack = async (keyword: string) => {
         setTrackingKw(keyword);
@@ -610,6 +652,7 @@ function SuggestedKeywords({ trackedKeywords, onTrack, isAdding }: {
 
     return (
         <div className="glass-panel rounded-xl p-4 animate-fade-slide-up">
+            <p className="text-xs text-slate-500">Candidate ideas from returned query samples, not proof of missing visibility. {data?.warnings?.join('; ')}</p>
             <div className="flex items-center gap-2 mb-3">
                 <Sparkles className="w-4 h-4 text-violet-500 dark:text-violet-400" />
                 <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Suggested Keywords</span>
@@ -618,6 +661,7 @@ function SuggestedKeywords({ trackedKeywords, onTrack, isAdding }: {
             <div className="flex flex-wrap gap-2">
                 {suggestions.map(({ keyword, source }) => (
                     <button
+                        type="button"
                         key={keyword}
                         onClick={() => handleTrack(keyword)}
                         disabled={isAdding || trackingKw !== null}

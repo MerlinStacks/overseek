@@ -1,139 +1,58 @@
 import { prisma } from '../../../utils/prisma';
-import { Logger } from '../../../utils/logger';
 import { getHistoricalSales } from './sales';
 import type { BOMComponentMapping } from './types';
 
-export async function getBOMComponentMappings(
-    accountId: string,
-    productIds: string[],
-    variationWooIds: number[],
-    products: Array<{ id: string; wooId: number; isVariation?: boolean }>
-): Promise<BOMComponentMapping[]> {
-    if (productIds.length === 0 && variationWooIds.length === 0) return [];
-
-    const orConditions: Array<Record<string, unknown>> = [];
-    if (productIds.length > 0) {
-        orConditions.push({ childProductId: { in: productIds } });
-        orConditions.push({ internalProductId: { in: productIds } });
+export async function getBOMComponentMappings(accountId: string, productIds: string[], variationWooIds: number[],
+    products: Array<{ id: string; wooId: number; isVariation?: boolean; productId?: string }>): Promise<BOMComponentMapping[]> {
+    if (typeof accountId !== 'string' || !accountId.trim() || !Array.isArray(productIds) || productIds.length > 10000 || productIds.some(id => typeof id !== 'string' || !id || id.length > 128) || !Array.isArray(variationWooIds) || variationWooIds.length > 5000 || variationWooIds.some(id => !Number.isInteger(id) || id <= 0 || id > 2147483647) || !Array.isArray(products) || products.length > 15000) throw new Error('Invalid BOM forecast scope/coverage');
+    if (!productIds.length && !variationWooIds.length) return [];
+    const items = await prisma.bOMItem.findMany({ where: { bom: { product: { accountId } }, OR: [
+        { childProductId: { in: productIds } }, { internalProductId: { in: productIds } }, { childVariationId: { in: variationWooIds } },
+    ] }, take: 10001, select: { isActive: true, supplierItemId: true, childProductId: true, childVariationId: true, internalProductId: true, quantity: true, wasteFactor: true,
+        childProduct: { select: { id: true, accountId: true, wooId: true } }, childVariation: { select: { id: true, productId: true, wooId: true } }, internalProduct: { select: { id: true, accountId: true } },
+        bom: { select: { productId: true, variationId: true, product: { select: { accountId: true, wooId: true, boms: { select: { variationId: true } } } } } } } });
+    if (items.length > 10000) throw new Error('BOM forecast coverage limit exceeded');
+    const parentIds = [...new Set(items.map(item => item.bom.productId))];
+    // A one-level forecast cannot truthfully resolve a component of another bundle.
+    if (parentIds.length && await prisma.bOMItem.findFirst({ where: { isActive: true, childProductId: { in: parentIds }, bom: { product: { accountId } } }, select: { id: true } })) throw new Error('BOM forecast unavailable: nested/cyclic component demand requires multi-level planning');
+    const mappings = new Map<string, BOMComponentMapping>();
+    for (const item of items) {
+        if (item.childVariationId && !variationWooIds.includes(item.childVariationId)) continue; // Never substitute parent stock for an unrequested variation.
+        if ([item.childProductId, item.internalProductId, item.supplierItemId].filter(Boolean).length !== 1) throw new Error('BOM forecast incomplete: ambiguous component reference');
+        if (item.isActive === false || item.bom.product.accountId !== accountId || item.childProduct && item.childProduct.accountId !== accountId || item.internalProduct && item.internalProduct.accountId !== accountId) throw new Error('BOM forecast incomplete: inactive/foreign component');
+        let componentId: string; let componentWooId = 0;
+        if (item.childVariationId) {
+            const variant = products.find(product => product.isVariation && product.wooId === item.childVariationId && product.id === item.childVariation?.id);
+            if (!variant || item.childVariation.productId !== item.childProductId) throw new Error('BOM component variation unresolved');
+            componentId = variant.id; componentWooId = variant.wooId;
+        } else if (item.childProduct) { componentId = item.childProduct.id; componentWooId = item.childProduct.wooId; }
+        else if (item.internalProduct) componentId = item.internalProduct.id;
+        else throw new Error('BOM component unresolved');
+        const quantity = Number(item.quantity); const wasteFactor = Number(item.wasteFactor);
+        if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(wasteFactor) || wasteFactor < 0 || wasteFactor > 1) throw new Error('Invalid BOM demand quantity/waste');
+        if (!mappings.has(componentId)) mappings.set(componentId, { componentProductId: componentId, componentWooId, parentMappings: [] });
+        mappings.get(componentId)!.parentMappings.push({ parentProductId: item.bom.productId, parentWooId: item.bom.product.wooId, parentVariationId: item.bom.variationId,
+            quantity, wasteFactor, excludedVariationIds: item.bom.variationId === 0 ? item.bom.product.boms.map(bom => bom.variationId).filter(id => id > 0) : [] });
     }
-    if (variationWooIds.length > 0) {
-        orConditions.push({ childVariationId: { in: variationWooIds } });
-    }
-
-    const bomItems = await prisma.bOMItem.findMany({
-        where: { OR: orConditions },
-        select: {
-            childProductId: true,
-            childVariationId: true,
-            internalProductId: true,
-            quantity: true,
-            wasteFactor: true,
-            bom: {
-                select: {
-                    productId: true,
-                    variationId: true,
-                    product: { select: { accountId: true, wooId: true } }
-                }
-            }
-        }
-    });
-
-    const accountBomItems = bomItems.filter(item => item.bom.product.accountId === accountId);
-
-    Logger.debug('[InventoryForecastService] getBOMComponentMappings query', {
-        accountId,
-        productIdsSearched: productIds.length,
-        variationWooIdsSearched: variationWooIds.length,
-        bomItemsFound: bomItems.length,
-        accountBomItemsAfterFilter: accountBomItems.length
-    });
-
-    const variationWooIdToId = new Map<number, string>();
-    for (const p of products) {
-        if (p.isVariation && p.wooId > 0) variationWooIdToId.set(p.wooId, p.id);
-    }
-
-    const mappingsByComponent = new Map<string, BOMComponentMapping>();
-
-    for (const item of accountBomItems) {
-        let componentId: string | null = null;
-        let componentWooId = 0;
-
-        if (item.childVariationId && variationWooIdToId.has(item.childVariationId)) {
-            componentId = variationWooIdToId.get(item.childVariationId)!;
-            componentWooId = item.childVariationId;
-        } else if (item.childProductId) {
-            componentId = item.childProductId;
-            const component = await prisma.wooProduct.findUnique({ where: { id: componentId }, select: { wooId: true } });
-            componentWooId = component?.wooId || 0;
-        } else if (item.internalProductId) {
-            componentId = item.internalProductId;
-        }
-
-        if (!componentId) continue;
-
-        if (!mappingsByComponent.has(componentId)) {
-            mappingsByComponent.set(componentId, {
-                componentProductId: componentId,
-                componentWooId,
-                parentMappings: []
-            });
-        }
-
-        mappingsByComponent.get(componentId)!.parentMappings.push({
-            parentProductId: item.bom.productId,
-            parentWooId: item.bom.product.wooId,
-            parentVariationId: item.bom.variationId,
-            quantity: Number(item.quantity),
-            wasteFactor: Number(item.wasteFactor)
-        });
-    }
-
-    return Array.from(mappingsByComponent.values());
+    return [...mappings.values()];
 }
 
-export async function calculateBOMDerivedDemand(
-    accountId: string,
-    bomMappings: BOMComponentMapping[],
-    days: number
-): Promise<Map<string, number>> {
-    const derivedDemand = new Map<string, number>();
-    if (bomMappings.length === 0) return derivedDemand;
-
-    const parentWooIds = new Set<number>();
-    const parentVariationWooIds = new Set<number>();
-
-    for (const mapping of bomMappings) {
-        for (const parent of mapping.parentMappings) {
-            if (parent.parentVariationId > 0) {
-                parentVariationWooIds.add(parent.parentVariationId);
-            } else {
-                parentWooIds.add(parent.parentWooId);
-            }
-        }
+export async function calculateBOMDerivedDemand(accountId: string, mappings: BOMComponentMapping[], days: number): Promise<Map<string, number>> {
+    if (!accountId || !Number.isInteger(days) || days < 1 || days > 730 || mappings.length > 10000) throw new Error('Invalid BOM demand window/scope');
+    const result = new Map<string, number>();
+    if (!mappings.length) return result;
+    const products = new Set<number>(); const variants = new Set<number>(); const excluded: Record<number, number[]> = {};
+    for (const mapping of mappings) for (const parent of mapping.parentMappings) {
+        if (parent.parentVariationId > 0) variants.add(parent.parentVariationId);
+        else { products.add(parent.parentWooId); excluded[parent.parentWooId] = parent.excludedVariationIds || []; }
+        if (!Number.isFinite(parent.quantity) || parent.quantity <= 0 || !Number.isFinite(parent.wasteFactor) || parent.wasteFactor < 0 || parent.wasteFactor > 1) throw new Error('Invalid BOM mapping quantities');
     }
-
-    const parentSales = await getHistoricalSales(
-        accountId,
-        Array.from(parentWooIds),
-        Array.from(parentVariationWooIds),
-        days
-    );
-
-    for (const mapping of bomMappings) {
-        let totalDerivedDemand = 0;
-        for (const parent of mapping.parentMappings) {
-            const parentLookupId = parent.parentVariationId > 0 ? parent.parentVariationId : parent.parentWooId;
-            const parentSalesData = parentSales.get(parentLookupId) || [];
-            const totalParentSold = parentSalesData.reduce((sum, sale) => sum + sale.quantity, 0);
-            const avgDailyParentSales = days > 0 ? totalParentSold / days : 0;
-            const effectiveQuantity = parent.quantity * (1 + parent.wasteFactor);
-            totalDerivedDemand += avgDailyParentSales * effectiveQuantity;
-        }
-        if (totalDerivedDemand > 0) {
-            derivedDemand.set(mapping.componentProductId, totalDerivedDemand);
-        }
+    const sales = await getHistoricalSales(accountId, [...products], [...variants], days, excluded);
+    for (const mapping of mappings) {
+        let demand = 0;
+        for (const parent of mapping.parentMappings) demand += (sales.get(parent.parentVariationId || parent.parentWooId) || []).reduce((sum, sale) => sum + sale.quantity, 0) / days * parent.quantity * (1 + parent.wasteFactor);
+        if (!Number.isFinite(demand)) throw new Error('BOM demand overflow');
+        result.set(mapping.componentProductId, demand);
     }
-
-    return derivedDemand;
+    return result;
 }

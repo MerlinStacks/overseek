@@ -328,7 +328,7 @@ function App() {
                                                 <Route path={ROUTE_PATHS.emailLists} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><AudiencesPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.emails} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailDashboardPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.emailSettings} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailSettingsPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path={ROUTE_PATHS.emailLogs} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailLogsPage /></FeatureGuard></AccountGuard>} />
+                                                <Route path={ROUTE_PATHS.emailLogs} element={<AccountGuard><EmailLogsPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.smsLogs} element={<AccountGuard><SmsLogsPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.blockedContacts} element={<Navigate to={`${ROUTE_PATHS.contacts}?status=BLOCKED`} replace />} />
                                                 <Route path={ROUTE_PATHS.flows} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><FlowsPage /></FeatureGuard></AccountGuard>} />

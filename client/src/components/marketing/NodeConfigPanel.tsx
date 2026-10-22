@@ -33,7 +33,6 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
 }) => {
     const initialData = { ...((node?.data as Record<string, unknown> | undefined) || {}) };
     const [localData, setLocalData] = useState<NodeDataState>(initialData);
-    const [originalData, setOriginalData] = useState<NodeDataState>(initialData);
     const nodeId = node?.id;
     const syncedNodeIdRef = useRef<string | undefined>(undefined);
 
@@ -52,11 +51,11 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
         const snapshot = { ...(node.data as Record<string, unknown>) };
         queueMicrotask(() => {
             setLocalData(snapshot);
-            setOriginalData(snapshot);
         });
     }, [node, nodeId]);
 
     const handleSave = () => {
+        if (nodeId) onUpdate(nodeId, localData);
         onClose();
     };
 
@@ -64,9 +63,6 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
         if (!nodeId) {
             onClose();
             return;
-        }
-        if (JSON.stringify(localData) !== JSON.stringify(originalData)) {
-            onUpdate(nodeId, originalData);
         }
         onClose();
     };
@@ -86,7 +82,6 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
                 ...prev,
                 config: { ...(prev.config || {}), [key]: value }
             };
-            onUpdate(nodeId, next);
             return next;
         });
     }, [nodeId, onUpdate]);
@@ -99,7 +94,6 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
                 ...prev,
                 config: { ...(prev.config || {}), ...updates }
             };
-            onUpdate(nodeId, next);
             return next;
         });
     }, [nodeId, onUpdate]);
@@ -109,7 +103,6 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
 
         setLocalData((prev) => {
             const next = { ...prev, label };
-            onUpdate(nodeId, next);
             return next;
         });
     }, [nodeId, onUpdate]);
@@ -133,23 +126,25 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
     };
 
     const header = getPanelHeader();
+    const isEmailAction = node.type === 'action' && (!localData.config?.actionType || localData.config.actionType === 'SEND_EMAIL');
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 backdrop-blur-xs sm:p-6">
+            <div role="dialog" aria-modal="true" aria-labelledby="node-config-title" className={`bg-white rounded-xl shadow-2xl w-full flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 ${isEmailAction ? 'max-w-6xl max-h-[92dvh]' : 'max-w-xl max-h-[80dvh]'}`}>
                 {/* Header */}
-                <div className={`flex items-center justify-between px-6 py-4 border-b`}>
+                <div className={`flex shrink-0 items-center justify-between px-6 py-4 border-b`}>
                     <div className="flex items-center gap-3">
                         <div className={`p-2 rounded-lg bg-${header.color}-100`}>
                             {header.icon}
                         </div>
                         <div>
-                            <h3 className="font-semibold text-gray-900">{localData.label || header.title}</h3>
+                            <h3 id="node-config-title" className="font-semibold text-gray-900">{localData.label || header.title}</h3>
                             <p className="text-sm text-gray-500">{header.subtitle}</p>
                         </div>
                     </div>
                     <button
                         onClick={handleCancel}
+                        aria-label="Close configuration"
                         className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                     >
                         <X size={18} className="text-gray-500" />
@@ -157,11 +152,12 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
                     {/* Common: Label */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Label</label>
+                    <div className={isEmailAction ? 'max-w-md' : undefined}>
+                        <label htmlFor="node-config-label" className="block text-sm font-medium text-gray-700 mb-1">Label</label>
                         <input
+                            id="node-config-label"
                             type="text"
                             value={localData.label || ''}
                             onChange={(e) => updateLabel(e.target.value)}
@@ -206,7 +202,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
 
                 {/* Footer Actions */}
                 {issues.length > 0 && (
-                    <div className="border-t border-amber-100 bg-amber-50 px-6 py-3">
+                    <div className="shrink-0 border-t border-amber-100 bg-amber-50 px-6 py-3">
                         <div className="text-xs font-semibold uppercase tracking-wide text-amber-800">Non-blocking setup checks</div>
                         <div className="mt-2 space-y-1">
                             {issues.slice(0, 3).map((issue) => (
@@ -216,7 +212,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
                     </div>
                 )}
 
-                <div className="flex items-center justify-between px-6 py-4 border-t bg-gray-50">
+                <div className="flex shrink-0 items-center justify-between px-4 py-4 sm:px-6 border-t bg-gray-50">
                     <button
                         onClick={handleDelete}
                         className="flex items-center gap-1.5 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition-colors"
@@ -236,7 +232,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
                             className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors"
                         >
                             <Save size={16} />
-                            Save
+                            Apply to draft
                         </button>
                     </div>
                 </div>

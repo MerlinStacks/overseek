@@ -1,99 +1,34 @@
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
-import { cacheAside, CacheTTL, cacheDelete } from '../utils/cache';
-
-export interface PermissionSet {
-    [key: string]: boolean;
+import { cacheDelete } from '../utils/cache';
+export interface PermissionSet { [key: string]: boolean }
+function grants(value: unknown): PermissionSet {
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+        ? Object.fromEntries(Object.entries(value).filter(([key, grant]) => !['__proto__', 'constructor', 'prototype'].includes(key) && typeof grant === 'boolean')) : {};
 }
-
-/** Why namespace: permission lookups are hot-path, separate from other cache entries */
-const PERM_NAMESPACE = 'perms';
-
+const allowed = (permissions: PermissionSet, key: string) => Object.prototype.hasOwnProperty.call(permissions, key) && permissions[key] === true;
 export class PermissionService {
-    /**
-     * Resolve all permissions for a user within an account.
-     * Results are cached in Redis for 2 minutes to avoid repeated DB hits
-     * on dashboard loads that trigger many RBAC checks in parallel.
-     *
-     * Hierarchy:
-     * 1. SuperAdmin -> ALL TRUE
-     * 2. Owner/Admin Role -> ALL TRUE
-     * 3. Custom Role -> Defined in AccountRole.permissions
-     * 4. User-Specific Overrides -> AccountUser.permissions (merges on top of role)
-     */
+    /** Authorization reads are deliberately uncached: revocations must not depend on Redis availability/TTL. */
     static async resolvePermissions(userId: string, accountId: string): Promise<PermissionSet> {
-        return cacheAside(
-            `${userId}:${accountId}`,
-            async () => {
-                try {
-                    const user = await prisma.user.findUnique({
-                        where: { id: userId },
-                        select: { isSuperAdmin: true }
-                    });
-
-                    if (user?.isSuperAdmin) {
-                        return { '*': true };
-                    }
-
-                    const accountUser = await prisma.accountUser.findUnique({
-                        where: { userId_accountId: { userId, accountId } },
-                        include: { maxRole: true }
-                    });
-
-                    if (!accountUser) {
-                        return {};
-                    }
-
-                    if (accountUser.role === 'OWNER' || accountUser.role === 'ADMIN') {
-                        return { '*': true };
-                    }
-
-                    let permissions: PermissionSet = {};
-
-                    if (accountUser.maxRole && accountUser.maxRole.permissions) {
-                        const rolePerms = accountUser.maxRole.permissions as PermissionSet;
-                        permissions = { ...permissions, ...rolePerms };
-                    }
-
-                    if (accountUser.permissions) {
-                        const userPerms = accountUser.permissions as PermissionSet;
-                        permissions = { ...permissions, ...userPerms };
-                    }
-
-                    return permissions;
-                } catch (error) {
-                    Logger.error('Failed to resolve permissions', { userId, accountId, error });
-                    return {};
-                }
-            },
-            { ttl: CacheTTL.DASHBOARD, namespace: PERM_NAMESPACE }
-        );
+        if (!userId?.trim() || !accountId?.trim()) return {};
+        try {
+            const user = await prisma.user.findUnique({ where: { id: userId }, select: { isSuperAdmin: true } });
+            if (user?.isSuperAdmin === true) return { '*': true };
+            const membership = await prisma.accountUser.findUnique({ where: { userId_accountId: { userId, accountId } }, include: { maxRole: true } });
+            if (!membership) return {};
+            if (membership.role === 'OWNER' || membership.role === 'ADMIN') return { '*': true };
+            return { ...grants(membership.maxRole?.permissions), ...grants(membership.permissions) };
+        } catch (error) { Logger.error('Failed to resolve permissions', { userId, accountId, error }); return {}; }
     }
-
-    /**
-     * Check if a user has a specific permission.
-     * Handles wildcard '*' access.
-     */
     static async hasPermission(userId: string, accountId: string, permission: string): Promise<boolean> {
-        const perms = await this.resolvePermissions(userId, accountId);
-        if (perms['*']) return true;
-        return !!perms[permission];
+        const permissions = await this.resolvePermissions(userId, accountId); return allowed(permissions, '*') || allowed(permissions, permission);
     }
-
-    /**
-     * Check if a user has at least one permission from a set.
-     */
-    static async hasAnyPermission(userId: string, accountId: string, permissions: string[]): Promise<boolean> {
-        const perms = await this.resolvePermissions(userId, accountId);
-        if (perms['*']) return true;
-        return permissions.some(permission => !!perms[permission]);
+    static async hasAnyPermission(userId: string, accountId: string, keys: string[]): Promise<boolean> {
+        const permissions = await this.resolvePermissions(userId, accountId); return allowed(permissions, '*') || keys.some(key => allowed(permissions, key));
     }
-
-    /**
-     * Bust the permission cache for a user+account pair.
-     * Call this when roles or permissions are modified.
-     */
+    /** Remove legacy cache entries; they are no longer an authority for authorization. */
     static async invalidatePermissions(userId: string, accountId: string): Promise<void> {
-        await cacheDelete(`${userId}:${accountId}`, { namespace: PERM_NAMESPACE });
+        try { await cacheDelete(`${userId}:${accountId}`, { namespace: 'perms' }); }
+        catch { Logger.warn('Legacy permission cache cleanup unavailable', { userId, accountId }); }
     }
 }

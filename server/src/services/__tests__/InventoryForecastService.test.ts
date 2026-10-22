@@ -113,25 +113,7 @@ describe('InventoryForecastService', () => {
 
             // Mock ES sales data
             (esClient.search as any).mockResolvedValue({
-                aggregations: {
-                    products: {
-                        by_product: {
-                            buckets: [
-                                {
-                                    key: 101,
-                                    sales_over_time: {
-                                        by_day: {
-                                            buckets: [
-                                                { key_as_string: '2026-01-10', doc_count: 5 },
-                                                { key_as_string: '2026-01-11', doc_count: 3 }
-                                            ]
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
+                aggregations: { by_day: { buckets: [] } }
             });
 
             const result = await InventoryForecastService.getSkuForecasts('acc_123');
@@ -166,7 +148,7 @@ describe('InventoryForecastService', () => {
                     purchaseOrder: { expectedDate: new Date(), orderDate: new Date(), createdAt: new Date() }
                 }
             ]);
-            (esClient.search as any).mockResolvedValue({ aggregations: { products: { by_product: { buckets: [] } } } });
+            (esClient.search as any).mockResolvedValue({ aggregations: { by_day: { buckets: [] } } });
 
             const [result] = await InventoryForecastService.getSkuForecasts('acc_123');
 
@@ -203,7 +185,7 @@ describe('InventoryForecastService', () => {
                     purchaseOrder: { expectedDate: lateDate, orderDate: new Date(), createdAt: new Date() }
                 }
             ]);
-            (esClient.search as any).mockResolvedValue({ aggregations: { products: { by_product: { buckets: [] } } } });
+            (esClient.search as any).mockResolvedValue({ aggregations: { by_day: { buckets: [] } } });
 
             const [result] = await InventoryForecastService.getSkuForecasts('acc_123');
 
@@ -239,7 +221,7 @@ describe('InventoryForecastService', () => {
                 }
             ]);
 
-            (esClient.search as any).mockResolvedValue({ aggregations: { products: { by_product: { buckets: [] } } } });
+            (esClient.search as any).mockResolvedValue({ aggregations: { by_day: { buckets: [] } } });
 
             const result = await InventoryForecastService.getSkuForecasts('acc_123');
 
@@ -265,7 +247,7 @@ describe('InventoryForecastService', () => {
                 }
             ]);
 
-            (esClient.search as any).mockResolvedValue({ aggregations: { products: { by_product: { buckets: [] } } } });
+            (esClient.search as any).mockResolvedValue({ aggregations: { by_day: { buckets: [] } } });
 
             const result = await InventoryForecastService.getSkuForecasts('acc_123');
 
@@ -273,7 +255,7 @@ describe('InventoryForecastService', () => {
             expect(result.length).toBe(2);
         });
 
-        it('should handle Elasticsearch failures gracefully', async () => {
+        it('should expose unavailable sales history instead of inventing empty demand', async () => {
             (prisma.wooProduct.findMany as any).mockResolvedValue([
                 {
                     id: 'prod_1', wooId: 101, name: 'Widget',
@@ -286,10 +268,7 @@ describe('InventoryForecastService', () => {
 
             (esClient.search as any).mockRejectedValue(new Error('ES connection failed'));
 
-            // Should not throw, should return forecasts with empty sales data
-            const result = await InventoryForecastService.getSkuForecasts('acc_123');
-
-            expect(result.length).toBe(1);
+            await expect(InventoryForecastService.getSkuForecasts('acc_123')).rejects.toThrow('ES connection failed');
         });
     });
 
@@ -312,7 +291,7 @@ describe('InventoryForecastService', () => {
                 }
             ]);
 
-            (esClient.search as any).mockResolvedValue({ aggregations: { products: { by_product: { buckets: [] } } } });
+            (esClient.search as any).mockResolvedValue({ aggregations: { by_day: { buckets: [] } } });
 
             const result = await InventoryForecastService.getStockoutAlerts('acc_123');
 
@@ -345,22 +324,7 @@ describe('InventoryForecastService', () => {
             ]);
 
             (esClient.search as any).mockResolvedValue({
-                aggregations: {
-                    products: {
-                        by_product: {
-                            buckets: [{
-                                key: 101,
-                                sales_over_time: {
-                                    by_day: {
-                                        buckets: [
-                                            { key_as_string: '2026-01-10', doc_count: 5 }
-                                        ]
-                                    }
-                                }
-                            }]
-                        }
-                    }
-                }
+                aggregations: { by_day: { buckets: [] } }
             });
 
             const result = await InventoryForecastService.getSkuForecastDetail('acc_123', 101);

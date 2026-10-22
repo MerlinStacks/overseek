@@ -1,123 +1,67 @@
-/**
- * OAuth URL Construction Helpers
- *
- * Why: All OAuth route files duplicated URL-building logic using raw string
- * concatenation, which silently produced malformed redirect URLs behind
- * reverse proxies (wrong host/port, missing `?` separator, whitespace).
- * This module centralises that logic with the `URL` API for correctness.
- */
+import type { FastifyRequest, FastifyReply } from 'fastify';
+import crypto from 'node:crypto';
+import { z } from 'zod';
+import { prisma } from '../utils/prisma';
+import { PermissionService } from '../services/PermissionService';
 
-import { FastifyRequest } from 'fastify';
-import crypto from 'crypto';
-import { redisClient } from '../utils/redis';
-
-/**
- * Derive the external-facing API base URL.
- * Prefers `API_URL` env (set by the admin for proxy setups), otherwise
- * falls back to per-request origin built from Fastify's protocol/hostname.
- */
-export function getApiBase(request: FastifyRequest): string {
-    const envUrl = process.env.API_URL?.replace(/\/+$/, '').trim();
-    if (envUrl) return envUrl;
-    return `${request.protocol}://${request.hostname}`;
+function origin(value: string | undefined, development: string): string {
+    if (!value && process.env.NODE_ENV === 'production') throw new Error('Public OAuth origin is not configured');
+    const url = new URL(value?.trim() || development);
+    if (url.username || url.password || url.search || url.hash || url.pathname !== '/' ||
+        (url.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname)))) throw new Error('Invalid public OAuth origin');
+    return url.origin;
 }
-
-/**
- * Build a fully-qualified OAuth callback URL.
- *
- * @param request  - Current Fastify request (used as fallback origin).
- * @param pathSuffix - Path segment after `/api/oauth/`, e.g. `google/callback`.
- * @returns Absolute URL with no trailing whitespace.
- */
-export function buildCallbackUrl(request: FastifyRequest, pathSuffix: string): string {
-    const base = getApiBase(request);
-    return `${base}/api/oauth/${pathSuffix}`.trim();
+export function getApiBase(_request: FastifyRequest): string { return origin(process.env.API_URL, 'http://localhost:3000'); }
+export function getAppUrl(): string { return origin(process.env.APP_URL, 'http://localhost:5173'); }
+export function buildCallbackUrl(request: FastifyRequest, suffix: string): string {
+    if (!/^[a-z]+(?:-[a-z]+)*(?:\/[a-z]+(?:-[a-z]+)*)*$/.test(suffix)) throw new Error('Invalid callback path');
+    return `${getApiBase(request)}/api/oauth/${suffix}`;
 }
-
-/**
- * Derive the external-facing frontend/app base URL.
- * Uses `APP_URL` env, defaults to the dev server.
- */
-export function getAppUrl(): string {
-    return (process.env.APP_URL?.replace(/\/+$/, '').trim()) || 'http://localhost:5173';
+export function relativeOauthRedirect(path: string): string {
+    if (typeof path !== 'string' || path.length > 1000 || !path.startsWith('/') || path.startsWith('//') || path.includes('\\') || Array.from(path).some(c => c.charCodeAt(0) <= 32)) throw new Error('Invalid redirect');
+    const url = new URL(path, 'https://local.invalid');
+    if (url.origin !== 'https://local.invalid') throw new Error('Invalid redirect');
+    return `${url.pathname}${url.search}${url.hash}`;
 }
-
-/**
- * Build a frontend redirect URL with properly-encoded query parameters.
- *
- * Why: Naively appending `&key=value` breaks when the path does not already
- * contain a `?`.  Using the `URL` API guarantees correct separators and
- * encoding regardless of the shape of `path`.
- *
- * @param path   - Relative path (e.g. `/marketing?tab=ads`) or absolute URL.
- * @param params - Key/value pairs to append as query parameters.
- * @returns Absolute URL ready for `reply.redirect()`.
- */
-export function buildFrontendUrl(
-    path: string,
-    params: Record<string, string> = {}
-): string {
-    const appUrl = getAppUrl();
-
-    // If path is already absolute, use it directly; otherwise prepend appUrl
-    const fullUrl = path.startsWith('http') ? path : `${appUrl}${path}`;
-
-    const url = new URL(fullUrl);
-    for (const [key, value] of Object.entries(params)) {
-        url.searchParams.set(key, value);
-    }
+export function buildFrontendUrl(path: string, params: Record<string, string> = {}): string {
+    const url = new URL(relativeOauthRedirect(path), getAppUrl());
+    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
     return url.toString();
 }
-
-type OauthStatePayload = {
-    accountId: string;
-    frontendRedirect: string;
-    reconnectId?: string;
-    provider: string;
-};
-
-function getOauthStateSecret(): string {
-    return process.env.OAUTH_STATE_SECRET || process.env.JWT_SECRET || 'local-dev-oauth-state-secret';
+const payloadSchema = z.object({ accountId: z.string().min(1).max(200), userId: z.string().min(1).max(200), frontendRedirect: z.string().transform(relativeOauthRedirect),
+    reconnectId: z.string().min(1).max(200).optional(), provider: z.enum(['GOOGLE_ADS', 'META_ADS', 'META_MESSAGING', 'SEARCH_CONSOLE']), callbackUrl: z.string().url().max(2000) }).strict();
+type Payload = z.infer<typeof payloadSchema>;
+const hash = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
+const cookieName = (token: string) => `oauth_shared_${token.slice(0, 16)}`;
+function cookie(reply: FastifyReply, token: string, browser: string, age: number) {
+    reply.header('Set-Cookie', `${cookieName(token)}=${browser}; HttpOnly; SameSite=Lax; Path=/api/oauth; Max-Age=${age}${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`);
 }
-
-export async function createSignedOauthState(payload: OauthStatePayload): Promise<string> {
-    const nonce = crypto.randomBytes(16).toString('hex');
-    const exp = Date.now() + (10 * 60 * 1000);
-    const body = { ...payload, nonce, exp };
-    const encodedBody = Buffer.from(JSON.stringify(body)).toString('base64url');
-    const signature = crypto.createHmac('sha256', getOauthStateSecret()).update(encodedBody).digest('base64url');
-
-    try {
-        await redisClient.set(`oauth:state:${nonce}`, '1', 'EX', 10 * 60);
-    } catch {
-        // Keep OAuth operational if Redis is temporarily unavailable.
-    }
-
-    return `${encodedBody}.${signature}`;
+export async function assertOauthPermission(userId: string, accountId: string, provider: string) {
+    if (!await PermissionService.hasPermission(userId, accountId, provider === 'META_MESSAGING' ? 'manage_channels' : 'manage_marketing')) throw new Error('Connection permission required');
 }
-
-export async function verifySignedOauthState<T extends OauthStatePayload>(state: string): Promise<T | null> {
-    if (!state || !state.includes('.')) return null;
-
-    const [encodedBody, signature] = state.split('.', 2);
-    const expectedSignature = crypto.createHmac('sha256', getOauthStateSecret()).update(encodedBody).digest('base64url');
-
-    if (signature !== expectedSignature) return null;
-
-    try {
-        const parsed = JSON.parse(Buffer.from(encodedBody, 'base64url').toString('utf-8')) as T & { nonce: string; exp: number };
-        if (!parsed?.nonce || !parsed?.exp || parsed.exp < Date.now()) return null;
-
-        try {
-            const redisKey = `oauth:state:${parsed.nonce}`;
-            const consumed = await redisClient.del(redisKey);
-            if (consumed === 0) return null;
-        } catch {
-            // If Redis is unavailable, signature+expiry still protects integrity.
-        }
-
-        return parsed as T;
-    } catch {
-        return null;
-    }
+/** Name retained for callers; state is now opaque, durable and browser-bound, not a signed tenant assertion. */
+export async function createSignedOauthState(input: Payload, reply: FastifyReply): Promise<string> {
+    const payload = payloadSchema.parse(input);
+    await assertOauthPermission(payload.userId, payload.accountId, payload.provider);
+    if (payload.reconnectId && !await prisma.adAccount.findFirst({ where: { id: payload.reconnectId, accountId: payload.accountId, platform: payload.provider === 'GOOGLE_ADS' ? 'GOOGLE' : 'META' }, select: { id: true } })) throw new Error('Invalid reconnection target');
+    const token = crypto.randomBytes(32).toString('hex'), browser = crypto.randomBytes(32).toString('hex');
+    await prisma.oauthConnectionState.create({ data: { tokenHash: hash(token), browserHash: hash(browser), provider: payload.provider, userId: payload.userId, accountId: payload.accountId,
+        redirectPath: payload.frontendRedirect, callbackUrl: payload.callbackUrl, reconnectId: payload.reconnectId, expiresAt: new Date(Date.now() + 600000) } });
+    cookie(reply, token, browser, 600);
+    return token;
+}
+export async function verifySignedOauthState(state: string, request: FastifyRequest, reply: FastifyReply, provider: Payload['provider']): Promise<Payload | null> {
+    if (typeof state !== 'string' || !/^[a-f0-9]{64}$/.test(state)) return null;
+    const matches = (request.headers.cookie || '').split(';').map(part => part.trim().split('=')).filter(([name]) => name === cookieName(state));
+    if (matches.length !== 1 || !/^[a-f0-9]{64}$/.test(matches[0][1] || '')) return null;
+    const tokenHash = hash(state), browserHash = hash(matches[0][1]);
+    const grant = await prisma.oauthConnectionState.findUnique({ where: { tokenHash } });
+    if (!grant || grant.provider !== provider || grant.browserHash !== browserHash || grant.consumedAt || grant.expiresAt <= new Date()) return null;
+    const parsed = payloadSchema.safeParse({ accountId: grant.accountId, userId: grant.userId, provider: grant.provider, frontendRedirect: grant.redirectPath, callbackUrl: grant.callbackUrl, ...(grant.reconnectId ? { reconnectId: grant.reconnectId } : {}) });
+    if (!parsed.success) return null;
+    const claimed = await prisma.oauthConnectionState.updateMany({ where: { tokenHash, browserHash, provider, consumedAt: null, expiresAt: { gt: new Date() } }, data: { consumedAt: new Date() } });
+    if (claimed.count !== 1) return null;
+    cookie(reply, state, '', 0);
+    await assertOauthPermission(grant.userId, grant.accountId, provider);
+    return parsed.data;
 }

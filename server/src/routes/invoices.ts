@@ -239,7 +239,7 @@ const invoicesRoutes: FastifyPluginAsync = async (fastify) => {
             const artifact = await canonicalInvoiceService.getOrQueue(accountId, orderId, {
                 forceRegenerate: request.body?.forceRegenerate === true,
             });
-            const settled: any = await canonicalInvoiceService.waitForReady(artifact.id, 15000, 300);
+            const settled = await canonicalInvoiceService.waitForReady(artifact, 15000, 300);
 
             if (canonicalInvoiceService.isReadableReady(settled)) {
                 const downloadUrl = buildArtifactDownloadUrl(request, settled.id);
@@ -253,16 +253,16 @@ const invoicesRoutes: FastifyPluginAsync = async (fastify) => {
                 };
             }
 
-            if (settled?.status === 'failed') {
+            if (settled?.status === 'failed' || settled?.status === 'uncertain') {
                 const retryAfterSeconds = request.body?.regenerateAttempt === true ? REGENERATE_COOLDOWN_SECONDS : undefined;
                 if (retryAfterSeconds) {
                     reply.header('Retry-After', String(retryAfterSeconds));
                 }
                 return reply.code(409).send({
                     success: false,
-                    status: 'failed',
+                    status: settled.status,
                     invoice_ref: settled.id,
-                    error: settled.errorMessage || 'Invoice generation failed',
+                    error: 'Invoice generation requires reconciliation before retrying',
                     ...(retryAfterSeconds ? { retry_after_seconds: retryAfterSeconds } : {}),
                 });
             }
@@ -274,6 +274,7 @@ const invoicesRoutes: FastifyPluginAsync = async (fastify) => {
                 error: 'Invoice generation is pending',
             });
         } catch (error) {
+            if ((error as { statusCode?: number }).statusCode === 409) return reply.code(409).send({ success: false, status: 'reconciliation_required', error: 'Existing invoice requires reconciliation; automatic regeneration is disabled' });
             if (error instanceof MissingInvoiceTemplateError) {
                 Logger.warn('Canonical invoice generation skipped: missing invoice template', { accountId, orderId });
                 return reply.code(409).send({

@@ -101,6 +101,12 @@ export class SchedulerService {
                     break;
 
                 // Maintenance jobs
+                case 'order-tag-index-recovery':
+                    await (await import('../OrderTagIndexOutbox')).drainOrderTagIndexes(50);
+                    break;
+                case 'oauth-state-cleanup':
+                    await (await import('../../utils/prisma')).prisma.oauthConnectionState.deleteMany({ where: { expiresAt: { lt: new Date(Date.now() - 86400000) } } });
+                    break;
                 case 'contact-projection-recovery':
                     await (await import('../ContactProjection')).drainContactProjections(250);
                     break;

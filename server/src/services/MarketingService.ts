@@ -17,6 +17,10 @@ import { campaignTrackingService } from './CampaignTrackingService';
 import { automationAnalyticsService } from './AutomationAnalyticsService';
 import { QueueFactory, QUEUES } from './queue/QueueFactory';
 import { assertAutomationFlowCanRun } from './automation/FlowValidation';
+import { MarketingAudienceService } from './MarketingAudienceService';
+import { campaignSubjectVariant } from '../utils/marketingExperiment';
+import { assertBroadcastReady } from '../utils/marketingReadiness';
+import { canonicalEmailDesign } from './EmailDesignCompilation';
 
 export class MarketingService {
     private segmentService: SegmentService;
@@ -164,7 +168,8 @@ export class MarketingService {
                 accountId,
                 name: data.name || 'Untitled Campaign',
                 subject: data.subject || '',
-                content: data.content || '',
+                content: data.designJson ? canonicalEmailDesign(data.designJson, data.content || '') : data.content || '',
+                ...(data.designJson ? { designJson: data.designJson } : {}),
                 status: 'DRAFT',
                 scheduledAt: data.scheduledAt,
                 segmentId: segmentId,
@@ -174,18 +179,26 @@ export class MarketingService {
     }
 
     async updateCampaign(id: string, accountId: string, data: Partial<MarketingCampaign>) {
-        const { id: _, accountId: __, createdAt: ___, ...updateData } = data;
-        return prisma.marketingCampaign.updateMany({
-            where: { id, accountId },
-            data: { ...(updateData as any), updatedAt: new Date() }
+        const compiled = data.designJson ? canonicalEmailDesign(data.designJson, data.content || '') : data.content;
+        const changed = await prisma.marketingCampaign.updateMany({
+            where: { id, accountId, status: 'DRAFT', sentAt: null },
+            data: {
+                ...(typeof data.name === 'string' ? { name: data.name } : {}),
+                ...(typeof data.subject === 'string' ? { subject: data.subject } : {}),
+                ...(typeof compiled === 'string' ? { content: compiled } : {}),
+                ...(data.designJson !== undefined ? { designJson: data.designJson } : {}),
+                updatedAt: new Date(),
+            }
         });
+        if (!changed.count) throw Object.assign(new Error('Only unsent drafts can be edited. Unschedule first or duplicate this broadcast.'), { statusCode: 409 });
+        return changed;
     }
 
     async deleteCampaign(id: string, accountId: string) {
         return prisma.marketingCampaign.deleteMany({ where: { id, accountId } });
     }
 
-    async sendTestEmail(campaignId: string, accountId: string, email: string) {
+    async sendTestEmail(campaignId: string, accountId: string, email: string, variant: 'A' | 'B' = 'A') {
         const recipientEmail = email?.trim();
         if (!recipientEmail || !/^\S+@\S+\.\S+$/.test(recipientEmail)) {
             throw new Error('Valid test email is required');
@@ -229,7 +242,7 @@ export class MarketingService {
             accountId,
             defaultEmailAccount.id,
             recipientEmail,
-            resolveMergeTags(campaign.subject, context),
+            resolveMergeTags(variant === 'B' && campaign.subjectB ? campaign.subjectB : campaign.subject, context),
             await resolveMergeTagsWithDynamicProducts(campaign.content, context),
             undefined,
             { source: 'TEST', sourceId: campaignId, category: 'MARKETING', listId: campaign.listId || undefined }
@@ -247,6 +260,7 @@ export class MarketingService {
         const campaign = await this.getCampaign(campaignId, accountId);
         if (!campaign) throw new Error('Campaign not found');
         if (campaign.status === 'SENT') return { success: true, count: campaign.sentCount };
+        assertBroadcastReady(campaign);
         if (!campaign.subject?.trim() || !campaign.content?.trim()) {
             throw new Error('Campaign must have subject and content before sending');
         }
@@ -303,16 +317,30 @@ export class MarketingService {
             : undefined;
 
         const sendToBatch = async (customers: Array<{ id: string; email: string | null; firstName?: string | null; lastName?: string | null }>) => {
+            const exclusions = await new MarketingAudienceService().exclusions(accountId, customers);
+            let customerIndex = 0;
             for (const customer of customers) {
+                const exclusion = exclusions[customerIndex++];
                 const recipientEmail = customer.email?.trim();
                 if (!recipientEmail) continue;
                 const recipientKey = recipientEmail.toLowerCase();
                 if (seenRecipients.has(recipientKey)) continue;
                 seenRecipients.add(recipientKey);
 
+                if (exclusion) {
+                    skippedCount++;
+                    await prisma.emailLog.upsert({
+                        where: { accountId_idempotencyKey: { accountId, idempotencyKey: `campaign:${campaignId}:${recipientKey}` } },
+                        create: { accountId, emailAccountId: defaultEmailAccount.id, to: recipientEmail, subject: campaign.subject, status: 'SKIPPED', source: 'CAMPAIGN', sourceId: campaignId, idempotencyKey: `campaign:${campaignId}:${recipientKey}`, canRetry: false, errorMessage: `Audience exclusion: ${exclusion}` },
+                        update: {},
+                    });
+                    continue;
+                }
+
                 processedCount++;
                 try {
-                    const subject = resolveMergeTags(campaign.subject, {
+                    const variant = campaign.subjectB ? campaignSubjectVariant(campaignId, recipientEmail) : undefined;
+                    const subject = resolveMergeTags(variant === 'B' ? campaign.subjectB! : campaign.subject, {
                         customer,
                         store: { url: storeUrl }
                     });
@@ -332,6 +360,7 @@ export class MarketingService {
                         undefined,
                         {
                             source: 'CAMPAIGN', sourceId: campaignId, listId: campaign.listId || undefined,
+                            campaignVariant: variant,
                             idempotencyKey: `campaign:${campaignId}:${recipientEmail.toLowerCase()}`
                         }
                     );
@@ -380,7 +409,7 @@ export class MarketingService {
                     });
 
                     if (memberships.length === 0) break;
-                    await sendToBatch(memberships.map((m) => ({ id: m.id, email: m.email })));
+                    await sendToBatch(memberships.map((m) => ({ id: m.id, email: m.email, isSubscribed: true })));
 
                     if (memberships.length < BATCH_SIZE) break;
                     cursor = memberships[memberships.length - 1].id;
@@ -451,11 +480,12 @@ export class MarketingService {
         }
     }
 
-    async scheduleCampaign(campaignId: string, accountId: string, scheduledAt: Date) {
+    async scheduleCampaign(campaignId: string, accountId: string, scheduledAt: Date, scheduleTimezone = 'UTC') {
         const campaign = await this.getCampaign(campaignId, accountId);
         if (!campaign) {
             throw new Error('Campaign not found');
         }
+        assertBroadcastReady(campaign);
 
         if (campaign.status === 'SENT') {
             throw new Error('Campaign already sent');
@@ -472,7 +502,7 @@ export class MarketingService {
 
         await this.removeScheduledCampaignJob(campaignId);
 
-        await prisma.marketingCampaign.updateMany({
+        const changed = await prisma.marketingCampaign.updateMany({
             where: {
                 id: campaignId,
                 accountId,
@@ -480,9 +510,11 @@ export class MarketingService {
             },
             data: {
                 status: 'SCHEDULED',
-                scheduledAt
+                scheduledAt,
+                scheduleTimezone,
             }
         });
+        if (!changed.count) throw Object.assign(new Error('Campaign is no longer schedulable'), { statusCode: 409 });
 
         const queue = QueueFactory.getQueue(QUEUES.CAMPAIGNS);
         await queue.add(
@@ -498,7 +530,7 @@ export class MarketingService {
             }
         );
 
-        return { scheduled: true, scheduledAt };
+        return { scheduled: true, scheduledAt, scheduleTimezone };
     }
 
     async unscheduleCampaign(campaignId: string, accountId: string) {
@@ -513,12 +545,12 @@ export class MarketingService {
 
         await this.removeScheduledCampaignJob(campaignId);
 
-        await prisma.marketingCampaign.updateMany({
+        const changed = await prisma.marketingCampaign.updateMany({
             where: { id: campaignId, accountId, status: 'SCHEDULED' },
-            data: { status: 'DRAFT', scheduledAt: null }
+            data: { status: 'DRAFT', scheduledAt: null, scheduleTimezone: null }
         });
 
-        return { unscheduled: true };
+        return changed.count ? { unscheduled: true } : { unscheduled: false, reason: 'not_scheduled' as const };
     }
 
     async enqueueCampaignSend(campaignId: string, accountId: string) {
@@ -526,6 +558,7 @@ export class MarketingService {
         if (!campaign) {
             throw new Error('Campaign not found');
         }
+        assertBroadcastReady(campaign);
 
         if (['SENDING', 'DEFERRED'].includes(campaign.status)) {
             return { queued: false, reason: 'already_sending' as const };
@@ -795,46 +828,12 @@ export class MarketingService {
             || {};
 
         if (id) {
-            const existing = await prisma.marketingAutomation.findFirst({
-                where: { id, accountId },
-                select: {
-                    id: true,
-                    name: true,
-                    triggerType: true,
-                    triggerConfig: true,
-                    flowDefinition: true,
-                    isActive: true
-                }
-            });
-            if (!existing) {
-                throw new Error('Automation not found');
-            }
-
-            const nextIsActive =
-                typeof isActive === 'boolean'
-                    ? isActive
-                    : existing.isActive;
-
-            if (nextIsActive) {
-                assertAutomationFlowCanRun(flowDefinition || existing.flowDefinition as any);
-            }
-
-            return prisma.marketingAutomation.update({
-                where: { id },
-                data: {
-                    name: name || existing.name,
-                    triggerType: resolvedTriggerType || existing.triggerType,
-                    triggerConfig: resolvedTriggerConfig || existing.triggerConfig,
-                    isActive: nextIsActive,
-                    flowDefinition: flowDefinition || existing.flowDefinition,
-                    status: nextIsActive ? 'ACTIVE' : 'PAUSED'
-                }
-            });
+            throw Object.assign(new Error('Use the revision-checked draft workspace or the status endpoint to update a flow'), { statusCode: 409 });
         }
 
         const nextIsActive = Boolean(isActive);
         if (nextIsActive) {
-            assertAutomationFlowCanRun(flowDefinition || { nodes: [], edges: [] });
+            throw Object.assign(new Error('New flows start disabled. Review and publish a draft before enabling.'), { statusCode: 400 });
         }
 
         return prisma.marketingAutomation.create({
@@ -844,7 +843,8 @@ export class MarketingService {
                 triggerType: resolvedTriggerType || 'NONE',
                 triggerConfig: resolvedTriggerConfig,
                 isActive: nextIsActive,
-                flowDefinition: flowDefinition || { nodes: [], edges: [] },
+                flowDefinition: { nodes: [], edges: [] },
+                draftDefinition: flowDefinition || { nodes: [], edges: [] },
                 status: nextIsActive ? 'ACTIVE' : 'PAUSED'
             }
         });
@@ -857,7 +857,7 @@ export class MarketingService {
     async setAutomationEnabled(id: string, accountId: string, isActive: boolean) {
         const automation = await prisma.marketingAutomation.findFirst({
             where: { id, accountId },
-            select: { id: true, flowDefinition: true }
+            select: { id: true, flowDefinition: true, draftDefinition: true, draftRevision: true }
         });
 
         if (!automation) {
@@ -865,16 +865,19 @@ export class MarketingService {
         }
 
         if (isActive) {
+            if (automation.draftDefinition) throw Object.assign(new Error('Publish pending draft changes before enabling'), { statusCode: 409 });
             assertAutomationFlowCanRun(automation.flowDefinition as any);
         }
 
-        return prisma.marketingAutomation.update({
-            where: { id },
+        const changed = await prisma.marketingAutomation.updateMany({
+            where: { id, accountId, ...(isActive ? { draftRevision: automation.draftRevision } : {}) },
             data: {
                 isActive,
                 status: isActive ? 'ACTIVE' : 'PAUSED'
             }
         });
+        if (!changed.count) throw Object.assign(new Error('Flow changed while updating its status. Reload and review.'), { statusCode: 409 });
+        return { id, isActive, status: isActive ? 'ACTIVE' : 'PAUSED' };
     }
 
     async getAutomationAnalytics(id: string, accountId: string) {
@@ -963,7 +966,8 @@ export class MarketingService {
     }
 
     async upsertTemplate(accountId: string, data: any) {
-        const { id, name, subject, content, designJson } = data;
+        const { id, name, subject, designJson } = data;
+        const content = designJson ? canonicalEmailDesign(designJson, data.content || '') : data.content;
 
         if (id) {
             const existing = await prisma.emailTemplate.findFirst({

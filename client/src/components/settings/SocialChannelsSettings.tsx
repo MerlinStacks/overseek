@@ -10,7 +10,7 @@ import { MessageCircle as Facebook, Camera as Instagram, Music2, Link2, Unlink, 
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
-import { navigateToSafeUrl } from '../../utils/url';
+import { navigateToOAuthUrl } from '../../utils/url';
 
 interface SocialAccount {
     id: string;
@@ -174,7 +174,7 @@ export function SocialChannelsSettings() {
                 currentAccount.id
             );
 
-            if (!navigateToSafeUrl(response.authUrl)) {
+            if (!navigateToOAuthUrl(response.authUrl)) {
                 throw new Error('Invalid OAuth redirect URL');
             }
         } catch (err: unknown) {

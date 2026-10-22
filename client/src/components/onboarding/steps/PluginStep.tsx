@@ -1,335 +1,46 @@
-/**
- * Plugin Step
- * 
- * Second step in onboarding: Download and configure the OverSeek WooCommerce plugin.
- * Includes plugin download, configuration copy, and verification.
- */
-
-import { useState } from 'react';
-import { Plug, ArrowRight, ArrowLeft, SkipForward, Download, Copy, Check, Store, AlertCircle, Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { z } from 'zod';
 import { OnboardingStepProps } from '../types';
 import { useAuth } from '../../../context/AuthContext';
 import { useAccount } from '../../../context/AccountContext';
-import { api } from '../../../services/api';
-import { Logger } from '../../../utils/logger';
+import { usePermissions } from '../../../hooks/usePermissions';
 import { getPublicApiUrl } from '../../../utils/url';
-
-interface StoreVerificationResult {
-    success: boolean;
-    storeUrl?: string;
-    storeName?: string;
-    storeReachable: boolean;
-    pluginInstalled: boolean;
-    pluginVersion?: string;
-    configured?: boolean;
-    accountMatch?: boolean;
-    trackingEnabled?: boolean;
-    chatEnabled?: boolean;
-    error?: string;
+import { PLUGIN_RELEASE } from '../../../utils/pluginRelease';
+import { readBoundedBytes } from '../../../utils/boundedResponse';
+const resultSchema = z.object({ accountId: z.string().optional(), success: z.boolean(), storeReachable: z.boolean(), pluginInstalled: z.boolean(), pluginVersion: z.string().max(100).optional(), configured: z.boolean().nullish(), accountMatch: z.boolean().nullish(), trackingEnabled: z.boolean().nullish(), chatEnabled: z.boolean().nullish() });
+export function PluginStep(props: OnboardingStepProps) {
+    const { token, user } = useAuth(); const { currentAccount } = useAccount(); const { hasPermission } = usePermissions();
+    if (!token || !currentAccount || !props.draft.store.connectionVerified || props.draft.store.accountId !== currentAccount.id) return <p role="alert">Verify this store account before configuring its plugin.</p>;
+    return <ScopedPlugin key={JSON.stringify([user?.id, token, currentAccount.id])} {...props} token={token} accountId={currentAccount.id} editable={hasPermission('manage_channels')} />;
 }
-
-/**
- * Handles plugin download, configuration copy, and store verification.
- */
-export function PluginStep({ draft, setDraft, onNext, onBack, onSkip, isSubmitting }: OnboardingStepProps) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const [configCopied, setConfigCopied] = useState(false);
-    const [webhookCopied, setWebhookCopied] = useState(false);
-    const [verifyStatus, setVerifyStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-    const [verifyResult, setVerifyResult] = useState<StoreVerificationResult | null>(null);
-
-    // Public API URL for external clients (derived from browser location)
-    const publicApiUrl = getPublicApiUrl();
-
-    // Guard: Account must exist before showing plugin config
-    // Previously, accountId fallback used store name or 'pending' which broke APIs
-    const hasValidAccount = Boolean(currentAccount?.id);
-
-    // Generate the configuration JSON that users paste into the plugin
-    // Only valid when account exists (accountId must be a UUID, not store name)
-    const connectionConfig = hasValidAccount ? JSON.stringify({
-        apiUrl: publicApiUrl,
-        accountId: currentAccount?.id
-    }, null, 2) : '';
-    const webhookUrl = currentAccount?.id ? `${publicApiUrl}/api/webhooks/${currentAccount.id}` : '';
-
-    const handleDownload = () => {
-        setDraft(prev => ({
-            ...prev,
-            plugin: { ...prev.plugin, downloaded: true }
-        }));
-    };
-
-    const handleCopyConfig = () => {
-        navigator.clipboard.writeText(connectionConfig);
-        setConfigCopied(true);
-        setDraft(prev => ({
-            ...prev,
-            plugin: { ...prev.plugin, configCopied: true }
-        }));
-        setTimeout(() => setConfigCopied(false), 2000);
-    };
-
-    const verifyStore = async () => {
-        setVerifyStatus('loading');
-        setVerifyResult(null);
-
+function ScopedPlugin({ token, accountId, editable, setDraft, onBack, onNext, onSkip, isSubmitting }: OnboardingStepProps & { token: string; accountId: string; editable: boolean }) {
+    const origin = getPublicApiUrl(), [message, setMessage] = useState(''), [busy, setBusy] = useState(false), [archive, setArchive] = useState<string | null>(null);
+    const lock = useRef(false), alive = useRef(true), controller = useRef<AbortController | null>(null), objectUrl = useRef<string | null>(null);
+    useEffect(() => { alive.current = true; return () => { alive.current = false; controller.current?.abort(); if (objectUrl.current) URL.revokeObjectURL(objectUrl.current); }; }, []);
+    const run = async (kind: 'config' | 'webhook' | 'download' | 'verify') => {
+        if (lock.current || !origin || !editable) return;
+        lock.current = true; setBusy(true); setMessage(''); controller.current = new AbortController(); const timeout = setTimeout(() => controller.current?.abort(), 20000);
         try {
-            const result = await api.get<StoreVerificationResult>(
-                '/api/tracking/verify-store',
-                token || undefined,
-                currentAccount?.id || ''
-            );
-
-            setVerifyResult(result);
-            setVerifyStatus(result.success ? 'success' : 'error');
-
-            if (result.success) {
-                setDraft(prev => ({
-                    ...prev,
-                    plugin: {
-                        ...prev.plugin,
-                        verified: true,
-                        pluginVersion: result.pluginVersion
-                    }
-                }));
+            if (kind === 'config' || kind === 'webhook') {
+                await navigator.clipboard.writeText(kind === 'config' ? JSON.stringify({ apiUrl: origin, accountId }, null, 2) : `${origin}/api/webhooks/${accountId}`);
+                if (!alive.current) return;
+                setMessage('Clipboard write acknowledged. This does not establish plugin configuration.');
+                if (kind === 'config') setDraft(previous => ({ ...previous, plugin: { ...previous.plugin, configCopied: true } }));
+            } else if (kind === 'download') {
+                const response = await fetch(`${origin}/uploads/plugins/overseek-wc-plugin.zip`, { signal: controller.current.signal, credentials: 'omit' }); if (!response.ok) throw new Error('Archive unavailable');
+                const bytes = await readBoundedBytes(response, PLUGIN_RELEASE.maxBytes); if (!bytes.byteLength) throw new Error('Archive size unavailable');
+                const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(byte => byte.toString(16).padStart(2, '0')).join(''); if (digest !== PLUGIN_RELEASE.sha256) throw new Error('Archive does not match the reviewed release'); if (!alive.current) return;
+                if (objectUrl.current) URL.revokeObjectURL(objectUrl.current); objectUrl.current = URL.createObjectURL(new Blob([bytes], { type: 'application/zip' })); setArchive(objectUrl.current); setMessage(`Verified ${PLUGIN_RELEASE.version} archive prepared. Saving/installing is not yet confirmed.`);
+            } else {
+                setDraft(previous => ({ ...previous, plugin: { ...previous.plugin, verified: false } }));
+                const response = await fetch('/api/tracking/verify-store', { signal: controller.current.signal, headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId } }); if (!response.ok) throw new Error('Observation unavailable'); const result = resultSchema.parse(await response.json()); if (!alive.current) return;
+                const verified = result.accountId === accountId && result.success && result.storeReachable && result.pluginInstalled && result.configured === true && result.accountMatch === true;
+                setDraft(previous => ({ ...previous, plugin: { ...previous.plugin, verified, pluginVersion: result.pluginVersion } }));
+                setMessage(`${result.pluginInstalled ? 'Plugin installation observed' : 'Installation not established'}. Configuration/account match: ${verified ? 'confirmed in this observation' : 'not established'}. Tracking: ${result.trackingEnabled == null ? 'unknown' : result.trackingEnabled ? 'enabled' : 'disabled'}. Chat: ${result.chatEnabled == null ? 'unknown' : result.chatEnabled ? 'enabled' : 'disabled'}.`);
             }
-        } catch (error) {
-            Logger.error('Store verification failed', { error });
-            setVerifyStatus('error');
-            setVerifyResult({
-                success: false,
-                storeReachable: false,
-                pluginInstalled: false,
-                error: 'Failed to verify store connection'
-            });
-        }
+        } catch { if (alive.current) { if (kind === 'verify') setDraft(previous => ({ ...previous, plugin: { ...previous.plugin, verified: false } })); setMessage('Operation unavailable or not acknowledged. No copy/download/verification success was assumed.'); } }
+        finally { clearTimeout(timeout); lock.current = false; if (alive.current) setBusy(false); }
     };
-
-    return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="text-center pb-4 border-b border-gray-100">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-purple-100 text-purple-600 mb-4">
-                    <Plug size={32} />
-                </div>
-                <h2 className="text-2xl font-bold text-gray-900">Install the Plugin</h2>
-                <p className="text-gray-500 mt-2">
-                    The OverSeek plugin enables live tracking, chat, and order sync
-                </p>
-            </div>
-
-            {/* Steps */}
-            <div className="space-y-6">
-                {/* Step 1: Download */}
-                <div className="bg-blue-50 rounded-xl p-5 border border-blue-200">
-                    <div className="flex items-start gap-4">
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold">
-                            1
-                        </div>
-                        <div className="flex-1">
-                            <h3 className="text-sm font-semibold text-gray-900 mb-1">Download the Plugin</h3>
-                            <p className="text-xs text-gray-600 mb-3">
-                                Download the OverSeek plugin ZIP file and install it on your WordPress site via Plugins → Add New → Upload Plugin.
-                            </p>
-                            <a
-                                href={`${publicApiUrl}/uploads/plugins/overseek-wc-plugin.zip`}
-                                download
-                                onClick={handleDownload}
-                                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-                            >
-                                <Download size={16} />
-                                Download Plugin
-                            </a>
-                            {draft.plugin.downloaded && (
-                                <span className="ml-3 text-sm text-green-600 inline-flex items-center gap-1">
-                                    <Check size={14} /> Downloaded
-                                </span>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Step 2: Configure */}
-                <div className="bg-slate-50 rounded-xl p-5 border border-slate-200">
-                    <div className="flex items-start gap-4">
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-slate-600 text-white flex items-center justify-center text-sm font-bold">
-                            2
-                        </div>
-                        <div className="flex-1">
-                            <h3 className="text-sm font-semibold text-gray-900 mb-1">Configure the Plugin</h3>
-                            <p className="text-xs text-gray-600 mb-3">
-                                After activating the plugin, go to OverSeek settings and paste this configuration:
-                            </p>
-
-                            {/* Guard: Only show config when account exists */}
-                            {hasValidAccount ? (
-                                <div className="relative group">
-                                    <button
-                                        onClick={handleCopyConfig}
-                                        className={`absolute top-2 right-2 flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${configCopied
-                                            ? 'bg-green-100 text-green-700 border border-green-200'
-                                            : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
-                                            }`}
-                                    >
-                                        {configCopied ? <Check size={14} /> : <Copy size={14} />}
-                                        {configCopied ? 'Copied!' : 'Copy'}
-                                    </button>
-                                    <pre className="bg-slate-900 text-slate-100 p-4 pr-24 rounded-lg overflow-x-auto font-mono text-sm">
-                                        <code>{connectionConfig}</code>
-                                    </pre>
-                                </div>
-                            ) : (
-                                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                                    <div className="flex items-center gap-2 text-amber-800">
-                                        <AlertCircle size={16} />
-                                        <span className="text-sm font-medium">Store setup required</span>
-                                    </div>
-                                    <p className="text-xs text-amber-700 mt-1">
-                                        Please complete the Store Setup step first to generate your configuration.
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Webhook URL Info */}
-                {hasValidAccount && (
-                    <div className="bg-indigo-50 rounded-xl p-5 border border-indigo-200">
-                        <div className="flex items-start gap-4">
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center text-sm font-bold">
-                                ↻
-                            </div>
-                            <div className="flex-1">
-                                <h3 className="text-sm font-semibold text-gray-900 mb-1">Webhook URL</h3>
-                                <p className="text-xs text-gray-600 mb-3">
-                                    To receive real-time order updates, add a webhook in WooCommerce → Settings → Advanced → Webhooks → Add Webhook. Use this URL as the <strong>Delivery URL</strong>:
-                                </p>
-                                <div className="relative group">
-                                    <button
-                                        onClick={() => {
-                                            if (!webhookUrl) return;
-                                            navigator.clipboard.writeText(webhookUrl);
-                                            setWebhookCopied(true);
-                                            setTimeout(() => setWebhookCopied(false), 2000);
-                                        }}
-                                        className={`absolute top-2 right-2 flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${webhookCopied
-                                            ? 'bg-green-100 text-green-700 border border-green-200'
-                                            : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
-                                            }`}
-                                    >
-                                        {webhookCopied ? <Check size={14} /> : <Copy size={14} />}
-                                        {webhookCopied ? 'Copied!' : 'Copy'}
-                                    </button>
-                                    <pre className="bg-slate-900 text-slate-100 p-4 pr-24 rounded-lg overflow-x-auto font-mono text-xs break-all whitespace-pre-wrap">
-                                        <code>{webhookUrl}</code>
-                                    </pre>
-                                </div>
-                                <p className="text-xs text-indigo-600 mt-2">
-                                    Set topics to <strong>Order created</strong> and <strong>Order updated</strong> for real-time sync.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Step 3: Verify */}
-                <div className="bg-green-50 rounded-xl p-5 border border-green-200">
-                    <div className="flex items-start gap-4">
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-600 text-white flex items-center justify-center text-sm font-bold">
-                            3
-                        </div>
-                        <div className="flex-1">
-                            <h3 className="text-sm font-semibold text-gray-900 mb-1">Verify Installation</h3>
-                            <p className="text-xs text-gray-600 mb-3">
-                                Click below to check if the plugin is installed and configured correctly.
-                            </p>
-                            <button
-                                onClick={verifyStore}
-                                disabled={verifyStatus === 'loading' || !hasValidAccount}
-                                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
-                            >
-                                {verifyStatus === 'loading' ? (
-                                    <Loader2 size={16} className="animate-spin" />
-                                ) : (
-                                    <Store size={16} />
-                                )}
-                                {verifyStatus === 'loading' ? 'Verifying...' : 'Verify Store Plugin'}
-                            </button>
-
-                            {/* Verification Result */}
-                            {verifyResult && (
-                                <div className={`mt-4 p-4 rounded-lg border ${verifyResult.success
-                                    ? 'bg-green-100 border-green-300'
-                                    : 'bg-amber-100 border-amber-300'
-                                    }`}>
-                                    <div className="flex items-start gap-3">
-                                        {verifyResult.success ? (
-                                            <Check className="w-5 h-5 text-green-600 shrink-0" />
-                                        ) : (
-                                            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
-                                        )}
-                                        <div className="text-sm">
-                                            <p className={`font-semibold ${verifyResult.success ? 'text-green-800' : 'text-amber-800'}`}>
-                                                {verifyResult.success ? 'Plugin Verified!' : 'Setup Required'}
-                                            </p>
-                                            {verifyResult.error && (
-                                                <p className="text-amber-700 mt-1">{verifyResult.error}</p>
-                                            )}
-                                            {verifyResult.success && (
-                                                <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="w-2 h-2 rounded-full bg-green-500" />
-                                                        Plugin: {verifyResult.pluginVersion || 'Installed'}
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={`w-2 h-2 rounded-full ${verifyResult.trackingEnabled ? 'bg-green-500' : 'bg-amber-500'}`} />
-                                                        Tracking: {verifyResult.trackingEnabled ? 'Enabled' : 'Disabled'}
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Navigation */}
-            <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                <button
-                    type="button"
-                    onClick={onBack}
-                    className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors font-medium"
-                >
-                    <ArrowLeft size={18} />
-                    Back
-                </button>
-
-                <div className="flex items-center gap-3">
-                    <button
-                        type="button"
-                        onClick={onSkip}
-                        className="flex items-center gap-2 px-4 py-2 text-gray-500 hover:text-gray-700 transition-colors text-sm"
-                    >
-                        <SkipForward size={16} />
-                        Skip for now
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onNext}
-                        disabled={isSubmitting}
-                        className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-semibold shadow-lg shadow-blue-500/25"
-                    >
-                        Continue
-                        <ArrowRight size={18} />
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
+    const leave = (next: () => void) => { alive.current = false; controller.current?.abort(); next(); };
+    return <div className="space-y-4 text-slate-900 dark:text-slate-100"><h2 className="text-xl font-semibold">Install and configure the plugin</h2><p>Reviewed release {PLUGIN_RELEASE.version}. Preparing an archive is not proof it was downloaded or installed.</p>{!origin && <p role="alert">Public HTTPS API origin unavailable. Check deployment configuration.</p>}{message && <p role="status">{message}</p>}<fieldset disabled={!editable || busy || !origin} className="space-y-3"><button type="button" onClick={() => void run('download')}>Prepare verified plugin ZIP</button><pre className="overflow-x-auto">{origin ? JSON.stringify({ apiUrl: origin, accountId }, null, 2) : 'Configuration unavailable'}</pre><button type="button" onClick={() => void run('config')}>Copy plugin configuration</button><button type="button" onClick={() => void run('webhook')}>Copy webhook URL</button><button type="button" onClick={() => void run('verify')}>Observe store plugin</button></fieldset>{archive && <a href={archive} download={`overseek-wc-plugin-${PLUGIN_RELEASE.version}.zip`}>Save verified archive</a>}<div className="flex flex-wrap gap-4"><button type="button" onClick={() => leave(onBack)}>Back</button><button type="button" onClick={() => leave(onSkip)}>Skip for now</button><button type="button" disabled={isSubmitting || busy} onClick={() => leave(onNext)}>Continue</button></div></div>;
 }

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BroadcastsPage } from './BroadcastsPage';
+vi.mock('react-router-dom', () => ({ useSearchParams: () => [new URLSearchParams(), vi.fn()] }));
 
 const mocks = vi.hoisted(() => ({ account: { id: 'account-1' }, designer: vi.fn() }));
 vi.mock('../context/AuthContext', () => ({ useAuth: () => ({ token: 'token' }) }));

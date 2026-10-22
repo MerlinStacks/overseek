@@ -49,6 +49,27 @@ describe('useBOMSync', () => {
         vi.unstubAllGlobals();
     });
 
+    it('serializes same-tick single writes and blocks bulk overlap until completion', async () => {
+        const delayed = deferred<Response>(); mutationReply = () => delayed.promise;
+        const { result } = renderHook(() => useBOMSync()); await flush();
+        let first!: Promise<void>;
+        await act(async () => {
+            first = result.current.handleSyncSingle('1', 0, false);
+            await result.current.handleSyncSingle('2', 0, false);
+            await result.current.handleSyncAll();
+        });
+        expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/bom/sync?'))).toHaveLength(1);
+        expect(count('sync-all')).toBe(0);
+        await act(async () => { delayed.resolve(response({ success: true })); await first; });
+    });
+
+    it('requires explicit successful sync acknowledgement', async () => {
+        mutationReply = async () => response({ previousStock: 1, newStock: 2 });
+        const { result } = renderHook(() => useBOMSync()); await flush();
+        await act(async () => { await result.current.handleSyncSingle('1', 0, false); });
+        expect(result.current.syncErrors['1-0']).toBeTruthy();
+    });
+
     it('resumes a running job on mount, polls only compact status and refreshes once on completion', async () => {
         statusReply = async () => response({ isSyncing: true, progress: { current: 1, total: 2 } });
         const { result } = renderHook(() => useBOMSync());

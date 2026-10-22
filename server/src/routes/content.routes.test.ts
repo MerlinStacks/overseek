@@ -33,6 +33,7 @@ vi.mock('../utils/prisma', () => ({
 }));
 
 import contentRoutes from './content';
+vi.mock('../services/PermissionService', () => ({ PermissionService: { hasPermission: vi.fn().mockResolvedValue(true) } }));
 
 describe('content routes id lookup', () => {
     let app: ReturnType<typeof Fastify>;
@@ -68,7 +69,7 @@ describe('content routes id lookup', () => {
     });
 
     it('loads page details by numeric Woo id', async () => {
-        mockWooPageFindFirst.mockResolvedValueOnce({ id: 'uuid-2', wooId: 12345, title: 'Page B' });
+        mockWooPageFindFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'uuid-2', wooId: 12345, title: 'Page B' });
 
         const res = await app.inject({
             method: 'GET',
@@ -80,7 +81,7 @@ describe('content routes id lookup', () => {
             expect.objectContaining({
                 where: {
                     accountId: 'acct-1',
-                    OR: [{ id: '12345' }, { wooId: 12345 }],
+                    wooId: 12345,
                 },
             })
         );
@@ -106,7 +107,7 @@ describe('content routes id lookup', () => {
     });
 
     it('loads post details by numeric Woo id', async () => {
-        mockWooBlogPostFindFirst.mockResolvedValueOnce({ id: 'uuid-4', wooId: 9876, title: 'Post B' });
+        mockWooBlogPostFindFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'uuid-4', wooId: 9876, title: 'Post B' });
 
         const res = await app.inject({
             method: 'GET',
@@ -118,7 +119,7 @@ describe('content routes id lookup', () => {
             expect.objectContaining({
                 where: {
                     accountId: 'acct-1',
-                    OR: [{ id: '9876' }, { wooId: 9876 }],
+                    wooId: 9876,
                 },
             })
         );

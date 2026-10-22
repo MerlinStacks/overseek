@@ -8,11 +8,12 @@ import { renderWidget, WidgetRegistry } from '../components/widgets/WidgetRegist
 import { usePermissions } from '../hooks/usePermissions';
 import { DashboardPageSkeleton } from '../components/ui/PageSkeletons';
 import { Loader2, Plus, X, Lock, Unlock } from 'lucide-react';
-import { debounce, isEqual } from '../utils/debounce';
+import { isEqual } from '../utils/debounce';
 import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { useMobile } from '../hooks/useMobile';
 import { getDateRange, getComparisonRange, getComparisonLabel, DateRangeOption, ComparisonOption } from '../utils/dateUtils';
 import { api } from '../services/api';
+import { isRecord } from '../utils/responseValidation';
 
 const ResponsiveGridLayoutWithWidth = WidthProvider(Responsive);
 interface GridLayoutItem {
@@ -112,8 +113,19 @@ interface DashboardWidgetResponse {
 }
 
 export function DashboardPage() {
+    const { user, token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p>Sign in and select an account to view your dashboard.</p>;
+    return <ScopedDashboardPage key={JSON.stringify([user?.id, token, currentAccount.id])} />;
+}
+function ScopedDashboardPage() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const accountId = currentAccount?.id;
+    const version = useRef<string | null>(null);
+    const active = useRef(false); const blocked = useRef(false); const saving = useRef(false); const queued = useRef<WidgetInstance[] | null>(null);
+    const request = useRef<AbortController | null>(null);
+    const [saveError, setSaveError] = useState<string | null>(null);
+    useEffect(() => { active.current = true; const controller = new AbortController(); request.current = controller; return () => { active.current = false; controller.abort(); }; }, []);
     const { hasPermission } = usePermissions();
     const isMobile = useMobile();
     const [widgets, setWidgets] = useState<WidgetInstance[]>([]);
@@ -131,32 +143,38 @@ export function DashboardPage() {
     const [comparisonOption, setComparisonOption] = useState<ComparisonOption>('smart');
 
     const fetchLayout = useCallback(async () => {
-        if (!currentAccount) return;
+        if (!accountId || !active.current) return;
         setIsLoading(true);
         try {
-            const data = await api.request<{ widgets: DashboardWidgetResponse[] }>('/api/dashboard', {
+            const data = await api.request<{ widgets: DashboardWidgetResponse[]; updatedAt: string }>('/api/dashboard', {
+                signal: request.current?.signal,
                 method: 'GET',
                 token: token || undefined,
-                accountId: currentAccount.id,
+                accountId,
                 headers: {
                     'X-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone
                 }
             });
 
             // Transform DB widgets to state
+            if (!active.current) return;
+            if (!Array.isArray(data.widgets) || data.widgets.length > 50 || typeof data.updatedAt !== 'string' || !Number.isFinite(Date.parse(data.updatedAt))) throw new Error('Invalid dashboard snapshot');
             const mapped = data.widgets.map((w) => ({
                 id: w.id, // Use unique ID for key
                 widgetKey: w.widgetKey,
                 position: (typeof w.position === 'string' ? JSON.parse(w.position) : w.position) as WidgetInstance['position'],
                 settings: w.settings
             }));
+            if (mapped.some(widget => !Object.prototype.hasOwnProperty.call(WidgetRegistry, widget.widgetKey) || !isRecord(widget.position) || !['x', 'y', 'w', 'h'].every(key => typeof widget.position[key as keyof typeof widget.position] === 'number' && Number.isFinite(widget.position[key as keyof typeof widget.position])))) throw new Error('Invalid widget positions');
+            version.current = data.updatedAt; blocked.current = false; setSaveError(null);
             setWidgets(mapped);
         } catch (err) {
             Logger.error('An error occurred', { error: err });
+            if (active.current) setSaveError('Dashboard could not be loaded. Saving is paused.');
         } finally {
-            setIsLoading(false);
+            if (active.current) setIsLoading(false);
         }
-    }, [currentAccount, token]);
+    }, [accountId, token]);
 
     useEffect(() => {
         fetchLayout();
@@ -211,35 +229,49 @@ export function DashboardPage() {
     };
 
     const saveLayout = useCallback(async (newWidgets: WidgetInstance[]) => {
-        if (!currentAccount?.id) return;
+        if (!accountId || !active.current || blocked.current || !version.current) return;
+        queued.current = newWidgets;
+        if (saving.current) return;
+        saving.current = true;
         setIsSaving(true);
         try {
-            await api.request('/api/dashboard', {
+            while (queued.current && active.current) {
+            const snapshot = queued.current; queued.current = null;
+            const result: { updatedAt: string } = await api.request<{ updatedAt: string }>('/api/dashboard', {
+                signal: request.current?.signal,
                 method: 'POST',
                 token: token || undefined,
-                accountId: currentAccount.id,
+                accountId,
                 headers: {
                     'X-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone
                 },
                 body: JSON.stringify({
-                    widgets: newWidgets.map(w => ({
+                    version: version.current,
+                    widgets: snapshot.map(w => ({
                         widgetKey: w.widgetKey,
                         position: w.position,
                         settings: w.settings
                     }))
                 })
             });
+            if (!active.current) return;
+            if (typeof result.updatedAt !== 'string' || !Number.isFinite(Date.parse(result.updatedAt))) throw new Error('Save acknowledgement unavailable');
+            version.current = result.updatedAt;
+            }
         } catch (err) {
             Logger.error('Save failed', { error: err });
+            blocked.current = true; queued.current = null;
+            if (active.current) setSaveError('Layout was not acknowledged or changed elsewhere. Local edits remain visible; automatic saving is paused.');
         } finally {
-            setIsSaving(false);
+            saving.current = false;
+            if (active.current) setIsSaving(false);
         }
-    }, [token, currentAccount]);
+    }, [token, accountId]);
 
-    const debouncedSave = useMemo(
-        () => debounce((newWidgets: WidgetInstance[]) => saveLayout(newWidgets), 2000),
-        [saveLayout]
-    );
+    const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const cancelSave = useCallback(() => { if (saveTimer.current) clearTimeout(saveTimer.current); saveTimer.current = null; }, []);
+    const debouncedSave = useCallback((newWidgets: WidgetInstance[]) => { cancelSave(); saveTimer.current = setTimeout(() => { saveTimer.current = null; void saveLayout(newWidgets); }, 2000); }, [cancelSave, saveLayout]);
+    useEffect(() => cancelSave, [cancelSave]);
     /**
      * Memoized responsive layouts for all breakpoints.
      * Generated from widget positions, only recalculates when widgets change.
@@ -274,7 +306,7 @@ export function DashboardPage() {
         const defaultSize = getDeviceAwareWidgetSize(entry.defaultW, entry.defaultH, currentBreakpoint, cols);
         const nextPosition = findNextWidgetPosition(widgets, defaultSize.w, defaultSize.h, cols);
         const newWidget: WidgetInstance = {
-            id: `new-${Date.now()}`,
+            id: `new-${crypto.randomUUID()}`,
             widgetKey: key,
             position: nextPosition
         };
@@ -305,6 +337,7 @@ export function DashboardPage() {
 
     return (
         <div className="space-y-6">
+            {saveError && <p role="alert" className="text-amber-800 dark:text-amber-200">{saveError} <button type="button" onClick={() => { cancelSave(); void fetchLayout(); }}>Discard local layout changes and reload</button></p>}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Dashboard</h1>

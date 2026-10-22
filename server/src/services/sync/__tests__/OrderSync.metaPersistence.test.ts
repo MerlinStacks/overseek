@@ -6,6 +6,8 @@ import { EventBus } from '../../events';
 import { esClient } from '../../../utils/elastic';
 import { materializeContact } from '../../ContactMaterialization';
 import { snapshotFixture, snapshotMetadata } from '../../deliveryEstimates/__tests__/snapshotFixture';
+import { OrderTaggingService } from '../../OrderTaggingService';
+import { IndexingService } from '../../search/IndexingService';
 
 vi.mock('../../ContactMaterialization', async importOriginal => ({
     ...await importOriginal<typeof import('../../ContactMaterialization')>(),
@@ -57,9 +59,10 @@ vi.mock('../../search/IndexingService', () => ({
     },
 }));
 
-vi.mock('../../OrderTaggingService', () => ({
+vi.mock('../../OrderTaggingService', async importOriginal => ({
+    ...await importOriginal<typeof import('../../OrderTaggingService')>(),
     OrderTaggingService: {
-        extractTagsForOrders: vi.fn().mockResolvedValue(new Map()),
+        extractTagsForOrders: vi.fn().mockImplementation(async (_accountId: string, orders: Array<{ id: number }>) => new Map(orders.map(order => [order.id, []]))),
         extractTagsFromOrder: vi.fn().mockResolvedValue([]),
         getTagMappings: vi.fn().mockResolvedValue([]),
     },
@@ -108,6 +111,27 @@ describe('OrderSync meta persistence', () => {
         (prisma.wooCustomer.findMany as any).mockResolvedValue([]);
         (prisma.$queryRaw as any).mockResolvedValue([]);
         (esClient.bulk as any).mockResolvedValue({ errors: false, items: [] });
+    });
+
+    it('locks existing orders and preserves stored manual tags through provider sync and indexing', async () => {
+        const incoming = { id: 42, number: '42', status: 'processing', currency: 'AUD', total: '25', line_items: [], meta_data: [] };
+        (prisma.wooOrder.findMany as any).mockResolvedValue([{ wooId: 42, status: 'processing', rawData: { tags: ['Manual'] } }]);
+        (prisma.wooOrder.upsert as any).mockImplementation(async ({ update }: any) => update);
+        mockWoo.getOrders = vi.fn().mockResolvedValue({ data: [incoming], totalPages: 1, total: 1 });
+        await (new OrderSync() as any).sync(mockWoo, accountId, true);
+        expect((prisma.wooOrder.upsert as any).mock.calls[0][0].update.rawData.tags).toEqual(['Manual']);
+        expect((IndexingService.bulkIndexOrders as any).mock.calls[0][2].get(42)).toEqual(['Manual']);
+        expect((prisma.$queryRaw as any).mock.calls.some(([sql]: any[]) => sql?.strings?.join('').includes('FOR UPDATE'))).toBe(true);
+    });
+
+    it('does not replace existing search tags with empty tags after extraction failure', async () => {
+        const incoming = { id: 42, number: '42', status: 'processing', currency: 'AUD', total: '25', line_items: [], meta_data: [] };
+        (prisma.wooOrder.upsert as any).mockImplementation(async ({ update }: any) => update);
+        (OrderTaggingService.extractTagsForOrders as any).mockRejectedValueOnce(new Error('Product coverage unavailable'));
+        mockWoo.getOrders = vi.fn().mockResolvedValue({ data: [incoming], totalPages: 1, total: 1 });
+        await (new OrderSync() as any).sync(mockWoo, accountId, true);
+        expect(IndexingService.bulkIndexOrders).not.toHaveBeenCalled();
+        expect(OrderTaggingService.extractTagsFromOrder).not.toHaveBeenCalled();
     });
 
     it('imports first valid snapshot with CAS, keeps it across changed/invalid/deleted metadata and emits stored promise', async () => {
@@ -257,7 +281,7 @@ describe('OrderSync meta persistence', () => {
         (prisma.wooOrder.findMany as any).mockResolvedValueOnce([]).mockResolvedValueOnce([stale]);
         (prisma.wooOrder.count as any).mockResolvedValueOnce(1).mockResolvedValueOnce(20);
         (prisma.$queryRaw as any).mockImplementation(async (sql: TemplateStringsArray) =>
-            sql.join('').includes('DELETE FROM') ? [stale] : []);
+            (Array.isArray(sql) ? sql.join('') : (sql as unknown as { strings: string[] }).strings.join('')).includes('DELETE FROM') ? [stale] : []);
         const result = await (new OrderSync() as any).sync(mockWoo, accountId, false);
         expect(result.itemsDeleted).toBe(1);
         expect(prisma.$executeRaw).toHaveBeenCalledWith(expect.anything(), accountId, [], ['deleted@example.com'], [], accountId);
@@ -275,7 +299,7 @@ describe('OrderSync meta persistence', () => {
             .mockResolvedValueOnce(stale.slice(0, 500)).mockResolvedValueOnce(stale.slice(500));
         (prisma.wooOrder.count as any).mockResolvedValueOnce(501).mockResolvedValueOnce(2000);
         (prisma.$queryRaw as any).mockImplementation(async (sql: TemplateStringsArray, ...values: any[]) =>
-            sql.join('').includes('DELETE FROM') ? stale.filter(o => values[1].includes(o.id)) : []);
+            (Array.isArray(sql) ? sql.join('') : (sql as unknown as { strings: string[] }).strings.join('')).includes('DELETE FROM') ? stale.filter(o => values[1].includes(o.id)) : []);
         const result = await (new OrderSync() as any).sync(mockWoo, accountId, false);
         expect(result.itemsDeleted).toBe(501);
         expect((prisma.wooOrder.findMany as any).mock.calls[2][0]).toMatchObject({
@@ -291,7 +315,7 @@ describe('OrderSync meta persistence', () => {
         (prisma.wooOrder.findMany as any).mockResolvedValueOnce([]).mockResolvedValueOnce([stale]);
         (prisma.wooOrder.count as any).mockResolvedValueOnce(1).mockResolvedValueOnce(20);
         (prisma.$queryRaw as any).mockImplementation(async (sql: TemplateStringsArray) =>
-            sql.join('').includes('DELETE FROM') ? [stale] : []);
+            (Array.isArray(sql) ? sql.join('') : (sql as unknown as { strings: string[] }).strings.join('')).includes('DELETE FROM') ? [stale] : []);
         (esClient.bulk as any).mockResolvedValueOnce({ errors: true, items: [{ delete: { status: 503, error: {} } }] });
         await expect((new OrderSync() as any).sync(mockWoo, accountId, false)).rejects.toThrow('Failed to delete reconciled orders');
     });

@@ -1,6 +1,7 @@
 {
     "extends": "./tsconfig.json",
     "include": [
+        "src/scripts/seedHelpContent.ts",
         "src/scripts/deep-diagnostic.ts",
         "src/scripts/reindex-orders.ts",
         "src/scripts/reindex-products.ts",

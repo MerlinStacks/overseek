@@ -163,6 +163,7 @@ export function TrackingScriptHelper() {
         setTimeout(() => setEmailPrefsCopied(false), 2000);
     };
 
+    if (!publicApiUrl) return <p role="alert">Public HTTPS API origin unavailable. Review deployment configuration before copying plugin settings.</p>;
     return (
         <div className="space-y-8">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex gap-3">

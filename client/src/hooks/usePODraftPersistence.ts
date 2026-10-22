@@ -1,159 +1,76 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { Logger } from '../utils/logger';
+import { isRecord } from '../utils/responseValidation';
 
-/** Shape of a single PO line item stored in the draft */
 interface PODraftItem {
-    id?: string;
-    productId?: string;
-    supplierItemId?: string;
-    name: string;
-    quantity: number;
-    unitCost: number;
-    totalCost: number;
-    sku?: string;
-    wooId?: number;
-    variationWooId?: number;
+    id?: string; productId?: string; supplierItemId?: string; name: string;
+    quantity: number; unitCost: number; totalCost: number; sku?: string; wooId?: number; variationWooId?: number;
 }
-
-/** Full form snapshot persisted to localStorage */
 interface PODraftState {
-    supplierId: string;
-    status: string;
-    notes: string;
-    orderDate: string;
-    expectedDate: string;
-    trackingNumber: string;
-    trackingLink: string;
-    items: PODraftItem[];
-    /** Epoch ms — drafts older than MAX_DRAFT_AGE_MS are discarded */
-    savedAt: number;
+    supplierId: string; status: string; notes: string; orderDate: string; expectedDate: string;
+    trackingNumber: string; trackingLink: string; items: PODraftItem[]; savedAt: number;
 }
-
-/** 24 hours in milliseconds */
-const MAX_DRAFT_AGE_MS = 24 * 60 * 60 * 1000;
-
-/** Debounce delay before writing to localStorage */
-const SAVE_DEBOUNCE_MS = 500;
-
-/**
- * Build the localStorage key scoped to account + PO.
- * Why: prevents collisions when a user works across multiple accounts or POs.
- */
-function buildDraftKey(accountId: string, poId: string): string {
-    return `po-draft:${accountId}:${poId}`;
+const MAX_AGE = 24 * 60 * 60 * 1000;
+const statuses = ['DRAFT', 'ORDERED', 'RECEIVED', 'CANCELLED'];
+function valid(value: unknown): value is PODraftState {
+    if (!isRecord(value) || !Number.isFinite(value.savedAt) || typeof value.savedAt !== 'number' || value.savedAt > Date.now() || Date.now() - value.savedAt > MAX_AGE) return false;
+    if (!['supplierId', 'status', 'notes', 'orderDate', 'expectedDate', 'trackingNumber', 'trackingLink'].every(key => typeof value[key] === 'string' && value[key].length <= 50000) || !statuses.includes(value.status as string)) return false;
+    if (![value.orderDate, value.expectedDate].every(date => date === '' || typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(date)) && new Date(date).toISOString().slice(0, 10) === date)) return false;
+    return Array.isArray(value.items) && value.items.length <= 1000 && value.items.every(item => isRecord(item) && typeof item.name === 'string' && item.name.length <= 10000 &&
+        ['quantity', 'unitCost', 'totalCost'].every(key => typeof item[key] === 'number' && Number.isFinite(item[key]) && item[key] >= 0 && item[key] <= Number.MAX_SAFE_INTEGER) &&
+        ['id', 'productId', 'supplierItemId', 'sku'].every(key => item[key] == null || typeof item[key] === 'string' && item[key].length <= 10000) &&
+        ['wooId', 'variationWooId'].every(key => item[key] == null || typeof item[key] === 'number' && Number.isSafeInteger(item[key]) && item[key] >= 0));
 }
-
-/**
- * Try to read a stored draft, returning null if missing or expired.
- * Why: centralised read logic keeps expiry checks in one place.
- */
-function readDraft(key: string): PODraftState | null {
+function remove(key: string) { try { localStorage.removeItem(key); } catch { /* Storage can be unavailable. */ } }
+function read(key: string): PODraftState | null {
     try {
         const raw = localStorage.getItem(key);
         if (!raw) return null;
-
-        const parsed: PODraftState = JSON.parse(raw);
-
-        if (Date.now() - parsed.savedAt > MAX_DRAFT_AGE_MS) {
-            localStorage.removeItem(key);
-            return null;
-        }
-
-        return parsed;
-    } catch {
-        localStorage.removeItem(key);
-        return null;
-    }
+        if (raw.length > 2000000) { remove(key); return null; }
+        const envelope: unknown = JSON.parse(raw);
+        if (isRecord(envelope) && envelope.version === 2 && valid(envelope.draft)) return envelope.draft;
+        remove(key);
+    } catch { remove(key); }
+    return null;
 }
-
-/**
- * Write a draft snapshot to localStorage.
- * Why: separated so it can be called independently and tested easily.
+/** Call loadDraft before enabling writes. Legacy unowned drafts are never restored.
+ * Flush on pagehide; navigation/scope changes cancel pending writes rather than
+ * persisting a potentially stale form during logout or account changes.
  */
-function writeDraft(key: string, state: PODraftState): void {
-    try {
-        localStorage.setItem(key, JSON.stringify(state));
-    } catch (err) {
-        // Why: quota exceeded or private-browsing — log but don't crash
-        Logger.error('Failed to persist PO draft', { error: err });
-    }
-}
-
-interface UsePODraftPersistenceOptions {
-    /** Current account ID used to scope the draft key */
-    accountId: string;
-    /** PO ID or "new" for unsaved POs */
-    poId: string;
-    /** Current form state snapshot — the hook auto-saves whenever this changes */
-    formState: Omit<PODraftState, 'savedAt'>;
-    /** Whether auto-save is enabled (disable while loading server data) */
-    enabled?: boolean;
-}
-
-interface UsePODraftPersistenceReturn {
-    /** Load an existing draft, or null if none / expired */
-    loadDraft: () => PODraftState | null;
-    /** Remove the draft from localStorage */
-    clearDraft: () => void;
-    /** Whether a draft existed at mount time */
-    hasDraft: boolean;
-}
-
-/**
- * Auto-saves PO form state to localStorage with debounce.
- * Why: prevents data loss when the browser refreshes or crashes mid-edit.
- *
- * @example
- * ```ts
- * const { loadDraft, clearDraft, hasDraft } = usePODraftPersistence({
- *   accountId: currentAccount.id,
- *   poId: id ?? 'new',
- *   formState: { supplierId, status, notes, ... items },
- * });
- * ```
- */
-export function usePODraftPersistence({
-    accountId,
-    poId,
-    formState,
-    enabled = true,
-}: UsePODraftPersistenceOptions): UsePODraftPersistenceReturn {
-    const key = buildDraftKey(accountId, poId);
-    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+export function usePODraftPersistence({ ownerId, accountId, poId, formState, enabled = true }: {
+    ownerId: string; accountId: string; poId: string; formState: Omit<PODraftState, 'savedAt'>; enabled?: boolean;
+}) {
+    const key = ownerId && accountId && poId ? `po-draft:v2:${JSON.stringify([ownerId, accountId, poId])}` : '';
+    const [restoredKey, setRestoredKey] = useState('');
     const [hasDraft, setHasDraft] = useState(false);
-
-    // Check for existing draft on first render
+    const pending = useRef<{ key: string; draft: PODraftState } | null>(null);
+    const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const cleared = useRef<string | null>(null);
+    const snapshot = JSON.stringify(formState);
+    const cancel = useCallback(() => { if (timer.current) clearTimeout(timer.current); timer.current = null; pending.current = null; }, []);
+    const flush = useCallback(() => {
+        const next = pending.current;
+        cancel();
+        if (!next) return;
+        try { if (valid(next.draft)) localStorage.setItem(next.key, JSON.stringify({ version: 2, draft: next.draft })); } catch { /* Optional local recovery only. */ }
+    }, [cancel]);
+    const loadDraft = useCallback(() => {
+        const draft = key ? read(key) : null;
+        setHasDraft(!!draft); setRestoredKey(key);
+        return draft;
+    }, [key]);
     useEffect(() => {
-        setHasDraft(readDraft(key) !== null);
-    }, [key]);
-
-    // Debounced auto-save whenever formState changes
+        cancel();
+        if (!key || !enabled || restoredKey !== key || cleared.current === snapshot) return;
+        const draft: unknown = { ...JSON.parse(snapshot), savedAt: Date.now() };
+        try { if (!valid(draft)) return; } catch { return; }
+        pending.current = { key, draft };
+        timer.current = setTimeout(flush, 500);
+        return cancel;
+    }, [key, enabled, restoredKey, snapshot, cancel, flush]);
     useEffect(() => {
-        if (!enabled) return;
-
-        if (timerRef.current) clearTimeout(timerRef.current);
-
-        timerRef.current = setTimeout(() => {
-            writeDraft(key, { ...formState, savedAt: Date.now() });
-        }, SAVE_DEBOUNCE_MS);
-
-        return () => {
-            if (timerRef.current) clearTimeout(timerRef.current);
-        };
-    }, [key, enabled, formState]);
-
-    const loadDraft = useCallback((): PODraftState | null => {
-        return readDraft(key);
-    }, [key]);
-
-    const clearDraft = useCallback((): void => {
-        localStorage.removeItem(key);
-        setHasDraft(false);
-    }, [key]);
-
-    return {
-        loadDraft,
-        clearDraft,
-        hasDraft,
-    };
+        window.addEventListener('pagehide', flush);
+        return () => { window.removeEventListener('pagehide', flush); cancel(); };
+    }, [flush, cancel]);
+    const clearDraft = useCallback(() => { cancel(); cleared.current = snapshot; if (key) remove(key); setHasDraft(false); }, [key, snapshot, cancel]);
+    return { loadDraft, clearDraft, hasDraft };
 }

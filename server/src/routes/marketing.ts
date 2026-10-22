@@ -12,6 +12,18 @@ import { cartRecoveryService } from '../services/CartRecoveryService';
 import { isAccountFeatureEnabled } from '../utils/accountFeatures';
 import { applyPreviewText, resolveMergeTags, resolveMergeTagsWithDynamicProducts } from '../services/MergeTagResolver';
 import { HTTP_LIMITS } from '../config/limits';
+import { z } from 'zod';
+import { PermissionService } from '../services/PermissionService';
+import { EmailDashboardService } from '../services/EmailDashboardService';
+import { feedbackSchema, outcomeSchema } from '../services/tools/knowledge/RecommendationTracker';
+import { marketingWorkspaceRoutes } from './marketingWorkspace';
+import { resolveMarketingSchedule } from '../utils/marketingSchedule';
+import { compileEmailDesignV2, assertEmailDesign, EMAIL_RENDERER_VERSION } from '@overseek/core';
+import { prepareEmail } from '../services/EmailPreparation';
+import { EMAIL_PREVIEW_SCENARIOS, applyEmailPreviewScenario, type EmailPreviewScenario } from '../services/EmailPreviewScenarios';
+import { marketingDesignerRoutes } from './marketingDesigner';
+import { appendEmailUtm } from '../utils/emailUtm';
+import type { EmailDeliveryPreviewOptions } from '@overseek/core';
 
 const service = new MarketingService();
 
@@ -30,6 +42,9 @@ function getAccountId(request: FastifyRequest): string {
 }
 
 function sendInternalError(reply: FastifyReply, error: unknown, context: string) {
+    if (error instanceof z.ZodError) return reply.code(400).send({ error: 'Invalid bounded request' });
+    const status = (error as { statusCode?: number })?.statusCode;
+    if (status === 400 || status === 403 || status === 409) return reply.code(status).send({ error: status === 403 ? 'Permission required' : (error as Error).message });
     Logger.error(context, { error });
     return reply.code(500).send({ error: 'Internal server error' });
 }
@@ -82,6 +97,18 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.addHook('preHandler', requireAuthFastify);
     fastify.addHook('preHandler', async (request, reply) => {
+        if (/\/campaigns\/[^/]+\/(?:send|schedule|test)(?:\?|$)/.test(request.url) || request.method !== 'GET' && /\/automations(?:\/[^/]+\/status)?(?:\?|$)/.test(request.url)) {
+            const accountId = request.accountId || request.user?.accountId;
+            if (!accountId || !request.user?.id || !await PermissionService.hasPermission(request.user.id, accountId, 'manage_marketing')) return reply.code(403).send({ error: 'Marketing management permission required' });
+        }
+        if (request.url.includes('/preview-orders')) {
+            const accountId = request.accountId || request.user?.accountId;
+            if (!accountId || !request.user?.id || !await PermissionService.hasPermission(request.user.id, accountId, 'view_marketing')) return reply.code(403).send({ error: 'Marketing view permission required' });
+        }
+        if (request.url.includes('/recommendations/') || request.url.includes('/learnings') || request.url.includes('/analytics/email-dashboard')) {
+            if (!request.accountId || !request.user?.id) return reply.code(400).send({ error: 'Select an account' });
+            if (!await PermissionService.hasPermission(request.user.id, request.accountId, request.method === 'GET' ? 'view_marketing' : 'manage_marketing')) return reply.code(403).send({ error: 'Marketing permission required' });
+        }
         const accountId = request.accountId || request.user?.accountId;
         if (!accountId) {
             return reply.code(400).send({ error: 'Account context required' });
@@ -92,6 +119,9 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(403).send({ error: 'Email feature is disabled for this account' });
         }
     });
+
+    await fastify.register(marketingWorkspaceRoutes);
+    await fastify.register(marketingDesignerRoutes);
 
     // Campaigns
     fastify.get('/campaigns', async (request, reply) => {
@@ -141,10 +171,11 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    fastify.post<{ Params: { id: string }; Body: { email: string } }>('/campaigns/:id/test', async (request, reply) => {
+    fastify.post<{ Params: { id: string }; Body: { email: string; variant?: 'A' | 'B' } }>('/campaigns/:id/test', async (request, reply) => {
         try {
             const { email } = request.body;
-            const result = await service.sendTestEmail(request.params.id, getAccountId(request), email);
+            if (request.body.variant !== undefined && request.body.variant !== 'A' && request.body.variant !== 'B') return reply.code(400).send({ error: 'Invalid variant' });
+            const result = await service.sendTestEmail(request.params.id, getAccountId(request), email, request.body.variant);
             if (!result.success && result.skipped) {
                 return reply.code(409).send(result);
             }
@@ -172,6 +203,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
 
             return reply.code(202).send({ success: true, queued: true, jobId: result.jobId });
         } catch (e) {
+            if ((e as any)?.statusCode === 400 || (e as any)?.statusCode === 409) return sendInternalError(reply, e, 'Campaign readiness failed');
             const message = (e as Error).message;
             if (message === 'Campaign not found') {
                 return reply.code(404).send({ error: message });
@@ -181,9 +213,13 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    fastify.post<{ Params: { id: string }; Body: { scheduledAt: string } }>('/campaigns/:id/schedule', async (request, reply) => {
+    fastify.post<{ Params: { id: string }; Body: { scheduledAt?: string; localTime?: string; timezone?: string } }>('/campaigns/:id/schedule', async (request, reply) => {
         try {
-            const scheduledAtValue = request.body?.scheduledAt;
+            let scheduledAtValue = request.body?.scheduledAt;
+            if (request.body?.localTime !== undefined) {
+                try { scheduledAtValue = resolveMarketingSchedule(request.body.localTime, request.body.timezone || '').toISOString(); }
+                catch (error) { return reply.code(400).send({ error: (error as Error).message }); }
+            }
             if (!scheduledAtValue || typeof scheduledAtValue !== 'string') {
                 return reply.code(400).send({ error: 'scheduledAt is required' });
             }
@@ -193,9 +229,10 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(400).send({ error: 'Invalid scheduledAt value' });
             }
 
-            const result = await service.scheduleCampaign(request.params.id, getAccountId(request), scheduledAt);
+            const result = await service.scheduleCampaign(request.params.id, getAccountId(request), scheduledAt, request.body.localTime ? request.body.timezone : 'UTC');
             return reply.code(202).send({ success: true, ...result });
         } catch (e) {
+            if ((e as any)?.statusCode === 400 || (e as any)?.statusCode === 409) return sendInternalError(reply, e, 'Campaign readiness failed');
             const message = (e as Error).message;
             if (message === 'Campaign not found') {
                 return reply.code(404).send({ error: message });
@@ -428,11 +465,32 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    fastify.get('/preview-orders', async (request) => {
+        const orders = await prisma.wooOrder.findMany({
+            where: { accountId: getAccountId(request) }, orderBy: [{ dateCreated: 'desc' }, { id: 'desc' }], take: 30,
+            select: { id: true, number: true, rawData: true },
+        });
+        return { orders: orders.map(order => {
+            const billing = (order.rawData as any)?.billing;
+            return { id: order.id, number: String(order.number), label: [billing?.first_name, billing?.last_name].filter(Boolean).join(' ') || 'Customer' };
+        }) };
+    });
+
     // Preview and test use the same sample context and production merge resolver.
-    for (const route of ['/test-email', '/preview-email']) fastify.post<{ Body: { to?: string; subject: string; content: string; previewText?: string; category?: 'MARKETING' | 'TRANSACTIONAL'; orderId?: string | null } }>(route, async (request, reply) => {
+    for (const route of ['/test-email', '/preview-email']) fastify.post<{ Body: { to?: string; subject: string; content: string; designJson?: unknown; deliveryOptions?: EmailDeliveryPreviewOptions; scenario?: EmailPreviewScenario; previewText?: string; category?: 'MARKETING' | 'TRANSACTIONAL'; orderId?: string | null } }>(route, async (request, reply) => {
         try {
             const isPreview = route === '/preview-email';
-            const { to, subject, content, previewText, category, orderId } = request.body;
+            const optionsSchema = z.object({ automationId: z.string().min(1).max(128).optional(), appendUtm: z.boolean().optional(), campaignSource: z.string().max(500).optional(), campaignMedium: z.string().max(500).optional(), campaignName: z.string().max(500).optional(), campaignTerm: z.string().max(500).optional(), campaignContent: z.string().max(500).optional(), overrideFrom: z.boolean().optional(), fromName: z.string().max(200).optional(), fromEmail: z.string().max(254).optional(), replyToEmail: z.string().max(254).optional() });
+            const parsedOptions = optionsSchema.safeParse(request.body.deliveryOptions || {});
+            if (!parsedOptions.success) return reply.code(400).send({ error: 'Invalid delivery options' });
+            const deliveryOptions = parsedOptions.data;
+            const { to, subject, previewText, category, orderId, scenario = 'standard' } = request.body;
+            let content = request.body.content;
+            if (request.body.designJson !== undefined) {
+                try { assertEmailDesign(request.body.designJson); content = compileEmailDesignV2(request.body.designJson); }
+                catch { return reply.code(400).send({ error: 'Invalid or unsupported email design' }); }
+            }
+            if (!EMAIL_PREVIEW_SCENARIOS.includes(scenario) || scenario !== 'standard' && orderId !== null) return reply.code(400).send({ error: 'Stress scenarios require explicit sample data (orderId: null)' });
 
             if ((!isPreview && (!to || !subject)) || !content) {
                 return reply.code(400).send({ error: 'Missing required fields: to, subject, content' });
@@ -445,7 +503,9 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             const accountId = request.accountId || getAccountId(request);
-            const emailAccount = isPreview ? null : await getDefaultEmailAccount(accountId);
+            const emailAccount = await getDefaultEmailAccount(accountId);
+            const automation = deliveryOptions.automationId ? await prisma.marketingAutomation.findFirst({ where: { id: deliveryOptions.automationId, accountId }, select: { id: true, name: true } }) : null;
+            if (deliveryOptions.automationId && !automation) return reply.code(404).send({ error: 'Automation not found' });
             const account = await prisma.account.findFirst({
                 where: { id: accountId },
                 select: { wooUrl: true, domain: true, currency: true }
@@ -513,16 +573,36 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 linkTriggerUrl: normalizedStoreUrl,
                 // Keep recipient-specific placeholders for EmailService to resolve
                 // after allocating the tracking ID, just like a live flow send.
-                preferencesUrl: isPreview ? `${normalizedStoreUrl}/my-account/edit-account/` : '{{preferences_url}}',
-                unsubscribeUrl: isPreview ? `${normalizedStoreUrl}/?unsubscribe=preview` : '{{unsubscribe_url}}'
+                preferencesUrl: '{{preferences_url}}',
+                unsubscribeUrl: '{{unsubscribe_url}}'
             };
 
-            const resolvedSubject = resolveMergeTags(subject || '', testContext);
-            const resolvedContent = await resolveMergeTagsWithDynamicProducts(content, testContext);
-            const resolvedPreviewText = resolveMergeTags(previewText || '', testContext);
-            const contentWithPreviewText = applyPreviewText(resolvedContent, resolvedPreviewText);
+            const selectedContext = applyEmailPreviewScenario(testContext, scenario);
+            const resolvedSubject = resolveMergeTags(subject || '', selectedContext);
+            const resolvedContent = await resolveMergeTagsWithDynamicProducts(content, selectedContext);
+            const resolvedPreviewText = resolveMergeTags(previewText || '', selectedContext);
+            const resolveField = (value?: string) => resolveMergeTags(value || '', selectedContext);
+            const sender = {
+                fromName: deliveryOptions.overrideFrom ? resolveField(deliveryOptions.fromName) || emailAccount?.name : emailAccount?.name,
+                fromEmail: deliveryOptions.overrideFrom ? resolveField(deliveryOptions.fromEmail) || emailAccount?.email : emailAccount?.email,
+                replyToEmail: deliveryOptions.overrideFrom ? resolveField(deliveryOptions.replyToEmail) || undefined : undefined,
+            };
+            if ([sender.fromName, sender.fromEmail, sender.replyToEmail].some(value => /[\r\n]/.test(value || '')) || [sender.fromEmail, sender.replyToEmail].some(value => value && !/^\S+@\S+\.\S+$/.test(value))) return reply.code(400).send({ error: 'Invalid sender or reply-to address' });
+            const withPreviewText = applyPreviewText(resolvedContent, resolvedPreviewText);
+            const contentWithPreviewText = request.body.deliveryOptions ? appendEmailUtm(withPreviewText, {
+                ...deliveryOptions, campaignSource: resolveField(deliveryOptions.campaignSource), campaignMedium: resolveField(deliveryOptions.campaignMedium), campaignName: resolveField(deliveryOptions.campaignName), campaignTerm: resolveField(deliveryOptions.campaignTerm), campaignContent: resolveField(deliveryOptions.campaignContent),
+            }, automation?.name || automation?.id || 'preview') : withPreviewText;
 
-            if (isPreview) return { html: contentWithPreviewText, subject: resolvedSubject, previewText: resolvedPreviewText, orderId: sampleOrder?.id || null };
+            if (isPreview) {
+                const tags = [...new Set(`${subject || ''} ${previewText || ''} ${content}`.match(/\{\{\s*[\w.]+\s*\}\}/g) || [])];
+                const missingTags = tags.filter(tag => {
+                    if (/\{\{\s*(?:unsubscribe_url|unsubscribe_list_url|preferences_url)\s*\}\}/.test(tag)) return false;
+                    const value = resolveMergeTags(tag, selectedContext).trim();
+                    return !value || value === tag;
+                });
+                const prepared = prepareEmail({ html: contentWithPreviewText, subject: resolvedSubject, trackingId: 'preview-only-not-a-recipient', apiUrl: process.env.API_URL || 'http://localhost:3000', category: category === 'TRANSACTIONAL' ? 'TRANSACTIONAL' : 'MARKETING' });
+                return { ...prepared, sender, canonicalHtml: contentWithPreviewText, rendererVersion: EMAIL_RENDERER_VERSION, previewText: resolvedPreviewText, orderId: sampleOrder?.id || null, missingTags, scenario, simulated: true };
+            }
 
             const { EmailService } = await import('../services/EmailService');
             const emailService = new EmailService();
@@ -533,7 +613,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 resolvedSubject,
                 contentWithPreviewText,
                 undefined,
-                { source: 'TEST', category: category === 'TRANSACTIONAL' ? 'TRANSACTIONAL' : 'MARKETING' }
+                { source: 'TEST', category: category === 'TRANSACTIONAL' ? 'TRANSACTIONAL' : 'MARKETING', ...sender }
             );
 
             if (result && typeof result === 'object' && 'skipped' in result && result.skipped) {
@@ -584,173 +664,8 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.get<{ Querystring: { days?: string } }>('/analytics/email-dashboard', async (request, reply) => {
         try {
-            const safeDays = parsePositiveInt(request.query.days, 30, 365);
-            const since = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000);
-            const accountId = getAccountId(request);
-
-            const [campaignEvents, emailLogStats, recentUnsubscribes, emailLogsForTrend, unsubscribesForTrend, automationGoalEvents, automationPurchaseEvents] = await Promise.all([
-                prisma.campaignEvent.groupBy({
-                    by: ['campaignType', 'eventType'],
-                    where: {
-                        accountId,
-                        createdAt: { gte: since }
-                    },
-                    _count: true,
-                    _sum: { revenue: true }
-                }),
-                prisma.emailLog.groupBy({
-                    by: ['status'],
-                    where: {
-                        accountId,
-                        createdAt: { gte: since }
-                    },
-                    _count: true
-                }),
-                prisma.emailUnsubscribe.findMany({
-                    where: { accountId },
-                    orderBy: { createdAt: 'desc' },
-                    take: 10,
-                    select: {
-                        id: true,
-                        email: true,
-                        scope: true,
-                        reason: true,
-                        createdAt: true
-                    }
-                }),
-                prisma.emailLog.findMany({
-                    where: {
-                        accountId,
-                        createdAt: { gte: since }
-                    },
-                    select: {
-                        status: true,
-                        createdAt: true
-                    }
-                }),
-                prisma.emailUnsubscribe.findMany({
-                    where: {
-                        accountId,
-                        createdAt: { gte: since }
-                    },
-                    select: {
-                        createdAt: true
-                    }
-                }),
-                prisma.automationGoalEvent.findMany({
-                    where: {
-                        accountId,
-                        createdAt: { gte: since },
-                        revenue: { not: null }
-                    },
-                    select: {
-                        orderId: true,
-                        revenue: true
-                    }
-                }),
-                prisma.campaignEvent.findMany({
-                    where: {
-                        accountId,
-                        campaignType: 'automation',
-                        eventType: 'purchase',
-                        createdAt: { gte: since },
-                        orderId: { not: null }
-                    },
-                    select: { orderId: true }
-                })
-            ]);
-
-            let flowRevenue = 0;
-            let broadcastRevenue = 0;
-            let flowSends = 0;
-            let broadcastSends = 0;
-            let totalUnsubscribes = 0;
-
-            for (const event of campaignEvents) {
-                if (event.eventType === 'purchase') {
-                    const revenue = event._sum.revenue || 0;
-                    if (event.campaignType === 'automation') flowRevenue += revenue;
-                    if (event.campaignType === 'broadcast') broadcastRevenue += revenue;
-                }
-
-                if (event.eventType === 'send') {
-                    if (event.campaignType === 'automation') flowSends += event._count;
-                    if (event.campaignType === 'broadcast') broadcastSends += event._count;
-                }
-
-                if (event.eventType === 'unsubscribe') {
-                    totalUnsubscribes += event._count;
-                }
-            }
-
-            const attributedAutomationOrderIds = new Set(
-                automationPurchaseEvents
-                    .map((event) => event.orderId)
-                    .filter((orderId): orderId is string => Boolean(orderId))
-            );
-            for (const goal of automationGoalEvents) {
-                if (goal.orderId && attributedAutomationOrderIds.has(goal.orderId)) continue;
-                flowRevenue += Number(goal.revenue || 0);
-            }
-
-            const sentCount = emailLogStats.reduce((sum, row) => sum + row._count, 0);
-            const failedCount = emailLogStats
-                .filter((row) => row.status === 'FAILED')
-                .reduce((sum, row) => sum + row._count, 0);
-            const bounceRate = sentCount > 0 ? (failedCount / sentCount) * 100 : 0;
-
-            const dayLabels: string[] = [];
-            const trendMap = new Map<string, { sent: number; failed: number; unsubscribes: number }>();
-
-            for (let i = safeDays - 1; i >= 0; i -= 1) {
-                const date = new Date();
-                date.setHours(0, 0, 0, 0);
-                date.setDate(date.getDate() - i);
-                const key = date.toISOString().slice(0, 10);
-                dayLabels.push(key);
-                trendMap.set(key, { sent: 0, failed: 0, unsubscribes: 0 });
-            }
-
-            for (const log of emailLogsForTrend) {
-                const key = log.createdAt.toISOString().slice(0, 10);
-                const bucket = trendMap.get(key);
-                if (!bucket) continue;
-                bucket.sent += 1;
-                if (log.status === 'FAILED') bucket.failed += 1;
-            }
-
-            for (const unsub of unsubscribesForTrend) {
-                const key = unsub.createdAt.toISOString().slice(0, 10);
-                const bucket = trendMap.get(key);
-                if (!bucket) continue;
-                bucket.unsubscribes += 1;
-            }
-
-            const trends = dayLabels.map((date) => {
-                const bucket = trendMap.get(date) || { sent: 0, failed: 0, unsubscribes: 0 };
-                return {
-                    date,
-                    unsubscribes: bucket.unsubscribes,
-                    bounceRate: bucket.sent > 0 ? (bucket.failed / bucket.sent) * 100 : 0
-                };
-            });
-
-            return {
-                days: safeDays,
-                rangeStart: since.toISOString(),
-                kpis: {
-                    flowRevenue,
-                    broadcastRevenue,
-                    flowSends,
-                    broadcastSends,
-                    totalUnsubscribes,
-                    bounceRate,
-                    sentCount,
-                    failedCount
-                },
-                recentUnsubscribes,
-                trends
-            };
+            const days = z.string().regex(/^[1-9]\d*$/).transform(Number).refine(value => value <= 365).parse(request.query.days ?? '30');
+            return await EmailDashboardService.get(request.accountId!, days);
         } catch (e) {
             Logger.error('Error fetching email dashboard analytics', { error: e });
             return sendInternalError(reply, e, 'Marketing route failed');
@@ -773,7 +688,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                     getAccountId(request),
                     {
                         status: request.query.status as any,
-                        limit: request.query.limit ? parseInt(request.query.limit, 10) : 50
+                        limit: z.string().regex(/^[1-9]\d*$/).transform(Number).refine(value => value <= 100).parse(request.query.limit ?? '50')
                     }
                 );
                 return history;
@@ -792,7 +707,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         async (request, reply) => {
             try {
                 const { RecommendationTracker } = await import('../services/tools/knowledge/RecommendationTracker');
-                const days = parseInt(request.query.days || '90', 10);
+                const days = z.string().regex(/^[1-9]\d*$/).transform(Number).refine(value => value <= 365).parse(request.query.days ?? '90');
                 const stats = await RecommendationTracker.getStats(getAccountId(request), days);
                 return stats;
             } catch (e) {
@@ -810,15 +725,9 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         async (request, reply) => {
             try {
                 const { RecommendationTracker } = await import('../services/tools/knowledge/RecommendationTracker');
-                const { status, dismissReason } = request.body;
-
-                if (!['implemented', 'dismissed'].includes(status)) {
-                    return reply.code(400).send({ error: 'Invalid status' });
-                }
-
                 const success = await RecommendationTracker.recordFeedback(
-                    request.params.id,
-                    { status: status as any, dismissReason: dismissReason as any }
+                    request.accountId!, request.user!.id, request.params.id,
+                    feedbackSchema.parse(request.body)
                 );
 
                 if (!success) {
@@ -840,11 +749,9 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         async (request, reply) => {
             try {
                 const { RecommendationTracker } = await import('../services/tools/knowledge/RecommendationTracker');
-                const { roasBefore, roasAfter, notes } = request.body;
-
                 const success = await RecommendationTracker.recordOutcome(
-                    request.params.id,
-                    { roasBefore, roasAfter, notes }
+                    request.accountId!, request.user!.id, request.params.id,
+                    outcomeSchema.parse(request.body)
                 );
 
                 if (!success) {
@@ -870,9 +777,10 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         async (request, reply) => {
             try {
                 const { LearningService } = await import('../services/tools/knowledge/LearningService');
+                const query = z.object({ includeInactive: z.enum(['true', 'false']).optional(), includePending: z.enum(['true', 'false']).optional() }).strict().parse(request.query);
                 const learnings = await LearningService.list(getAccountId(request), {
-                    includeInactive: request.query.includeInactive === 'true',
-                    includePending: request.query.includePending === 'true'
+                    includeInactive: query.includeInactive === 'true',
+                    includePending: query.includePending === 'true'
                 });
                 return learnings;
             } catch (e) {
@@ -903,21 +811,8 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         '/learnings',
         async (request, reply) => {
             try {
-                const { LearningService } = await import('../services/tools/knowledge/LearningService');
-                const { platform, category, condition, recommendation, explanation } = request.body;
-
-                if (!platform || !category || !condition || !recommendation) {
-                    return reply.code(400).send({ error: 'Missing required fields' });
-                }
-
-                const learning = await LearningService.create(getAccountId(request), {
-                    platform: platform as any,
-                    category: category as any,
-                    condition,
-                    recommendation,
-                    explanation,
-                    source: 'user'
-                });
+                const { LearningService, createLearningSchema } = await import('../services/tools/knowledge/LearningService');
+                const learning = await LearningService.create(getAccountId(request), createLearningSchema.parse(request.body), request.user!.id);
                 return learning;
             } catch (e) {
                 Logger.error('Error creating learning', { error: e });
@@ -937,7 +832,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 const updated = await LearningService.update(
                     request.params.id,
                     getAccountId(request),
-                    request.body
+                    request.body, request.user!.id
                 );
 
                 if (!updated) {
@@ -957,7 +852,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.delete<{ Params: { id: string } }>('/learnings/:id', async (request, reply) => {
         try {
             const { LearningService } = await import('../services/tools/knowledge/LearningService');
-            const deleted = await LearningService.delete(request.params.id, getAccountId(request));
+            const deleted = await LearningService.delete(request.params.id, getAccountId(request), request.body, request.user!.id);
 
             if (!deleted) {
                 return reply.code(404).send({ error: 'Learning not found' });
@@ -975,7 +870,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post<{ Params: { id: string } }>('/learnings/:id/approve', async (request, reply) => {
         try {
             const { LearningService } = await import('../services/tools/knowledge/LearningService');
-            const approved = await LearningService.approvePending(request.params.id, getAccountId(request));
+            const approved = await LearningService.approvePending(request.params.id, getAccountId(request), request.body, request.user!.id);
 
             if (!approved) {
                 return reply.code(404).send({ error: 'Pending learning not found' });
@@ -993,8 +888,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/learnings/derive', async (request, reply) => {
         try {
             const { LearningService } = await import('../services/tools/knowledge/LearningService');
-            const derived = await LearningService.deriveFromOutcomes(getAccountId(request));
-            return { derived, count: derived.length };
+            return await LearningService.deriveFromOutcomes(getAccountId(request), request.user!.id);
         } catch (e) {
             Logger.error('Error deriving learnings', { error: e });
             return sendInternalError(reply, e, 'Marketing route failed');

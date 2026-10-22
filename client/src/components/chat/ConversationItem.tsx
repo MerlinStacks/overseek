@@ -73,10 +73,14 @@ export const ConversationItem = memo(function ConversationItem({
 }: ConversationItemProps) {
     const isEmail = conv.guestEmail || conv.wooCustomer?.email;
     const isUnread = conv.isRead === false;
+    const date = new Date(lastCustomerTime);
+    const timeLabel = Number.isFinite(date.getTime()) ? formatDistanceToNow(date, { addSuffix: false }) : 'Time unavailable';
+    const select = () => { if (!isSelectionMode) onSelect(conv.id); };
 
     return (
         <div
-            onClick={() => !isSelectionMode && onSelect(conv.id)}
+            role="group"
+            aria-label={`Conversation with ${displayName}`}
             onMouseEnter={() => onPreload?.(conv.id)}
             className={cn(
                 "flex gap-3 p-3 cursor-pointer border-b border-gray-100 transition-colors",
@@ -89,7 +93,10 @@ export const ConversationItem = memo(function ConversationItem({
         >
             {/* Checkbox for bulk selection */}
             <button
-                onClick={(e) => onToggleSelection(conv.id, e)}
+                type="button"
+                aria-label={`Select conversation with ${displayName} for bulk actions`}
+                aria-pressed={isBulkSelected}
+                onClick={(e) => { e.stopPropagation(); onToggleSelection(conv.id, e); }}
                 className="p-0.5 rounded hover:bg-gray-200 transition-colors shrink-0 self-start mt-2"
             >
                 {isBulkSelected ? (
@@ -107,7 +114,7 @@ export const ConversationItem = memo(function ConversationItem({
             </div>
 
             {/* Content */}
-            <div className="flex-1 min-w-0">
+            <button type="button" disabled={isSelectionMode} aria-label={`Open conversation with ${displayName}`} aria-pressed={isSelected} onClick={select} onFocus={() => onPreload?.(conv.id)} className="flex-1 min-w-0 text-left rounded focus-visible:ring-2 focus-visible:ring-indigo-500 dark:bg-slate-900 dark:text-slate-100">
                 {/* Sender row */}
                 <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 min-w-0">
@@ -121,7 +128,7 @@ export const ConversationItem = memo(function ConversationItem({
                         )}>{displayName}</span>
                     </div>
                     <span className="text-xs text-gray-400 whitespace-nowrap shrink-0">
-                        {formatDistanceToNow(new Date(lastCustomerTime), { addSuffix: false })}
+                        {timeLabel}
                     </span>
                 </div>
 
@@ -156,7 +163,7 @@ export const ConversationItem = memo(function ConversationItem({
                                 conv.priorityTier === 'HIGH' && "bg-orange-100 text-orange-700",
                                 conv.priorityTier === 'NORMAL' && "bg-amber-100 text-amber-700"
                             )}
-                            title={conv.priorityReasons?.join(' | ') || 'Priority ranked'}
+                            title={Array.isArray(conv.priorityReasons) ? conv.priorityReasons.filter(reason => typeof reason === 'string').slice(0, 10).join(' | ') : 'Priority ranked'}
                         >
                             {conv.priorityTier}
                         </span>
@@ -173,23 +180,23 @@ export const ConversationItem = memo(function ConversationItem({
                         </span>
                     )}
                     {/* Labels */}
-                    {conv.labels && conv.labels.slice(0, 2).map((label) => (
+                    {Array.isArray(conv.labels) && conv.labels.slice(0, 2).filter(label => label && typeof label.id === 'string' && typeof label.name === 'string').map((label) => (
                         <span
                             key={label.id}
                             className="px-1.5 py-0.5 text-[10px] font-medium rounded-sm"
                             style={{
-                                backgroundColor: `${label.color}20`,
-                                color: label.color,
+                                backgroundColor: /^#[0-9a-f]{6}$/i.test(label.color) ? `${label.color}20` : undefined,
+                                color: /^#[0-9a-f]{6}$/i.test(label.color) ? label.color : undefined,
                             }}
                         >
                             {label.name}
                         </span>
                     ))}
-                    {conv.labels && conv.labels.length > 2 && (
+                    {Array.isArray(conv.labels) && conv.labels.length > 2 && (
                         <span className="text-[10px] text-gray-400">+{conv.labels.length - 2}</span>
                     )}
                 </div>
-            </div>
+            </button>
         </div>
     );
 });

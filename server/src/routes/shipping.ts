@@ -131,18 +131,19 @@ const createLabelSchema = z.object({
     printStationId: z.string().nullable().optional(),
 }).optional();
 
-const reprintSchema = z.object({
+import { runShippingLabelOperation, shippingOperationSchema } from '../services/shipping/ShippingOperationAdmission';
+const reprintSchema = shippingOperationSchema.extend({
     printStationId: z.string().nullable().optional(),
-});
+}).strict();
 
-const recoverLabelSchema = z.object({
+const recoverLabelSchema = shippingOperationSchema.extend({
     printStationId: z.string().nullable().optional(),
     queuePrint: z.boolean().optional(),
-});
+}).strict();
 
-const cancelLabelSchema = z.object({
+const cancelLabelSchema = shippingOperationSchema.extend({
     reason: z.string().max(500).nullable().optional(),
-});
+}).strict();
 
 const reassignPrintJobSchema = z.object({
     printStationId: z.string().min(1),
@@ -462,9 +463,10 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
             const parsed = reprintSchema.safeParse(request.body || {});
             if (!params.success) return reply.code(400).send({ error: 'Invalid label id' });
             if (!parsed.success) return reply.code(400).send({ error: 'Invalid reprint payload', details: parsed.error.flatten() });
-            return { printJob: await shippingService.queueStoredLabelReprint(request.accountId!, params.data.id, parsed.data.printStationId, request.user?.id) };
+            return await runShippingLabelOperation(request.accountId!, params.data.id, request.user!.id, 'reprint', parsed.data, async () => ({ printJob: await shippingService.queueStoredLabelReprint(request.accountId!, params.data.id, parsed.data.printStationId, request.user?.id) }));
         } catch (error: any) {
             Logger.error('[ShippingRoutes] Failed to queue label reprint', { error: error?.message || error });
+            if (error?.statusCode === 409) return reply.code(409).send({ error: 'Reconcile the shipping operation before retrying' });
             const known = ['Label not found', 'Stored label PDF is missing', 'Stored label PDF path is invalid or unavailable', 'Print station not configured'];
             const status = known.includes(error?.message) ? 400 : 500;
             return reply.code(status).send({ error: error?.message || 'Failed to queue label reprint' });
@@ -497,7 +499,7 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
             const parsed = recoverLabelSchema.safeParse(request.body || {});
             if (!params.success) return reply.code(400).send({ error: 'Invalid label id' });
             if (!parsed.success) return reply.code(400).send({ error: 'Invalid recover payload', details: parsed.error.flatten() });
-            return {
+            return await runShippingLabelOperation(request.accountId!, params.data.id, request.user!.id, 'recover-pdf', parsed.data, async () => ({
                 label: await shippingService.recoverPendingLabelPdf(
                     request.accountId!,
                     params.data.id,
@@ -505,9 +507,10 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
                     request.user?.id,
                     parsed.data.queuePrint !== false,
                 ),
-            };
+            }));
         } catch (error: any) {
             Logger.error('[ShippingRoutes] Failed to recover label PDF', { error: error?.message || error });
+            if (error?.statusCode === 409) return reply.code(409).send({ error: 'Reconcile the shipping operation before retrying' });
             const known = [
                 'Label not found',
                 'Carrier label request ID is missing',
@@ -526,9 +529,12 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
             if (denied) return denied;
             const params = idParamsSchema.safeParse(request.params);
             if (!params.success) return reply.code(400).send({ error: 'Invalid label id' });
-            return await shippingService.retryLabelFulfillmentSync(request.accountId!, params.data.id, request.user?.id);
+            const parsed = shippingOperationSchema.strict().safeParse(request.body);
+            if (!parsed.success) return reply.code(400).send({ error: 'Operation identity and version required' });
+            return await runShippingLabelOperation(request.accountId!, params.data.id, request.user!.id, 'retry-fulfillment', parsed.data, () => shippingService.retryLabelFulfillmentSync(request.accountId!, params.data.id, request.user?.id));
         } catch (error: any) {
             Logger.error('[ShippingRoutes] Failed to retry WooCommerce fulfillment sync', { error: error?.message || error });
+            if (error?.statusCode === 409) return reply.code(409).send({ error: 'Reconcile the shipping operation before retrying' });
             const known = ['Label not found', 'Only printed or fulfilled labels can retry WooCommerce sync'];
             const status = known.includes(error?.message) ? 400 : 500;
             return reply.code(status).send({ error: error?.message || 'Failed to retry WooCommerce sync' });
@@ -543,9 +549,10 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
             const parsed = cancelLabelSchema.safeParse(request.body || {});
             if (!params.success) return reply.code(400).send({ error: 'Invalid label id' });
             if (!parsed.success) return reply.code(400).send({ error: 'Invalid cancellation payload', details: parsed.error.flatten() });
-            return { label: await shippingService.requestLabelCancellation(request.accountId!, params.data.id, parsed.data.reason, request.user?.id) };
+            return await runShippingLabelOperation(request.accountId!, params.data.id, request.user!.id, 'cancel', parsed.data, async () => ({ label: await shippingService.requestLabelCancellation(request.accountId!, params.data.id, parsed.data.reason, request.user?.id) }));
         } catch (error: any) {
             Logger.error('[ShippingRoutes] Failed to cancel label', { error: error?.message || error });
+            if (error?.statusCode === 409) return reply.code(409).send({ error: 'Reconcile the shipping operation before retrying' });
             const known = [
                 'Label not found',
                 'Label is already cancelled',

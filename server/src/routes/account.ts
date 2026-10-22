@@ -383,8 +383,10 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
             });
             if (!membership) return reply.code(403).send({ error: 'Forbidden' });
 
-            const mappings = await OrderTaggingService.getTagMappings(request.params.accountId);
-            return { mappings };
+            if (request.accountId !== request.params.accountId) return reply.code(400).send({ error: 'Select the requested account' });
+            const { PermissionService } = await import('../services/PermissionService');
+            if (!await PermissionService.hasAnyPermission(userId, request.params.accountId, ['view_orders', 'manage_order_tag_mappings'])) return reply.code(403).send({ error: 'Order view permission required' });
+            return await OrderTaggingService.getTagMappingSnapshot(request.params.accountId);
         } catch (error) {
             return reply.code(500).send({ error: 'Failed to get tag mappings' });
         }
@@ -397,15 +399,16 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
             const membership = await prisma.accountUser.findUnique({
                 where: { userId_accountId: { userId, accountId: request.params.accountId } }
             });
-            if (!membership || (membership.role !== 'OWNER' && membership.role !== 'ADMIN')) {
+            if (!membership) {
                 return reply.code(403).send({ error: 'Forbidden' });
             }
 
-            const { mappings } = request.body;
-            if (!Array.isArray(mappings)) return reply.code(400).send({ error: 'mappings must be an array' });
-            await OrderTaggingService.saveTagMappings(request.params.accountId, mappings);
-            return { success: true };
+            if (request.accountId !== request.params.accountId) return reply.code(400).send({ error: 'Select the requested account' });
+            return await OrderTaggingService.saveTagMappings(request.params.accountId, request.body, userId);
         } catch (error) {
+            if ((error as { name?: string }).name === 'ZodError') return reply.code(400).send({ error: 'Invalid tag mappings or version' });
+            const status = (error as { statusCode?: number }).statusCode;
+            if (status === 403 || status === 409) return reply.code(status).send({ error: 'Tag mappings changed or permission unavailable' });
             return reply.code(500).send({ error: 'Failed to save tag mappings' });
         }
     });
@@ -419,8 +422,10 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
             });
             if (!membership) return reply.code(403).send({ error: 'Forbidden' });
 
-            const tags = await OrderTaggingService.getAllProductTags(request.params.accountId);
-            return { tags };
+            if (request.accountId !== request.params.accountId) return reply.code(400).send({ error: 'Select the requested account' });
+            const { PermissionService } = await import('../services/PermissionService');
+            if (!await PermissionService.hasPermission(userId, request.params.accountId, 'manage_order_tag_mappings')) return reply.code(403).send({ error: 'Tag mapping management permission required' });
+            return await OrderTaggingService.getAllProductTags(request.params.accountId);
         } catch (error) {
             return reply.code(500).send({ error: 'Failed to get product tags' });
         }

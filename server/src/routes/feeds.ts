@@ -21,6 +21,7 @@ const listQuerySchema = z.object({
     page: z.coerce.number().int().positive().default(1),
     limit: z.coerce.number().int().positive().max(200).default(50),
     q: z.string().optional().default(''),
+    groupVariants: z.enum(['true', 'false']).optional().transform((value) => value === 'true'),
     variationMode: z.enum([
         'automatic',
         'variable_parent',
@@ -92,6 +93,7 @@ const optimizeRowSchema = z.object({
 
 const optimizeBulkSchema = z.object({
     fields: z.array(z.string().min(1)).min(1),
+    sharedDescriptions: z.boolean().optional().default(false),
     rows: z.array(z.object({
         wooId: z.coerce.number().int().positive(),
         variationWooId: z.coerce.number().int().positive().optional(),
@@ -223,9 +225,9 @@ const feedsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const { channel } = paramsSchema.parse(request.params);
-            const { page, limit, q, variationMode } = listQuerySchema.parse(request.query);
+            const { page, limit, q, variationMode, groupVariants } = listQuerySchema.parse(request.query);
             const parsedChannel = FeedMappingService.parseChannel(channel);
-            const result = await FeedMappingService.getFeedRows(accountId, parsedChannel, page, limit, q, variationMode);
+            const result = await FeedMappingService.getFeedRows(accountId, parsedChannel, page, limit, q, variationMode, undefined, false, groupVariants);
             return {
                 channel: parsedChannel,
                 page,
@@ -234,6 +236,7 @@ const feedsRoutes: FastifyPluginAsync = async (fastify) => {
                 total: result.total,
                 mappings: result.mappings,
                 rows: result.rows,
+                groups: result.groups,
             };
         } catch (error: any) {
             Logger.error('Failed to fetch feed rows', { error: error?.message || error });
@@ -375,7 +378,7 @@ const feedsRoutes: FastifyPluginAsync = async (fastify) => {
             try {
                 const accountId = request.accountId!;
                 const { channel } = paramsSchema.parse(request.params);
-                const { fields, rows } = optimizeBulkSchema.parse(request.body);
+                const { fields, rows, sharedDescriptions } = optimizeBulkSchema.parse(request.body);
                 const parsedChannel = FeedMappingService.parseChannel(channel);
                 const maxBulkOptimizeRows = await FeedMappingService.getMaxBulkOptimizeRows(accountId);
                 if (rows.length > maxBulkOptimizeRows) {
@@ -390,7 +393,7 @@ const feedsRoutes: FastifyPluginAsync = async (fastify) => {
                 const jobId = `feed_optimize:${accountId}:${parsedChannel}:${Date.now()}`;
                 await queue.add(
                     'feed-optimize-bulk',
-                    { accountId, channel: parsedChannel, fields, rows },
+                    { accountId, channel: parsedChannel, fields, rows, sharedDescriptions },
                     { jobId },
                 );
 

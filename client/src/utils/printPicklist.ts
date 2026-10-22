@@ -1,101 +1,16 @@
-
-interface PicklistItem {
-    productId: string;
-    sku: string;
-    name: string;
-    binLocation: string;
-    quantityUpdates: { orderNumber: string; quantity: number; wooOrderId: number }[];
-    totalQuantity: number;
-    stockStatus: string;
+import { z } from 'zod';
+const text = z.string().max(500), quantity = z.number().int().positive().max(1000000);
+const item = z.object({ productId: text.min(1), sku: text, name: text.min(1), binLocation: text, quantityUpdates: z.array(z.object({ orderNumber: text.min(1), quantity, wooOrderId: z.number().int().positive().safe() })).min(1).max(500), totalQuantity: quantity, stockStatus: z.string().max(100) }).refine(value => value.quantityUpdates.reduce((sum, line) => sum + line.quantity, 0) === value.totalQuantity, 'Line totals do not reconcile');
+export const picklistSnapshotSchema = z.object({ accountId: z.string().min(1).max(200), accountName: text.min(1), generatedAt: z.string().datetime(), status: z.enum(['processing', 'on-hold', 'pending', 'completed']), orderLimit: z.number().int().min(1).max(500), items: z.array(item).max(2000) }).refine(value => new Set(value.items.map(item => item.productId)).size === value.items.length, 'Duplicate product identities');
+const escape = (value: string | number) => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+export function picklistPreviewHtml(input: unknown): string {
+    const snapshot = picklistSnapshotSchema.parse(input);
+    return `<!doctype html><html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Picklist preview</title><style>body{font-family:system-ui;padding:20px}table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:8px;border-bottom:1px solid #ddd}@media print{.actions{display:none}}</style></head><body><h1>Picklist preview</h1><p>Account: ${escape(snapshot.accountName)} (${escape(snapshot.accountId)})</p><p>Prepared ${escape(snapshot.generatedAt)} · ${escape(snapshot.status)} · first up to ${snapshot.orderLimit} locally stored orders. Coverage beyond that window is unknown. No stock is reserved or consumed. Whole-unit demand only; verify the snapshot before printing.</p><div class="actions"><button type="button" onclick="window.print()">Print this reviewed snapshot</button><button type="button" onclick="window.close()">Close preview</button></div><table><thead><tr><th>Bin</th><th>Product</th><th>Source stock state</th><th>Total quantity</th><th>Orders</th></tr></thead><tbody>${snapshot.items.map(row => `<tr><td>${escape(row.binLocation || 'Unavailable')}</td><td>${escape(row.name)}<br>SKU: ${escape(row.sku)}</td><td>${escape(row.stockStatus === 'instock' ? 'In stock (source observation)' : row.stockStatus === 'onbackorder' ? 'Backorder' : row.stockStatus === 'outofstock' ? 'Out of stock' : 'Unknown')}</td><td>${row.totalQuantity}</td><td>${row.quantityUpdates.map(line => `#${escape(line.orderNumber)} (${line.quantity})`).join(', ')}</td></tr>`).join('')}</tbody></table></body></html>`;
 }
-
-function escapeHtml(value: unknown): string {
-    return String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
-function formatQuantity(value: unknown): string {
-    const quantity = Number(value);
-    return Number.isFinite(quantity) ? escapeHtml(quantity) : '0';
-}
-
-export function printPicklist(items: PicklistItem[]) {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-        alert('Please allow popups to print the picklist');
-        return;
-    }
-
-    const html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Picklist - ${new Date().toLocaleDateString()}</title>
-            <style>
-                body { font-family: system-ui, -apple-system, sans-serif; padding: 20px; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                th { text-align: left; border-bottom: 2px solid #000; padding: 10px; }
-                td { border-bottom: 1px solid #ddd; padding: 10px; vertical-align: top; }
-                .bin { font-family: monospace; font-weight: bold; font-size: 1.2em; }
-                .qty { font-weight: bold; font-size: 1.2em; text-align: center; }
-                .orders { font-size: 0.85em; color: #555; }
-                .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
-                h1 { margin: 0; }
-                @media print {
-                    @page { margin: 1cm; }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <div>
-                    <h1>Picklist</h1>
-                    <p>Generated: ${new Date().toLocaleString()}</p>
-                </div>
-                <div>
-                    <strong>Total Items: ${items.length}</strong>
-                </div>
-            </div>
-
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 15%">Bin Loc</th>
-                        <th style="width: 50%">Product</th>
-                        <th style="width: 10%; text-align: center">Total Qty</th>
-                        <th style="width: 25%">Orders</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${items.map(item => `
-                        <tr>
-                            <td class="bin">${escapeHtml(item.binLocation || 'N/A')}</td>
-                            <td>
-                                <div>${escapeHtml(item.name)}</div>
-                                <div style="font-size: 0.8em; color: #666;">SKU: ${escapeHtml(item.sku)}</div>
-                                ${item.stockStatus !== 'instock' ? '<div style="color: red; font-size: 0.8em; font-weight: bold;">⚠️ OUT OF STOCK</div>' : ''}
-                            </td>
-                            <td class="qty">${formatQuantity(item.totalQuantity)}</td>
-                            <td class="orders">
-                                ${item.quantityUpdates.map(u =>
-        `<span style="display: inline-block; background: #f0f0f0; border: 1px solid #ccc; border-radius: 3px; padding: 2px 4px; margin: 2px;">#${escapeHtml(u.orderNumber)} (${formatQuantity(u.quantity)})</span>`
-    ).join('')}
-                            </td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-            <script>
-                window.onload = function() { window.print(); }
-            </script>
-        </body>
-        </html>
-    `;
-
-    printWindow.document.write(html);
-    printWindow.document.close();
+/** Prepares a preview only. The explicit button inside it is the sole print trigger. */
+export function printPicklist(snapshot: unknown): () => void {
+    const html = picklistPreviewHtml(snapshot), preview = window.open('', '_blank');
+    if (!preview) throw new Error('Picklist preview could not open; allow a popup and retry preparation');
+    try { preview.opener = null; preview.document.write(html); preview.document.close(); } catch { preview.close(); throw new Error('Picklist preview unavailable'); }
+    return () => preview.close();
 }

@@ -1,257 +1,72 @@
-/**
- * AdCopyModal - AI Ad Copy Generator UI
- * 
- * Modal component for generating ad copy with tone presets
- * and platform selection. Part of AI Marketing Intelligence v2.
- */
-
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Logger } from '../../utils/logger';
-import {
-    Sparkles,
-    X,
-    Loader2,
-    Wand2,
-    AlertCircle
-} from 'lucide-react';
-import { TonePreset, Platform, GeneratedCopy } from './adCopyTypes';
-import { ToneSelection, PlatformSelection } from './AdCopySelections';
+import { useRecoveryAttempt } from '../../hooks/useRecoveryAttempt';
+import type { GeneratedCopy, TonePreset, Platform } from './adCopyTypes';
 import { GeneratedCopyDisplay } from './GeneratedCopyDisplay';
+import { validateGeneratedCopy } from './adCopyValidation';
 
-interface AdCopyModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    productId?: string;
-    productName?: string;
-    onCopyGenerated?: (copy: GeneratedCopy) => void;
+interface AdCopyModalProps { isOpen: boolean; onClose: () => void; productId?: string; productName?: string; onCopyGenerated?: (copy: GeneratedCopy) => void }
+export function AdCopyModal(props: AdCopyModalProps) {
+    const { user, token } = useAuth(); const { currentAccount } = useAccount();
+    if (!props.isOpen || !token || !currentAccount) return null;
+    return <ScopedAdCopyModal key={JSON.stringify([user?.id, token, currentAccount.id, props.productId, props.productName])} {...props} token={token} accountId={currentAccount.id} />;
 }
-
-export function AdCopyModal({
-    isOpen,
-    onClose,
-    productId,
-    productName,
-    onCopyGenerated
-}: AdCopyModalProps) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const [selectedTone, setSelectedTone] = useState<string>('professional');
-    const [selectedPlatform, setSelectedPlatform] = useState<string>('google');
-    const [generatedCopy, setGeneratedCopy] = useState<GeneratedCopy | null>(null);
-    const [copiedItems, setCopiedItems] = useState<Set<string>>(new Set());
-    const [tonePresets, setTonePresets] = useState<TonePreset[]>([]);
-    const [platforms, setPlatforms] = useState<Platform[]>([]);
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-
-    const headers = useCallback(() => ({
-        'Authorization': `Bearer ${token}`,
-        'X-Account-ID': currentAccount?.id || '',
-        'Content-Type': 'application/json'
-    }), [token, currentAccount?.id]);
-
-    // Fetch tone presets
+function ScopedAdCopyModal({ onClose, productId, productName, onCopyGenerated, token, accountId }: AdCopyModalProps & { token: string; accountId: string }) {
+    const [tones, setTones] = useState<TonePreset[]>([]), [platforms, setPlatforms] = useState<Platform[]>([]);
+    const [tone, setTone] = useState('professional'), [platform, setPlatform] = useState('google');
+    const [copy, setCopy] = useState<GeneratedCopy | null>(null), [copied, setCopied] = useState(new Set<string>());
+    const [error, setError] = useState(''), [busy, setBusy] = useState(false), [status, setStatus] = useState('');
+    const attempt = useRecoveryAttempt(), dialog = useRef<HTMLDialogElement>(null), live = useRef(false), copySequence = useRef(0);
+    const headers = { Authorization: `Bearer ${token}`, 'x-account-id': accountId, 'Content-Type': 'application/json' };
     useEffect(() => {
-        if (!isOpen || !currentAccount) return;
-
-        const fetchPresets = async () => {
-            try {
-                const res = await fetch('/api/ads/copy/tone-presets', { headers: headers() });
-                const data = await res.json();
-                setTonePresets(data.data || []);
-            } catch (err) {
-                Logger.error('Failed to fetch tone presets', { error: err });
-            }
-        };
-        fetchPresets();
-    }, [isOpen, currentAccount, headers]);
-
-    // Fetch platforms
-    useEffect(() => {
-        if (!isOpen || !currentAccount) return;
-
-        const fetchPlatforms = async () => {
-            try {
-                const res = await fetch('/api/ads/copy/platforms', { headers: headers() });
-                const data = await res.json();
-                setPlatforms(data.data || []);
-            } catch (err) {
-                Logger.error('Failed to fetch platforms', { error: err });
-            }
-        };
-        fetchPlatforms();
-    }, [isOpen, currentAccount, headers]);
-
-    const handleGenerate = async () => {
-        setIsGenerating(true);
-        setError(null);
-
-        try {
-            const res = await fetch('/api/ads/copy/generate', {
-                method: 'POST',
-                headers: headers(),
-                body: JSON.stringify({
-                    productId,
-                    productName,
-                    tonePreset: selectedTone,
-                    platform: selectedPlatform
-                })
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                setGeneratedCopy(data.data);
-                onCopyGenerated?.(data.data);
-            } else {
-                const errData = await res.json();
-                setError(errData.error || 'Failed to generate ad copy');
-            }
-        } catch (err) {
-            Logger.error('Failed to generate ad copy', { error: err });
-            setError('Failed to generate ad copy. Please try again.');
-        } finally {
-            setIsGenerating(false);
-        }
-    };
-
-    const handleCopyToClipboard = useCallback((text: string, key: string) => {
-        navigator.clipboard.writeText(text);
-        setCopiedItems(prev => new Set(prev).add(key));
-        setTimeout(() => {
-            setCopiedItems(prev => {
-                const next = new Set(prev);
-                next.delete(key);
-                return next;
-            });
-        }, 2000);
+        live.current = true;
+        const previous = document.activeElement as HTMLElement | null;
+        const element = dialog.current; element?.showModal();
+        return () => { live.current = false; element?.close(); previous?.focus(); };
     }, []);
-
-    const handleCopyAll = useCallback(() => {
-        if (!generatedCopy) return;
-
-        const allCopy = [
-            '=== Headlines ===',
-            ...generatedCopy.headlines,
-            '',
-            '=== Descriptions ===',
-            ...generatedCopy.descriptions,
-            ...(generatedCopy.primaryTexts ? [
-                '',
-                '=== Primary Texts (Meta) ===',
-                ...generatedCopy.primaryTexts
-            ] : [])
-        ].join('\n');
-
-        navigator.clipboard.writeText(allCopy);
-        setCopiedItems(prev => new Set(prev).add('all'));
-        setTimeout(() => {
-            setCopiedItems(prev => {
-                const next = new Set(prev);
-                next.delete('all');
-                return next;
-            });
-        }, 2000);
-    }, [generatedCopy]);
-
-    if (!isOpen) return null;
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-                {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-gradient-to-br from-violet-500 to-purple-600 rounded-lg">
-                            <Sparkles className="w-5 h-5 text-white" />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-semibold text-white">AI Ad Copy Generator</h2>
-                            <p className="text-sm text-gray-400">
-                                {productName || 'Generate copy for your store'}
-                            </p>
-                        </div>
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 overflow-y-auto p-6">
-                    {/* Options */}
-                    <div className="grid grid-cols-2 gap-6 mb-6">
-                        <ToneSelection
-                            tonePresets={tonePresets}
-                            selectedTone={selectedTone}
-                            onSelect={setSelectedTone}
-                        />
-                        <PlatformSelection
-                            platforms={platforms}
-                            selectedPlatform={selectedPlatform}
-                            onSelect={setSelectedPlatform}
-                        />
-                    </div>
-
-                    {/* Generate Button */}
-                    <button
-                        onClick={handleGenerate}
-                        disabled={isGenerating}
-                        className="w-full py-3 px-4 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 disabled:from-gray-600 disabled:to-gray-600 text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-all"
-                    >
-                        {isGenerating ? (
-                            <>
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                                Generating...
-                            </>
-                        ) : (
-                            <>
-                                <Wand2 className="w-5 h-5" />
-                                Generate Ad Copy
-                            </>
-                        )}
-                    </button>
-
-                    {/* Error State */}
-                    {error && (
-                        <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400">
-                            <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                            <span>{error}</span>
-                        </div>
-                    )}
-
-                    {/* Generated Copy Display */}
-                    {generatedCopy && (
-                        <GeneratedCopyDisplay
-                            generatedCopy={generatedCopy}
-                            copiedItems={copiedItems}
-                            onCopy={handleCopyToClipboard}
-                            onCopyAll={handleCopyAll}
-                        />
-                    )}
-                </div>
-
-                {/* Footer */}
-                <div className="px-6 py-4 border-t border-gray-700 bg-gray-800/50">
-                    <div className="flex items-center justify-between">
-                        <p className="text-xs text-gray-500">
-                            Powered by AI • Copy may require review before use
-                        </p>
-                        <button
-                            onClick={onClose}
-                            className="px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
-                        >
-                            Close
-                        </button>
-                    </div>
-                </div>
-            </div>
+    useEffect(() => {
+        let disposed = false;
+        const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 20000);
+        const get = async (path: string) => {
+            const res = await fetch(`/api/ads/copy/${path}`, { signal: controller.signal, headers: { Authorization: `Bearer ${token}`, 'x-account-id': accountId } });
+            const result = await res.json(); if (!res.ok || !Array.isArray(result?.data) || result.data.length > 30 || result.data.some((item: TonePreset) => !item || !/^[a-z0-9_-]{1,80}$/.test(item.id) || typeof item.name !== 'string' || item.name.length > 200 || path === 'tone-presets' && (typeof item.description !== 'string' || item.description.length > 1000))) throw new Error('Invalid options');
+            return result.data;
+        };
+        void Promise.all([get('tone-presets'), get('platforms')]).then(([t, p]) => {
+            if (controller.signal.aborted) return; setTones(t); setPlatforms(p);
+            if (t.length) setTone(t[0].id); if (p.length) setPlatform(p[0].id);
+        }).catch(() => { if (!disposed) setError('Generation options unavailable. Close and reopen to retry.'); }).finally(() => clearTimeout(timer));
+        return () => { disposed = true; controller.abort(); clearTimeout(timer); };
+    }, [token, accountId]);
+    async function generate() {
+        if (!tones.some(item => item.id === tone) || !platforms.some(item => item.id === platform) || (productId?.length ?? 0) > 200 || (productName?.length ?? 0) > 1000) return;
+        const request = attempt.begin(); if (!request) return;
+        const timer = setTimeout(() => request.abort(), 30000); setBusy(true); setError(''); setCopy(null); setCopied(new Set()); copySequence.current++;
+        try {
+            const res = await fetch('/api/ads/copy/generate', { method: 'POST', signal: request.signal, headers, body: JSON.stringify({ productId, productName: productId ? undefined : productName, tonePreset: tone, platform }) });
+            const data = await res.json(); if (!res.ok) throw new Error('Generation failed');
+            const generated = validateGeneratedCopy(data?.data);
+            if (!attempt.current(request)) return; setCopy(generated); onCopyGenerated?.(generated);
+        } catch { if (attempt.current(request, true)) setError('Generation was not acknowledged. No automatic retry was made.'); }
+        finally { clearTimeout(timer); attempt.finish(); if (attempt.current(request, true)) setBusy(false); }
+    }
+    async function clipboard(text: string, key: string) {
+        const sequence = ++copySequence.current;
+        try { await navigator.clipboard.writeText(text); if (live.current && sequence === copySequence.current) { setCopied(new Set([key])); setStatus('Copied to clipboard.'); } }
+        catch { if (live.current && sequence === copySequence.current) { setCopied(new Set()); setStatus('Could not copy. Select and copy the text manually.'); } }
+    }
+    return <dialog ref={dialog} aria-labelledby="ad-copy-title" onCancel={event => { event.preventDefault(); onClose(); }} className="m-auto w-[calc(100%-2rem)] max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-gray-900 text-slate-900 dark:text-white p-6 backdrop:bg-black/50">
+        <div className="flex justify-between gap-4"><h2 id="ad-copy-title" className="text-lg font-semibold">AI Ad Copy Generator</h2><button type="button" onClick={onClose} aria-label="Close ad copy generator">Close</button></div>
+        <p>{productName || 'Generate copy for your store'}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 my-4">
+            <label>Tone<select disabled={busy} value={tone} onChange={e => setTone(e.target.value)} className="block w-full bg-white dark:bg-slate-800 border rounded p-2">{tones.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+            <label>Platform<select disabled={busy} value={platform} onChange={e => setPlatform(e.target.value)} className="block w-full bg-white dark:bg-slate-800 border rounded p-2">{platforms.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         </div>
-    );
+        <button type="button" disabled={busy || !tones.length || !platforms.length} onClick={() => void generate()} className="rounded bg-violet-700 text-white px-4 py-2 disabled:opacity-50">{busy ? 'Generating…' : 'Generate Ad Copy'}</button>
+        {error && <p role="alert">{error}</p>}<p role="status">{status}</p>
+        {copy && <div className="bg-gray-900 text-white p-4 rounded-xl"><GeneratedCopyDisplay generatedCopy={copy} copiedItems={copied} onCopy={(text, key) => void clipboard(text, key)} onCopyAll={() => void clipboard([...copy.headlines, ...copy.descriptions, ...(copy.primaryTexts || [])].join('\n'), 'all')} /></div>}
+        <p className="text-sm mt-4">AI or template suggestions require review before publication. Nothing is published here.</p>
+    </dialog>;
 }
-
 export default AdCopyModal;

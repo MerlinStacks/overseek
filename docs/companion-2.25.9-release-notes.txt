@@ -1,0 +1,23 @@
+OverSeek Integration for WooCommerce 2.25.9
+Released: 2026-10-21
+
+Google Ads and Analytics attribution:
+- Preserve the original Google click identifier type: gclid, gbraid and wbraid are no longer treated as interchangeable.
+- Capture the configured GA4 stream's browser session from both GS1 and GS2 cookies. The matching server update uses this instead of an OverSeek visit timestamp or a different stream's session.
+- Missing Google cookies are not replaced with invented session identifiers. These changes do not bypass consent or guarantee that blocked browser purchases will be recovered.
+
+Meta tracking and checkout compatibility:
+- Preserve Meta matching cookies, purchase values and browser/server deduplication IDs.
+- Retain classic and Blocks checkout support, existing automatic-update preferences and SLDevs-hosted updates.
+
+Native WordPress release notes:
+- Display these notes directly in WordPress's native Changelog tab using headings, paragraphs and lists, without an embedded frame or preformatted scrolling box.
+
+Server deployment and Google configuration:
+- Deploy the matching OverSeek server update before upgrading the companion plugin.
+- The server adds read-only warnings for Secondary purchase actions, multiple Primary purchase sources and fixed conversion values. GA4 debug mode validates events but does not record production revenue.
+- Recovering a missed browser purchase requires a separately configured, eligible Independent Purchase Import Action and a server purchase event. Start the import as Secondary, validate real consented orders in Google's diagnostics, then review campaign goals and use only one purchase source for bidding. No Google goals or live settings are changed automatically.
+
+Requirements: WordPress 6.4+, PHP 8.1+, WooCommerce (plugin header minimum 7.0; Blocks checkout requires 8.0+), and a running OverSeek server. This release does not raise the declared WooCommerce compatibility level.
+
+Upgrade the existing overseek-wc-plugin folder in place; do not uninstall first. Purge separately managed page caches/CDNs as needed. Delivery estimates may require readiness revalidation after the version change. Check classic/Blocks checkout, Google attribution and the native plugin-details changelog on staging before production rollout.

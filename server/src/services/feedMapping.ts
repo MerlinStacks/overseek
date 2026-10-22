@@ -430,6 +430,7 @@ function getSourceValue(sourceField: string, product: any, account?: FeedAccount
     }
     switch (sourceField) {
         case 'wooId': return String(product.wooId);
+        case 'sku': return product.sku || product.rawData?.sku || null;
         case 'itemGroupId': return String(product.wooId);
         case 'name': return product.name || null;
         case 'description': return stripHtml(product.rawData?.description);
@@ -470,6 +471,7 @@ function getVariationSourceValue(sourceField: string, variation: any, parent: an
     }
     switch (sourceField) {
         case 'wooId': return `${parent.wooId}-${variation.wooId}`;
+        case 'sku': return variation.sku || variation.rawData?.sku || null;
         case 'itemGroupId': return String(parent.wooId);
         case 'name': {
             const attrs = Array.isArray(variation.rawData?.attributes)
@@ -973,9 +975,11 @@ export class FeedMappingService {
         variationMode: VariationMode,
         productWooId?: number,
         includeHealth = false,
-    ): Promise<{ total: number; rows: any[]; mappings: FeedFieldMapping[]; health?: FeedScanHealth }> {
+        groupVariants = false,
+    ): Promise<{ total: number; rows: any[]; mappings: FeedFieldMapping[]; groups?: any[]; health?: FeedScanHealth }> {
         const channel = normalizeChannel(channelInput);
         const automaticVariants = variationMode === 'automatic' && (channel === 'google' || channel === 'meta');
+        const grouped = groupVariants && automaticVariants;
         const [mappings, categoryPriority, productFilters] = await Promise.all([
             this.getMappings(accountId, channel),
             this.getProductTypeCategoryPriority(accountId),
@@ -1017,6 +1021,9 @@ export class FeedMappingService {
         };
         const rows: any[] = [];
         let total = 0;
+        let includedRows = 0;
+        let previousWooId: number | undefined;
+        const groups = new Map<number, any>();
         const start = (page - 1) * limit;
         const gtins = new Map<string, string>();
         const buildProductRows = (originalProduct: any) => {
@@ -1050,7 +1057,10 @@ export class FeedMappingService {
             const mapColumns = (valueReader: (sourceField: string) => string | null, overridePrefix?: string) => {
                 const columns = mappings.map((mapping) => {
                     const raw = valueReader(mapping.sourceField);
-                    const fallback = mapping.fallbackSourceField ? valueReader(mapping.fallbackSourceField) : null;
+                    // An absent Woo sale is intentional; a regular-price fallback invents a sale.
+                    const absentWooSale = (channel === 'google' || channel === 'meta')
+                        && mapping.targetField === 'sale_price' && mapping.sourceField === 'salePrice' && !raw;
+                    const fallback = mapping.fallbackSourceField && !absentWooSale ? valueReader(mapping.fallbackSourceField) : null;
                     const mapped = raw || fallback;
                     const overrideKey = overridePrefix ? `${overridePrefix}:${mapping.targetField}` : mapping.targetField;
                     const isSharedRewrite = SHARED_REWRITE_FIELDS.has(mapping.targetField);
@@ -1062,7 +1072,18 @@ export class FeedMappingService {
                         || aiSuggestions[overrideKey]
                         || (isSharedRewrite ? googleAiSuggestions[overrideKey] : null)
                         || null;
-                    const finalValue = override || aiSuggestedValue || mapped;
+                    // Specific variant copy wins; otherwise a product description is shared by siblings.
+                    const inheritsDescription = !!overridePrefix && mapping.targetField === 'description';
+                    const inheritedOverride = inheritsDescription
+                        ? sharedOverrides.description || overrides.description || googleOverrides.description : null;
+                    const inheritedSuggestion = inheritsDescription
+                        ? sharedAiSuggestions.description || aiSuggestions.description || googleAiSuggestions.description : null;
+                    const useParentSource = inheritsDescription && product.seoData?.feedDescriptionInheritance?.[overridePrefix] === true;
+                    const parentMapped = useParentSource
+                        ? getSourceValue(mapping.sourceField, product, account || undefined, categoryPriority, channel)
+                            || (mapping.fallbackSourceField ? getSourceValue(mapping.fallbackSourceField, product, account || undefined, categoryPriority, channel) : null)
+                        : null;
+                    const finalValue = override || aiSuggestedValue || inheritedOverride || inheritedSuggestion || (useParentSource ? parentMapped : mapped);
 
                     return {
                         targetField: mapping.targetField,
@@ -1132,7 +1153,12 @@ export class FeedMappingService {
                 });
             }
 
+            const groupParent = grouped && isVariableProduct ? {
+                rowId: `g:${product.wooId}`, rowType: 'group', wooId: product.wooId,
+                name: product.name, sku: product.sku, columns: mapColumns((sourceField) => getSourceValue(sourceField, product, account || undefined, categoryPriority, channel)),
+            } : null;
             for (const row of productRows) {
+                if (groupParent) row.groupParent = groupParent;
                 const original = row.variationWooId ? originalProduct.variations.find((v: any) => v.wooId === row.variationWooId) : originalProduct;
                 row.sourceStockStatus = normalizeStockStatus(original?.stockStatus || original?.rawData?.stock_status || originalProduct.stockStatus);
                 row.availabilityOverridden = overrideBackorders && row.sourceStockStatus !== 'in_stock'
@@ -1162,7 +1188,10 @@ export class FeedMappingService {
                 })
                 : batchRows;
             for (const row of filteredRows) {
-                const onPage = total >= start && total < start + limit;
+                if (!grouped || previousWooId !== row.wooId) total++;
+                previousWooId = row.wooId;
+                includedRows++;
+                const onPage = total - 1 >= start && total - 1 < start + limit;
                 if (includeHealth || onPage) {
                     row.issues = validateFeedColumns(channel, row.columns);
                     row.issues.push(...row.variantIssues);
@@ -1178,12 +1207,15 @@ export class FeedMappingService {
                         }
                     }
                 }
-                if (onPage) rows.push(row);
-                total++;
+                if (onPage) {
+                    if (row.groupParent) groups.set(row.wooId, row.groupParent);
+                    delete row.groupParent;
+                    rows.push(row);
+                }
             }
         }
-        health.included = total;
-        return { total, rows, mappings, ...(includeHealth ? { health } : {}) };
+        health.included = includedRows;
+        return { total, rows, mappings, ...(grouped ? { groups: [...groups.values()] } : {}), ...(includeHealth ? { health } : {}) };
     }
 
     static async getFeedRowRefs(
@@ -1277,10 +1309,26 @@ export class FeedMappingService {
         const feedOverrides = (seoData.feedOverrides || {}) as Record<string, any>;
         const currentChannelOverrides = (feedOverrides[channel] || {}) as Record<string, string>;
         const sharedOverrides = (feedOverrides.shared || {}) as Record<string, string>;
+        const feedAiSuggestions = (seoData.feedAiSuggestions || {}) as Record<string, any>;
+        const descriptionInheritance = { ...(seoData.feedDescriptionInheritance || {}) };
+        let resetVariantDescription = false;
+        let changedDescriptionInheritance = false;
 
         Object.entries(fields).forEach(([key, value]) => {
             const baseField = getBaseTargetField(key);
             if (LOCKED_FEED_FIELDS.has(baseField)) return;
+            if (baseField === 'description' && key.includes(':')) {
+                const prefix = key.slice(0, key.lastIndexOf(':'));
+                changedDescriptionInheritance = true;
+                if (value == null || value.trim() === '') descriptionInheritance[prefix] = true;
+                else delete descriptionInheritance[prefix];
+            }
+            // Clearing a variant description explicitly restores inheritance, including old AI copy.
+            if (baseField === 'description' && key.includes(':') && (value == null || value.trim() === '')) {
+                resetVariantDescription = true;
+                delete feedAiSuggestions.shared?.[key];
+                FEED_CHANNELS.forEach((feedChannel) => delete feedAiSuggestions[feedChannel]?.[key]);
+            }
 
             if (SHARED_REWRITE_FIELDS.has(baseField)) {
                 if (value == null || value.trim() === '') delete sharedOverrides[key];
@@ -1305,6 +1353,8 @@ export class FeedMappingService {
                 seoData: {
                     ...seoData,
                     feedOverrides,
+                    ...(resetVariantDescription ? { feedAiSuggestions } : {}),
+                    ...(changedDescriptionInheritance ? { feedDescriptionInheritance: descriptionInheritance } : {}),
                 }
             },
         });
@@ -1513,6 +1563,7 @@ export class FeedMappingService {
             channel: string;
             fields: string[];
             rows: Array<{ wooId: number; variationWooId?: number }>;
+            sharedDescriptions?: boolean;
         },
         job: Job,
     ): Promise<{
@@ -1539,16 +1590,25 @@ export class FeedMappingService {
         }> = [];
 
         const total = rows.length;
+        const sharedDescriptions = new Map<number, Record<string, string>>();
         for (let i = 0; i < rows.length; i++) {
             const row = rows[i];
             try {
-                const suggestions = await this.optimizeRowFields(
-                    accountId,
-                    normalizedChannel,
-                    row.wooId,
-                    fields,
-                    row.variationWooId,
-                );
+                const shareDescription = payload.sharedDescriptions && fields.includes('description') && !!row.variationWooId;
+                if (shareDescription && !sharedDescriptions.has(row.wooId)) {
+                    sharedDescriptions.set(row.wooId, await this.optimizeRowFields(accountId, normalizedChannel, row.wooId, ['description']));
+                }
+                const rowFields = shareDescription ? fields.filter((field) => field !== 'description') : fields;
+                const suggestions = {
+                    ...(shareDescription ? sharedDescriptions.get(row.wooId) : {}),
+                    ...(rowFields.length ? await this.optimizeRowFields(
+                        accountId,
+                        normalizedChannel,
+                        row.wooId,
+                        rowFields,
+                        row.variationWooId,
+                    ) : {}),
+                };
                 results.push({
                     wooId: row.wooId,
                     variationWooId: row.variationWooId,

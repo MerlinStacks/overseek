@@ -840,16 +840,22 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
         }
     );
 
-    // GET /:id/sales-history - Get sales history from Elasticsearch
+    // GET /:id/sales-history - bounded local index observations, not a provider ledger.
     fastify.get<{ Params: { id: string } }>('/:id/sales-history', async (request, reply) => {
         try {
+            const { PermissionService } = await import('../services/PermissionService');
+            if (!request.accountId || !request.user?.id) return reply.code(400).send({ error: 'Select an account' });
+            if (!await PermissionService.hasPermission(request.user.id, request.accountId, 'view_orders') || !await PermissionService.hasPermission(request.user.id, request.accountId, 'view_customers')) return reply.code(403).send({ error: 'Order and customer view permissions required' });
             const accountId = request.accountId!;
             const { id: wooId } = productIdParamSchema.parse(request.params);
-            const { page, limit } = searchQuerySchema.parse(request.query);
+            const parsed = z.object({ page: z.string().regex(/^[1-9]\d*$/).transform(Number).refine(value => value <= 666).default(1), limit: z.literal('15').transform(Number).default(15) }).strict().safeParse(request.query);
+            if (!parsed.success) return reply.code(400).send({ error: 'Use pages 1–666 and limit 15' });
+            const { page, limit } = parsed.data;
             const from = (page - 1) * limit;
 
             const response = await esClient.search({
                 index: 'orders',
+                track_total_hits: true,
                 size: limit,
                 from,
                 query: {
@@ -860,7 +866,7 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                                 nested: {
                                     path: 'line_items',
                                     query: { term: { 'line_items.productId': wooId } },
-                                    inner_hits: { name: 'matched_items', size: 10 }
+                                    inner_hits: { name: 'matched_items', size: 100 }
                                 }
                             }
                         ],
@@ -869,24 +875,31 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                         ]
                     }
                 },
-                sort: [{ date_created: { order: 'desc' } } as any]
+                sort: [{ date_created: { order: 'desc' } }, { id: { order: 'asc' } } as any]
             });
 
+            if (response.timed_out || response._shards?.failed) throw new Error('Incomplete sales index response');
             const hits = response.hits.hits;
+            if (typeof response.hits.total !== 'number' && (!response.hits.total || response.hits.total.relation !== 'eq')) throw new Error('Exact sales total unavailable');
             const total = typeof response.hits.total === 'number'
                 ? response.hits.total
-                : response.hits.total?.value || 0;
+                : response.hits.total.value;
+            if (!Number.isSafeInteger(total) || total < 0) throw new Error('Invalid sales total');
 
             const sales = hits.map((hit: any) => {
                 const order = hit._source;
+                if (order.accountId !== accountId) throw new Error('Unexpected index scope');
                 const matchedItems = hit.inner_hits?.matched_items?.hits?.hits || [];
+                const matchedTotal = hit.inner_hits?.matched_items?.hits?.total;
+                if (!matchedItems.length || !matchedTotal || typeof matchedTotal !== 'number' && matchedTotal.relation !== 'eq' || Number(typeof matchedTotal === 'number' ? matchedTotal : matchedTotal.value) !== matchedItems.length) throw new Error('Incomplete line-item coverage');
                 let quantity = 0;
                 let lineTotal = 0;
 
                 matchedItems.forEach((itemHit: any) => {
                     const item = itemHit._source;
-                    quantity += item.quantity || 0;
-                    lineTotal += parseFloat(item.total) || 0;
+                    if (!Number.isSafeInteger(item.quantity) || item.quantity <= 0 || typeof item.total !== 'string' && typeof item.total !== 'number' || !/^-?\d+(\.\d+)?$/.test(String(item.total)) || !Number.isFinite(Number(item.total))) throw new Error('Invalid sale amounts');
+                    quantity += item.quantity;
+                    lineTotal += Number(item.total);
                 });
 
                 return {
@@ -900,11 +913,11 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                     customerName: order.billing
                         ? `${order.billing.first_name || ''} ${order.billing.last_name || ''}`.trim() || order.billing.email
                         : 'Guest',
-                    customerEmail: order.billing?.email,
+                    customerEmail: order.billing?.email || '',
                     quantity,
                     lineTotal,
-                    orderTotal: parseFloat(order.total) || 0,
-                    currency: order.currency || 'USD'
+                    orderTotal: /^-?\d+(\.\d+)?$/.test(String(order.total)) && Number.isFinite(Number(order.total)) ? Number(order.total) : null,
+                    currency: typeof order.currency === 'string' && /^[A-Z]{3}$/.test(order.currency) ? order.currency : null
                 };
             });
 
@@ -913,7 +926,8 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                 total,
                 page,
                 limit,
-                totalPages: Math.ceil(total / limit)
+                totalPages: Math.ceil(total / limit),
+                coverage: { basis: 'local-search-index', liveProviderVerified: false, maxPage: 666 }
             };
 
         } catch (error: any) {

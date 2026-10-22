@@ -1,159 +1,45 @@
-import { useCallback, useRef } from 'react';
-
-/**
- * Haptic feedback patterns for consistent tactile responses.
- */
-type HapticPattern =
-    | 'light'    // 10ms - subtle tap
-    | 'medium'   // 20ms - standard interaction  
-    | 'heavy'    // 30ms - significant action
-    | 'success'  // pulse pattern - positive confirmation
-    | 'error'    // double-tap - error/warning
-    | 'selection'; // 5ms - UI selection change
-
-/** Duration mapping for each pattern (Vibration API fallback). */
-const PATTERN_DURATIONS: Record<HapticPattern, number | number[]> = {
-    light: 10,
-    medium: 20,
-    heavy: 30,
-    success: [20, 50, 20],
-    error: [15, 30, 15],
-    selection: 5
-};
-
-interface CapacitorHapticsBridge {
-    Haptics: {
-        impact: (options?: { style?: unknown }) => Promise<void>;
-        notification: (options: { type: 'success' | 'error' | 'warning' }) => Promise<void>;
-        selectionStart: () => Promise<void>;
-    };
-    ImpactStyle: {
-        Light: unknown;
-        Medium: unknown;
-        Heavy: unknown;
-    };
+import { useCallback, useEffect, useRef } from 'react';
+type HapticPattern = 'light' | 'medium' | 'heavy' | 'success' | 'error' | 'selection';
+const patterns: Record<HapticPattern, number | number[]> = { light: 10, medium: 20, heavy: 30, success: [20, 50, 20], error: [15, 30, 15], selection: 5 };
+type Bridge = typeof import('@capacitor/haptics');
+function native() {
+    try {
+        const bridge = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean; isPluginAvailable?: (name: string) => boolean } }).Capacitor;
+        return bridge?.isNativePlatform?.() === true && (bridge.isPluginAvailable?.('Haptics') ?? true);
+    } catch { return false; }
 }
-
-/**
- * Hook for haptic feedback across PWA and Capacitor native apps.
- *
- * Uses Capacitor Haptics when available (native builds), falls back to
- * Vibration API for PWA mode. Capacitor is loaded dynamically to avoid
- * build failures when the package is not installed (e.g. Docker web builds).
- *
- * Supports both named patterns and numeric durations for backward compatibility.
- *
- * @example
- * ```tsx
- * const { triggerHaptic } = useHaptic();
- *
- * // Using named patterns (recommended)
- * triggerHaptic('light');
- * triggerHaptic('success');
- *
- * // Using numeric duration (legacy support)
- * triggerHaptic(20);
- * triggerHaptic(); // defaults to 'light' / 10ms
- * ```
- */
-export function useHaptic() {
-    // Cache the dynamic import result so we only resolve once
-    const capacitorRef = useRef<CapacitorHapticsBridge | null | false>(null);
-
-    /**
-     * Lazily loads @capacitor/haptics. Returns the module or null if unavailable.
-     */
-    const getCapacitor = async () => {
-        if (capacitorRef.current === false) return null; // previously failed
-        if (capacitorRef.current) return capacitorRef.current;
-
-        try {
-            const mod = await import('@capacitor/haptics');
-            capacitorRef.current = { Haptics: mod.Haptics, ImpactStyle: mod.ImpactStyle } as unknown as CapacitorHapticsBridge;
-            return capacitorRef.current;
-        } catch {
-            capacitorRef.current = false; // mark as unavailable
-            return null;
-        }
-    };
-
-    /**
-     * Converts numeric duration to nearest named pattern.
-     */
-    const durationToPattern = (duration: number): HapticPattern => {
-        if (duration <= 7) return 'selection';
-        if (duration <= 15) return 'light';
-        if (duration <= 25) return 'medium';
-        return 'heavy';
-    };
-
-    /**
-     * Triggers haptic feedback with the specified pattern or duration.
-     * Gracefully fails on unsupported devices.
-     * 
-     * @param patternOrDuration - Pattern name or duration in milliseconds
-     */
-    const triggerHaptic = useCallback(async (patternOrDuration?: HapticPattern | number) => {
-        // Normalize input to pattern and duration
-        let pattern: HapticPattern;
-        let durationMs: number | number[];
-
-        if (typeof patternOrDuration === 'number') {
-            pattern = durationToPattern(patternOrDuration);
-            durationMs = patternOrDuration;
-        } else {
-            pattern = patternOrDuration || 'light';
-            durationMs = PATTERN_DURATIONS[pattern];
-        }
-
-        // Try Capacitor Haptics first (native builds)
-        const cap = await getCapacitor();
-        if (cap) {
-            try {
-                const { Haptics, ImpactStyle } = cap;
-                switch (pattern) {
-                    case 'light':
-                        await Haptics.impact({ style: ImpactStyle.Light });
-                        break;
-                    case 'medium':
-                        await Haptics.impact({ style: ImpactStyle.Medium });
-                        break;
-                    case 'heavy':
-                        await Haptics.impact({ style: ImpactStyle.Heavy });
-                        break;
-                    case 'success':
-                        await Haptics.notification({ type: 'success' });
-                        break;
-                    case 'error':
-                        await Haptics.notification({ type: 'error' });
-                        break;
-                    case 'selection':
-                        await Haptics.selectionStart();
-                        break;
-                }
-                return;
-            } catch {
-                // Fall through to Vibration API
+/** Optional feedback only; callers can disable it, and reduced-motion requests are respected. */
+export function useHaptic({ enabled = true }: { enabled?: boolean } = {}) {
+    const mounted = useRef(false); const version = useRef(0); const pending = useRef<Promise<Bridge | null> | null>(null);
+    useEffect(() => { const counter = version; mounted.current = true; return () => { mounted.current = false; counter.current++; }; }, [enabled]);
+    const triggerHaptic = useCallback(async (value: HapticPattern | number = 'light') => {
+        const generation = ++version.current;
+        const allowed = () => mounted.current && enabled && generation === version.current && typeof navigator !== 'undefined' &&
+            (typeof document === 'undefined' || document.visibilityState !== 'hidden') && !(typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+        if (!allowed()) return;
+        if (typeof value === 'number' && (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0 || value > 200)) return;
+        if (typeof value !== 'number' && !Object.prototype.hasOwnProperty.call(patterns, value)) return;
+        const pattern: HapticPattern = typeof value === 'number' ? value <= 7 ? 'selection' : value <= 15 ? 'light' : value <= 25 ? 'medium' : 'heavy' : value;
+        if (native()) {
+            pending.current ??= import('@capacitor/haptics').catch(() => null);
+            const bridge = await pending.current;
+            if (!allowed()) return;
+            if (bridge) {
+                try {
+                    if (pattern === 'selection') {
+                        await bridge.Haptics.selectionStart();
+                        try { if (allowed()) await bridge.Haptics.selectionChanged(); }
+                        finally { await bridge.Haptics.selectionEnd(); }
+                    } else if (pattern === 'success' || pattern === 'error') {
+                        await bridge.Haptics.notification({ type: pattern === 'success' ? bridge.NotificationType.Success : bridge.NotificationType.Error });
+                    } else await bridge.Haptics.impact({ style: pattern === 'light' ? bridge.ImpactStyle.Light : pattern === 'medium' ? bridge.ImpactStyle.Medium : bridge.ImpactStyle.Heavy });
+                    return;
+                } catch { /* Native failure can fall back to a bounded browser vibration. */ }
             }
         }
-
-        // Fallback to Vibration API (PWA mode)
-        if ('vibrate' in navigator) {
-            try {
-                navigator.vibrate(durationMs);
-            } catch {
-                // Vibration not available - fail silently
-            }
+        if (allowed() && typeof navigator.vibrate === 'function') {
+            try { navigator.vibrate(typeof value === 'number' ? value : patterns[pattern]); } catch { /* Feedback is optional. */ }
         }
-    }, []);
-
-    /**
-     * Checks if any haptic feedback is supported.
-     */
-    const isHapticSupported = 'vibrate' in navigator;
-
-    return {
-        triggerHaptic,
-        isHapticSupported
-    };
+    }, [enabled]);
+    return { triggerHaptic, isHapticSupported: native() || typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function' };
 }

@@ -12,6 +12,7 @@ import { useSignaturePreference } from './useSignaturePreference';
 import { ConversationChannel } from '../components/chat/ChannelSelector';
 import { lintOutboundMessage, type OutboundSafetyIssue } from '../utils/outboundSafety';
 import type { SendMessageHandler } from '../types/inbox';
+import { composerText } from '../utils/composerContent';
 
 interface UseMessageSendOptions {
     conversationId: string;
@@ -142,7 +143,7 @@ export function useMessageSend({
 
     // Broadcast agent drafting presence to reduce reply collisions.
     useEffect(() => {
-        const plainText = input.replace(/<[^>]*>/g, '').trim();
+        const plainText = composerText(input).trim();
         const shouldDraftBroadcast = Boolean(plainText) && !isInternal;
         const userId = user?.id;
         if (!socket || !conversationId || !userId) return;
@@ -245,7 +246,7 @@ export function useMessageSend({
         e?.preventDefault();
 
         // Strip HTML to check for actual content
-        const plainText = input.replace(/<[^>]*>/g, '').trim();
+        const plainText = composerText(input).trim();
         if (!plainText || isSending || pendingSend) return;
         setSendError(null);
 

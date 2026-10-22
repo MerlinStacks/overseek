@@ -1,304 +1,63 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Tag, Plus, X, ChevronDown, Search, Loader2 } from 'lucide-react';
-import { Logger } from '../../utils/logger';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { usePermissions } from '../../hooks/usePermissions';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+import { useRecoveryAttempt } from '../../hooks/useRecoveryAttempt';
+import { isRecord } from '../../utils/responseValidation';
 import { emitCrossTabEvent } from '../../utils/productCrossTabEvents';
-
-interface TagMapping {
-    productTag?: string;
-    productTags?: string[];
-    orderTag: string;
-    enabled: boolean;
-    color?: string;
+interface Props { orderId: string; currentTags: string[]; lastUpdate?: string; onTagsChange: (tags: string[]) => void; onRefresh?: () => void }
+interface Mapping { orderTag: string; enabled: boolean; color?: string }
+const tagsValid = (value: unknown): value is string[] => Array.isArray(value) && value.length <= 100 && value.every(tag => typeof tag === 'string' && tag.trim().length > 0 && tag.length <= 100) && new Set(value.map(tag => tag.toLowerCase())).size === value.length;
+const versionValid = (value: unknown): value is string => typeof value === 'string' && Number.isFinite(Date.parse(value));
+function decode(value: unknown): Mapping[] {
+    if (!isRecord(value) || !Array.isArray(value.mappings) || value.mappings.length > 500 || value.mappings.some(row => !isRecord(row) || typeof row.orderTag !== 'string' || !row.orderTag.trim() || row.orderTag.length > 100 || typeof row.enabled !== 'boolean' || row.color !== undefined && (typeof row.color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(row.color)))) throw new Error('Invalid mappings');
+    const seen = new Set<string>(); return (value.mappings as Mapping[]).filter(row => { const key = row.orderTag.toLowerCase(); if (!row.enabled || seen.has(key)) return false; seen.add(key); return true; });
 }
-
-interface OrderTagPanelProps {
-    orderId: string;
-    currentTags: string[];
-    lastUpdate?: string;
-    onTagsChange: (tags: string[]) => void;
-    onRefresh?: () => void;
+export function OrderTagPanel(props: Props) {
+    const { token, user } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p>Select an account and sign in.</p>;
+    if (!tagsValid(props.currentTags)) return <p role="alert">Order tags unavailable; refresh the order.</p>;
+    return <ScopedTags key={JSON.stringify([user?.id, token, currentAccount.id, props.orderId])} {...props} accountId={currentAccount.id} token={token} />;
 }
-
-/**
- * Sidebar panel for managing order tags.
- * Displays current tags with single-click removal and a dropdown to add available tags.
- */
-export function OrderTagPanel({ orderId, currentTags, lastUpdate, onTagsChange, onRefresh }: OrderTagPanelProps) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-
-    const [mappings, setMappings] = useState<TagMapping[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isUpdating, setIsUpdating] = useState(false);
-    const [showAddDropdown, setShowAddDropdown] = useState(false);
-    const [searchQuery, setSearchQuery] = useState('');
-    const dropdownRef = useRef<HTMLDivElement>(null);
-
-    // Close dropdown on outside click
-    useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-                setShowAddDropdown(false);
-                setSearchQuery('');
-            }
-        }
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const loadMappings = useCallback(async () => {
-        if (!currentAccount || !token) return;
-        setIsLoading(true);
+function ScopedTags({ accountId, token, orderId, currentTags, lastUpdate, onTagsChange, onRefresh }: Props & { accountId: string; token: string }) {
+    const mappings = useScopedRequest(`/api/accounts/${encodeURIComponent(accountId)}/tag-mappings`, accountId, token, decode);
+    const attempt = useRecoveryAttempt(); const { hasPermission } = usePermissions();
+    const latestPropVersion = useRef(lastUpdate);
+    useLayoutEffect(() => { latestPropVersion.current = lastUpdate; }, [lastUpdate]);
+    const [ack, setAck] = useState<{ tags: string[]; version: string } | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState(''), [search, setSearch] = useState(''), [expanded, setExpanded] = useState(false);
+    // Never regress to the pre-mutation prop version; newer authoritative props win.
+    const useAck = ack && (!versionValid(lastUpdate) || Date.parse(ack.version) >= Date.parse(lastUpdate));
+    const tags = useAck ? ack.tags : currentTags, version = useAck ? ack.version : lastUpdate;
+    const allowed = hasPermission('edit_order_tags') && versionValid(version) && !busy && !error;
+    async function write(tag: string, remove = false) {
+        if (!allowed || !versionValid(version)) return;
+        const active = attempt.begin(); if (!active) return; setBusy(true); setExpanded(false);
+        const timer = setTimeout(() => active.abort(), 30000);
         try {
-            const res = await fetch(`/api/accounts/${currentAccount.id}/tag-mappings`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setMappings((data.mappings || []).filter((m: TagMapping) => m.enabled));
+            const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/tags${remove ? `/${encodeURIComponent(tag)}` : ''}`, { method: remove ? 'DELETE' : 'POST', signal: active.signal, headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId, 'X-Order-Version': version, 'Content-Type': 'application/json' }, ...(!remove ? { body: JSON.stringify({ tag }) } : {}) });
+            const result = await response.json();
+            if (!response.ok || !isRecord(result) || !tagsValid(result.tags) || !versionValid(result.updatedAt) || Date.parse(result.updatedAt) <= Date.parse(version) || result.indexing !== 'pending') throw new Error('Unacknowledged');
+            if (!attempt.current(active)) return;
+            if (versionValid(latestPropVersion.current) && Date.parse(latestPropVersion.current) > Date.parse(result.updatedAt)) {
+                setError('A newer order version arrived while saving. Refresh to reconcile; the newer tags were not replaced.'); return;
             }
-        } catch (error) {
-            Logger.error('Failed to load tag mappings', { error });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [currentAccount, token]);
-
-    useEffect(() => {
-        if (currentAccount && token) {
-            loadMappings();
-        }
-    }, [currentAccount, token, loadMappings]);
-
-    /** Gets available tags that aren't already applied to this order */
-    function getAvailableTags(): TagMapping[] {
-        const appliedTags = new Set(currentTags.map(t => t.toLowerCase()));
-        const seenOrderTags = new Set<string>();
-        return mappings.filter((mapping) => {
-            const orderTag = mapping.orderTag.toLowerCase();
-            if (appliedTags.has(orderTag) || seenOrderTags.has(orderTag)) return false;
-            seenOrderTags.add(orderTag);
-            return true;
-        });
+            setAck({ tags: result.tags, version: result.updatedAt }); onTagsChange(result.tags);
+            emitCrossTabEvent({ resource: 'order', type: 'tags-updated', accountId, resourceId: orderId });
+        } catch { if (attempt.current(active, true)) setError('Tag write not acknowledged or order changed. It may have committed. Refresh the order and reconcile before further writes.'); }
+        finally { clearTimeout(timer); attempt.finish(); if (attempt.current(active, true)) setBusy(false); }
     }
-
-    /** Filtered available tags based on search */
-    function getFilteredAvailableTags(): TagMapping[] {
-        const available = getAvailableTags();
-        if (!searchQuery.trim()) return available;
-        return available.filter(m =>
-            m.orderTag.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-    }
-
-    /** Gets color for a tag from mappings */
-    function getTagColor(tagName: string): string {
-        const mapping = mappings.find(m => m.orderTag.toLowerCase() === tagName.toLowerCase());
-        return mapping?.color || '#6B7280';
-    }
-
-    async function addTag(tagName: string) {
-        if (!currentAccount || !token || isUpdating) return;
-        setIsUpdating(true);
-        setShowAddDropdown(false);
-        setSearchQuery('');
-
-        try {
-            const headers: HeadersInit = {
-                'Authorization': `Bearer ${token}`,
-                'X-Account-ID': currentAccount.id,
-                'Content-Type': 'application/json'
-            };
-
-            if (lastUpdate) {
-                headers['X-Order-Version'] = lastUpdate;
-            }
-
-            const res = await fetch(`/api/orders/${orderId}/tags`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({ tag: tagName })
-            });
-
-            if (res.status === 409) {
-                Logger.warn('Order conflict detected, refreshing...');
-                alert('This order has been modified by another user. Refreshing...');
-                if (onRefresh) onRefresh();
-                return;
-            }
-
-            if (res.ok) {
-                const data = await res.json();
-                onTagsChange(data.tags);
-                emitCrossTabEvent({
-                    resource: 'order',
-                    type: 'tags-updated',
-                    accountId: currentAccount.id,
-                    resourceId: orderId,
-                });
-            }
-        } catch (error) {
-            Logger.error('Failed to add tag', { error });
-        } finally {
-            setIsUpdating(false);
-        }
-    }
-
-    async function removeTag(tagName: string) {
-        if (!currentAccount || !token || isUpdating) return;
-        setIsUpdating(true);
-
-        try {
-            const headers: HeadersInit = {
-                'Authorization': `Bearer ${token}`,
-                'X-Account-ID': currentAccount.id
-            };
-
-            if (lastUpdate) {
-                headers['X-Order-Version'] = lastUpdate;
-            }
-
-            const res = await fetch(`/api/orders/${orderId}/tags/${encodeURIComponent(tagName)}`, {
-                method: 'DELETE',
-                headers
-            });
-
-            if (res.status === 409) {
-                Logger.warn('Order conflict detected, refreshing...');
-                alert('This order has been modified by another user. Refreshing...');
-                if (onRefresh) onRefresh();
-                return;
-            }
-
-            if (res.ok) {
-                const data = await res.json();
-                onTagsChange(data.tags);
-                emitCrossTabEvent({
-                    resource: 'order',
-                    type: 'tags-updated',
-                    accountId: currentAccount.id,
-                    resourceId: orderId,
-                });
-            }
-        } catch (error) {
-            Logger.error('Failed to remove tag', { error });
-        } finally {
-            setIsUpdating(false);
-        }
-    }
-
-    const availableTags = getFilteredAvailableTags();
-    const hasAvailableTags = getAvailableTags().length > 0;
-
-    return (
-        <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
-            <div className="font-semibold text-gray-900 flex items-center justify-between border-b border-gray-100 pb-3">
-                <div className="flex items-center gap-2">
-                    <Tag size={18} className="text-blue-500" />
-                    Tags
-                </div>
-
-                {/* Add Tag Button */}
-                {hasAvailableTags && (
-                    <div className="relative" ref={dropdownRef}>
-                        <button
-                            onClick={() => setShowAddDropdown(!showAddDropdown)}
-                            disabled={isUpdating || isLoading}
-                            className="flex items-center gap-1 text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors disabled:opacity-50"
-                        >
-                            <Plus size={14} />
-                            Add
-                            <ChevronDown size={12} className={`transition-transform ${showAddDropdown ? 'rotate-180' : ''}`} />
-                        </button>
-
-                        {showAddDropdown && (
-                            <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                                {/* Search input */}
-                                <div className="p-2 border-b border-gray-100">
-                                    <div className="relative">
-                                        <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                                        <input
-                                            type="text"
-                                            placeholder="Search tags..."
-                                            value={searchQuery}
-                                            onChange={(e) => setSearchQuery(e.target.value)}
-                                            className="w-full pl-7 pr-2 py-1.5 text-xs border border-gray-200 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                            autoFocus
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Tag list */}
-                                <div className="max-h-48 overflow-y-auto py-1">
-                                    {availableTags.length === 0 ? (
-                                        <div className="px-3 py-2 text-xs text-gray-500 text-center">
-                                            {searchQuery ? 'No matching tags' : 'No tags available'}
-                                        </div>
-                                    ) : (
-                                        availableTags.map(mapping => (
-                                            <button
-                                                key={mapping.orderTag}
-                                                onClick={() => addTag(mapping.orderTag)}
-                                                className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 flex items-center gap-2 transition-colors"
-                                            >
-                                                <span
-                                                    className="w-3 h-3 rounded-sm flex-shrink-0"
-                                                    style={{ backgroundColor: mapping.color || '#6B7280' }}
-                                                />
-                                                <span className="truncate">{mapping.orderTag}</span>
-                                            </button>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-
-            {/* Tags Display */}
-            {isLoading ? (
-                <div className="flex items-center justify-center py-4">
-                    <Loader2 size={20} className="animate-spin text-gray-400" />
-                </div>
-            ) : currentTags.length === 0 ? (
-                <div className="text-sm text-gray-500 text-center py-2">
-                    {mappings.length === 0 ? (
-                        <span>Configure tag mappings in Settings</span>
-                    ) : (
-                        <span>No tags applied</span>
-                    )}
-                </div>
-            ) : (
-                <div className="flex flex-wrap gap-2">
-                    {currentTags.map((tag) => {
-                        const color = getTagColor(tag);
-                        return (
-                            <span
-                                key={tag}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-sm text-white group"
-                                style={{ backgroundColor: color }}
-                            >
-                                {tag}
-                                <button
-                                    onClick={() => removeTag(tag)}
-                                    disabled={isUpdating}
-                                    className="ml-0.5 p-0.5 rounded hover:bg-white/20 opacity-70 hover:opacity-100 transition-opacity disabled:opacity-50"
-                                    title="Remove tag"
-                                >
-                                    {isUpdating ? (
-                                        <Loader2 size={12} className="animate-spin" />
-                                    ) : (
-                                        <X size={12} />
-                                    )}
-                                </button>
-                            </span>
-                        );
-                    })}
-                </div>
-            )}
-        </div>
-    );
+    const options = (mappings.data || []).filter(row => !tags.some(tag => tag.toLowerCase() === row.orderTag.toLowerCase()) && row.orderTag.toLowerCase().includes(search.toLowerCase()));
+    return <section className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 space-y-3 text-slate-900 dark:text-slate-100"><h3 className="font-semibold">Tags</h3>
+        {error && <p role="alert">{error} <button onClick={() => window.location.reload()}>Reload page after reconciliation</button></p>}
+        {!versionValid(version) && <p role="status">Current order version required before editing.</p>}
+        {useAck && <p role="status">Tags saved locally; search indexing pending.</p>}
+        {(error || !versionValid(version)) && onRefresh && <button onClick={onRefresh}>Refresh order to reconcile</button>}
+        {tags.length === 0 && <p>No tags applied.</p>}
+        <ul className="flex flex-wrap gap-2">{tags.map(tag => <li key={tag} className="rounded border p-2">{tag} {hasPermission('edit_order_tags') && <button aria-label={`Remove tag ${tag}`} disabled={!allowed} onClick={() => void write(tag, true)}>×</button>}</li>)}</ul>
+        {mappings.loading ? <p role="status">Loading tag mappings…</p> : mappings.error ? <p role="alert">Tag mappings unavailable. <button onClick={mappings.retry}>Retry tag mappings</button></p> : hasPermission('edit_order_tags') && <>
+            <button aria-expanded={expanded} disabled={!allowed} onClick={() => setExpanded(value => !value)}>Add tag</button>
+            {expanded && <div onKeyDown={event => { if (event.key === 'Escape') setExpanded(false); }}><label>Search tags<input className="block bg-white dark:bg-slate-900" value={search} onChange={event => setSearch(event.target.value)} maxLength={100} /></label>{options.length === 0 ? <p>No available matching tags.</p> : options.map(row => <button className="block p-2" disabled={!allowed} key={row.orderTag} onClick={() => void write(row.orderTag)}>{row.orderTag}</button>)}</div>}
+        </>}
+    </section>;
 }

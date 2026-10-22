@@ -1,9 +1,14 @@
-import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
+import { WidthProvider, default as GridLayout } from 'react-grid-layout/legacy';
+import { useState } from 'react';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { GripVertical, Image as ImageIcon, Type, Table, DollarSign, User, LayoutTemplate, Heading, FileText, Rows, Plus, QrCode, Upload } from 'lucide-react';
 
-const ResponsiveGridLayout = WidthProvider(Responsive);
+const PaperGridLayout = WidthProvider(GridLayout);
+const ITEM_TYPES = new Set(['header', 'text', 'image', 'order_details', 'customer_details', 'order_table', 'totals', 'payment_block', 'footer', 'row']);
+function safeImage(value: unknown): string { if (typeof value !== 'string' || value.length > 2048) return ''; try { const url = new URL(value, window.location.origin); return url.protocol === 'https:' && !url.username && !url.password || url.origin === window.location.origin && url.pathname.startsWith('/uploads/') ? url.href : ''; } catch { return ''; } }
+function PreviewImage({ source }: { source: string }) { const [failed, setFailed] = useState(false); return failed ? <p role="status">Image preview unavailable</p> : <img src={source} alt="Invoice preview" referrerPolicy="no-referrer" className="w-full h-full object-contain" onError={() => setFailed(true)} />; }
+export function validInvoiceGeometry(layout: readonly GridLayoutItem[]) { return Array.isArray(layout) && layout.length <= 200 && layout.every(item => item && typeof item === 'object' && typeof item.i === 'string' && item.i.length > 0 && item.i.length <= 200 && [item.x, item.y, item.w, item.h].every(Number.isSafeInteger) && item.x >= 0 && item.y >= 0 && item.w > 0 && item.h > 0 && item.x + item.w <= 12 && item.y + item.h <= 1000) && new Set(layout.map(item => item.i)).size === layout.length; }
 
 interface InvoiceItemStyle {
     fontSize?: string;
@@ -57,15 +62,18 @@ interface DesignerCanvasProps {
  * Renders a paper-like preview with resizable grid items.
  */
 export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSelect, onDropItem }: DesignerCanvasProps) {
+    if (!Array.isArray(items) || items.some(item => !item || typeof item !== 'object')) return <p role="alert">Invoice item configuration unavailable.</p>;
+    const invalidStyle = items.some(item => item.style && (typeof item.style !== 'object' || Array.isArray(item.style) || Object.keys(item.style).some(key => !['fontSize', 'fontWeight', 'fontStyle', 'textAlign', 'autoFit'].includes(key)) || item.style.fontSize !== undefined && !/^(?:[1-9]\d?|100)px$/.test(item.style.fontSize) || item.style.fontWeight !== undefined && !['normal', 'bold', '400', '500', '600', '700'].includes(item.style.fontWeight) || item.style.fontStyle !== undefined && !['normal', 'italic'].includes(item.style.fontStyle) || item.style.textAlign !== undefined && !['left', 'center', 'right'].includes(item.style.textAlign) || item.style.autoFit !== undefined && typeof item.style.autoFit !== 'boolean'));
     const handleGridLayoutChange = (nextLayout: readonly GridLayoutItem[]) => {
-        onLayoutChange(nextLayout.map((item) => ({ ...item })));
+        if (!validInvoiceGeometry(nextLayout) || nextLayout.length !== layout.length || nextLayout.some(item => !layout.some(previous => previous.i === item.i))) return;
+        onLayoutChange(nextLayout.map((item) => ({ ...layout.find(previous => previous.i === item.i), ...item })));
     };
 
     // Handle drop on the canvas area
     const handleCanvasDrop = (e: React.DragEvent) => {
         e.preventDefault();
         const type = e.dataTransfer.getData('text/plain');
-        if (type && onDropItem) {
+        if (ITEM_TYPES.has(type) && onDropItem) {
             onDropItem(type);
         }
     };
@@ -89,8 +97,8 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                         <div className="flex-1 flex gap-4">
                             {/* Logo Section */}
                             <div className="w-1/3 flex items-center justify-center bg-white rounded-lg border border-dashed border-slate-200 overflow-hidden">
-                                {itemConfig.logo ? (
-                                    <img src={itemConfig.logo} alt="Logo" className="w-full h-full object-contain" />
+                                {safeImage(itemConfig.logo) ? (
+                                    <PreviewImage key={itemConfig.logo} source={safeImage(itemConfig.logo)} />
                                 ) : (
                                     <div className="text-center p-2">
                                         <ImageIcon size={24} className="mx-auto text-slate-300 mb-1" />
@@ -148,17 +156,8 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
             case 'image':
                 return (
                     <div className="w-full h-full flex items-center justify-center overflow-hidden bg-linear-to-br from-slate-50 to-slate-100 rounded-lg relative">
-                        {itemConfig.content ? (
-                            <img
-                                src={itemConfig.content}
-                                alt="Invoice"
-                                className="w-full h-full object-contain"
-                                onError={(e) => {
-                                    // Fallback if image fails to load
-                                    (e.target as HTMLImageElement).style.display = 'none';
-                                    (e.target as HTMLImageElement).parentElement?.classList.add('image-error');
-                                }}
-                            />
+                        {safeImage(itemConfig.content) ? (
+                            <PreviewImage key={itemConfig.content} source={safeImage(itemConfig.content)} />
                         ) : (
                             <div className="mx-2 w-full h-[92%] rounded-md border border-slate-400 bg-slate-200/80 px-3 py-4 text-center">
                                 <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-900">
@@ -335,7 +334,7 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                             e.stopPropagation();
                             e.currentTarget.classList.remove('ring-2', 'ring-violet-500');
                             const type = e.dataTransfer.getData('text/plain');
-                            if (type && type !== 'row' && onDropItem) {
+                            if (ITEM_TYPES.has(type) && type !== 'row' && onDropItem) {
                                 onDropItem(type, itemConfig.id);
                             }
                         }}
@@ -352,6 +351,9 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                                 childItems.map((child, idx) => (
                                     <div
                                         key={child.id}
+                                        role="button"
+                                        tabIndex={0}
+                                        onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onSelect(child.id); } }}
                                         className="flex-1 bg-white rounded-lg border border-violet-200 overflow-hidden shadow-sm p-2"
                                         onClick={(e) => {
                                             e.stopPropagation();
@@ -384,29 +386,30 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
         }
     };
 
+    if (invalidStyle || !validInvoiceGeometry(layout) || items.length > 200 || new Set(items.map(item => item.id)).size !== items.length || items.some(item => !ITEM_TYPES.has(item.type) || typeof item.id !== 'string' || !item.id.length || item.id.length > 200 || [item.content, item.logo, item.businessDetails].some(value => value !== undefined && (typeof value !== 'string' || value.length > 20000)) || item.children && (item.type !== 'row' || !Array.isArray(item.children) || item.children.length > 12 || new Set(item.children).size !== item.children.length || item.children.some(id => !items.some(child => child.id === id && child.type !== 'row')))) || layout.some(item => !items.some(config => config.id === item.i))) return <p role="alert">Invoice layout preview unavailable: invalid or oversized configuration. Existing layout was not changed.</p>;
     return (
         <div
-            className="flex-1 overflow-y-auto p-8 bg-linear-to-br from-slate-100 via-slate-50 to-slate-100"
+            className="flex-1 overflow-auto p-8 bg-linear-to-br from-slate-100 via-slate-50 to-slate-100"
             onClick={() => onSelect(null)}
             onDrop={handleCanvasDrop}
             onDragOver={handleDragOver}
         >
             {/* Paper Container */}
-            <div className="max-w-[210mm] mx-auto min-h-[297mm] bg-white shadow-2xl rounded-lg relative origin-top ring-1 ring-slate-200/50">
+            <p className="text-sm mb-2">Layout preview only. Sample totals, QR and auto-fit are not a verified final PDF. Use the component sidebar to add blocks with the keyboard.</p>
+            <div className="w-[210mm] mx-auto min-h-[297mm] bg-white shadow-2xl rounded-lg relative origin-top ring-1 ring-slate-200/50">
                 {/* Paper Texture Overlay */}
                 <div className="absolute inset-0 opacity-[0.02] pointer-events-none bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iMzAwIj48ZmlsdGVyIGlkPSJhIiB4PSIwIiB5PSIwIj48ZmVUdXJidWxlbmNlIGJhc2VGcmVxdWVuY3k9Ii43NSIgc3RpdGNoVGlsZXM9InN0aXRjaCIgdHlwZT0iZnJhY3RhbE5vaXNlIi8+PGZlQ29sb3JNYXRyaXggdHlwZT0ic2F0dXJhdGUiIHZhbHVlcz0iMCIvPjwvZmlsdGVyPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbHRlcj0idXJsKCNhKSIvPjwvc3ZnPg==')]" />
 
                 {/* Grid Layout */}
-                <ResponsiveGridLayout
+                <PaperGridLayout
                     className="layout"
-                    layouts={{ lg: layout }}
-                    breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-                    cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
+                    layout={layout}
+                    cols={12}
                     rowHeight={30}
-                    onLayoutChange={(nextLayout) => {
-                        handleGridLayoutChange(nextLayout as unknown as readonly GridLayoutItem[]);
-                    }}
-                    isDroppable={true}
+                    onDragStop={nextLayout => handleGridLayoutChange(nextLayout)}
+                    onResizeStop={nextLayout => handleGridLayoutChange(nextLayout)}
+                    draggableHandle=".invoice-drag-handle"
+                    isDroppable={false}
                 >
                     {layout.map(l => {
                         const itemConfig = items.find(i => i.id === l.i);
@@ -416,6 +419,11 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                         return (
                             <div
                                 key={l.i}
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`Select ${itemConfig.type} block`}
+                                aria-pressed={isSelected}
+                                onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onSelect(l.i); } }}
                                 className={`bg-white border-2 rounded-lg group relative transition-all duration-150 ${isSelected
                                     ? 'border-indigo-500 ring-2 ring-indigo-500/20 shadow-lg z-10'
                                     : 'border-slate-200 hover:border-indigo-300 hover:shadow-md'
@@ -426,7 +434,7 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                                 }}
                             >
                                 {/* Drag Handle */}
-                                <div className={`absolute -top-px -left-px p-1.5 rounded-br-lg cursor-move z-10 transition-all ${isSelected
+                                <div className={`invoice-drag-handle absolute -top-px -left-px p-1.5 rounded-br-lg cursor-move z-10 transition-all ${isSelected
                                     ? 'bg-indigo-500 opacity-100'
                                     : 'bg-slate-300 opacity-0 group-hover:opacity-100'
                                     }`}>
@@ -440,7 +448,7 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                             </div>
                         );
                     })}
-                </ResponsiveGridLayout>
+                </PaperGridLayout>
 
                 {/* Empty State */}
                 {layout.length === 0 && (

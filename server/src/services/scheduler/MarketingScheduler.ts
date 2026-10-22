@@ -398,47 +398,9 @@ export class MarketingScheduler {
 
                 this.inFlightAlertAccounts.add(accountId);
                 try {
-                    const alerts = await AdAlertService.checkForAlerts(accountId);
-
-                    if (alerts.length > 0) {
-                        const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-                        const recentAlerts = await prisma.adAlert.findMany({
-                            where: { accountId, createdAt: { gte: dayAgo } },
-                            select: { type: true, campaignId: true }
-                        });
-
-                        const recentKeys = new Set(
-                            recentAlerts.map(a => `${a.type}:${a.campaignId || 'all'}`)
-                        );
-
-                        const newAlerts = alerts.filter(
-                            a => !recentKeys.has(`${a.type}:${a.campaignId || 'all'}`)
-                        );
-
-                        if (newAlerts.length > 0) {
-                            // Sanitize data payloads, then bulk-insert in one createMany
-                            const alertRows = newAlerts.map(alert => ({
-                                accountId,
-                                severity: alert.severity,
-                                type: alert.type,
-                                title: alert.title,
-                                message: alert.message,
-                                platform: alert.platform,
-                                campaignId: alert.campaignId,
-                                campaignName: alert.campaignName,
-                                // Why sanitize: Prisma rejects undefined/circular refs in JSON fields
-                                data: (alert.data && Object.keys(alert.data).length > 0)
-                                    ? JSON.parse(JSON.stringify(alert.data))
-                                    : {}
-                            }));
-
-                            // Single createMany replaces N individual create() calls
-                            await prisma.adAlert.createMany({ data: alertRows });
-
-                            await AdAlertService.sendCriticalAlerts(accountId, newAlerts);
-                            Logger.info(`[Scheduler] Created ${newAlerts.length} new ad alerts`, { accountId });
-                        }
-                    }
+                    const detection = await AdAlertService.checkForAlerts(accountId);
+                    await AdAlertService.persistAndDispatch(accountId, detection.alerts);
+                    Logger.info('[Scheduler] Ad alert observations checked', { accountId, alerts: detection.alerts.length, coverage: detection.coverage });
                 } catch (error) {
                     Logger.error(`[Scheduler] Ad alert check failed for account ${accountId}`, { error });
                 } finally {
@@ -457,85 +419,9 @@ export class MarketingScheduler {
      * Assess outcomes of implemented recommendations (AI Marketing Intelligence Phase 5)
      */
     static async dispatchOutcomeAssessment() {
-        Logger.info('[Scheduler] Starting recommendation outcome assessment');
-
-        try {
-            const { RecommendationTracker } = await import('../tools/knowledge/RecommendationTracker');
-            const { MultiPeriodAnalyzer } = await import('../tools/analyzers');
-
-            const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-            const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
-            const pendingOutcomes = await prisma.recommendationLog.findMany({
-                where: {
-                    status: 'implemented',
-                    implementedAt: { lte: sevenDaysAgo, gte: thirtyDaysAgo },
-                    outcomeRecordedAt: null
-                },
-                take: 50
-            });
-
-            if (pendingOutcomes.length === 0) {
-                Logger.info('[Scheduler] No recommendations pending outcome assessment');
-                return;
-            }
-
-            Logger.info(`[Scheduler] Assessing outcomes for ${pendingOutcomes.length} recommendations`);
-
-            const byAccount = new Map<string, typeof pendingOutcomes>();
-            for (const rec of pendingOutcomes) {
-                const list = byAccount.get(rec.accountId) || [];
-                list.push(rec);
-                byAccount.set(rec.accountId, list);
-            }
-
-            for (const [accountId, recommendations] of byAccount) {
-                try {
-                    const analysis = await MultiPeriodAnalyzer.analyze(accountId);
-                    const currentRoas = analysis.combined?.['7d']?.roas || 0;
-
-                    for (const rec of recommendations) {
-                        const dataPoints = rec.dataPoints as any;
-                        let roasBefore = 0;
-                        if (dataPoints && Array.isArray(dataPoints)) {
-                            const roasPoint = dataPoints.find((d: string) => d.includes('ROAS'));
-                            if (roasPoint) {
-                                const match = roasPoint.match(/[\d.]+/);
-                                roasBefore = match ? parseFloat(match[0]) : 0;
-                            }
-                        }
-
-                        await RecommendationTracker.recordOutcome(rec.id, {
-                            roasBefore,
-                            roasAfter: currentRoas,
-                            notes: 'Auto-assessed by scheduler'
-                        });
-
-                        Logger.info(`[Scheduler] Recorded outcome for recommendation ${rec.id}`, {
-                            roasBefore,
-                            roasAfter: currentRoas,
-                            change: roasBefore > 0 ? ((currentRoas - roasBefore) / roasBefore * 100).toFixed(1) + '%' : 'N/A'
-                        });
-                    }
-                } catch (error) {
-                    Logger.error(`[Scheduler] Outcome assessment failed for account ${accountId}`, { error });
-                }
-            }
-
-            const { LearningService } = await import('../tools/knowledge/LearningService');
-            for (const accountId of byAccount.keys()) {
-                try {
-                    const derived = await LearningService.deriveFromOutcomes(accountId);
-                    if (derived.length > 0) {
-                        Logger.info(`[Scheduler] Derived ${derived.length} new learnings for account ${accountId}`);
-                    }
-                } catch (error) {
-                    Logger.error(`[Scheduler] Learning derivation failed for account ${accountId}`, { error });
-                }
-            }
-        } catch (error) {
-            Logger.error('[Scheduler] Outcome assessment dispatch failed', { error });
-        }
+        // Legacy rows do not carry comparable resource/window provenance. Never manufacture
+        // outcomes from account ROAS or promote these associations into learned causal rules.
+        Logger.info('[Scheduler] Automatic recommendation outcomes unavailable: comparable recorded observations required');
     }
 
     /**
@@ -569,38 +455,7 @@ export class MarketingScheduler {
     }
 
     static async dispatchAiManagerSuggestions() {
-        Logger.info('[Scheduler] Starting AI Manager suggestion generation');
-
-        try {
-            const { AiManagerService } = await import('../ai/AiManagerService');
-
-            const enabledAccounts = await prisma.accountFeature.findMany({
-                where: {
-                    featureKey: 'AI_MANAGER',
-                    isEnabled: true,
-                },
-                select: { accountId: true },
-                distinct: ['accountId'],
-            });
-
-            Logger.info(`[Scheduler] Generating AI Manager suggestions for ${enabledAccounts.length} accounts`);
-
-            for (const entry of enabledAccounts) {
-                try {
-                    const result = await AiManagerService.generateSuggestions(entry.accountId);
-                    Logger.info('[Scheduler] AI Manager suggestions generated', {
-                        accountId: entry.accountId,
-                        created: result.created,
-                    });
-                } catch (error) {
-                    Logger.error('[Scheduler] AI Manager generation failed for account', {
-                        accountId: entry.accountId,
-                        error,
-                    });
-                }
-            }
-        } catch (error) {
-            Logger.error('[Scheduler] AI Manager suggestion dispatch failed', { error });
-        }
+        // Refresh is explicitly user-admitted. Feature enablement alone is not actor authority.
+        Logger.info('[Scheduler] AI Manager automatic refresh disabled; permissioned user refresh required');
     }
 }

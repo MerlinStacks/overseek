@@ -13,6 +13,36 @@ vi.mock('../utils/prisma', () => ({ prisma: mockPrisma }));
 
 import { FeedMappingService } from './feedMapping';
 
+describe('grouped feed bulk optimization', () => {
+    it('optimizes one parent description and keeps titles variant-specific', async () => {
+        const optimize = vi.spyOn(FeedMappingService, 'optimizeRowFields').mockResolvedValue({ description: 'Shared AI description', title: 'Variant title' });
+        try {
+            const updateProgress = vi.fn();
+            const result = await FeedMappingService.processOptimizeBulkJob({
+                accountId: 'account-1', channel: 'google', fields: ['title', 'description'], sharedDescriptions: true,
+                rows: [{ wooId: 1, variationWooId: 11 }, { wooId: 1, variationWooId: 12 }],
+            }, { updateProgress } as any);
+            expect(optimize.mock.calls).toEqual([
+                ['account-1', 'google', 1, ['description']],
+                ['account-1', 'google', 1, ['title'], 11],
+                ['account-1', 'google', 1, ['title'], 12],
+            ]);
+            expect(result).toMatchObject({ total: 2, succeeded: 2, failed: 0 });
+            expect(updateProgress).toHaveBeenLastCalledWith({ completed: 2, total: 2, pct: 100 });
+        } finally { optimize.mockRestore(); }
+    });
+
+    it('keeps ungrouped jobs variant-specific', async () => {
+        const optimize = vi.spyOn(FeedMappingService, 'optimizeRowFields').mockResolvedValue({ description: 'Variant AI description' });
+        try {
+            await FeedMappingService.processOptimizeBulkJob({
+                accountId: 'account-1', channel: 'meta', fields: ['description'], rows: [{ wooId: 1, variationWooId: 11 }],
+            }, { updateProgress: vi.fn() } as any);
+            expect(optimize).toHaveBeenCalledWith('account-1', 'meta', 1, ['description'], 11);
+        } finally { optimize.mockRestore(); }
+    });
+});
+
 describe('FeedMappingService.getFeedExportXml', () => {
     it('emits CTX-compatible item fields and cleans HTML spacing', async () => {
         const getFeedRows = vi.spyOn(FeedMappingService, 'getFeedRows').mockResolvedValueOnce({
@@ -377,6 +407,109 @@ describe('FeedMappingService channel data and health', () => {
         expect(value(result.rows[0], 'mpn')).toBeNull();
         expect(value(result.rows[0], 'brand')).toBeNull();
         if (channel === 'google') expect(value(result.rows[0], 'identifier_exists')).toBeNull();
+    });
+
+    it.each(['google', 'meta'])('paginates grouped %s UI rows by product without splitting variants or exporting group editors', async (channel) => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([
+            { ...base(1, { type: 'variable' }), variations: [11, 12, 13].map((wooId) => ({ wooId, price: '12', rawData: {} })) },
+            base(2),
+        ]);
+        const first = await FeedMappingService.getFeedRows('account-1', channel, 1, 1, '', 'automatic', undefined, false, true);
+        expect(first.total).toBe(2);
+        expect(first.rows.map((row) => row.rowId)).toEqual(['v:1-11', 'v:1-12', 'v:1-13']);
+        expect(first.groups).toMatchObject([{ rowId: 'g:1', rowType: 'group', wooId: 1 }]);
+        expect(value(first.groups![0], 'description')).toBe('A useful product');
+        const second = await FeedMappingService.getFeedRows('account-1', channel, 2, 1, '', 'automatic', undefined, false, true);
+        expect(second.rows.map((row) => row.rowId)).toEqual(['p:2']);
+        expect(second.groups).toEqual([]);
+        const exported = await FeedMappingService.getFeedRows('account-1', channel, 1, 50, '', 'automatic');
+        expect(exported.total).toBe(4);
+        expect(exported.groups).toBeUndefined();
+        expect(exported.rows.some((row) => row.rowType === 'group')).toBe(false);
+    });
+
+    it.each(['google', 'meta', 'pinterest', 'similar'])('shares parent descriptions on %s while preserving explicit variant copy and titles', async (channel) => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{
+            ...base(1, { type: 'variable' }),
+            seoData: {
+                feedOverrides: { shared: { description: 'Shared product copy', '1-12:description': 'Custom variant copy' } },
+                feedAiSuggestions: { shared: { '1-13:description': 'Variant AI copy' } },
+            },
+            variations: [11, 12, 13].map((wooId) => ({ wooId, price: '12', rawData: {
+                description: 'Woo variant copy', attributes: [{ name: 'Color', option: `Color ${wooId}` }],
+            } })),
+        }]);
+        const result = await FeedMappingService.getFeedRows('account-1', channel, 1, 50, '', 'all_variations');
+        expect(result.rows.map((row) => value(row, 'description'))).toEqual(['Shared product copy', 'Custom variant copy', 'Variant AI copy']);
+        expect(result.rows.map((row) => value(row, 'title'))).toEqual(['Product 1 - Color 11', 'Product 1 - Color 12', 'Product 1 - Color 13']);
+    });
+
+    it('restores parent inheritance by clearing only the requested variant description and AI copy', async () => {
+        const seoData = {
+            feedOverrides: { shared: { description: 'Parent', '1-11:description': 'Variant' } },
+            feedAiSuggestions: { shared: { '1-11:description': 'AI copy', '1-12:description': 'Keep sibling' }, google: { '1-11:description': 'Legacy AI copy' } },
+        };
+        mockPrisma.wooProduct.findUnique.mockResolvedValue({ seoData });
+        await FeedMappingService.saveRowOverrides('account-1', 'google', 1, { '1-11:description': null });
+        const saved = mockPrisma.wooProduct.update.mock.calls[0][0].data.seoData;
+        expect(saved.feedOverrides.shared).toEqual({ description: 'Parent' });
+        expect(saved.feedAiSuggestions.shared).toEqual({ '1-12:description': 'Keep sibling' });
+        expect(saved.feedAiSuggestions.google).toEqual({});
+        expect(saved.feedDescriptionInheritance).toEqual({ '1-11': true });
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{
+            ...base(1, { type: 'variable' }), seoData: { ...saved, feedOverrides: { shared: {} } },
+            variations: [{ wooId: 11, price: '12', rawData: { description: 'Woo variant copy' } }],
+        }]);
+        const inherited = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'automatic');
+        expect(value(inherited.rows[0], 'description')).toBe('A useful product');
+    });
+
+    it.each(['google', 'meta'])('does not invent a sale from a price fallback for non-sale products or variations on %s', async (channel) => {
+        mockPrisma.accountFeature.findUnique.mockResolvedValue({ config: { mappings: { [channel]: [
+            { targetField: 'sale_price', sourceField: 'salePrice', fallbackSourceField: 'price' },
+        ] } } });
+        mockPrisma.wooProduct.findMany.mockResolvedValue([
+            base(1, { sale_price: '', on_sale: false }),
+            { ...base(2, { type: 'variable' }), variations: [
+                { wooId: 21, price: '12', rawData: { regular_price: '12', sale_price: '', on_sale: false } },
+            ] },
+        ]);
+        const result = await FeedMappingService.getFeedRows('account-1', channel, 1, 50, '', 'automatic', undefined, true);
+        expect(result.rows).toHaveLength(2);
+        for (const row of result.rows) {
+            expect(value(row, 'sale_price')).toBeNull();
+            expect(row.issues.some((issue: any) => issue.field === 'sale_price')).toBe(false);
+        }
+        expect(result.health?.issues.some((issue) => issue.field === 'sale_price')).toBe(false);
+        const xml = await FeedMappingService.getFeedExportXml('account-1', channel);
+        expect(xml).not.toContain('<g:sale_price>');
+    });
+
+    it('keeps explicit sale overrides visible for validation when Woo has no sale', async () => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{
+            ...base(1, { sale_price: '', on_sale: false }),
+            seoData: { feedOverrides: { google: { sale_price: '8.00 AUD' } } },
+        }]);
+        const result = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'automatic');
+        expect(value(result.rows[0], 'sale_price')).toBe('8.00 AUD');
+        expect(result.rows[0].issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'invalid_sale_price' })]));
+    });
+
+    it.each(['google', 'meta', 'pinterest', 'similar'])('resolves explicit SKU mappings from the product or variation on %s', async (channel) => {
+        mockPrisma.accountFeature.findUnique.mockResolvedValue({ config: { mappings: { [channel]: [
+            { targetField: 'mpn', sourceField: 'sku' },
+            { targetField: 'gtin', sourceField: 'sku' },
+        ] } } });
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{
+            ...base(1), sku: '4006381333931', variations: [
+                { wooId: 11, sku: '96385074', price: '12', rawData: {} },
+                { wooId: 12, sku: '', price: '12', rawData: {} },
+            ],
+        }]);
+        const result = await FeedMappingService.getFeedRows('account-1', channel, 1, 50, '', 'variable_and_variations');
+        expect(result.rows.map((row) => value(row, 'mpn'))).toEqual(['4006381333931', '96385074', null]);
+        expect(result.rows.map((row) => value(row, 'gtin'))).toEqual(['4006381333931', '96385074', null]);
+        expect(result.rows[2].issues.some((issue: any) => issue.code === 'missing_identifiers')).toBe(false);
     });
 
     it('preserves explicit mapping, identifier and pricing overrides while reporting conflicts', async () => {

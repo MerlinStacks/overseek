@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { useAccount } from '../../../context/AccountContext';
 import { LTR_TEXT_STYLE, sanitizeBidiText } from '../textInputBidi';
+import { ProductTagPicker } from './ProductTagPicker';
 
 type MatchType = 'all' | 'any';
 
@@ -183,6 +184,8 @@ export const CONDITION_GROUPS: ConditionGroup[] = [
             { field: 'order.itemCount', label: 'Order Item Count', operators: ['gt', 'gte', 'lt', 'lte', 'eq'] },
             { field: 'order.productId', label: 'Order contains product', operators: ['eq', 'neq'] },
             { field: 'order.categoryId', label: 'Order contains category', operators: ['eq', 'neq'] },
+            { field: 'order.productTagId', label: 'Order contains product with tag', operators: ['contains', 'not_contains'] },
+            { field: 'customer.purchasedProductTagIds', label: 'Customer purchased product with tag', operators: ['contains', 'not_contains'] },
             { field: 'order.couponCode', label: 'Order used coupon', operators: ['contains', 'not_contains', 'eq', 'neq'] },
             { field: 'customer.totalSpent', label: 'Customer Lifetime Value', operators: ['gt', 'gte', 'lt', 'lte'] },
             { field: 'customer.ordersCount', label: 'Customer Total Orders', operators: ['gt', 'gte', 'lt', 'lte', 'eq'] },
@@ -445,6 +448,9 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
     }, [token, currentAccount?.id]);
 
     const renderConditionValueInput = (cond: ConditionRule, idx: number) => {
+        if (cond.field === 'order.productTagId' || cond.field === 'customer.purchasedProductTagIds') {
+            return <ProductTagPicker value={cond.value} onChange={value => updateCondition(idx, 'value', value)} />;
+        }
         if (cond.field === 'order.productId') {
             return (
                 <select

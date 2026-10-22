@@ -11,30 +11,13 @@ export class CanonicalInvoiceAttachmentService {
             forceRegenerate: false,
         });
 
-        const settledArtifact: any = await canonicalInvoiceService.waitForReady(artifact.id, 15000, 300);
+        const settledArtifact = await canonicalInvoiceService.waitForReady(artifact, 15000, 300);
 
         if (canonicalInvoiceService.isReadableReady(settledArtifact)) {
             return {
                 absolutePath: settledArtifact.storagePath,
                 artifactId: settledArtifact.id,
             };
-        }
-
-        if (settledArtifact && settledArtifact.status === 'pending') {
-            await canonicalInvoiceService.processGenerationJob({
-                artifactId: settledArtifact.id,
-                accountId,
-                orderId,
-                templateId: artifact.templateId,
-            });
-
-            const refreshed: any = await canonicalInvoiceService.getArtifactById(settledArtifact.id);
-            if (canonicalInvoiceService.isReadableReady(refreshed)) {
-                return {
-                    absolutePath: refreshed.storagePath,
-                    artifactId: refreshed.id,
-                };
-            }
         }
 
         return {

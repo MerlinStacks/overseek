@@ -63,7 +63,7 @@ describe('feed health and export routes', () => {
     });
     it('defaults rows, references, health and exports to automatic and accepts explicit automatic mode', async () => {
         expect((await app.inject({ url: '/feeds/google/rows', headers })).statusCode).toBe(200);
-        expect(mocks.rows).toHaveBeenCalledWith('account-2', 'google', 1, 50, '', 'automatic');
+        expect(mocks.rows).toHaveBeenCalledWith('account-2', 'google', 1, 50, '', 'automatic', undefined, false, false);
         expect((await app.inject({ url: '/feeds/meta/row-refs?variationMode=automatic', headers })).statusCode).toBe(200);
         expect(mocks.refs).toHaveBeenCalledWith('account-2', 'meta', '', 'automatic');
         expect((await app.inject({ url: '/feeds/meta/health', headers })).statusCode).toBe(200);
@@ -72,6 +72,13 @@ describe('feed health and export routes', () => {
         expect(mocks.csv).toHaveBeenCalledWith('account-1', 'meta', 'automatic');
         expect((await app.inject('/feeds/export/account-1/google?token=secret&variationMode=automatic')).statusCode).toBe(200);
         expect(mocks.xml).toHaveBeenCalledWith('account-1', 'google', 'automatic');
+    });
+    it('opts into product-based UI pagination without changing export requests', async () => {
+        mocks.rows.mockResolvedValue({ rows: [{ rowId: 'v:1-11' }], groups: [{ rowId: 'g:1' }], total: 1, mappings: [] });
+        const response = await app.inject({ url: '/feeds/google/rows?groupVariants=true&page=2&limit=25', headers });
+        expect(response.statusCode).toBe(200);
+        expect(response.json().groups).toEqual([{ rowId: 'g:1' }]);
+        expect(mocks.rows).toHaveBeenCalledWith('account-2', 'google', 2, 25, '', 'automatic', undefined, false, true);
     });
     it.each(['google', 'meta'])('preserves signed %s exports and records local generation only', async (channel) => {
         const response = await app.inject(`/feeds/export/account-1/${channel}?token=secret&variationMode=last_variation`);

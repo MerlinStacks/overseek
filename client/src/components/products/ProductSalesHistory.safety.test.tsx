@@ -1,0 +1,16 @@
+import { act, cleanup, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { beforeEach, afterEach, expect, it, vi } from 'vitest';
+const m = vi.hoisted(() => ({ account: { id: 'a', wooUrl: 'javascript:alert(1)' }, allowed: true, fetch: vi.fn() }));
+vi.mock('../../context/AuthContext', () => ({ useAuth: () => ({ token: 't', user: { id: 'u' } }) }));
+vi.mock('../../context/AccountContext', () => ({ useAccount: () => ({ currentAccount: m.account }) }));
+vi.mock('../../hooks/usePermissions', () => ({ usePermissions: () => ({ hasPermission: () => m.allowed }) }));
+import { ProductSalesHistory } from './ProductSalesHistory';
+const sale = { orderId: 1, orderNumber: '#1', customerWooId: null, date: '2026-10-01T00:00:00Z', status: 'completed', customerName: 'Private A', customerEmail: 'a@example.test', quantity: 1, lineTotal: 0, orderTotal: null, currency: null };
+const response = (value: unknown) => ({ ok: true, json: async () => value });
+const result = { sales: [sale], total: 1, page: 1, limit: 15, totalPages: 1 };
+beforeEach(() => { vi.clearAllMocks(); m.allowed = true; vi.stubGlobal('fetch', m.fetch); m.fetch.mockResolvedValue(response(result)); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+it('keeps unknown money unavailable and rejects unsafe external URLs', async () => { render(<MemoryRouter><ProductSalesHistory productWooId={1} /></MemoryRouter>); await screen.findByText('Private A'); expect(screen.getAllByText('Unavailable')).toHaveLength(2); expect(screen.queryByLabelText(/WooCommerce/)).not.toBeInTheDocument(); });
+it('rejects invalid dates and does not show a false empty success state', async () => { m.fetch.mockResolvedValue(response({ ...result, sales: [{ ...sale, date: 'invalid' }] })); render(<MemoryRouter><ProductSalesHistory productWooId={1} /></MemoryRouter>); expect(await screen.findByRole('alert')).toHaveTextContent('Sales history unavailable'); expect(screen.queryByText('No synced sales in this page.')).not.toBeInTheDocument(); });
+it('ignores late data for a different product and hides data on permission loss', async () => { let resolve!: (value: unknown) => void; m.fetch.mockReturnValueOnce(new Promise(r => { resolve = r; })); const view = render(<MemoryRouter><ProductSalesHistory productWooId={1} /></MemoryRouter>); await act(async () => {}); view.rerender(<MemoryRouter><ProductSalesHistory productWooId={2} /></MemoryRouter>); await screen.findByText('Private A'); await act(async () => resolve(response({ ...result, sales: [{ ...sale, customerName: 'Old product private' }] }))); expect(screen.queryByText('Old product private')).not.toBeInTheDocument(); m.allowed = false; view.rerender(<MemoryRouter><ProductSalesHistory productWooId={2} /></MemoryRouter>); expect(screen.queryByText('Private A')).not.toBeInTheDocument(); });

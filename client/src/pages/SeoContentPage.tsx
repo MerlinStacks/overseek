@@ -1,510 +1,63 @@
-import { useEffect, useMemo, useState } from 'react';
-import { FileText, Newspaper, ExternalLink, RefreshCw, Search, Edit3, ChevronLeft, ArrowUpDown } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { z } from 'zod';
+import DOMPurify from 'dompurify';
+import { calculateContentSeoScore } from '@overseek/core';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { SeoAnalysisPanel, type SeoTest } from '../components/Seo/SeoAnalysisPanel';
-import { SeoScoreBadge } from '../components/Seo/SeoScoreBadge';
-import { calculateContentSeoScore } from '@overseek/core';
+import { usePermissions } from '../hooks/usePermissions';
+import { useScopedRequest } from '../hooks/useScopedRequest';
 import { getSafeHref } from '../utils/url';
-
-type Tab = 'pages' | 'posts';
-type EditorTab = 'content' | 'seo';
-type SortField = 'title' | 'status' | 'dateModified' | 'seoScore';
-type SortDirection = 'asc' | 'desc';
-
-interface ContentItem {
-    id: string;
-    wooId: number;
-    title: string;
-    slug: string | null;
-    status: string | null;
-    permalink: string | null;
-    dateCreated: string;
-    dateModified: string;
-    content?: string;
-    excerpt?: string;
-    seoScore?: number;
-    seoData?: { focusKeyword?: string; analysis?: SeoTest[] };
+const itemSchema = z.object({ id: z.string().uuid(), wooId: z.number().int().positive(), title: z.string().max(10000), content: z.string().max(1000000), excerpt: z.string().max(50000), slug: z.string().nullable(), permalink: z.string().nullable(), status: z.string().max(100).nullable(), updatedAt: z.string().datetime(), dateModified: z.string().datetime().nullable(), seoData: z.unknown().optional() });
+const fieldsSchema = z.object({ title: z.string().trim().min(1).max(500), content: z.string().max(500000), excerpt: z.string().max(20000), focusKeyword: z.string().max(200), status: z.enum(['draft', 'publish', 'private', 'pending']) });
+type Item = z.infer<typeof itemSchema>;
+function decodeItem(value: unknown) { return itemSchema.parse(value); }
+function decodeList(value: unknown) { return z.object({ items: z.array(itemSchema).max(25), pagination: z.object({ page: z.number().int().positive(), limit: z.literal(25), total: z.number().int().nonnegative().safe(), totalPages: z.number().int().nonnegative().safe() }) }).parse(value); }
+export function SeoContentPage() { const { token, user } = useAuth(); const { currentAccount } = useAccount(); const { hasPermission } = usePermissions(); if (!token || !currentAccount || !hasPermission('view_products')) return <p role="alert">Content read access and a selected account required.</p>; return <ContentScope key={JSON.stringify([user?.id, token, currentAccount.id])} token={token} accountId={currentAccount.id} editable={hasPermission('manage_content')} />; }
+function ContentScope(props: { token: string; accountId: string; editable: boolean }) {
+    const [kind, setKind] = useState<'pages' | 'posts'>(() => new URLSearchParams(window.location.search).get('tab') === 'posts' ? 'posts' : 'pages'), [editing, setEditing] = useState<string | null>(() => { const id = new URLSearchParams(window.location.search).get('edit'); return z.string().uuid().safeParse(id).success ? id : null; }), [query, setQuery] = useState(''), [page, setPage] = useState(1);
+    const canLeave = useRef<() => boolean>(() => true);
+    const leave = (work: () => void) => { if (canLeave.current()) { canLeave.current = () => true; work(); } };
+    return <div className="space-y-4 text-slate-900 dark:text-slate-100"><h1 className="text-xl font-semibold">SEO content</h1><p>Local synced content. Scores are implemented heuristic checks, not evidence of ranking or traffic. Provider edits outside OverSeek are not transactionally locked.</p><div className="flex gap-4">{(['pages', 'posts'] as const).map(value => <button type="button" key={value} aria-pressed={kind === value} onClick={() => leave(() => { setKind(value); setEditing(null); setPage(1); })}>{value}</button>)}</div>{editing ? <><button type="button" onClick={() => leave(() => setEditing(null))}>Back to content list</button><EditorRead key={`${kind}:${editing}`} {...props} kind={kind} id={editing} canLeave={canLeave} /></> : <><label>Search title/slug <input className="border dark:bg-slate-800" value={query} maxLength={200} onChange={event => { setQuery(event.target.value); setPage(1); }} /></label>{props.editable && <CreateContent key={kind} {...props} kind={kind} onCreated={setEditing} canLeaveRef={canLeave} />}<ContentList key={`${kind}:${page}:${query}`} {...props} kind={kind} page={page} query={query} setPage={setPage} edit={id => leave(() => setEditing(id))} /></>}</div>;
 }
-
-
-export function SeoContentPage() {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const [searchParams, setSearchParams] = useSearchParams();
-    const tabParam = searchParams.get('tab');
-    const editId = searchParams.get('edit');
-    const tab: Tab = tabParam === 'posts' ? 'posts' : 'pages';
-    const [q, setQ] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [items, setItems] = useState<ContentItem[]>([]);
-    const [error, setError] = useState<string | null>(null);
-    const [selected, setSelected] = useState<ContentItem | null>(null);
-    const [editorLoading, setEditorLoading] = useState(false);
-    const [saving, setSaving] = useState(false);
-    const [form, setForm] = useState({ title: '', content: '', excerpt: '', focusKeyword: '' });
-    const [contentView, setContentView] = useState<'code' | 'visual' | 'split'>('code');
-    const [editorTab, setEditorTab] = useState<EditorTab>('content');
-    const [sortField, setSortField] = useState<SortField>('dateModified');
-    const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-    const [createTitle, setCreateTitle] = useState('');
-    const [createStatus, setCreateStatus] = useState<'draft' | 'publish'>('draft');
-    const [creating, setCreating] = useState(false);
-
-    const endpoint = useMemo(() => tab === 'pages' ? '/api/content/pages' : '/api/content/posts', [tab]);
-
-    const fetchItems = async () => {
-        if (!token || !currentAccount?.id) return;
-        setLoading(true);
-        setError(null);
-        try {
-            const params = new URLSearchParams();
-            if (q.trim()) params.set('q', q.trim());
-            params.set('limit', '50');
-            const res = await fetch(`${endpoint}?${params.toString()}`, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount.id,
-                }
-            });
-            if (!res.ok) throw new Error('Failed to load content');
-            const data = await res.json();
-            setItems(data.items || []);
-        } catch (e: any) {
-            setError(e?.message || 'Failed to load content');
-        } finally {
-            setLoading(false);
-        }
+function ContentList({ token, accountId, kind, page, query, setPage, edit }: { token: string; accountId: string; kind: string; page: number; query: string; setPage: (page: number) => void; edit: (id: string) => void }) {
+    const read = useScopedRequest(`/api/content/${kind}?${new URLSearchParams({ q: query, page: String(page), limit: '25' })}`, accountId, token, decodeList);
+    if (read.loading) return <p role="status">Loading content…</p>;
+    if (read.error || !read.data || read.data.pagination.page !== page) return <p role="alert">Content page unavailable. <button type="button" onClick={read.retry}>Retry content</button></p>;
+    return <><p>{read.data.pagination.total} reported local records · page {page} · {read.data.items.length} displayed</p>{!read.data.items.length ? <p>No content on this page.</p> : <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr><th>Title</th><th>Status</th><th>Provider modified time</th><th>Actions</th></tr></thead><tbody>{read.data.items.map(item => <tr key={item.id}><th scope="row">{item.title}</th><td>{item.status || 'Unknown'}</td><td>{item.dateModified ? new Date(item.dateModified).toLocaleString() : 'Provider time unavailable'}</td><td><button type="button" onClick={() => edit(item.id)}>Review / edit</button>{item.permalink && <a className="ml-3" href={getSafeHref(item.permalink)} target="_blank" rel="noopener noreferrer">Open source page</a>}</td></tr>)}</tbody></table></div>}<div className="flex gap-4"><button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</button><button type="button" disabled={page >= read.data.pagination.totalPages} onClick={() => setPage(page + 1)}>Next</button><button type="button" onClick={read.retry}>Refresh content</button></div></>;
+}
+function useContentWrite(token: string, accountId: string, endpoint: string) {
+    const lock = useRef(false), alive = useRef(true), controller = useRef<AbortController | null>(null), operation = useRef(crypto.randomUUID());
+    const [pending, setPending] = useState(false), [blocked, setBlocked] = useState(false), [message, setMessage] = useState('');
+    useEffect(() => { alive.current = true; return () => { alive.current = false; controller.current?.abort(); }; }, []);
+    const run = async (method: 'POST' | 'PATCH', version: string | null, fields: unknown, onSaved: (item: Item) => void) => {
+        if (lock.current || blocked) return; const parsed = fieldsSchema.safeParse(fields); if (!parsed.success) { setMessage('Content fields are invalid or exceed supported bounds.'); return; }
+        if (!window.confirm(`Write this ${parsed.data.status} content to WordPress? Unconfirmed writes require reconciliation; they are not rolled back by closing this editor.`)) return;
+        lock.current = true; setPending(true); setMessage(''); controller.current = new AbortController(); const timeout = setTimeout(() => controller.current?.abort(), 30000);
+        try { const response = await fetch(endpoint, { method, signal: controller.current.signal, headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId, 'Content-Type': 'application/json' }, body: JSON.stringify({ operationId: operation.current, version, fields: parsed.data }) }); if (!response.ok) throw new Error('Unacknowledged'); const item = decodeItem(await response.json()); if (!alive.current) return; onSaved(item); operation.current = crypto.randomUUID(); setMessage('Write acknowledgement received. This is not a guarantee against later external WordPress edits.'); }
+        catch { if (alive.current) { setBlocked(true); setMessage(`Write unconfirmed/conflicted. Draft retained. Reconcile operation ${operation.current} before retrying or creating a replacement identity.`); } }
+        finally { clearTimeout(timeout); lock.current = false; if (alive.current) setPending(false); }
     };
-
-    useEffect(() => {
-        if (tabParam !== 'pages' && tabParam !== 'posts') {
-            setSearchParams((prev) => {
-                const next = new URLSearchParams(prev);
-                next.set('tab', 'pages');
-                return next;
-            }, { replace: true });
-        }
-    }, [setSearchParams, tabParam]);
-
-    useEffect(() => {
-        fetchItems();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [endpoint, token, currentAccount?.id]);
-
-    useEffect(() => {
-        const fetchEditorItem = async () => {
-            if (!editId || !token || !currentAccount?.id) {
-                setSelected(null);
-                return;
-            }
-            setEditorLoading(true);
-            setError(null);
-            try {
-                const detailEndpoint = tab === 'pages' ? `/api/content/pages/${editId}` : `/api/content/posts/${editId}`;
-                const res = await fetch(detailEndpoint, {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        'x-account-id': currentAccount.id,
-                    }
-                });
-                if (!res.ok) throw new Error('Failed to load content details');
-                const data = await res.json();
-                setSelected(data);
-                setForm({
-                    title: data.title || '',
-                    content: data.content || '',
-                    excerpt: data.excerpt || '',
-                    focusKeyword: data.seoData?.focusKeyword || '',
-                });
-                setEditorTab('content');
-                setContentView('split');
-            } catch (e: any) {
-                setError(e?.message || 'Failed to load content details');
-            } finally {
-                setEditorLoading(false);
-            }
-        };
-
-        fetchEditorItem();
-    }, [currentAccount?.id, editId, tab, token]);
-
-    const liveSeoPreview = useMemo(() => {
-        if (!selected) return { score: 0, tests: [] as SeoTest[] };
-        const preview = calculateContentSeoScore({
-            title: form.title,
-            content: form.content,
-            excerpt: form.excerpt,
-            focusKeyword: form.focusKeyword,
-            slug: selected.slug,
-            permalink: selected.permalink,
-        });
-        return { score: preview.score, tests: preview.tests as SeoTest[] };
-    }, [form.content, form.excerpt, form.focusKeyword, form.title, selected]);
-
-    const openEditor = (item: ContentItem) => {
-        setSearchParams((prev) => {
-            const next = new URLSearchParams(prev);
-            next.set('tab', tab);
-            next.set('edit', item.id);
-            return next;
-        });
-    };
-
-    const closeEditor = () => {
-        setSearchParams((prev) => {
-            const next = new URLSearchParams(prev);
-            next.set('tab', tab);
-            next.delete('edit');
-            return next;
-        });
-    };
-
-    const saveEditor = async () => {
-        if (!token || !currentAccount?.id || !selected) return;
-        setSaving(true);
-        try {
-            const detailEndpoint = tab === 'pages' ? `/api/content/pages/${selected.id}` : `/api/content/posts/${selected.id}`;
-            const res = await fetch(detailEndpoint, {
-                method: 'PATCH',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount.id,
-                    'content-type': 'application/json',
-                },
-                body: JSON.stringify(form),
-            });
-            if (!res.ok) throw new Error('Failed to save content');
-            const updated = await res.json();
-            setSelected(updated);
-            await fetchItems();
-        } catch (e: any) {
-            setError(e?.message || 'Failed to save content');
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const createContent = async () => {
-        if (!token || !currentAccount?.id || !createTitle.trim()) return;
-        setCreating(true);
-        setError(null);
-        try {
-            const res = await fetch(endpoint, {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount.id,
-                    'content-type': 'application/json',
-                },
-                body: JSON.stringify({
-                    title: createTitle.trim(),
-                    status: createStatus,
-                }),
-            });
-            if (!res.ok) throw new Error(`Failed to create ${tab === 'pages' ? 'page' : 'post'}`);
-            const created = await res.json();
-            setCreateTitle('');
-            await fetchItems();
-            if (created?.id) {
-                setSearchParams((prev) => {
-                    const next = new URLSearchParams(prev);
-                    next.set('tab', tab);
-                    next.set('edit', created.id);
-                    return next;
-                });
-            }
-        } catch (e: any) {
-            setError(e?.message || `Failed to create ${tab === 'pages' ? 'page' : 'post'}`);
-        } finally {
-            setCreating(false);
-        }
-    };
-
-    const sortedItems = useMemo(() => {
-        const list = [...items];
-        list.sort((a, b) => {
-            let comparison = 0;
-            if (sortField === 'title') comparison = (a.title || '').localeCompare(b.title || '');
-            if (sortField === 'status') comparison = (a.status || '').localeCompare(b.status || '');
-            if (sortField === 'dateModified') comparison = new Date(a.dateModified).getTime() - new Date(b.dateModified).getTime();
-            if (sortField === 'seoScore') comparison = (a.seoScore ?? -1) - (b.seoScore ?? -1);
-            return sortDirection === 'asc' ? comparison : -comparison;
-        });
-        return list;
-    }, [items, sortDirection, sortField]);
-
-    const toggleSort = (field: SortField) => {
-        if (field === sortField) {
-            setSortDirection((prev) => prev === 'asc' ? 'desc' : 'asc');
-            return;
-        }
-        setSortField(field);
-        setSortDirection('asc');
-    };
-
-    const visualPreviewDoc = useMemo(() => {
-        const html = form.content?.trim();
-        if (!html) return '';
-
-        return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <base target="_blank" />
-  <style>
-    html, body { margin: 0; padding: 0; background: #fff; color: #111827; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-  </style>
-</head>
-<body>
-${html}
-</body>
-</html>`;
-    }, [form.content]);
-
-    const SortHeader = ({ field, label }: { field: SortField; label: string }) => (
-        <button
-            type="button"
-            onClick={() => toggleSort(field)}
-            className="inline-flex items-center gap-1 font-medium hover:text-blue-600 dark:hover:text-blue-300"
-        >
-            {label}
-            <ArrowUpDown size={12} className={sortField === field ? 'text-blue-600 dark:text-blue-300' : 'text-slate-400'} />
-        </button>
-    );
-
-    return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white">SEO Content</h1>
-                    <p className="text-slate-500 dark:text-slate-400">Synced WordPress pages and blog posts for ranking and AI analysis.</p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={fetchItems}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-                    >
-                        <RefreshCw size={14} /> Refresh
-                    </button>
-                </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
-                <div className="flex flex-col lg:flex-row lg:items-end gap-3">
-                    <div className="flex-1">
-                        <label className="block text-sm font-medium mb-1">New {tab === 'pages' ? 'Page' : 'Blog Post'} Title</label>
-                        <input
-                            value={createTitle}
-                            onChange={(e) => setCreateTitle(e.target.value)}
-                            placeholder={tab === 'pages' ? 'About Us' : 'How to care for your product'}
-                            className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium mb-1">Status</label>
-                        <select
-                            value={createStatus}
-                            onChange={(e) => setCreateStatus(e.target.value as 'draft' | 'publish')}
-                            className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-                        >
-                            <option value="draft">Draft</option>
-                            <option value="publish">Publish</option>
-                        </select>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={createContent}
-                        disabled={creating || !createTitle.trim()}
-                        className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
-                    >
-                        {creating ? 'Creating...' : `Create ${tab === 'pages' ? 'Page' : 'Post'}`}
-                    </button>
-                </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-                <button onClick={() => setSearchParams({ tab: 'pages' })} className={`px-3 py-2 rounded-lg text-sm ${tab === 'pages' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}><FileText size={14} className="inline mr-1" />Pages</button>
-                <button onClick={() => setSearchParams({ tab: 'posts' })} className={`px-3 py-2 rounded-lg text-sm ${tab === 'posts' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}><Newspaper size={14} className="inline mr-1" />Blog Posts</button>
-                <div className="ml-auto relative">
-                    <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
-                    <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && fetchItems()} placeholder="Search title or slug" className="pl-8 pr-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm" />
-                </div>
-            </div>
-
-            {editId ? (
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4 lg:p-6 space-y-4">
-                    <button onClick={closeEditor} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-sm">
-                        <ChevronLeft size={14} /> Back to list
-                    </button>
-                    {editorLoading && <div className="p-4 text-sm text-slate-500">Loading content editor...</div>}
-                    {!editorLoading && selected && (
-                        <div className="space-y-4">
-                            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                                <div className="flex-1">
-                                    <label className="block text-sm font-medium mb-1">Title</label>
-                                    <input value={form.title} onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900" />
-                                </div>
-                                <div className="shrink-0">
-                                    <SeoScoreBadge score={liveSeoPreview.score} size="md" tests={liveSeoPreview.tests} />
-                                </div>
-                            </div>
-
-                            <div className="inline-flex rounded-lg border border-slate-300 dark:border-slate-700 overflow-hidden">
-                                <button
-                                    type="button"
-                                    onClick={() => setEditorTab('content')}
-                                    className={`px-3 py-2 text-sm ${editorTab === 'content' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}
-                                >
-                                    Page Content
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setEditorTab('seo')}
-                                    className={`px-3 py-2 text-sm border-l border-slate-300 dark:border-slate-700 ${editorTab === 'seo' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}
-                                >
-                                    SEO Breakdown & Meta Data
-                                </button>
-                            </div>
-
-                            {editorTab === 'content' ? (
-                                <div>
-                                    <div className="mb-1 flex items-center justify-between gap-2">
-                                        <label className="block text-sm font-medium">Content</label>
-                                        <div className="inline-flex rounded-lg border border-slate-300 dark:border-slate-700 overflow-hidden">
-                                            <button
-                                                type="button"
-                                                onClick={() => setContentView('code')}
-                                                className={`px-3 py-1.5 text-xs ${contentView === 'code' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}
-                                            >
-                                                Code
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setContentView('visual')}
-                                                className={`px-3 py-1.5 text-xs border-l border-slate-300 dark:border-slate-700 ${contentView === 'visual' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}
-                                            >
-                                                Visual
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setContentView('split')}
-                                                className={`px-3 py-1.5 text-xs border-l border-slate-300 dark:border-slate-700 ${contentView === 'split' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}
-                                            >
-                                                Split
-                                            </button>
-                                        </div>
-                                    </div>
-                                    {contentView === 'code' ? (
-                                        <textarea value={form.content} onChange={(e) => setForm((s) => ({ ...s, content: e.target.value }))} rows={22} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900" />
-                                    ) : contentView === 'visual' ? (
-                                        <div className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 min-h-[528px] max-h-[528px] overflow-y-auto p-4">
-                                            {form.content.trim() ? (
-                                                <iframe
-                                                    title="SEO content visual preview"
-                                                    srcDoc={visualPreviewDoc}
-                                                    className="w-full h-[496px] rounded-md border border-slate-200"
-                                                    sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
-                                                />
-                                            ) : (
-                                                <p className="text-sm text-slate-500 dark:text-slate-400">No content to preview yet.</p>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                                            <textarea value={form.content} onChange={(e) => setForm((s) => ({ ...s, content: e.target.value }))} rows={22} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900" />
-                                            <div className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 min-h-[528px] max-h-[528px] overflow-y-auto p-4">
-                                                {form.content.trim() ? (
-                                                    <iframe
-                                                        title="SEO content split preview"
-                                                        srcDoc={visualPreviewDoc}
-                                                        className="w-full h-[496px] rounded-md border border-slate-200"
-                                                        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
-                                                    />
-                                                ) : (
-                                                    <p className="text-sm text-slate-500 dark:text-slate-400">No content to preview yet.</p>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                                    <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4 bg-slate-50/50 dark:bg-slate-800/30">
-                                        <SeoAnalysisPanel
-                                            score={liveSeoPreview.score}
-                                            tests={liveSeoPreview.tests}
-                                            focusKeyword={form.focusKeyword}
-                                        />
-                                    </div>
-                                    <div className="space-y-4 rounded-lg border border-slate-200 dark:border-slate-700 p-4 bg-slate-50/50 dark:bg-slate-800/30">
-                                        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Meta Data</h3>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Focus Keyword</label>
-                                            <input value={form.focusKeyword} onChange={(e) => setForm((s) => ({ ...s, focusKeyword: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900" placeholder="e.g. woocommerce seo tips" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Excerpt</label>
-                                            <textarea value={form.excerpt} onChange={(e) => setForm((s) => ({ ...s, excerpt: e.target.value }))} rows={5} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900" />
-                                        </div>
-                                        <div className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
-                                            <p><span className="font-medium">Status:</span> {selected.status || 'unknown'}</p>
-                                            <p><span className="font-medium">Slug:</span> {selected.slug || '-'}</p>
-                                            <p><span className="font-medium">Permalink:</span> {selected.permalink || '-'}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="flex justify-end gap-2">
-                                <button onClick={closeEditor} className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800">Cancel</button>
-                                <button disabled={saving} onClick={saveEditor} className="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60">{saving ? 'Saving...' : 'Save changes'}</button>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            ) : (
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
-                {loading && <div className="p-4 text-sm text-slate-500">Loading...</div>}
-                {error && <div className="p-4 text-sm text-red-600">{error}</div>}
-                {!loading && !error && items.length === 0 && <div className="p-4 text-sm text-slate-500">No content found.</div>}
-                {!loading && !error && items.length > 0 && (
-                    <table className="w-full text-sm">
-                        <thead className="bg-slate-50 dark:bg-slate-800">
-                            <tr>
-                                <th className="text-left px-4 py-2"><SortHeader field="title" label="Title" /></th>
-                                <th className="text-left px-4 py-2"><SortHeader field="status" label="Status" /></th>
-                                <th className="text-left px-4 py-2"><SortHeader field="dateModified" label="Updated" /></th>
-                                <th className="text-left px-4 py-2"><SortHeader field="seoScore" label="SEO" /></th>
-                                <th className="text-left px-4 py-2">Link</th>
-                                <th className="text-left px-4 py-2">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {sortedItems.map((item) => (
-                                <tr key={item.id} className="border-t border-slate-200 dark:border-slate-700">
-                                    <td className="px-4 py-2">{item.title || '(untitled)'}</td>
-                                    <td className="px-4 py-2 capitalize">{item.status || 'unknown'}</td>
-                                    <td className="px-4 py-2">{new Date(item.dateModified).toLocaleString()}</td>
-                                    <td className="px-4 py-2">{typeof item.seoScore === 'number' ? `${item.seoScore}/100` : '-'}</td>
-                                    <td className="px-4 py-2">
-                                        {item.permalink ? <a className="inline-flex items-center gap-1 text-blue-600" href={getSafeHref(item.permalink)} target="_blank" rel="noreferrer">Open <ExternalLink size={12} /></a> : '-'}
-                                    </td>
-                                    <td className="px-4 py-2">
-                                        <button onClick={() => openEditor(item)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">
-                                            <Edit3 size={12} /> Edit
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                )}
-            </div>
-            )}
-        </div>
-    );
+    return { run, pending, blocked, message };
+}
+function CreateContent({ token, accountId, kind, onCreated, canLeaveRef }: { token: string; accountId: string; kind: string; onCreated: (id: string) => void; canLeaveRef: React.MutableRefObject<() => boolean> }) {
+    const [title, setTitle] = useState(''); const write = useContentWrite(token, accountId, `/api/content/${kind}`);
+    useLayoutEffect(() => { canLeaveRef.current = () => !title && !write.pending && !write.blocked || window.confirm('Leave this creation draft? An admitted/unconfirmed create may already exist in WordPress; it is not rolled back.'); return () => { canLeaveRef.current = () => true; }; }, [canLeaveRef, title, write.pending, write.blocked]);
+    useEffect(() => { const guard = (event: BeforeUnloadEvent) => { if (title || write.pending || write.blocked) { event.preventDefault(); event.returnValue = ''; } }; window.addEventListener('beforeunload', guard); return () => window.removeEventListener('beforeunload', guard); }, [title, write.pending, write.blocked]);
+    return <section className="space-y-2 rounded border p-3"><label>New draft title<input className="border dark:bg-slate-800" maxLength={500} value={title} disabled={write.pending || write.blocked} onChange={event => setTitle(event.target.value)} /></label><button type="button" disabled={!title.trim() || write.pending || write.blocked} onClick={() => void write.run('POST', null, { title, status: 'draft', content: '', excerpt: '', focusKeyword: '' }, item => onCreated(item.id))}>Create draft</button>{write.message && <p role="status">{write.message}</p>}</section>;
+}
+function EditorRead(props: { token: string; accountId: string; kind: string; id: string; editable: boolean; canLeave: React.MutableRefObject<() => boolean> }) {
+    const read = useScopedRequest(`/api/content/${props.kind}/${encodeURIComponent(props.id)}`, props.accountId, props.token, decodeItem);
+    if (read.loading) return <p role="status">Loading selected content…</p>;
+    if (read.error || !read.data || read.data.id !== props.id) return <p role="alert">Selected content unavailable. <button type="button" onClick={read.retry}>Retry selected content</button></p>;
+    return <ContentDraft {...props} initial={read.data} reload={read.retry} />;
+}
+function ContentDraft({ token, accountId, kind, id, editable, initial, reload, canLeave }: { token: string; accountId: string; kind: string; id: string; editable: boolean; initial: Item; reload: () => void; canLeave: React.MutableRefObject<() => boolean> }) {
+    const initialFields = { title: initial.title, content: initial.content, excerpt: initial.excerpt, status: initial.status || 'draft', focusKeyword: initial.seoData && typeof initial.seoData === 'object' && 'focusKeyword' in initial.seoData && typeof initial.seoData.focusKeyword === 'string' ? initial.seoData.focusKeyword : '' };
+    const [fields, setFields] = useState(initialFields), [version, setVersion] = useState(initial.updatedAt), [baseline, setBaseline] = useState(JSON.stringify(initialFields)), [preview, setPreview] = useState(false);
+    const write = useContentWrite(token, accountId, `/api/content/${kind}/${id}`), dirty = JSON.stringify(fields) !== baseline;
+    useLayoutEffect(() => { const ref = canLeave; ref.current = () => !dirty && !write.pending && !write.blocked || window.confirm('Leave this draft? Local edits may be lost. Pending/unconfirmed WordPress writes are not rolled back.'); return () => { ref.current = () => true; }; }, [canLeave, dirty, write.pending, write.blocked]);
+    useEffect(() => { const guard = (event: BeforeUnloadEvent) => { if (dirty || write.pending || write.blocked) { event.preventDefault(); event.returnValue = ''; } }; window.addEventListener('beforeunload', guard); return () => window.removeEventListener('beforeunload', guard); }, [dirty, write.pending, write.blocked]);
+    const previewDoc = useMemo(() => { const safe = DOMPurify.sanitize(fields.content, { ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'span', 'div', 'pre', 'code'], ALLOWED_ATTR: [] }); return `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><style>body{font-family:system-ui;color:#111;background:white;padding:1rem;overflow-wrap:anywhere}</style>${safe}`; }, [fields.content]);
+    const score = useMemo(() => calculateContentSeoScore({ ...fields, slug: initial.slug, permalink: initial.permalink }), [fields, initial.slug, initial.permalink]);
+    return <section className="space-y-3 rounded border p-4">{write.message && <p role="status">{write.message}</p>}<p>Heuristic checks: {score.score}/100. Unsupported legacy status/oversized content is read-only until reconciled.</p><fieldset disabled={!editable || write.pending || write.blocked} className="space-y-3">{(['title', 'content', 'excerpt', 'focusKeyword'] as const).map(key => <label key={key} className="block">{key}<textarea className="block w-full border dark:bg-slate-800" rows={key === 'content' ? 12 : 2} maxLength={key === 'content' ? 500000 : key === 'excerpt' ? 20000 : key === 'title' ? 500 : 200} value={fields[key]} onChange={event => setFields({ ...fields, [key]: event.target.value })} /></label>)}<label>Publication status<select className="dark:bg-slate-800" value={fields.status} onChange={event => setFields({ ...fields, status: event.target.value })}>{['draft', 'publish', 'private', 'pending'].map(value => <option key={value}>{value}</option>)}</select></label></fieldset><button type="button" aria-pressed={preview} onClick={() => setPreview(value => !value)}>Toggle inert preview</button>{preview && <><p>Formatting-only preview. Scripts, links, external media, CSS and network access are disabled.</p><iframe title="Inert content preview" sandbox="" srcDoc={previewDoc} className="w-full h-80 bg-white" /></>}<div className="flex gap-4"><button type="button" disabled={!editable || !dirty || write.pending || write.blocked} onClick={() => void write.run('PATCH', version, fields, item => { if (item.id !== id) throw new Error('Resource acknowledgement mismatch'); const next = { ...fields, title: item.title, content: item.content, excerpt: item.excerpt, status: item.status || fields.status }; setFields(next); setVersion(item.updatedAt); setBaseline(JSON.stringify(next)); })}>Save content changes</button><button type="button" disabled={write.pending} onClick={() => { if (canLeave.current()) reload(); }}>Discard / reload content</button></div></section>;
 }

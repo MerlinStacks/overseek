@@ -6,6 +6,8 @@ import { PurchaseOrderService } from '../../services/PurchaseOrderService';
 import { GuardedReceiptError } from '../../services/deliveryEstimates/receipts';
 import { IndexingService } from '../../services/search/IndexingService';
 import { invalidateCache } from '../../utils/cache';
+import { z } from 'zod';
+import { PermissionService } from '../../services/PermissionService';
 
 const poService = new PurchaseOrderService();
 
@@ -32,6 +34,21 @@ function backgroundReindex(accountId: string, productIds: string[]) {
 
 const purchaseOrderRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
+
+    fastify.get('/purchase-orders/overview', async (request, reply) => {
+        if (!request.accountId || !request.user?.id) return reply.code(400).send({ error: 'Selected account required' });
+        if (!await PermissionService.hasPermission(request.user.id, request.accountId, 'view_inventory')) return reply.code(403).send({ error: 'Inventory read permission required' });
+        const parsed = z.object({ page: z.coerce.number().int().min(1).max(100000).default(1), limit: z.coerce.number().int().min(1).max(100).default(25), status: z.enum(['DRAFT', 'ORDERED', 'RECEIVED', 'CANCELLED']).optional() }).strict().safeParse(request.query);
+        if (!parsed.success) return reply.code(400).send({ error: 'Invalid purchase-order page' });
+        const { page, limit, status } = parsed.data, where = { accountId: request.accountId, ...(status ? { status } : {}) };
+        try {
+            return await prisma.$transaction(async tx => {
+                const total = await tx.purchaseOrder.count({ where });
+                const orders = await tx.purchaseOrder.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (page - 1) * limit, take: limit, select: { id: true, orderNumber: true, status: true, totalAmount: true, supplier: { select: { name: true } }, orderDate: true, expectedDate: true, createdAt: true, trackingLink: true } });
+                return { orders, total, page, limit, monetaryBasis: 'currency and receipt timestamps are not recorded on these purchase orders' };
+            }, { isolationLevel: 'RepeatableRead' });
+        } catch { return reply.code(503).send({ error: 'Purchase-order overview unavailable' }); }
+    });
 
     fastify.get('/purchase-orders', async (request, reply) => {
         const accountId = request.accountId!;

@@ -53,14 +53,33 @@ interface POResponseItem {
 }
 
 export function PurchaseOrderEditPage() {
+    const { user, token } = useAuth();
+    const { currentAccount } = useAccount();
+    const { id } = useParams();
+    if (!user || !token || !currentAccount) return <p>Select an account and sign in to edit purchase orders.</p>;
+    return <ScopedPurchaseOrderEditPage key={JSON.stringify([user.id, token, currentAccount.id, id || 'new'])} />;
+}
+
+function ScopedPurchaseOrderEditPage() {
     const navigate = useNavigate();
     const { id } = useParams();
     const isNew = !id || id === 'new';
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const { currentAccount } = useAccount();
+    const accountId = currentAccount?.id;
     const { hasPermission } = usePermissions();
 
     const [isLoading, setIsLoading] = useState(false);
+    const [draftReady, setDraftReady] = useState(false);
+    const active = useRef(true);
+    const poReadVersion = useRef(0);
+    const writing = useRef(false);
+    const requests = useRef(new Set<AbortController>());
+    useEffect(() => {
+        active.current = true;
+        const pending = requests.current;
+        return () => { active.current = false; pending.forEach(controller => controller.abort()); pending.clear(); };
+    }, []);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
     // Form State
@@ -91,10 +110,11 @@ export function PurchaseOrderEditPage() {
 
     // --- Draft persistence ---
     const { loadDraft, clearDraft } = usePODraftPersistence({
+        ownerId: user?.id ?? '',
         accountId: currentAccount?.id ?? '',
         poId: id ?? 'new',
         formState: { supplierId, status, notes, orderDate, expectedDate, trackingNumber, trackingLink, items },
-        enabled: !!currentAccount && !isLoading,
+        enabled: !!currentAccount && !isLoading && draftReady,
     });
 
     // Why: warn the user before they accidentally close/refresh with unsaved changes
@@ -110,30 +130,39 @@ export function PurchaseOrderEditPage() {
     // Why: mark dirty whenever form state changes (skip initial mount)
     const mountedRef = useRef(false);
     useEffect(() => {
+        if (!draftReady) return;
         if (!mountedRef.current) { mountedRef.current = true; return; }
         isDirtyRef.current = true;
-    }, [supplierId, status, notes, orderDate, expectedDate, trackingNumber, trackingLink, items]);
+    }, [draftReady, supplierId, status, notes, orderDate, expectedDate, trackingNumber, trackingLink, items]);
 
     const fetchSuppliers = useCallback(async () => {
         // Assume endpoint exists
-        if (!token || !currentAccount?.id) return;
+        if (!token || !accountId) return;
+        const controller = new AbortController(); requests.current.add(controller);
         try {
             const res = await fetch(`/api/inventory/suppliers`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
+                signal: controller.signal,
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': accountId }
             });
-            if (res.ok) setSuppliers(await res.json());
-        } catch (err) { Logger.error('An error occurred', { error: err }); }
-    }, [token, currentAccount?.id]);
+            const data = res.ok ? await res.json() : null;
+            if (active.current && !controller.signal.aborted && Array.isArray(data)) setSuppliers(data);
+        } catch (err) { if (!controller.signal.aborted) Logger.error('An error occurred', { error: err }); }
+        finally { requests.current.delete(controller); }
+    }, [token, accountId]);
 
     const fetchPO = useCallback(async (poId: string) => {
-        if (!token || !currentAccount?.id) return;
+        if (!token || !accountId) return;
+        const version = ++poReadVersion.current;
+        const controller = new AbortController(); requests.current.add(controller);
         setIsLoading(true);
         try {
             const res = await fetch(`/api/inventory/purchase-orders/${poId}`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
+                signal: controller.signal,
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': accountId }
             });
             if (res.ok) {
                 const data = await res.json();
+                if (!active.current || controller.signal.aborted || version !== poReadVersion.current) return;
                 setSupplierId(data.supplierId);
                 setStatus(data.status as POStatus);
                 setNotes(data.notes || '');
@@ -175,17 +204,21 @@ export function PurchaseOrderEditPage() {
                         showToast('Unsaved changes restored from your last session', 'success');
                     }
                 }
+                setDraftReady(true);
             }
-        } catch (err) { Logger.error('An error occurred', { error: err }); }
-        finally { setIsLoading(false); }
-    }, [token, currentAccount?.id, loadDraft, showToast]);
+            else if (active.current && !controller.signal.aborted) showToast('Unable to load purchase order. Draft saving is paused.');
+        } catch (err) { if (!controller.signal.aborted) Logger.error('An error occurred', { error: err }); }
+        finally { requests.current.delete(controller); if (active.current && version === poReadVersion.current) setIsLoading(false); }
+    }, [token, accountId, loadDraft, showToast]);
 
     useEffect(() => {
-        if (currentAccount) {
+        if (accountId) {
             fetchSuppliers();
             if (!isNew && id) {
                 fetchPO(id);
             } else {
+                if (draftRestoredRef.current) return;
+                draftRestoredRef.current = true;
                 // Why: for new POs, try to restore a saved draft
                 const draft = loadDraft();
                 if (draft) {
@@ -199,9 +232,10 @@ export function PurchaseOrderEditPage() {
                     setItems(draft.items);
                     showToast('Draft restored from your last session', 'success');
                 }
+                setDraftReady(true);
             }
         }
-    }, [currentAccount, isNew, id, fetchSuppliers, fetchPO, loadDraft, showToast]);
+    }, [accountId, isNew, id, fetchSuppliers, fetchPO, loadDraft, showToast]);
 
     useEffect(() => {
         if (isNew || !id) {
@@ -260,7 +294,9 @@ export function PurchaseOrderEditPage() {
     };
 
     const handleSave = async () => {
+        if (isLoading || writing.current || !draftReady) return;
         if (!supplierId) { showToast('Please select a supplier'); return; }
+        writing.current = true;
 
         setIsLoading(true);
         const payload = {
@@ -299,9 +335,11 @@ export function PurchaseOrderEditPage() {
                 },
                 body: JSON.stringify(payload)
             });
+            if (!active.current) return;
 
             if (res.ok) {
                 const saved = await res.json().catch(() => null);
+                if (!active.current) return;
                 const savedId = String(saved?.id || id || '');
                 clearDraft();
                 isDirtyRef.current = false;
@@ -323,24 +361,27 @@ export function PurchaseOrderEditPage() {
                     errorMessage = `Failed to save (HTTP ${res.status})`;
                 }
                 Logger.error('PO save failed', { status: res.status, errorMessage });
-                showToast(errorMessage);
+                if (active.current) showToast(errorMessage);
             }
         } catch (err) {
             Logger.error('PO save error', { error: err });
-            showToast(`Error saving: ${err instanceof Error ? err.message : 'Network error'}`);
+            if (active.current) showToast(`Error saving: ${err instanceof Error ? err.message : 'Network error'}`);
         } finally {
-            setIsLoading(false);
+            writing.current = false;
+            if (active.current) setIsLoading(false);
         }
     };
 
     /** Delete a DRAFT PO after user confirmation */
     const handleDelete = async () => {
+        if (isLoading || writing.current || !draftReady) return;
         if (!window.confirm('Are you sure you want to delete this purchase order? This cannot be undone.')) return;
         if (!currentAccount?.id) {
             showToast('Select an account before deleting a purchase order');
             return;
         }
 
+        writing.current = true;
         setIsLoading(true);
         try {
             const res = await fetch(`/api/inventory/purchase-orders/${id}`, {
@@ -350,6 +391,8 @@ export function PurchaseOrderEditPage() {
                     'X-Account-ID': currentAccount.id
                 }
             });
+
+            if (!active.current) return;
 
             if (res.ok) {
                 clearDraft();
@@ -372,13 +415,14 @@ export function PurchaseOrderEditPage() {
                     errorMessage = `Failed to delete (HTTP ${res.status})`;
                 }
                 Logger.error('PO delete failed', { status: res.status, errorMessage });
-                showToast(errorMessage);
+                if (active.current) showToast(errorMessage);
             }
         } catch (err) {
             Logger.error('PO delete error', { error: err });
-            showToast(`Error deleting: ${err instanceof Error ? err.message : 'Network error'}`);
+            if (active.current) showToast(`Error deleting: ${err instanceof Error ? err.message : 'Network error'}`);
         } finally {
-            setIsLoading(false);
+            writing.current = false;
+            if (active.current) setIsLoading(false);
         }
     };
 

@@ -1,17 +1,20 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ findUnique: vi.fn(), fetch: vi.fn(), accountId: 'tenant-1' as string | undefined }));
-vi.mock('../middleware/auth', () => ({ requireAuthFastify: async (request: any) => { request.accountId = mocks.accountId; } }));
+vi.mock('../middleware/auth', () => ({ requireAuthFastify: async (request: any) => { request.accountId = mocks.accountId; request.user = { id: 'u' }; } }));
+vi.mock('../services/PermissionService', () => ({ PermissionService: { hasPermission: vi.fn().mockResolvedValue(true) } }));
 vi.mock('../utils/prisma', () => ({ prisma: { account: { findUnique: mocks.findUnique } } }));
 vi.mock('../utils/logger', () => ({ Logger: { error: vi.fn() } }));
 vi.mock('./trackingIngestion', () => ({ default: async () => {} }));
 vi.mock('./trackingDashboard', () => ({ default: async () => {} }));
 import routes from './tracking';
+import { PermissionService } from '../services/PermissionService';
 
 describe('store tracking verification', () => {
     let app: FastifyInstance;
     beforeEach(async () => {
         vi.resetAllMocks();
+        vi.mocked(PermissionService.hasPermission).mockResolvedValue(true);
         mocks.accountId = 'tenant-1';
         mocks.findUnique.mockResolvedValue({ wooUrl: 'https://store.example.com/shop/', name: 'Store' });
         vi.stubGlobal('fetch', mocks.fetch);

@@ -252,7 +252,7 @@ export class IndexingService {
         });
     }
 
-    static async indexOrder(accountId: string, order: any, tags: string[] = [], refresh: boolean = true) {
+    static async indexOrder(accountId: string, order: any, tags: string[] = [], refresh: boolean = true, signal?: AbortSignal) {
         await esClient.index({
             index: 'orders',
             id: `${accountId}_${order.id}`,
@@ -267,7 +267,7 @@ export class IndexingService {
                 date_created: IndexingService.formatDateToUTC(order.date_created_gmt || order.date_created),
                 payment_method_title: order.payment_method_title || '',
                 customer_id: order.customer_id || 0,
-                tags: tags || [],
+                tags: (await import('../OrderTaggingService')).mergeOrderTags(order.tags ?? [], tags),
                 billing: order.billing,
                 line_items: order.line_items?.map((item: any) => ({
                     name: item.name,
@@ -289,7 +289,7 @@ export class IndexingService {
                 })) || []
             },
             refresh
-        });
+        }, signal ? { signal, requestTimeout: 15000 } : undefined);
     }
 
     static async indexReview(accountId: string, review: any, refresh: boolean = true) {
@@ -350,8 +350,9 @@ export class IndexingService {
         if (!orders.length) return;
         if (!await isElasticsearchAvailable()) return;
 
+        const { mergeOrderTags } = await import('../OrderTaggingService');
         const operations = orders.flatMap(order => {
-            const tags = tagsMap?.get(order.id) || [];
+            const tags = mergeOrderTags(order.tags ?? [], tagsMap?.get(order.id) || []);
             return [
                 { index: { _index: 'orders', _id: `${accountId}_${order.id}` } },
                 {

@@ -1,0 +1,23 @@
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, afterEach, expect, it, vi } from 'vitest';
+const m = vi.hoisted(() => ({ account: { id: 'a' }, allowed: true, fetch: vi.fn(), event: vi.fn() }));
+vi.mock('../../context/AuthContext', () => ({ useAuth: () => ({ token: 't', user: { id: 'u' } }) }));
+vi.mock('../../context/AccountContext', () => ({ useAccount: () => ({ currentAccount: m.account }) }));
+vi.mock('../../hooks/usePermissions', () => ({ usePermissions: () => ({ hasPermission: () => m.allowed }) }));
+vi.mock('../../utils/productCrossTabEvents', () => ({ emitCrossTabEvent: m.event }));
+import { OrderTagPanel } from './OrderTagPanel';
+const version = '2026-10-01T00:00:00.000Z', newer = '2026-10-02T00:00:00.000Z';
+const response = (value: unknown) => ({ ok: true, json: async () => value });
+beforeEach(() => { vi.clearAllMocks(); m.account = { id: 'a' }; m.allowed = true; vi.stubGlobal('fetch', m.fetch); m.fetch.mockResolvedValue(response({ mappings: [{ orderTag: 'Blue', enabled: true, color: '#0000ff' }] })); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+it('serializes writes and uses acknowledged advanced version on the next operation', async () => {
+    const change = vi.fn(); render(<OrderTagPanel orderId="o" currentTags={['Red']} lastUpdate={version} onTagsChange={change} />); await screen.findByRole('button', { name: 'Add tag' });
+    let resolve!: (value: unknown) => void; m.fetch.mockReturnValueOnce(new Promise(r => { resolve = r; })); const remove = screen.getByRole('button', { name: 'Remove tag Red' }); fireEvent.click(remove); fireEvent.click(remove);
+    expect(m.fetch.mock.calls.filter(([, options]) => options.method === 'DELETE')).toHaveLength(1);
+    await act(async () => resolve(response({ tags: [], updatedAt: newer, indexing: 'pending' }))); expect(change).toHaveBeenCalledWith([]); expect(screen.getByRole('status')).toHaveTextContent('indexing pending');
+    fireEvent.click(screen.getByRole('button', { name: 'Add tag' })); m.fetch.mockResolvedValueOnce(response({ tags: ['Blue'], updatedAt: '2026-10-03T00:00:00.000Z', indexing: 'pending' })); fireEvent.click(screen.getByRole('button', { name: 'Blue' }));
+    await waitFor(() => expect(change).toHaveBeenCalledWith(['Blue'])); const write = m.fetch.mock.calls.find(([, options]) => options.method === 'POST'); expect(write?.[1].headers['X-Order-Version']).toBe(newer);
+});
+it('does not turn failed mappings into empty configuration and blocks ambiguous retries', async () => { m.fetch.mockResolvedValueOnce({ ok: false }); render(<OrderTagPanel orderId="o" currentTags={['Red']} lastUpdate={version} onTagsChange={vi.fn()} />); expect(await screen.findByRole('alert')).toHaveTextContent('Tag mappings unavailable'); m.fetch.mockRejectedValueOnce(Error('lost')); fireEvent.click(screen.getByRole('button', { name: 'Remove tag Red' })); await screen.findByText(/Tag write not acknowledged/); expect(screen.getByRole('button', { name: 'Remove tag Red' })).toBeDisabled(); });
+it('aborts scope changes and prevents late callbacks/cross-tab events', async () => { const change = vi.fn(); const view = render(<OrderTagPanel orderId="o" currentTags={['Red']} lastUpdate={version} onTagsChange={change} />); await screen.findByRole('button', { name: 'Add tag' }); let resolve!: (value: unknown) => void; m.fetch.mockReturnValueOnce(new Promise(r => { resolve = r; })); fireEvent.click(screen.getByRole('button', { name: 'Remove tag Red' })); const signal = m.fetch.mock.calls.at(-1)?.[1].signal; m.account = { id: 'b' }; m.fetch.mockResolvedValue(response({ mappings: [] })); view.rerender(<OrderTagPanel orderId="o" currentTags={['Other']} lastUpdate={newer} onTagsChange={change} />); await act(async () => resolve(response({ tags: [], updatedAt: newer, indexing: 'pending' }))); expect(signal.aborted).toBe(true); expect(change).not.toHaveBeenCalled(); expect(m.event).not.toHaveBeenCalled(); });
+it('does not replace a newer prop version with a late acknowledgement', async () => { const change = vi.fn(); const view = render(<OrderTagPanel orderId="o" currentTags={['Red']} lastUpdate={version} onTagsChange={change} />); await screen.findByRole('button', { name: 'Add tag' }); let resolve!: (value: unknown) => void; m.fetch.mockReturnValueOnce(new Promise(r => { resolve = r; })); fireEvent.click(screen.getByRole('button', { name: 'Remove tag Red' })); view.rerender(<OrderTagPanel orderId="o" currentTags={['Newest']} lastUpdate="2026-10-03T00:00:00.000Z" onTagsChange={change} />); await act(async () => resolve(response({ tags: [], updatedAt: newer, indexing: 'pending' }))); expect(change).not.toHaveBeenCalled(); expect(screen.getByText('Newest')).toBeInTheDocument(); });

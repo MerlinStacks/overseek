@@ -3,16 +3,17 @@ import { Logger } from '../../utils/logger';
 
 export class CROAnalytics {
 
-    static async getConversionByDevice(accountId: string, startDate?: string, endDate?: string) {
+    static async getConversionByDevice(accountId: string, startDate?: string, endDate?: string, options: { throwOnError?: boolean } = {}) {
         try {
             return await this.getConversionByDimension(accountId, 'deviceType', startDate, endDate);
         } catch (error) {
             Logger.error('[CROAnalytics] Conversion by device error', { error });
+            if (options.throwOnError) throw error;
             return [];
         }
     }
 
-    static async getConversionBySource(accountId: string, startDate?: string, endDate?: string) {
+    static async getConversionBySource(accountId: string, startDate?: string, endDate?: string, options: { throwOnError?: boolean } = {}) {
         try {
             const dateFilter: any = {};
             if (startDate) dateFilter.gte = new Date(startDate);
@@ -61,11 +62,12 @@ export class CROAnalytics {
             }).sort((a, b) => b.sessions - a.sessions);
         } catch (error) {
             Logger.error('[CROAnalytics] Conversion by source error', { error });
+            if (options.throwOnError) throw error;
             return [];
         }
     }
 
-    static async getBounceRate(accountId: string, startDate?: string, endDate?: string) {
+    static async getBounceRate(accountId: string, startDate?: string, endDate?: string, options: { throwOnError?: boolean } = {}) {
         try {
             const dateFilter: any = {};
             if (startDate) dateFilter.gte = new Date(startDate);
@@ -92,6 +94,7 @@ export class CROAnalytics {
             };
         } catch (error) {
             Logger.error('[CROAnalytics] Bounce rate error', { error });
+            if (options.throwOnError) throw error;
             return { totalSessions: 0, bouncedSessions: 0, bounceRate: 0 };
         }
     }

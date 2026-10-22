@@ -1,91 +1,77 @@
-/**
- * TikTok OAuth Routes - Fastify Plugin
- * TikTok Business Messaging OAuth.
- */
-
-import { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync } from 'fastify';
+import crypto from 'node:crypto';
+import { z } from 'zod';
 import { requireAuthFastify } from '../middleware/auth';
-import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
+import { PermissionService } from '../services/PermissionService';
 import { TikTokMessagingService } from '../services/messaging/TikTokMessagingService';
 import { buildCallbackUrl, buildFrontendUrl } from './oauthHelpers';
-import { getOauthAccountIdOrReply } from './oauthRouteHelpers';
-
-const oauthTikTokRoutes: FastifyPluginAsync = async (fastify) => {
-    /**
-     * GET /tiktok/authorize - Initiate TikTok OAuth
-     */
+const DEFAULT = '/settings?tab=channels';
+const hash = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
+const secret = z.string().min(1).max(20000);
+const credentialsSchema = z.object({ clientKey: secret, clientSecret: secret });
+const tokensSchema = z.object({ openId: z.string().min(1).max(500), accessToken: secret, refreshToken: secret.optional(), expiresIn: z.number().int().min(1).max(366 * 86400) });
+const callbackQuery = z.object({ code: z.string().min(1).max(4096).optional(), state: z.string().regex(/^[a-f0-9]{64}$/), error: z.string().max(500).optional() });
+function redirectPath(value: unknown): string {
+    if (value === undefined) return DEFAULT;
+    if (typeof value !== 'string' || value.length > 1000 || !value.startsWith('/') || value.startsWith('//') || value.includes('\\') || Array.from(value).some(character => character.charCodeAt(0) <= 32)) throw new Error('Invalid redirect');
+    const url = new URL(value, 'https://local.invalid');
+    if (url.origin !== 'https://local.invalid' || !['/settings', '/marketing', '/inbox'].includes(url.pathname)) throw new Error('Invalid redirect');
+    return `${url.pathname}${url.search}`;
+}
+const oauthTikTokRoutes: FastifyPluginAsync = async fastify => {
     fastify.get('/tiktok/authorize', { preHandler: requireAuthFastify }, async (request, reply) => {
+        const accountId = request.accountId, userId = request.user?.id;
+        if (!accountId || !userId) return reply.code(400).send({ error: 'Select an account' });
+        if (!await PermissionService.hasPermission(userId, accountId, 'manage_channels')) return reply.code(403).send({ error: 'Channel connection permission required' });
+        let path: string;
+        try { path = redirectPath((request.query as Record<string, unknown>).redirect); } catch { return reply.code(400).send({ error: 'Invalid redirect path' }); }
         try {
-            const accountId = getOauthAccountIdOrReply(request, reply);
-            if (!accountId) return;
-            const query = request.query as { redirect?: string };
-            const frontendRedirect = query.redirect || '/settings?tab=channels';
-
-            const credentials = await prisma.platformCredentials.findUnique({ where: { platform: 'TIKTOK_MESSAGING' } });
-            if (!credentials) return reply.code(400).send({ error: 'TikTok messaging not configured' });
-
-            const { clientKey } = credentials.credentials as any;
-            const state = Buffer.from(JSON.stringify({ accountId, frontendRedirect })).toString('base64url');
-
+            const platform = await prisma.platformCredentials.findUnique({ where: { platform: 'TIKTOK_MESSAGING' } });
+            const credentials = credentialsSchema.safeParse(platform?.credentials);
+            if (!credentials.success) return reply.code(503).send({ error: 'TikTok messaging is not configured' });
             const callbackUrl = buildCallbackUrl(request, 'tiktok/callback');
-
-            const scopes = 'user.info.basic,dm.manage';
-            const authUrl = `https://www.tiktok.com/v2/auth/authorize?client_key=${clientKey}&redirect_uri=${encodeURIComponent(callbackUrl)}&scope=${scopes}&response_type=code&state=${state}`;
-            return { authUrl };
-        } catch (error: any) {
-            Logger.error('TikTok OAuth init failed', { error });
-            return reply.code(500).send({ error: error.message });
-        }
+            const token = crypto.randomBytes(32).toString('hex'), browser = crypto.randomBytes(32).toString('hex');
+            await prisma.oauthConnectionState.create({ data: { tokenHash: hash(token), browserHash: hash(browser), provider: 'TIKTOK_MESSAGING', userId, accountId, redirectPath: path, callbackUrl, expiresAt: new Date(Date.now() + 600000) } });
+            reply.header('Set-Cookie', `oauth_tiktok_${token.slice(0, 16)}=${browser}; HttpOnly; SameSite=Lax; Path=/api/oauth/tiktok; Max-Age=600${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`);
+            const url = new URL('https://www.tiktok.com/v2/auth/authorize/');
+            url.search = new URLSearchParams({ client_key: credentials.data.clientKey, redirect_uri: callbackUrl, scope: 'user.info.basic,dm.manage', response_type: 'code', state: token }).toString();
+            return { authUrl: url.toString() };
+        } catch { Logger.error('TikTok authorization setup failed'); return reply.code(503).send({ error: 'Could not start TikTok connection' }); }
     });
-
-    /**
-     * GET /tiktok/callback - Handle TikTok OAuth callback
-     */
     fastify.get('/tiktok/callback', async (request, reply) => {
-        const defaultPath = '/settings?tab=channels';
-        let redirectPath = defaultPath;
-
+        let path = DEFAULT;
+        const fail = (code: string) => reply.redirect(buildFrontendUrl(path, { error: code }));
         try {
-            const query = request.query as { code?: string; state?: string; error?: string; error_description?: string };
-            const { code, state, error, error_description } = query;
-
-            if (error) {
-                Logger.warn('TikTok OAuth denied', { error, error_description });
-                return reply.redirect(buildFrontendUrl(defaultPath, { error: 'oauth_denied' }));
-            }
-
-            if (!code || !state) return reply.redirect(buildFrontendUrl(defaultPath, { error: 'missing_params' }));
-
-            const stateData = JSON.parse(Buffer.from(state, 'base64url').toString('utf-8'));
-            if (stateData.frontendRedirect) redirectPath = stateData.frontendRedirect;
-            const accountId = stateData.accountId;
-
-            const credentials = await prisma.platformCredentials.findUnique({ where: { platform: 'TIKTOK_MESSAGING' } });
-            if (!credentials) return reply.redirect(buildFrontendUrl(redirectPath, { error: 'not_configured' }));
-
-            const { clientKey, clientSecret } = credentials.credentials as any;
-            const callbackUrl = buildCallbackUrl(request, 'tiktok/callback');
-
-            const tokens = await TikTokMessagingService.exchangeAuthCode(code, clientKey, clientSecret, callbackUrl);
-            if (!tokens) return reply.redirect(buildFrontendUrl(redirectPath, { error: 'token_exchange_failed' }));
-
-            const expiresAt = new Date(Date.now() + tokens.expiresIn * 1000);
-
-            await prisma.socialAccount.upsert({
-                where: { accountId_platform_externalId: { accountId, platform: 'TIKTOK', externalId: tokens.openId } },
-                create: { accountId, platform: 'TIKTOK', externalId: tokens.openId, name: 'TikTok Business', accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, tokenExpiry: expiresAt, metadata: { openId: tokens.openId } },
-                update: { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, tokenExpiry: expiresAt, isActive: true },
-            });
-
-            Logger.info('TikTok messaging connected', { accountId, openId: tokens.openId });
-            return reply.redirect(buildFrontendUrl(redirectPath, { success: 'tiktok_connected' }));
-
-        } catch (error: any) {
-            Logger.error('TikTok OAuth callback failed', { error });
-            return reply.redirect(buildFrontendUrl(redirectPath, { error: 'oauth_failed', message: error.message }));
-        }
+            const parsed = callbackQuery.safeParse(request.query); if (!parsed.success) return fail('invalid_state');
+            const { state, code, error } = parsed.data;
+            const name = `oauth_tiktok_${state.slice(0, 16)}`;
+            const cookies = (request.headers.cookie || '').split(';').map(part => part.trim().split('='));
+            const matches = cookies.filter(([key]) => key === name);
+            const browser = matches.length === 1 ? matches[0][1] : '';
+            if (!/^[a-f0-9]{64}$/.test(browser || '')) return fail('invalid_state');
+            const tokenHash = hash(state);
+            const grant = await prisma.oauthConnectionState.findUnique({ where: { tokenHash } });
+            if (!grant || grant.provider !== 'TIKTOK_MESSAGING' || grant.browserHash !== hash(browser) || grant.consumedAt || grant.expiresAt <= new Date()) return fail('invalid_state');
+            path = redirectPath(grant.redirectPath);
+            const claimed = await prisma.oauthConnectionState.updateMany({ where: { tokenHash, browserHash: hash(browser), provider: 'TIKTOK_MESSAGING', consumedAt: null, expiresAt: { gt: new Date() } }, data: { consumedAt: new Date() } });
+            if (claimed.count !== 1) return fail('invalid_state');
+            reply.header('Set-Cookie', `${name}=; HttpOnly; SameSite=Lax; Path=/api/oauth/tiktok; Max-Age=0${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`);
+            if (error) return fail('oauth_denied');
+            if (!code) return fail('missing_params');
+            if (!await PermissionService.hasPermission(grant.userId, grant.accountId, 'manage_channels')) return fail('permission_changed');
+            const platform = await prisma.platformCredentials.findUnique({ where: { platform: 'TIKTOK_MESSAGING' } });
+            const credentials = credentialsSchema.safeParse(platform?.credentials); if (!credentials.success) return fail('not_configured');
+            const tokens = tokensSchema.safeParse(await TikTokMessagingService.exchangeAuthCode(code, credentials.data.clientKey, credentials.data.clientSecret, grant.callbackUrl));
+            if (!tokens.success) return fail('token_exchange_failed');
+            if (!await PermissionService.hasPermission(grant.userId, grant.accountId, 'manage_channels')) return fail('permission_changed');
+            const value = tokens.data;
+            await prisma.socialAccount.upsert({ where: { accountId_platform_externalId: { accountId: grant.accountId, platform: 'TIKTOK', externalId: value.openId } },
+                create: { accountId: grant.accountId, platform: 'TIKTOK', externalId: value.openId, name: 'TikTok Business', accessToken: value.accessToken, refreshToken: value.refreshToken, tokenExpiry: new Date(Date.now() + value.expiresIn * 1000), metadata: { openId: value.openId } },
+                update: { accessToken: value.accessToken, refreshToken: value.refreshToken, tokenExpiry: new Date(Date.now() + value.expiresIn * 1000), isActive: true } });
+            return reply.redirect(buildFrontendUrl(path, { success: 'tiktok_connected' }));
+        } catch { Logger.error('TikTok callback failed'); return fail('oauth_failed'); }
     });
 };
-
 export default oauthTikTokRoutes;

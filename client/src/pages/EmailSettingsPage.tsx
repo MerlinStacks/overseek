@@ -4,8 +4,12 @@ import { useAccount } from '../context/AccountContext';
 import { useToast } from '../context/ToastContext';
 import { Logger } from '../utils/logger';
 import { RichTextEditor } from '../components/common/RichTextEditor';
+import { usePermissions } from '../hooks/usePermissions';
+import { useRecoveryAttempt } from '../hooks/useRecoveryAttempt';
+import { isRecord } from '../utils/responseValidation';
 
 interface EmailSettings {
+    version: string;
     bounceTrackingEnabled: boolean;
     maxSendPerSecond: number;
     maxSendPerDay: number;
@@ -19,12 +23,13 @@ interface EmailListSetting {
 }
 
 const DEFAULT_SETTINGS: EmailSettings = {
+    version: 'default',
     bounceTrackingEnabled: false,
     maxSendPerSecond: 1,
     maxSendPerDay: 6000,
 };
 
-const buildDefaultEmailFooterHtml = (accountName: string) => `<p>You are receiving this email from ${accountName}.<br /><a href="{{unsubscribe_url}}">Unsubscribe</a></p>`;
+const buildDefaultEmailFooterHtml = (accountName: string) => `<p>You are receiving this email from ${accountName.replace(/[&<>"']/g, value => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[value]!)}.<br /><a href="{{unsubscribe_url}}">Unsubscribe</a></p>`;
 const EMAIL_FOOTER_MERGE_TAGS = [
     { label: 'Store URL', value: '{{store_url}}' },
     { label: 'Unsubscribe URL', value: '{{unsubscribe_url}}' },
@@ -38,12 +43,25 @@ const EMAIL_FOOTER_MERGE_TAGS = [
 ];
 
 export function EmailSettingsPage() {
+    const { token, user } = useAuth(); const { currentAccount } = useAccount(); const { hasPermission } = usePermissions();
+    if (!token || !currentAccount) return <p role="status">Sign in and select an account.</p>;
+    if (!hasPermission('view_email_settings')) return <p role="status">Email settings view permission required.</p>;
+    return <ScopedEmailSettings key={JSON.stringify([user?.id, token, currentAccount.id])} />;
+}
+function decodeSettings(data: unknown): EmailSettings {
+    if (!isRecord(data) || typeof data.bounceTrackingEnabled !== 'boolean' || typeof data.maxSendPerSecond !== 'number' || !Number.isInteger(data.maxSendPerSecond) || data.maxSendPerSecond < 1 || data.maxSendPerSecond > 1000 || typeof data.maxSendPerDay !== 'number' || !Number.isInteger(data.maxSendPerDay) || data.maxSendPerDay < 1 || data.maxSendPerDay > 1000000 || typeof data.version !== 'string' || data.version !== 'default' && !Number.isFinite(Date.parse(data.version))) throw new Error('Invalid settings response');
+    return data as unknown as EmailSettings;
+}
+function ScopedEmailSettings() {
     const { token } = useAuth();
     const { currentAccount, refreshAccounts } = useAccount();
     const toast = useToast();
+    const { hasPermission } = usePermissions();
+    const attempt = useRecoveryAttempt();
+    const [error, setError] = useState('');
 
     const [settings, setSettings] = useState<EmailSettings>(DEFAULT_SETTINGS);
-    const [emailFooterHtml, setEmailFooterHtml] = useState('');
+    const [emailFooterHtml, setEmailFooterHtml] = useState(() => currentAccount?.appearance?.emailFooterHtml || buildDefaultEmailFooterHtml(currentAccount?.appearance?.appName || currentAccount?.name || 'Your Store'));
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isSavingMarketing, setIsSavingMarketing] = useState(false);
@@ -52,6 +70,8 @@ export function EmailSettingsPage() {
     const [emailLists, setEmailLists] = useState<EmailListSetting[]>([]);
 
     useEffect(() => {
+        const controller = new AbortController(); let disposed = false;
+        const timer = setTimeout(() => controller.abort(), 30000);
         async function loadSettings() {
             if (!currentAccount || !token) return;
 
@@ -62,8 +82,8 @@ export function EmailSettingsPage() {
                     'x-account-id': currentAccount.id,
                 };
                 const [response, listsResponse] = await Promise.all([
-                    fetch('/api/email/settings', { headers }),
-                    fetch('/api/email/lists', { headers }),
+                    fetch('/api/email/settings', { headers, signal: controller.signal }),
+                    fetch('/api/email/lists', { headers, signal: controller.signal }),
                 ]);
 
                 if (!response.ok) {
@@ -71,40 +91,41 @@ export function EmailSettingsPage() {
                     throw new Error(payload?.error || 'Failed to load email settings');
                 }
 
-                const data = await response.json() as EmailSettings;
-                setSettings({
-                    bounceTrackingEnabled: Boolean(data.bounceTrackingEnabled),
-                    maxSendPerSecond: Number(data.maxSendPerSecond) || 1,
-                    maxSendPerDay: Number(data.maxSendPerDay) || 6000,
-                });
+                const data = decodeSettings(await response.json());
+                if (disposed) return;
+                setSettings(data);
                 if (!listsResponse.ok) throw new Error('Failed to load email lists');
                 const lists = await listsResponse.json() as EmailListSetting[];
-                setEmailLists(Array.isArray(lists) ? lists : []);
+                if (disposed) return;
+                if (!Array.isArray(lists) || lists.length > 1000 || lists.some(list => typeof list.id !== 'string' || typeof list.name !== 'string' || typeof list.isDefault !== 'boolean')) throw new Error('Invalid email lists');
+                setEmailLists(lists);
                 setSubscribeNewCustomersByDefault(currentAccount.subscribeNewCustomersByDefault ?? true);
             } catch (error) {
+                if (disposed) return;
+                setError('Settings unavailable. Reload before editing.');
                 Logger.error('Failed to load email settings', { error });
                 const message = error instanceof Error ? error.message : 'Failed to load email settings.';
                 toast.error(message);
             } finally {
-                setIsLoading(false);
+                clearTimeout(timer);
+                if (!disposed) setIsLoading(false);
             }
         }
 
         loadSettings();
+        return () => { disposed = true; clearTimeout(timer); controller.abort(); };
     }, [currentAccount, token, toast]);
 
-    useEffect(() => {
-        if (!currentAccount) return;
-        setEmailFooterHtml(currentAccount.appearance?.emailFooterHtml || buildDefaultEmailFooterHtml(currentAccount.appearance?.appName || currentAccount.name || 'Your Store'));
-    }, [currentAccount]);
-
     const handleSave = async () => {
-        if (!currentAccount || !token) return;
+        if (!currentAccount || !token || error || !hasPermission('manage_email_settings')) return;
+        const active = attempt.begin(); if (!active) return;
+        const timer = setTimeout(() => active.abort(), 30000);
 
         setIsSaving(true);
         try {
             const response = await fetch('/api/email/settings', {
                 method: 'POST',
+                signal: active.signal,
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`,
@@ -118,33 +139,45 @@ export function EmailSettingsPage() {
                 throw new Error(payload?.error || 'Failed to save email settings');
             }
 
-            toast.success('Email settings saved.');
+            const result = await response.json();
+            if (!isRecord(result) || result.success !== true) throw new Error('Invalid acknowledgement');
+            const saved = decodeSettings(result.settings);
+            if (!attempt.current(active)) return;
+            setSettings(saved); toast.success('Email settings saved.');
         } catch (error) {
+            if (!attempt.current(active, true)) return;
+            setError('Save not acknowledged or version changed. Reload to reconcile before further writes.');
             Logger.error('Failed to save email settings', { error });
             const message = error instanceof Error ? error.message : 'Failed to save email settings.';
             toast.error(message);
         } finally {
-            setIsSaving(false);
+            clearTimeout(timer); attempt.finish(); if (attempt.current(active, true)) setIsSaving(false);
         }
     };
 
     const handleSaveMarketingDefaults = async () => {
-        if (!currentAccount || !token) return;
+        if (!currentAccount || !token || error || !hasPermission('manage_marketing')) return;
+        const active = attempt.begin(); if (!active) return;
+        const timer = setTimeout(() => active.abort(), 30000);
 
         setIsSavingMarketing(true);
         try {
             const accountResponse = await fetch(`/api/accounts/${currentAccount.id}`, {
                 method: 'PUT',
+                signal: active.signal,
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id,
                 },
                 body: JSON.stringify({ subscribeNewCustomersByDefault }),
             });
             if (!accountResponse.ok) throw new Error('Failed to save new customer marketing setting');
+            if (!attempt.current(active)) return;
 
             const listResponses = await Promise.all(emailLists.map((list) => fetch(`/api/email/lists/${list.id}`, {
                 method: 'PUT',
+                signal: active.signal,
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`,
@@ -156,19 +189,24 @@ export function EmailSettingsPage() {
                 throw new Error('Failed to save one or more default email lists');
             }
 
+            if (!attempt.current(active)) return;
             await refreshAccounts();
-            toast.success('Marketing defaults saved.');
+            if (attempt.current(active)) toast.success('Marketing defaults saved.');
         } catch (error) {
+            if (!attempt.current(active, true)) return;
+            setError('Marketing defaults may be partially saved. Reload and reconcile before further writes.');
             Logger.error('Failed to save marketing defaults', { error });
             const message = error instanceof Error ? error.message : 'Failed to save marketing defaults.';
             toast.error(message);
         } finally {
-            setIsSavingMarketing(false);
+            clearTimeout(timer); attempt.finish(); if (attempt.current(active, true)) setIsSavingMarketing(false);
         }
     };
 
     const handleSaveFooter = async () => {
-        if (!currentAccount || !token) return;
+        if (!currentAccount || !token || error || !hasPermission('manage_email_settings')) return;
+        const active = attempt.begin(); if (!active) return;
+        const timer = setTimeout(() => active.abort(), 30000);
 
         setIsSavingFooter(true);
         try {
@@ -178,9 +216,11 @@ export function EmailSettingsPage() {
             };
             const response = await fetch(`/api/accounts/${currentAccount.id}`, {
                 method: 'PUT',
+                signal: active.signal,
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id,
                 },
                 body: JSON.stringify({ appearance }),
             });
@@ -190,25 +230,29 @@ export function EmailSettingsPage() {
                 throw new Error(payload?.error || 'Failed to save account email footer');
             }
 
+            if (!attempt.current(active)) return;
             await refreshAccounts();
-            toast.success('Account email footer saved.');
+            if (attempt.current(active)) toast.success('Account email footer saved.');
         } catch (error) {
+            if (!attempt.current(active, true)) return;
+            setError('Footer save not acknowledged. Reload and reconcile before further writes.');
             Logger.error('Failed to save account email footer', { error });
             const message = error instanceof Error ? error.message : 'Failed to save account email footer.';
             toast.error(message);
         } finally {
-            setIsSavingFooter(false);
+            clearTimeout(timer); attempt.finish(); if (attempt.current(active, true)) setIsSavingFooter(false);
         }
     };
 
     if (isLoading) {
         return <div>Loading...</div>;
     }
+    if (error) return <p role="alert">{error} Local changes have not been confirmed. <button type="button" onClick={() => window.location.reload()}>Reload settings</button></p>;
 
     return (
         <div className="space-y-6">
             <div className="flex flex-col gap-2">
-                <h1 className="text-2xl font-bold text-gray-900">Email Settings</h1>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Email Settings</h1>
                 <p className="text-gray-500">Control email deliverability and sending limits for this account.</p>
             </div>
 
@@ -259,7 +303,7 @@ export function EmailSettingsPage() {
                 <div className="pt-1">
                     <button
                         onClick={handleSaveMarketingDefaults}
-                        disabled={isSavingMarketing}
+                        disabled={isSavingMarketing || !hasPermission('manage_marketing')}
                         className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
                     >
                         {isSavingMarketing ? 'Saving...' : 'Save Marketing Defaults'}
@@ -267,7 +311,7 @@ export function EmailSettingsPage() {
                 </div>
             </div>
 
-            <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-xs max-w-3xl">
+            <fieldset disabled={isSaving || !hasPermission('manage_email_settings')} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white p-6 shadow-xs max-w-3xl">
                 <h2 className="text-base font-semibold text-gray-900 mb-6">Email Service Provider</h2>
 
                 <div className="space-y-6">
@@ -323,7 +367,7 @@ export function EmailSettingsPage() {
                                 <span className="bg-gray-50 border-l border-gray-300 px-3 py-2 text-sm text-gray-600">Per Day</span>
                             </div>
                             <p className="mt-2 text-sm text-gray-500">
-                                Set the maximum emails allowed per 24 hours. Once this limit is reached, sending pauses until quota resets.
+                                Marketing send attempts per UTC calendar day. Sending pauses until the next UTC day when this limit is reached.
                             </p>
                         </div>
                     </div>
@@ -338,7 +382,7 @@ export function EmailSettingsPage() {
                         </button>
                     </div>
                 </div>
-            </div>
+            </fieldset>
 
             <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-xs max-w-3xl space-y-4">
                 <div>
@@ -350,13 +394,13 @@ export function EmailSettingsPage() {
                     onChange={setEmailFooterHtml}
                     placeholder="<p>You are receiving this email from Your Store...</p>"
                     variant="standard"
-                    features={['bold', 'italic', 'underline', 'link', 'list', 'align', 'mergeTag']}
+                    features={['bold', 'italic', 'underline', 'link', 'list', 'align', 'mergeTag', 'image', 'social']}
                     mergeTags={EMAIL_FOOTER_MERGE_TAGS}
                 />
                 <div className="flex justify-end">
                     <button
                         onClick={handleSaveFooter}
-                        disabled={isSavingFooter}
+                        disabled={isSavingFooter || !hasPermission('manage_email_settings')}
                         className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
                     >
                         {isSavingFooter ? 'Saving...' : 'Save Footer'}

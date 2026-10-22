@@ -23,6 +23,7 @@ export class SearchConsoleTools {
             ]);
 
             return {
+                coverage: { basis: 'returned-query-sample', queryLimit: 1000, catalogLimit: 500, caveat: 'Candidate ideas, not proven missing visibility. Upside assumes 15% CTR and constant impressions; it is not a traffic/revenue forecast.' },
                 lowHangingFruit: lowHanging.slice(0, 10),
                 keywordGaps: gaps.slice(0, 10),
                 keywordMovers: movers.slice(0, 10),

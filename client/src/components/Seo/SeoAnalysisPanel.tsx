@@ -6,6 +6,7 @@ export function SeoAnalysisPanel({ score, tests, focusKeyword }: Props) {
     const available = typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= 100 && Array.isArray(tests) && tests.length > 0 && tests.every(test => isRecord(test) && typeof test.test === 'string' && typeof test.passed === 'boolean' && typeof test.message === 'string');
     return <section aria-label="SEO analysis" className="p-6 space-y-5 bg-white/70 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100">
         <h3 className="font-semibold">SEO Health Score</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Heuristic content checklist, not a prediction of search ranking, traffic or indexing.</p>
         {!available ? <p role="status">SEO assessment unavailable. Sync or analyze this product to generate checks.</p> : <>
             <p className="text-3xl font-bold">{score}/100</p>
             <div role="progressbar" aria-label="SEO health score" aria-valuemin={0} aria-valuemax={100} aria-valuenow={score!} className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 transition-all motion-reduce:transition-none" style={{ width: `${score}%` }} /></div>

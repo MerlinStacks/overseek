@@ -1,4 +1,6 @@
 import fs from 'fs';
+import path from 'path';
+import { getUploadsDir } from '../utils/uploadPaths';
 import { createHash } from 'crypto';
 import type { InvoiceArtifact } from '@prisma/client';
 import { QueueFactory, QUEUES } from './queue/QueueFactory';
@@ -29,7 +31,9 @@ function normalizeTemplateVersion(layout: any): string {
 }
 
 function getLayoutHash(layout: any): string {
-    const serialized = typeof layout === 'string' ? layout : JSON.stringify(layout ?? {});
+    const normalized = typeof layout === 'string' ? JSON.parse(layout) : structuredClone(layout ?? {});
+    if (normalized.settings?.numbering) delete normalized.settings.numbering.nextNumber;
+    const serialized = JSON.stringify(normalized);
     return createHash('sha256')
         .update(`${OPERATIONAL_A4_RENDERER_VERSION}:${serialized}`)
         .digest('hex');
@@ -48,7 +52,7 @@ export class CanonicalInvoiceService {
         if (forceRegenerate) return 'forced_refresh';
         if (!artifact) return 'missing_artifact';
         if (artifact.status !== 'ready') return 'not_ready';
-        if (!artifact.storagePath || !fs.existsSync(artifact.storagePath)) return 'missing_file';
+        if (!this.isReadableReady(artifact)) return 'invalid_file';
         if (!isCanonicalRenderer(artifact.renderer)) return 'non_canonical_renderer';
 
         const invalidateBefore = this.getInvalidateBeforeDate();
@@ -71,8 +75,11 @@ export class CanonicalInvoiceService {
             throw new MissingInvoiceTemplateError();
         }
 
+        const order = await prisma.wooOrder.findFirst({ where: { accountId, OR: [{ id: orderId }, ...(/^\d+$/.test(orderId) && Number.isSafeInteger(Number(orderId)) ? [{ wooId: Number(orderId) }] : [])] }, select: { id: true, updatedAt: true } });
+        if (!order) throw new Error('Scoped invoice order unavailable');
+        orderId = order.id;
         const templateVersion = normalizeTemplateVersion(template.layout);
-        const layoutHash = getLayoutHash(template.layout);
+        const layoutHash = createHash('sha256').update(`${template.id}:${getLayoutHash(template.layout)}:${order.updatedAt.toISOString()}`).digest('hex');
 
         let artifact = await prisma.invoiceArtifact.findUnique({
             where: {
@@ -92,8 +99,10 @@ export class CanonicalInvoiceService {
         }
 
         if (!artifact) {
-            artifact = await prisma.invoiceArtifact.create({
-                data: {
+            artifact = await prisma.invoiceArtifact.upsert({
+                where: { accountId_orderId_templateVersion_layoutHash: { accountId, orderId, templateVersion, layoutHash } },
+                update: {},
+                create: {
                     accountId,
                     orderId,
                     templateId: template.id,
@@ -103,15 +112,10 @@ export class CanonicalInvoiceService {
                     status: 'pending'
                 }
             });
-        } else if (forceRegenerate || artifact.status === 'failed' || !artifact.storagePath) {
-            artifact = await prisma.invoiceArtifact.update({
-                where: { id: artifact.id },
-                data: {
-                    status: 'pending',
-                    errorMessage: null,
-                    generatedAt: null
-                }
-            });
+        } else if (artifact.status !== 'pending') {
+            // Never reset an in-flight or uncertain generation to retry it blindly.
+            if (forceRegenerate || artifact.status === 'ready') throw Object.assign(new Error('Existing artifact requires explicit reconciliation; automatic regeneration is disabled'), { statusCode: 409 });
+            return artifact;
         }
 
         await this.enqueueGeneration(artifact.id, accountId, orderId, template.id, { forceRegenerate });
@@ -148,7 +152,8 @@ export class CanonicalInvoiceService {
             where: {
                 id: data.artifactId,
                 accountId: data.accountId,
-                orderId: data.orderId
+                orderId: data.orderId,
+                templateId: data.templateId
             }
         });
 
@@ -157,20 +162,28 @@ export class CanonicalInvoiceService {
             return;
         }
 
+        const scope = { id: artifact.id, accountId: artifact.accountId, orderId: artifact.orderId, templateId: artifact.templateId, templateVersion: artifact.templateVersion, layoutHash: artifact.layoutHash };
+        const claim = await prisma.invoiceArtifact.updateMany({ where: { ...scope, status: 'pending', updatedAt: artifact.updatedAt }, data: { status: 'generating' } });
+        if (claim.count !== 1) return;
         try {
+            const [template, order] = await Promise.all([prisma.invoiceTemplate.findFirst({ where: { id: artifact.templateId, accountId: artifact.accountId } }), prisma.wooOrder.findFirst({ where: { id: artifact.orderId, accountId: artifact.accountId } })]);
+            if (!template || !order || normalizeTemplateVersion(template.layout) !== artifact.templateVersion || createHash('sha256').update(`${template.id}:${getLayoutHash(template.layout)}:${order.updatedAt.toISOString()}`).digest('hex') !== artifact.layoutHash) throw new Error('Invoice source changed; request a current artifact');
             let generatedPath = '';
             let rendererUsed = 'pdfkit-primary';
 
             const generated = await invoiceService.generateInvoicePdf(data.accountId, data.orderId, data.templateId, {
                 layoutMode: 'operational-a4',
+                expectedTemplateUpdatedAt: template.updatedAt,
+                expectedOrderUpdatedAt: order.updatedAt,
             });
             generatedPath = generated.absolutePath;
             rendererUsed = 'pdfkit-primary';
 
             const stat = fs.statSync(generatedPath);
+            if (!this.isReadableReady({ ...artifact, status: 'ready', renderer: rendererUsed, storagePath: generatedPath, fileSize: stat.size, generatedAt: new Date() })) throw new Error('Generated PDF failed artifact validation');
 
-            await prisma.invoiceArtifact.update({
-                where: { id: artifact.id },
+            await prisma.invoiceArtifact.updateMany({
+                where: { ...scope, status: 'generating' },
                 data: {
                     status: 'ready',
                     renderer: rendererUsed,
@@ -189,10 +202,10 @@ export class CanonicalInvoiceService {
             });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            await prisma.invoiceArtifact.update({
-                where: { id: artifact.id },
+            await prisma.invoiceArtifact.updateMany({
+                where: { ...scope, status: 'generating' },
                 data: {
-                    status: 'failed',
+                    status: 'uncertain',
                     renderer: artifact.renderer,
                     errorMessage: message
                 }
@@ -213,22 +226,34 @@ export class CanonicalInvoiceService {
         return prisma.invoiceArtifact.findFirst({ where: { id } });
     }
 
-    async waitForReady(artifactId: string, maxWaitMs = 2000, intervalMs = 250): Promise<InvoiceArtifact | null> {
+    async waitForReady(identity: Pick<InvoiceArtifact, 'id' | 'accountId' | 'orderId' | 'templateId' | 'templateVersion' | 'layoutHash'>, maxWaitMs = 2000, intervalMs = 250): Promise<InvoiceArtifact | null> {
+        if (!identity?.id || !identity.accountId || !identity.orderId || !identity.templateId || !identity.templateVersion || !identity.layoutHash) throw new Error('Scoped immutable artifact identity required');
+        if (!Number.isFinite(maxWaitMs) || maxWaitMs < 0 || maxWaitMs > 15000 || !Number.isFinite(intervalMs) || intervalMs < 50 || intervalMs > 1000) throw new Error('Invalid invoice wait bounds');
+        const read = () => prisma.invoiceArtifact.findFirst({ where: { id: identity.id, accountId: identity.accountId, orderId: identity.orderId, templateId: identity.templateId, templateVersion: identity.templateVersion, layoutHash: identity.layoutHash } });
         const start = Date.now();
         while (Date.now() - start < maxWaitMs) {
-            const artifact = await this.getArtifactById(artifactId);
+            const artifact = await read();
             if (!artifact) return null;
-            if (artifact.status === 'ready' || artifact.status === 'failed') {
+            if (['ready', 'failed', 'uncertain'].includes(artifact.status)) {
                 return artifact;
             }
             await new Promise((resolve) => setTimeout(resolve, intervalMs));
         }
 
-        return this.getArtifactById(artifactId);
+        return read();
     }
 
-    isReadableReady(artifact: InvoiceArtifact | null): artifact is InvoiceArtifact & { storagePath: string } {
-        return !!artifact && artifact.status === 'ready' && !!artifact.storagePath && fs.existsSync(artifact.storagePath);
+    isReadableReady(artifact: InvoiceArtifact | null): artifact is InvoiceArtifact & { storagePath: string; status: 'ready' } {
+        if (!artifact || artifact.status !== 'ready' || !artifact.storagePath || !/^[a-zA-Z0-9_-]{1,200}$/.test(artifact.accountId) || !artifact.orderId || !artifact.templateId || !artifact.layoutHash || !artifact.templateVersion || !isCanonicalRenderer(artifact.renderer) || artifact.mimeType !== 'application/pdf' || !artifact.generatedAt) return false;
+        try {
+            const base = fs.realpathSync(path.join(getUploadsDir(), 'invoices'));
+            const root = fs.realpathSync(path.join(base, artifact.accountId));
+            if (root !== path.join(base, artifact.accountId) || fs.lstatSync(path.join(base, artifact.accountId)).isSymbolicLink()) return false;
+            const file = fs.realpathSync(artifact.storagePath), stat = fs.lstatSync(artifact.storagePath);
+            if (!file.startsWith(root + path.sep) || !stat.isFile() || stat.isSymbolicLink() || stat.size < 5 || stat.size > 25 * 1024 * 1024 || artifact.fileSize !== stat.size || path.extname(file) !== '.pdf') return false;
+            const fd = fs.openSync(file, 'r');
+            try { const header = Buffer.alloc(5); fs.readSync(fd, header, 0, 5, 0); return header.toString('ascii') === '%PDF-'; } finally { fs.closeSync(fd); }
+        } catch { return false; }
     }
 
 }

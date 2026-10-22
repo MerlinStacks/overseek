@@ -1,644 +1,92 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Logger } from '../utils/logger';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { Plus, FileText, BookOpen, GraduationCap, Sparkles, Trash2, Edit2, EyeOff, Save, ChevronDown, ChevronRight, Lock } from 'lucide-react';
-import { cn } from '../utils/cn';
-import { PoliciesPageSkeleton } from '../components/ui/PageSkeletons';
-import { Toast, ToastType } from '../components/ui/Toast';
+import { usePermissions } from '../hooks/usePermissions';
+import { useScopedRequest } from '../hooks/useScopedRequest';
+import { useRecoveryAttempt } from '../hooks/useRecoveryAttempt';
+import { isRecord } from '../utils/responseValidation';
 
-interface Policy {
-    id: string;
-    title: string;
-    content: string;
-    type: 'POLICY' | 'SOP' | 'TRAINING';
-    category: string | null;
-    isPublished: boolean;
-    createdAt: string;
-    updatedAt: string;
+interface Policy { id: string; title: string; content: string; type: 'POLICY' | 'SOP' | 'TRAINING'; category: string | null; isPublished: boolean; updatedAt: string }
+interface Prompt { id: string; name: string | null; content: string; version: string; isAccountOverride: boolean }
+const text = (value: unknown, max: number) => typeof value === 'string' && value.length <= max;
+function policy(value: unknown): Policy {
+    if (!isRecord(value) || !text(value.id, 200) || !text(value.title, 200) || !text(value.content, 100000) || !['POLICY', 'SOP', 'TRAINING'].includes(String(value.type)) || typeof value.isPublished !== 'boolean' || value.category !== null && !text(value.category, 100) || !text(value.updatedAt, 40) || !Number.isFinite(Date.parse(String(value.updatedAt)))) throw new Error('Invalid policy');
+    return value as unknown as Policy;
 }
-
-interface AIPrompt {
-    id: string;
-    name: string | null;
-    content: string;
-    updatedAt: string;
-    isAccountOverride?: boolean;
+function policies(value: unknown) {
+    if (!isRecord(value) || !Array.isArray(value.items) || value.items.length > 100 || value.nextCursor !== null && !text(value.nextCursor, 200)) throw new Error('Invalid policy page');
+    return { items: value.items.map(policy), nextCursor: value.nextCursor as string | null };
 }
-
-const typeConfig = {
-    POLICY: { label: 'Policy', icon: FileText, color: 'bg-blue-100 text-blue-700' },
-    SOP: { label: 'SOP', icon: BookOpen, color: 'bg-purple-100 text-purple-700' },
-    TRAINING: { label: 'Training', icon: GraduationCap, color: 'bg-green-100 text-green-700' }
-};
-
+function prompts(value: unknown): Prompt[] {
+    if (!Array.isArray(value) || value.length > 5 || value.some(row => !isRecord(row) || !text(row.id, 100) || !text(row.content, 30000) || row.name !== null && !text(row.name, 200) || !text(row.version, 200) || typeof row.isAccountOverride !== 'boolean')) throw new Error('Invalid prompts');
+    return value;
+}
+type Selection = { kind: 'new' } | { kind: 'policy'; value: Policy } | { kind: 'prompt'; value: Prompt };
+const box = 'rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4';
+const input = 'block w-full rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 p-2';
 export function PoliciesPage() {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const [policies, setPolicies] = useState<Policy[]>([]);
-    const [aiPrompts, setAIPrompts] = useState<AIPrompt[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [selectedPolicy, setSelectedPolicy] = useState<Policy | null>(null);
-    const [selectedPrompt, setSelectedPrompt] = useState<AIPrompt | null>(null);
-    const [isEditing, setIsEditing] = useState(false);
-    const [expandedTypes, setExpandedTypes] = useState<string[]>(['POLICY', 'SOP', 'TRAINING']);
-    const [isEditingPrompt, setIsEditingPrompt] = useState(false);
-    const [formPromptContent, setFormPromptContent] = useState('');
-    const [savingPrompt, setSavingPrompt] = useState(false);
-
-    // Form state
-    const [formTitle, setFormTitle] = useState('');
-    const [formContent, setFormContent] = useState('');
-    const [formType, setFormType] = useState<'POLICY' | 'SOP' | 'TRAINING'>('POLICY');
-    const [formCategory, setFormCategory] = useState('');
-    const [formIsPublished, setFormIsPublished] = useState(true);
-
-    // Toast state
-    const [toastMessage, setToastMessage] = useState('');
-    const [toastVisible, setToastVisible] = useState(false);
-    const [toastType, setToastType] = useState<ToastType>('error');
-
-    /** Display a toast notification */
-    const showToast = useCallback((message: string, type: ToastType = 'error') => {
-        setToastMessage(message);
-        setToastType(type);
-        setToastVisible(true);
-    }, []);
-
-    const fetchPolicies = useCallback(async () => {
+    const { user, token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p role="status">Sign in and select an account.</p>;
+    return <ScopedPolicies key={JSON.stringify([user?.id, token, currentAccount.id])} token={token} accountId={currentAccount.id} />;
+}
+function ScopedPolicies({ token, accountId }: { token: string; accountId: string }) {
+    const { hasPermission } = usePermissions();
+    const canView = hasPermission('view_policies'), canManage = hasPermission('manage_policies'), canPrompt = hasPermission('manage_ai_prompts');
+    const [cursor, setCursor] = useState<string | null>(null), [selection, setSelection] = useState<Selection | null>(null), [dirty, setDirty] = useState(false);
+    const list = useScopedRequest(canView ? `/api/policies${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}` : null, accountId, token, policies);
+    const templates = useScopedRequest(canPrompt ? '/api/policies/ai-prompts' : null, accountId, token, prompts);
+    const choose = (value: Selection | null) => { if (dirty && !window.confirm('Discard unsaved local changes?')) return false; setDirty(false); setSelection(value); return true; };
+    const reload = () => { setSelection(null); setDirty(false); list.retry(); templates.retry(); };
+    useEffect(() => { if (!dirty) return; const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; }; window.addEventListener('beforeunload', guard); return () => window.removeEventListener('beforeunload', guard); }, [dirty]);
+    return <main className="space-y-4 text-slate-900 dark:text-slate-100">
+        <h1 className="text-2xl font-bold">Policies &amp; SOPs</h1>
+        <p>Plain-text documents and account AI prompt overrides. Saving requires a current server version.</p>
+        <div className="grid gap-4 lg:grid-cols-[minmax(16rem,1fr)_minmax(0,2fr)]">
+            <aside className={`${box} space-y-3`} aria-label="Documents and prompts">
+                {canManage && <button type="button" onClick={() => choose({ kind: 'new' })}>Create policy</button>}
+                {!canView ? <p>Policy view permission required.</p> : list.loading ? <p role="status">Loading policies…</p> : list.error ? <p role="alert">Policies unavailable. <button type="button" onClick={list.retry}>Retry policies</button></p> : <>
+                    {list.data?.items.length === 0 && <p>No policies in this page.</p>}
+                    {list.data?.items.map(item => <button type="button" className="block w-full text-left p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800" key={item.id} onClick={() => choose({ kind: 'policy', value: item })}>{item.title} {!item.isPublished && '(draft)'}</button>)}
+                    {cursor && <button type="button" onClick={() => { if (choose(null)) setCursor(null); }}>First policy page</button>}
+                    {list.data?.nextCursor && <button type="button" onClick={() => { if (dirty && !window.confirm('Discard unsaved local changes?')) return; setSelection(null); setDirty(false); setCursor(list.data!.nextCursor); }}>Next policy page</button>}
+                </>}
+                {canPrompt && <section><h2 className="font-semibold">AI prompts</h2>{templates.loading ? <p role="status">Loading prompts…</p> : templates.error ? <p role="alert">Prompts unavailable. <button type="button" onClick={templates.retry}>Retry prompts</button></p> : templates.data?.map(item => <button type="button" key={item.id} className="block p-2 text-left" onClick={() => choose({ kind: 'prompt', value: item })}>{item.name || item.id} ({item.isAccountOverride ? 'account override' : 'default'})</button>)}</section>}
+            </aside>
+            <section className={box}>{selection ? <Editor key={selection.kind === 'new' ? 'new' : `${selection.kind}:${selection.value.id}:${selection.kind === 'policy' ? selection.value.updatedAt : selection.value.version}`} selection={selection} token={token} accountId={accountId} editable={selection.kind === 'prompt' ? canPrompt : canManage} onDirty={setDirty} onSaved={reload} /> : <p>Select a document or prompt.</p>}</section>
+        </div>
+    </main>;
+}
+function Editor({ selection, token, accountId, editable, onDirty, onSaved }: { selection: Selection; token: string; accountId: string; editable: boolean; onDirty: (value: boolean) => void; onSaved: () => void }) {
+    const existing = selection.kind === 'policy' ? selection.value : null, template = selection.kind === 'prompt' ? selection.value : null;
+    const [createId] = useState(() => crypto.randomUUID());
+    const [title, setTitle] = useState(existing?.title || ''), [content, setContent] = useState(existing?.content ?? template?.content ?? '');
+    const [type, setType] = useState(existing?.type || 'POLICY'), [category, setCategory] = useState(existing?.category || ''), [published, setPublished] = useState(existing?.isPublished ?? false);
+    const [busy, setBusy] = useState(false), [error, setError] = useState(''), [blocked, setBlocked] = useState(false);
+    const attempt = useRecoveryAttempt();
+    async function write(remove = false) {
+        if (!editable || blocked || (!remove && (!content.trim() || !template && !title.trim()))) return;
+        if (remove && !window.confirm(template ? 'Remove this account override and use the current global default?' : 'Delete this policy?')) return;
+        const current = attempt.begin(); if (!current) return;
+        setBusy(true); setError(''); const timer = setTimeout(() => current.abort(), 30000);
+        const url = template ? `/api/policies/ai-prompts/${encodeURIComponent(template.id)}` : existing ? `/api/policies/${encodeURIComponent(existing.id)}` : '/api/policies';
+        const body = template ? { version: template.version, ...(!remove ? { content, name: template.name } : {}) } : remove ? { version: existing!.updatedAt } : { title: title.trim(), content, type, category: category.trim() || null, isPublished: published, ...(existing ? { version: existing.updatedAt } : { id: createId }) };
         try {
-            const res = await fetch('/api/policies', {
-                headers: { Authorization: `Bearer ${token}`, 'x-account-id': currentAccount?.id || '' }
-            });
-            if (res.ok) setPolicies(await res.json());
-        } catch (e) {
-            Logger.error('Failed to fetch policies:', { error: e });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [token, currentAccount?.id]);
-
-    const fetchAIPrompts = useCallback(async () => {
-        try {
-            const res = await fetch('/api/policies/ai-prompts', {
-                headers: { Authorization: `Bearer ${token}`, 'x-account-id': currentAccount?.id || '' }
-            });
-            if (res.ok) {
-                const prompts = await res.json();
-                setAIPrompts(prompts);
-                setSelectedPrompt(prev => {
-                    if (!prev) return prev;
-                    const refreshed = prompts.find((p: AIPrompt) => p.id === prev.id);
-                    if (!refreshed) return prev;
-                    setFormPromptContent(current => (isEditingPrompt ? current : (refreshed.content || '')));
-                    return refreshed;
-                });
-            }
-        } catch (e) {
-            Logger.error('Failed to fetch AI prompts:', { error: e });
-        }
-    }, [token, currentAccount?.id, isEditingPrompt]);
-
-    useEffect(() => {
-        if (currentAccount && token) {
-            fetchPolicies();
-            fetchAIPrompts();
-        }
-    }, [currentAccount, token, fetchPolicies, fetchAIPrompts]);
-
-    const handleCreate = () => {
-        setSelectedPolicy(null);
-        setFormTitle('');
-        setFormContent('');
-        setFormType('POLICY');
-        setFormCategory('');
-        setFormIsPublished(true);
-        setIsEditing(true);
-    };
-
-    const handleEdit = (policy: Policy) => {
-        setSelectedPolicy(policy);
-        setFormTitle(policy.title);
-        setFormContent(policy.content);
-        setFormType(policy.type);
-        setFormCategory(policy.category || '');
-        setFormIsPublished(policy.isPublished);
-        setIsEditing(true);
-    };
-
-    const handleView = (policy: Policy) => {
-        setSelectedPolicy(policy);
-        setSelectedPrompt(null);
-        setIsEditing(false);
-    };
-
-    const handleViewPrompt = (prompt: AIPrompt) => {
-        setSelectedPrompt(prompt);
-        setSelectedPolicy(null);
-        setIsEditing(false);
-        setIsEditingPrompt(false);
-        setFormPromptContent(prompt.content || '');
-    };
-
-    const handleSavePrompt = async () => {
-        if (!selectedPrompt) return;
-        if (!formPromptContent.trim()) {
-            showToast('No prompt content entered');
-            return;
-        }
-
-        setSavingPrompt(true);
-        try {
-            const res = await fetch(`/api/policies/ai-prompts/${selectedPrompt.id}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || ''
-                },
-                body: JSON.stringify({
-                    content: formPromptContent,
-                    name: selectedPrompt.name || promptLabelMap[selectedPrompt.id] || selectedPrompt.id
-                })
-            });
-
-            if (!res.ok) {
-                const data = await res.json().catch(() => null);
-                showToast(data?.error || 'Failed to save AI prompt');
-                return;
-            }
-
-            const updated = await res.json();
-            setSelectedPrompt(updated);
-            setIsEditingPrompt(false);
-            await fetchAIPrompts();
-            showToast('AI prompt saved successfully', 'success');
-        } catch (e) {
-            Logger.error('Failed to save AI prompt override:', { error: e });
-            showToast('Failed to save AI prompt — network error');
-        } finally {
-            setSavingPrompt(false);
-        }
-    };
-
-    const handleResetPrompt = async () => {
-        if (!selectedPrompt) return;
-
-        setSavingPrompt(true);
-        try {
-            const res = await fetch(`/api/policies/ai-prompts/${selectedPrompt.id}`, {
-                method: 'DELETE',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || ''
-                }
-            });
-
-            if (!res.ok) {
-                const data = await res.json().catch(() => null);
-                showToast(data?.error || 'Failed to reset AI prompt');
-                return;
-            }
-
-            await fetchAIPrompts();
-            setIsEditingPrompt(false);
-            showToast('AI prompt reset to default', 'success');
-        } catch (e) {
-            Logger.error('Failed to reset AI prompt override:', { error: e });
-            showToast('Failed to reset AI prompt — network error');
-        } finally {
-            setSavingPrompt(false);
-        }
-    };
-
-    const handleSave = async () => {
-        // Client-side validation with specific error messages
-        if (!formTitle.trim()) {
-            showToast('No title entered');
-            return;
-        }
-        if (!formContent.trim()) {
-            showToast('No content entered');
-            return;
-        }
-
-        const body = {
-            title: formTitle,
-            content: formContent,
-            type: formType,
-            category: formCategory || null,
-            isPublished: formIsPublished
-        };
-
-        try {
-            const url = selectedPolicy ? `/api/policies/${selectedPolicy.id}` : '/api/policies';
-            const method = selectedPolicy ? 'PUT' : 'POST';
-            const res = await fetch(url, {
-                method,
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || ''
-                },
-                body: JSON.stringify(body)
-            });
-
-            if (res.ok) {
-                fetchPolicies();
-                setIsEditing(false);
-                showToast(
-                    selectedPolicy ? 'Policy updated successfully' : 'Policy created successfully',
-                    'success'
-                );
-                if (!selectedPolicy) {
-                    setSelectedPolicy(null);
-                } else {
-                    const updated = await res.json();
-                    setSelectedPolicy(updated);
-                }
-            } else {
-                // Surface the API error message
-                const data = await res.json().catch(() => null);
-                showToast(data?.error || 'Failed to save policy');
-            }
-        } catch (e) {
-            Logger.error('Failed to save policy:', { error: e });
-            showToast('Failed to save policy — network error');
-        }
-    };
-
-    const handleDelete = async (policyId: string) => {
-        if (!confirm('Are you sure you want to delete this policy?')) return;
-
-        try {
-            const res = await fetch(`/api/policies/${policyId}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}`, 'x-account-id': currentAccount?.id || '' }
-            });
-            if (res.ok) {
-                fetchPolicies();
-                showToast('Policy deleted', 'success');
-                if (selectedPolicy?.id === policyId) {
-                    setSelectedPolicy(null);
-                    setIsEditing(false);
-                }
-            } else {
-                const data = await res.json().catch(() => null);
-                showToast(data?.error || 'Failed to delete policy');
-            }
-        } catch (e) {
-            Logger.error('Failed to delete policy:', { error: e });
-            showToast('Failed to delete policy — network error');
-        }
-    };
-
-    const toggleType = (type: string) => {
-        setExpandedTypes(prev =>
-            prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
-        );
-    };
-
-    const groupedPolicies = {
-        POLICY: policies.filter(p => p.type === 'POLICY'),
-        SOP: policies.filter(p => p.type === 'SOP'),
-        TRAINING: policies.filter(p => p.type === 'TRAINING')
-    };
-
-    const promptLabelMap: Record<string, string> = {
-        product_description: 'Product Description Rewrite',
-        customer_email: 'Customer Email Response',
-        review_reply: 'Review Reply Generator',
-        seo_meta: 'SEO Meta Generator',
-        inbox_draft_reply: 'Inbox Draft Reply Generator'
-    };
-
-    const handlePromptClick = (prompt: AIPrompt) => {
-        handleViewPrompt(prompt);
-    };
-
-    if (isLoading) return <PoliciesPageSkeleton />;
-
-    return (
-        <>
-            <div className="flex h-[calc(100vh-4rem)]">
-                {/* Left Panel: List */}
-                <div className="w-80 border-r border-gray-200 bg-white flex flex-col">
-                    <div className="p-4 border-b border-gray-200">
-                        <div className="flex items-center justify-between mb-2">
-                            <h1 className="text-lg font-bold text-gray-900">Policies & SOP</h1>
-                            <button
-                                onClick={handleCreate}
-                                className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                            >
-                                <Plus size={18} />
-                            </button>
-                        </div>
-                        <p className="text-xs text-gray-500">Manage policies, SOPs, and training materials</p>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto">
-                        {(['POLICY', 'SOP', 'TRAINING'] as const).map(type => {
-                            const config = typeConfig[type];
-                            const items = groupedPolicies[type];
-                            const isExpanded = expandedTypes.includes(type);
-
-                            return (
-                                <div key={type} className="border-b border-gray-100">
-                                    <button
-                                        onClick={() => toggleType(type)}
-                                        className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
-                                    >
-                                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                        <config.icon size={18} className="text-gray-500" />
-                                        <span className="font-medium text-gray-700">{config.label}s</span>
-                                        <span className="ml-auto text-xs text-gray-400">{items.length}</span>
-                                    </button>
-
-                                    {isExpanded && items.length > 0 && (
-                                        <div className="pb-2">
-                                            {items.map(policy => (
-                                                <button
-                                                    key={policy.id}
-                                                    onClick={() => handleView(policy)}
-                                                    className={cn(
-                                                        "w-full flex items-center gap-2 px-6 py-2 text-left text-sm transition-colors",
-                                                        selectedPolicy?.id === policy.id
-                                                            ? "bg-blue-50 text-blue-700 border-r-2 border-blue-600"
-                                                            : "hover:bg-gray-50 text-gray-600"
-                                                    )}
-                                                >
-                                                    <span className="truncate flex-1">{policy.title}</span>
-                                                    {!policy.isPublished && (
-                                                        <EyeOff size={14} className="text-gray-400" />
-                                                    )}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-
-                                    {isExpanded && items.length === 0 && (
-                                        <p className="px-6 py-2 text-xs text-gray-400 italic">No {config.label.toLowerCase()}s yet</p>
-                                    )}
-                                </div>
-                            );
-                        })}
-
-                        {/* AI Prompts Section */}
-                        <div className="border-b border-gray-100">
-                            <div className="w-full flex items-center gap-2 px-4 py-3 text-left">
-                                <Sparkles size={16} className="text-purple-500" />
-                                <span className="font-medium text-gray-700">AI Prompts</span>
-                                <span className="ml-auto text-xs text-gray-400">{aiPrompts.length}</span>
-                            </div>
-
-                            {aiPrompts.length > 0 && (
-                                <div className="pb-2">
-                                    {aiPrompts.map(prompt => (
-                                        <button
-                                            key={prompt.id}
-                                            onClick={() => handlePromptClick(prompt)}
-                                            className={cn(
-                                                "w-full flex items-center gap-2 px-6 py-2 text-left text-sm transition-colors",
-                                                selectedPrompt?.id === prompt.id
-                                                    ? "bg-purple-50 text-purple-700 border-r-2 border-purple-600"
-                                                    : "hover:bg-gray-50 text-gray-600"
-                                            )}
-                                        >
-                                        {prompt.isAccountOverride ? <Edit2 size={12} className="text-blue-500 shrink-0" /> : <Lock size={12} className="text-gray-400 shrink-0" />}
-                                        <span className="truncate flex-1">
-                                            {prompt.name || promptLabelMap[prompt.id] || prompt.id}
-                                        </span>
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-
-                            {aiPrompts.length === 0 && (
-                                <p className="px-6 py-2 text-xs text-gray-400 italic">No AI prompts configured</p>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Right Panel: View/Edit */}
-                <div className="flex-1 bg-gray-50 flex flex-col">
-                    {!selectedPolicy && !selectedPrompt && !isEditing ? (
-                        <div className="flex-1 flex items-center justify-center text-gray-400">
-                            <div className="text-center">
-                                <BookOpen size={48} className="mx-auto mb-4 opacity-50" />
-                                <p>Select a policy to view or click + to create new</p>
-                            </div>
-                        </div>
-                    ) : selectedPrompt ? (
-                        <>
-                            {/* AI Prompt Header */}
-                            <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <Sparkles size={20} className="text-purple-500" />
-                                        <h2 className="text-xl font-bold text-gray-900">
-                                            {selectedPrompt.name || promptLabelMap[selectedPrompt.id] || selectedPrompt.id}
-                                        </h2>
-                                    </div>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700">
-                                            AI Prompt
-                                        </span>
-                                        {selectedPrompt.isAccountOverride ? (
-                                            <span className="text-xs text-blue-600">Account override active</span>
-                                        ) : (
-                                            <span className="text-xs text-gray-500">Using default template</span>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    {isEditingPrompt ? (
-                                        <>
-                                            <button
-                                                onClick={() => {
-                                                    setIsEditingPrompt(false);
-                                                    setFormPromptContent(selectedPrompt.content || '');
-                                                }}
-                                                className="px-3 py-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                                                disabled={savingPrompt}
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button
-                                                onClick={handleSavePrompt}
-                                                disabled={savingPrompt}
-                                                className="flex items-center gap-1 px-4 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
-                                            >
-                                                <Save size={16} />
-                                                {savingPrompt ? 'Saving...' : 'Save'}
-                                            </button>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <button
-                                                onClick={() => {
-                                                    setIsEditingPrompt(true);
-                                                    setFormPromptContent(selectedPrompt.content || '');
-                                                }}
-                                                className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                                            >
-                                                <Edit2 size={18} />
-                                            </button>
-                                            <button
-                                                onClick={handleResetPrompt}
-                                                disabled={savingPrompt}
-                                                className="px-3 py-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
-                                            >
-                                                Reset
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* AI Prompt Content */}
-                            <div className="flex-1 overflow-y-auto p-6">
-                                <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                    {isEditingPrompt ? (
-                                        <textarea
-                                            value={formPromptContent}
-                                            onChange={e => setFormPromptContent(e.target.value)}
-                                            className="w-full min-h-[420px] border border-gray-300 rounded-lg p-3 font-mono text-sm text-gray-800 focus:outline-hidden focus:ring-2 focus:ring-purple-500"
-                                        />
-                                    ) : (
-                                        <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800">
-                                            {selectedPrompt.content || <span className="text-gray-400 italic">No content</span>}
-                                        </pre>
-                                    )}
-                                </div>
-                            </div>
-                        </>
-                    ) : (
-                        <>
-                            {/* Header */}
-                            <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-                                {isEditing ? (
-                                    <input
-                                        type="text"
-                                        placeholder="Enter title..."
-                                        value={formTitle}
-                                        onChange={e => setFormTitle(e.target.value)}
-                                        className="text-xl font-bold text-gray-900 bg-transparent border-none outline-hidden w-full"
-                                    />
-                                ) : (
-                                    <div>
-                                        <h2 className="text-xl font-bold text-gray-900">{selectedPolicy?.title}</h2>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", typeConfig[selectedPolicy?.type || 'POLICY'].color)}>
-                                                {typeConfig[selectedPolicy?.type || 'POLICY'].label}
-                                            </span>
-                                            {selectedPolicy?.category && (
-                                                <span className="text-xs text-gray-500">• {selectedPolicy.category}</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-
-                                <div className="flex items-center gap-2">
-                                    {isEditing ? (
-                                        <>
-                                            <button
-                                                onClick={() => {
-                                                    setIsEditing(false);
-                                                    if (!selectedPolicy) setSelectedPolicy(null);
-                                                }}
-                                                className="px-3 py-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button
-                                                onClick={handleSave}
-                                                className="flex items-center gap-1 px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                                            >
-                                                <Save size={16} />
-                                                Save
-                                            </button>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <button
-                                                onClick={() => selectedPolicy && handleEdit(selectedPolicy)}
-                                                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                            >
-                                                <Edit2 size={18} />
-                                            </button>
-                                            <button
-                                                onClick={() => selectedPolicy && handleDelete(selectedPolicy.id)}
-                                                className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                            >
-                                                <Trash2 size={18} />
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Metadata Bar (Edit Mode) */}
-                            {isEditing && (
-                                <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-4">
-                                    <select
-                                        value={formType}
-                                        onChange={e => setFormType(e.target.value as 'POLICY' | 'SOP' | 'TRAINING')}
-                                        className="text-sm border border-gray-300 rounded-lg px-2 py-1"
-                                    >
-                                        <option value="POLICY">Policy</option>
-                                        <option value="SOP">SOP</option>
-                                        <option value="TRAINING">Training</option>
-                                    </select>
-                                    <input
-                                        type="text"
-                                        placeholder="Category (optional)"
-                                        value={formCategory}
-                                        onChange={e => setFormCategory(e.target.value)}
-                                        className="text-sm border border-gray-300 rounded-lg px-2 py-1 w-40"
-                                    />
-                                    <label className="flex items-center gap-2 text-sm text-gray-600">
-                                        <input
-                                            type="checkbox"
-                                            checked={formIsPublished}
-                                            onChange={e => setFormIsPublished(e.target.checked)}
-                                            className="rounded-sm"
-                                        />
-                                        Published
-                                    </label>
-                                </div>
-                            )}
-
-                            {/* Content */}
-                            <div className="flex-1 overflow-y-auto p-6">
-                                {isEditing ? (
-                                    <textarea
-                                        placeholder="Write your policy content here... (Markdown supported)"
-                                        value={formContent}
-                                        onChange={e => setFormContent(e.target.value)}
-                                        className="w-full h-full min-h-[400px] p-4 bg-white border border-gray-200 rounded-lg text-sm font-mono resize-none outline-hidden focus:ring-2 focus:ring-blue-500"
-                                    />
-                                ) : (
-                                    <div className="bg-white rounded-lg border border-gray-200 p-6 prose max-w-none">
-                                        {selectedPolicy?.content ? (
-                                            <div className="whitespace-pre-wrap">{selectedPolicy.content}</div>
-                                        ) : (
-                                            <p className="text-gray-400 italic">No content</p>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        </>
-                    )}
-                </div>
-            </div>
-
-            <Toast
-                message={toastMessage}
-                isVisible={toastVisible}
-                onClose={() => setToastVisible(false)}
-                type={toastType}
-            />
-        </>
-    );
+            const res = await fetch(url, { method: remove ? 'DELETE' : template || existing ? 'PUT' : 'POST', signal: current.signal, headers: { Authorization: `Bearer ${token}`, 'x-account-id': accountId, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            const result = await res.json(); if (!res.ok) throw new Error('Write failed');
+            if (template || remove) { if (!isRecord(result) || result.success !== true) throw new Error('Invalid acknowledgement'); } else policy(result);
+            if (attempt.current(current)) onSaved();
+        } catch { if (attempt.current(current, true)) { setError('Write was not acknowledged or the document changed. Local edits remain; reload before any further writes.'); setBlocked(true); } }
+        finally { clearTimeout(timer); attempt.finish(); if (attempt.current(current, true)) setBusy(false); }
+    }
+    const disabled = !editable || busy || blocked;
+    return <div className="space-y-4"><h2 className="text-xl font-semibold">{template ? template.name || template.id : existing ? 'Policy details' : 'New policy'}</h2>
+        {!template && <><label className="block">Title<input className={input} value={title} maxLength={200} disabled={disabled} onChange={e => { setTitle(e.target.value); onDirty(true); }} /></label>
+            <label className="block">Document type<select className={input} disabled={disabled} value={type} onChange={e => { setType(e.target.value as Policy['type']); onDirty(true); }}>{['POLICY', 'SOP', 'TRAINING'].map(value => <option key={value}>{value}</option>)}</select></label>
+            <label className="block">Category<input className={input} value={category} maxLength={100} disabled={disabled} onChange={e => { setCategory(e.target.value); onDirty(true); }} /></label>
+            <label><input type="checkbox" checked={published} disabled={disabled} onChange={e => { setPublished(e.target.checked); onDirty(true); }} /> Published for AI/reference readers</label></>}
+        <label className="block">{template ? 'Prompt content' : 'Document content (plain text)'}<textarea className={`${input} min-h-72`} value={content} maxLength={template ? 30000 : 100000} disabled={disabled} onChange={e => { setContent(e.target.value); onDirty(true); }} /></label>
+        {error && <p role="alert">{error} <button type="button" onClick={() => { if (window.confirm('Discard local edits and reload?')) onSaved(); }}>Discard edits and reload</button></p>}
+        {busy && <p role="status">Saving…</p>}
+        {editable && <div className="flex flex-wrap gap-4"><button type="button" disabled={disabled} onClick={() => void write()}>Save</button>{(existing || template?.isAccountOverride) && <button type="button" disabled={disabled} onClick={() => void write(true)}>{template ? 'Reset to global default' : 'Delete policy'}</button>}</div>}
+    </div>;
 }

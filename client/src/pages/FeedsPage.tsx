@@ -7,6 +7,7 @@ import { useToast } from '../context/ToastContext';
 import { useApiMutation, useApiQuery } from '../hooks/useApiQuery';
 import { FEEDS_UI_STATE_KEY, type FeedVariationMode as VariationMode } from '../utils/feedVariationMode';
 import { FeedHealthPanel } from '../components/feeds/FeedHealthPanel';
+import { visibleFeedRows } from '../utils/feedRowGroups';
 
 type FeedChannel = 'google' | 'meta' | 'pinterest' | 'similar';
 type FeedsViewTab = 'spreadsheet' | 'settings';
@@ -23,7 +24,7 @@ interface FeedColumn {
 
 interface FeedRow {
     rowId: string;
-    rowType: 'parent' | 'variation';
+    rowType: 'parent' | 'variation' | 'group';
     wooId: number;
     variationWooId?: number;
     sku?: string | null;
@@ -34,6 +35,7 @@ interface FeedRow {
 
 interface FeedRowsResponse {
     rows: FeedRow[];
+    groups?: FeedRow[];
     total: number;
     mappings: Array<{ targetField: string; required?: boolean }>;
 }
@@ -69,6 +71,7 @@ const MIN_FEED_COLUMN_WIDTH = 120;
 const MAX_FEED_COLUMN_WIDTH = 720;
 const SOURCE_FIELD_OPTIONS = [
     { value: 'wooId', label: 'Product ID' },
+    { value: 'sku', label: 'SKU' },
     { value: 'name', label: 'Product name' },
     { value: 'description', label: 'Description' },
     { value: 'short_description', label: 'Short description' },
@@ -136,6 +139,8 @@ export function FeedsPage() {
     });
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
     const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
+    const [expandedGroups, setExpandedGroups] = useState<Record<number, boolean>>({});
+    const groupedVariants = variationMode === 'automatic' && (activeChannel === 'google' || activeChannel === 'meta');
 
     const headers = useMemo(() => ({
         'Authorization': `Bearer ${token}`,
@@ -324,6 +329,7 @@ export function FeedsPage() {
                 q: query,
                 page: String(page),
                 limit: String(limit),
+                groupVariants: String(groupedVariants),
             });
             const res = await fetch(`/api/feeds/${activeChannel}/rows?${params.toString()}`, { headers });
             if (!res.ok) throw new Error('Failed to fetch feed rows');
@@ -372,7 +378,7 @@ export function FeedsPage() {
             const res = await fetch(`/api/feeds/${activeChannel}/rows/optimize-bulk`, {
                 method: 'POST',
                 headers,
-                body: JSON.stringify(payload),
+                body: JSON.stringify({ ...payload, sharedDescriptions: groupedVariants }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data?.error || 'Failed to queue bulk optimize');
@@ -395,6 +401,9 @@ export function FeedsPage() {
     const selectedMode = refreshModeData?.refreshMode || 'manual';
     const maxBulkOptimizeRows = bulkLimitData?.maxBulkOptimizeRows || 5000;
     const rows = useMemo(() => rowsData?.rows || [], [rowsData?.rows]);
+    const groupRows = useMemo(() => rowsData?.groups || [], [rowsData?.groups]);
+    const editorRows = useMemo(() => [...rows, ...groupRows], [rows, groupRows]);
+    const displayRows = useMemo(() => visibleFeedRows(rows, groupRows, expandedGroups), [rows, groupRows, expandedGroups]);
     const mappings = useMemo(() => rowsData?.mappings || [], [rowsData?.mappings]);
     const googleProductCategories = useMemo(() => googleProductCategoryData?.options || [], [googleProductCategoryData?.options]);
     const googleProductCategoryIds = useMemo(() => new Set(googleProductCategories.map((option) => option.id)), [googleProductCategories]);
@@ -529,7 +538,7 @@ export function FeedsPage() {
             if (!draft.channel || !draft.rowId || !draft.field) return;
             if (draft.channel !== activeChannel) return;
 
-            const rowExists = rows.some((row) => row.rowId === draft.rowId);
+            const rowExists = editorRows.some((row) => row.rowId === draft.rowId);
             if (!rowExists) return;
 
             setEditingCell({ channel: draft.channel, rowId: draft.rowId, field: draft.field });
@@ -537,7 +546,7 @@ export function FeedsPage() {
         } catch {
             // no-op: invalid persisted draft
         }
-    }, [rows, activeChannel, editingCell]);
+    }, [rows, editorRows, activeChannel, editingCell]);
 
     useEffect(() => {
         setPage(1);
@@ -546,6 +555,7 @@ export function FeedsPage() {
         setAllMatchingSelected(false);
         setEditingCell(null);
         setExpandedDescription(null);
+        setExpandedGroups({});
     }, [activeChannel, variationMode, query]);
 
     useEffect(() => {
@@ -1155,7 +1165,7 @@ export function FeedsPage() {
                                 disabled={isSavingCell}
                                 className="px-3 py-2 rounded-lg text-sm bg-indigo-600 text-white disabled:opacity-50"
                                 onClick={async () => {
-                                    const row = rows.find((r) => r.rowId === editingCell.rowId);
+                                    const row = editorRows.find((r) => r.rowId === editingCell.rowId);
                                     if (!row) return;
                                     try {
                                         await saveEditing(row, editingCell.field);
@@ -1270,6 +1280,9 @@ export function FeedsPage() {
                     )}
                 </div>
 
+                {groupedVariants && <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Products are grouped. Edit the shared description once, or expand variants for individual overrides. Each variant is still exported separately.
+                </p>}
                 {rowsLoading ? (
                     <p className="text-sm text-slate-600 dark:text-slate-300">Loading feed rows...</p>
                 ) : (
@@ -1334,30 +1347,43 @@ export function FeedsPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {rows.map((row) => {
+                                {displayRows.map((row) => {
+                                    const isGroup = row.rowType === 'group';
+                                    const children = isGroup ? rows.filter((child) => child.wooId === row.wooId) : [];
+                                    const rowIssues = isGroup ? children.flatMap((child) => (child.issues || []).map((issue) => ({ ...issue, message: `${child.sku || child.name}: ${issue.message}` }))) : row.issues || [];
+                                    const descriptionOverrides = children.filter((child) => {
+                                        const description = getColumn(child, 'description');
+                                        return description?.overrideValue || description?.aiSuggestedValue;
+                                    }).length;
                                     return (
-                                        <tr key={row.rowId} className="border-b border-slate-100 dark:border-slate-700/60 align-middle">
+                                        <tr key={row.rowId} className={`border-b border-slate-100 dark:border-slate-700/60 align-middle ${isGroup ? 'bg-indigo-50/60 dark:bg-indigo-950/30' : ''}`}>
                                             <td className="py-2 pr-2">
                                                 <input
                                                     type="checkbox"
-                                                checked={!!selectedRows[row.rowId]}
+                                                    aria-label={isGroup ? `Select variants of ${row.name}` : `Select ${row.sku || row.name}`}
+                                                    checked={isGroup ? children.every((child) => !!selectedRows[child.rowId]) : !!selectedRows[row.rowId]}
                                                     onChange={(e) => {
                                                         if (!e.target.checked && allMatchingSelected) setAllMatchingSelected(false);
-                                                        toggleRowSelected(row, e.target.checked);
+                                                        if (isGroup) children.forEach((child) => toggleRowSelected(child, e.target.checked));
+                                                        else toggleRowSelected(row, e.target.checked);
                                                     }}
                                                 />
                                             </td>
                                             <td className="py-2 pr-3 text-slate-600 dark:text-slate-300">
-                                                <div className="truncate" title={row.sku || '-'}>{row.sku || '-'}</div>
-                                                {!!row.issues?.length && <details className="mt-1 text-xs">
-                                                    <summary className="cursor-pointer text-amber-700 dark:text-amber-300">{row.issues.length} issues</summary>
+                                                {isGroup ? <button type="button" className="text-left text-indigo-700 dark:text-indigo-300" aria-label={`Variants of ${row.name}`} aria-expanded={!!expandedGroups[row.wooId]}
+                                                    onClick={() => setExpandedGroups((current) => ({ ...current, [row.wooId]: !current[row.wooId] }))}>
+                                                    {expandedGroups[row.wooId] ? '▾' : '▸'} {row.sku || row.name}<span className="block text-xs">{children.length} variants</span>
+                                                </button> : <div className="truncate" title={row.sku || '-'}>{row.sku || '-'}</div>}
+                                                {!!rowIssues.length && <details className="mt-1 text-xs">
+                                                    <summary className="cursor-pointer text-amber-700 dark:text-amber-300">{rowIssues.length} issues</summary>
                                                     <ul className="mt-1 max-h-48 space-y-2 overflow-y-auto">
-                                                        {row.issues.map((issue, index) => <li key={index} className={issue.severity === 'error' ? 'text-rose-600 dark:text-rose-400' : ''}>{issue.field}: {issue.message}</li>)}
+                                                        {rowIssues.map((issue, index) => <li key={index} className={issue.severity === 'error' ? 'text-rose-600 dark:text-rose-400' : ''}>{issue.field}: {issue.message}</li>)}
                                                     </ul>
                                                 </details>}
                                             </td>
                                             {mappings.map((mapping) => {
                                                 const field = mapping.targetField;
+                                                if (isGroup && field !== 'description') return <td key={`${row.rowId}-${field}`} className="py-2 pr-3 text-slate-500 dark:text-slate-400">{field === 'title' ? row.name : '—'}</td>;
                                                 const column = getColumn(row, field);
                                                 const value = column?.finalValue || '';
                                                 const isEditing =
@@ -1370,6 +1396,17 @@ export function FeedsPage() {
 
                                                 return (
                                                     <td key={`${row.rowId}-${field}`} className="py-2 pr-3 align-top">
+                                                        {field === 'description' && isGroup && <div className="mb-1 text-xs font-medium text-indigo-700 dark:text-indigo-300">Shared description · all platforms{descriptionOverrides > 0 ? ` · ${descriptionOverrides} variant overrides kept` : ''}</div>}
+                                                        {field === 'description' && row.rowType === 'variation' && groupedVariants && <div className="mb-1 flex gap-2 text-xs text-slate-500 dark:text-slate-400">
+                                                            <span>Variant description (optional override)</span>
+                                                            <button type="button" disabled={isSavingCell} className="text-indigo-600 dark:text-indigo-300 hover:underline" onClick={async () => {
+                                                                try {
+                                                                    await saveCellValue({ row, field, value: '' });
+                                                                    if (editingCell?.rowId === row.rowId && editingCell.field === field) cancelEditing();
+                                                                    await refetchRows();
+                                                                } catch (error: any) { toast.error(error?.message || 'Failed to restore shared description'); }
+                                                            }}>Use shared description</button>
+                                                        </div>}
                                                         {isEditing ? (
                                                             <div className="space-y-1">
                                                                 {field === 'google_product_category' ? (
@@ -1396,6 +1433,7 @@ export function FeedsPage() {
                                                                     </>
                                                                 ) : field === 'description' || value.length > 90 ? (
                                                                     <textarea
+                                                                        aria-label={isGroup ? `Shared description for ${row.name}` : `${field} for ${row.name}`}
                                                                         className="w-full min-h-20 px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
                                                                         value={editingValue}
                                                                         onChange={(e) => setEditingValue(e.target.value)}
@@ -1465,7 +1503,7 @@ export function FeedsPage() {
 
                 <div className="flex flex-col gap-3 border-t border-slate-200 pt-3 dark:border-slate-700 md:flex-row md:items-center md:justify-between">
                     <div className="text-xs text-slate-500 dark:text-slate-400">
-                        Showing page {page} of {totalPages} ({total} rows)
+                        Showing page {page} of {totalPages} ({total} {groupedVariants ? 'products' : 'rows'})
                     </div>
                     <div className="flex items-center gap-2">
                         <button

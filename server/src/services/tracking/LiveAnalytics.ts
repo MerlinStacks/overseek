@@ -91,6 +91,7 @@ export async function getLiveVisitors(accountId: string) {
                     wooCustomerId: true,
                     fpScore: true,
                     cartValue: true,
+                    currency: true,
                     createdAt: true,
                     _count: {
                         select: {

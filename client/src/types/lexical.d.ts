@@ -4,6 +4,19 @@
  */
 
 declare module 'lexical' {
+    export type NodeKey = string;
+    export type Spread<T, U> = Omit<U, keyof T> & T;
+    export type SerializedLexicalNode = { type: string; version: number };
+    export type DOMExportOutput = { element: HTMLElement | null };
+    export type DOMConversionMap = Record<string, (element: HTMLElement) => { priority: 0 | 1 | 2 | 3 | 4; conversion: (element: HTMLElement) => { node: LexicalNode | null } } | null>;
+    export class LexicalNode {
+        __key: NodeKey;
+        constructor(key?: NodeKey);
+        remove(): void;
+        exportJSON(): SerializedLexicalNode;
+    }
+    export class DecoratorNode<T> extends LexicalNode {}
+    export function $getNodeByKey(key: NodeKey): LexicalNode | null;
     export class EditorState {
         read<T>(callback: () => T): T;
     }
@@ -51,6 +64,13 @@ declare module 'lexical' {
     export function $createTextNode(text: string): any;
     export function $createParagraphNode(): any;
     export function $getSelection(): any;
+    export interface RangeSelection {
+        clone(): RangeSelection;
+        anchor: { getNode(): { isAttached(): boolean } };
+        focus: { getNode(): { isAttached(): boolean } };
+    }
+    export function $setSelection(selection: RangeSelection | null): void;
+    export const FORMAT_ELEMENT_COMMAND: any;
     export function $isRangeSelection(selection: any): boolean;
     export function $insertNodes(nodes: any[]): void;
     export function createEditor(config?: any): LexicalEditor;
@@ -115,7 +135,18 @@ declare module '@lexical/html' {
 }
 
 declare module '@lexical/link' {
-    export class LinkNode { }
+    import { LexicalNode, type NodeKey, type SerializedLexicalNode } from 'lexical';
+    export type LinkAttributes = { target?: string | null; rel?: string | null; title?: string | null };
+    export type SerializedLinkNode = SerializedLexicalNode & LinkAttributes & { url: string };
+    export class LinkNode extends LexicalNode {
+        constructor(url?: string, attributes?: LinkAttributes, key?: NodeKey);
+        getURL(): string;
+        getTarget(): string | null;
+        getRel(): string | null;
+        getTitle(): string | null;
+        sanitizeUrl(url: string): string;
+        updateFromJSON(value: SerializedLinkNode): this;
+    }
     export class AutoLinkNode { }
     export function $createLinkNode(url: string): any;
     export function $isLinkNode(node: any): boolean;

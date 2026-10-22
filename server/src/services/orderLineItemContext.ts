@@ -19,10 +19,14 @@ export async function enrichOrderLineItemPermalinks(accountId: string, order: Re
         const categoryIds = (Array.isArray(raw?.categories) ? raw.categories : [])
             .map((category: any) => category?.id ?? category?.term_id)
             .filter((id: unknown) => id !== undefined && id !== null && id !== '').map(String);
+        const tagIds = (Array.isArray(raw?.tags) ? raw.tags : [])
+            .map((tag: any) => tag?.id ?? tag?.term_id)
+            .filter((id: unknown) => id !== undefined && id !== null && id !== '').map(String);
         const permalink = product.permalink;
         const hasPermalink = item.permalink || item.product_permalink || item.productUrl || item.product_url;
         return {
             ...item,
+            tagIds,
             ...(!hasPermalink && permalink ? { permalink, product_permalink: permalink, productUrl: permalink, product_url: permalink } : {}),
             ...(!(Array.isArray(item.categoryIds) && item.categoryIds.length) && categoryIds.length ? { categoryIds } : {})
         };

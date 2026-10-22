@@ -9,12 +9,13 @@ import { Monitor, Smartphone, Tablet, Globe, Apple } from 'lucide-react';
 
 /** Browser icon mapping - returns inline SVG for brand recognition */
 function getBrowserIcon(browser?: string | null): React.ReactNode {
-    if (!browser) return <Globe className="w-3.5 h-3.5 text-gray-400" />;
+    if (typeof browser !== 'string' || !browser) return <Globe className="w-3.5 h-3.5 text-gray-400" />;
 
     const b = browser.toLowerCase();
 
     // Chrome (including Mobile Chrome, Chrome WebView, Chrome Headless)
-    if ((b.includes('chrome') || b.includes('chromium')) && !b.includes('edge')) {
+    const specific = ['edge', 'samsung', 'opera', 'brave', 'vivaldi', 'duckduckgo', 'firefox'].some(name => b.includes(name));
+    if ((b.includes('chrome') || b.includes('chromium')) && !specific) {
         return (
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
                 <circle cx="12" cy="12" r="10" fill="#4285F4" />
@@ -37,7 +38,7 @@ function getBrowserIcon(browser?: string | null): React.ReactNode {
     }
 
     // Safari (including Mobile Safari)
-    if (b.includes('safari') && !b.includes('chrome')) {
+    if (b.includes('safari') && !b.includes('chrome') && !specific) {
         return (
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="10" fill="#006CFF" />
@@ -114,7 +115,7 @@ function getBrowserIcon(browser?: string | null): React.ReactNode {
 
 /** OS icon mapping */
 function getOSIcon(os?: string | null): React.ReactNode {
-    if (!os) return null;
+    if (typeof os !== 'string' || !os) return null;
 
     const o = os.toLowerCase();
 
@@ -160,7 +161,7 @@ function getOSIcon(os?: string | null): React.ReactNode {
 
 /** Device type icon */
 function getDeviceIcon(deviceType?: string | null): React.ReactNode {
-    if (!deviceType) return <Monitor className="w-3.5 h-3.5 text-gray-400" />;
+    if (typeof deviceType !== 'string' || !deviceType) return <Globe className="w-3.5 h-3.5 text-gray-400" />;
 
     const d = deviceType.toLowerCase();
 
@@ -171,7 +172,7 @@ function getDeviceIcon(deviceType?: string | null): React.ReactNode {
         return <Tablet className="w-3.5 h-3.5 text-gray-500" />;
     }
 
-    return <Monitor className="w-3.5 h-3.5 text-gray-500" />;
+    return d === 'desktop' ? <Monitor className="w-3.5 h-3.5 text-gray-500" /> : <Globe className="w-3.5 h-3.5 text-gray-400" />;
 }
 
 interface DeviceBrowserBadgeProps {
@@ -191,11 +192,17 @@ export const DeviceBrowserBadge: React.FC<DeviceBrowserBadgeProps> = ({
     deviceType,
     showLabel = false
 }) => {
+    const normalize = (value: unknown) => typeof value === 'string' && value.trim() ? value.trim().slice(0, 200) : null;
+    browser = normalize(browser); os = normalize(os); deviceType = normalize(deviceType);
+    const deviceLabel = ['desktop', 'mobile', 'tablet'].includes(deviceType?.toLowerCase() || '') ? deviceType : 'Unknown device';
+    const description = `Reported ${deviceLabel}: ${browser || 'Unknown browser'} on ${os || 'Unknown OS'}`;
     return (
-        <div className="flex items-center gap-1" title={`${browser || 'Unknown'} on ${os || 'Unknown'}`}>
+        <div role="img" aria-label={description} className="flex items-center gap-1" title={description}>
+            <span aria-hidden="true" className="flex items-center gap-1">
             {getDeviceIcon(deviceType)}
             {getBrowserIcon(browser)}
             {getOSIcon(os)}
+            </span>
             {showLabel && (
                 <span className="text-xs text-gray-500 ml-1 truncate max-w-[80px]">
                     {os || 'Unknown'}

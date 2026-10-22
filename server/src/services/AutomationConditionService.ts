@@ -163,6 +163,10 @@ export class AutomationConditionService {
                     ? items.flatMap((item: any) => this.resolveLineItemCategoryIds(item))
                     : [];
             }
+            case 'order.productTagId': {
+                const items = context.order?.line_items || context.order?.lineItems || context.line_items || [];
+                return Array.isArray(items) ? items.flatMap((item: any) => item.tagIds || []) : [];
+            }
             case 'customer.tags':
                 return context.customer?.tags || context.tags || [];
             case 'customer.emailDomain':

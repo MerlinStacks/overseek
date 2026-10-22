@@ -22,6 +22,7 @@ export const FlowEdge = memo((props: EdgeProps) => {
     } = props;
 
     const [isHovered, setIsHovered] = useState(false);
+    const [focused, setFocused] = useState(false);
     const [edgePath, labelX, labelY] = getSmoothStepPath({
         sourceX,
         sourceY,
@@ -33,7 +34,7 @@ export const FlowEdge = memo((props: EdgeProps) => {
 
     const edgeData = data as FlowEdgeData | undefined;
     const canInsert = typeof edgeData?.onInsertNode === 'function';
-    const isInsertVisible = isHovered || selected;
+    const isInsertVisible = isHovered || selected || focused;
     const selectedEdgeStyle = selected
         ? {
             ...(style || {}),
@@ -73,15 +74,18 @@ export const FlowEdge = memo((props: EdgeProps) => {
                 <EdgeLabelRenderer>
                     <button
                         type="button"
-                        className={`absolute h-6 w-6 rounded-full border border-blue-200 bg-white text-sm font-bold text-blue-600 shadow-md transition-all ${isInsertVisible ? 'pointer-events-auto opacity-100 scale-100' : 'pointer-events-none opacity-0 scale-90'}`}
+                        className={`nodrag nopan absolute h-8 w-8 rounded-full border border-blue-200 bg-white dark:bg-slate-900 text-sm font-bold text-blue-600 shadow-md focus-visible:ring-2 focus-visible:ring-indigo-500 transition-all ${isInsertVisible ? 'opacity-100 scale-100' : 'opacity-60 scale-95'}`}
                         style={{
                             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
                         }}
                         onMouseEnter={() => setIsHovered(true)}
                         onMouseLeave={() => setIsHovered(false)}
+                        onFocus={() => setFocused(true)}
+                        onBlur={() => setFocused(false)}
                         onClick={(event) => {
                             event.stopPropagation();
-                            edgeData?.onInsertNode?.(id, { x: event.clientX, y: event.clientY });
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            edgeData?.onInsertNode?.(id, { x: rect.left + rect.width / 2, y: rect.bottom });
                         }}
                         aria-label="Insert node between steps"
                     >

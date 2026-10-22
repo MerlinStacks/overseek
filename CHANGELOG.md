@@ -39,6 +39,7 @@ All notable changes to this project will be documented in this file.
 - Isolated customer catalog viewer using rasterized pages and thumbnails without a public PDF, print, or download control
 
 ### Fixed
+- WooCommerce companion 2.25.9: preserve Google gclid/gbraid/wbraid types and capture stream-specific GA4 sessions from GS1/GS2 cookies without changing Meta cookies, values or deduplication IDs. Deploy the matching server update for Google upload fields, GA4 session matching and read-only purchase-goal/value diagnostics. Release notes use WordPress's native Changelog section, with no embedded frame.
 - WooCommerce companion 2.25.7: use customer-facing order-received links for Blocks purchases, suppress identical checkout starts across capture paths for 30 minutes within a WooCommerce session, and exclude background requests from cart/checkout views. Preserve classic checkout support; historical visitor-log entries are unchanged.
 - WooCommerce companion 2.25.6: repair Meta AddToCart browser/server event IDs, prevent checkout-ID reuse, include quantities in browser values, and validate browser Purchase values/currencies without fabricating zero revenue. Preserve the SLDevs updater from published 2.25.5.
 - Meta CAPI: reject malformed Purchase revenue with non-retryable delivery diagnostics, normalize currency, use added-item value rather than cart totals, and require a Meta Test Event Code for synthetic connection-test purchases. Deploy the backend alongside companion 2.25.6.

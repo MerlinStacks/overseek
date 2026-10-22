@@ -36,6 +36,7 @@ export interface BOMComponentMapping {
         parentVariationId: number;
         quantity: number;
         wasteFactor: number;
+        excludedVariationIds?: number[];
     }>;
 }
 

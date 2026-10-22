@@ -13,6 +13,8 @@ import type { DeactivatedItem } from '../components/bom/DeactivatedItemsBanner';
 
 // Types
 export interface BOMComponent {
+    childProductId?: string;
+    childWooId?: number;
     childName: string;
     requiredQty: number;
     childStock: number;
@@ -114,6 +116,7 @@ export function useBOMSync(): UseBOMSyncReturn {
     const statusRequestRef = useRef<Promise<void> | null>(null);
     const runningRef = useRef(false);
     const startingRef = useRef(false);
+    const singleSyncRef = useRef<AbortSignal | null>(null);
     const statusVersionRef = useRef(0);
 
     // Stats and progress
@@ -228,7 +231,8 @@ export function useBOMSync(): UseBOMSyncReturn {
 
     const handleSyncSingle = useCallback(async (productId: string, variationId: number, refresh = true) => {
         const signal = getSignal();
-        if (!signal || !accountId) return;
+        if (!signal || !accountId || singleSyncRef.current === signal || runningRef.current || typeof productId !== 'string' || !productId || !Number.isInteger(variationId) || variationId < 0 || variationId > 2147483647) return;
+        singleSyncRef.current = signal;
         const key = `${productId}-${variationId}`;
         setSyncingProductId(key);
         setSyncErrors(prev => ({ ...prev, [key]: '' }));
@@ -250,10 +254,10 @@ export function useBOMSync(): UseBOMSyncReturn {
                 const errorMsg = parsedError.message;
                 setSyncErrors(prev => ({ ...prev, [key]: errorMsg }));
                 Logger.error('Sync failed', { productId, variationId, code: parsedError.code, error: errorMsg });
-            } else if (data.localDbUpdated || data.previousStock !== data.newStock) {
+            } else if (data.success === true) {
                 setSyncErrors(prev => ({ ...prev, [key]: '' }));
                 if (refresh) await fetchPendingChanges();
-            } else if (!data.success) {
+            } else {
                 const parsedError = extractBomApiError(data, 'Sync returned success=false');
                 setSyncErrors(prev => ({ ...prev, [key]: parsedError.message }));
             }
@@ -263,13 +267,14 @@ export function useBOMSync(): UseBOMSyncReturn {
             setSyncErrors(prev => ({ ...prev, [key]: errorMsg }));
             Logger.error('Failed to sync single product', { error: err });
         } finally {
+            if (singleSyncRef.current === signal) singleSyncRef.current = null;
             if (!signal.aborted) setSyncingProductId(null);
         }
     }, [accountId, token, getSignal, fetchPendingChanges]);
 
     const handleSyncAll = useCallback(async () => {
         const signal = getSignal();
-        if (!signal || !accountId || runningRef.current) return;
+        if (!signal || !accountId || runningRef.current || singleSyncRef.current === signal) return;
         runningRef.current = true;
         startingRef.current = true;
         statusVersionRef.current++;
@@ -370,7 +375,9 @@ export function useBOMSync(): UseBOMSyncReturn {
         const signal = getSignal();
         if (!signal || !accountId) return;
         try {
-            const res = await fetch('/api/inventory/bom/deactivated-items', {
+            const items: DeactivatedItem[] = []; const seen = new Set<string>(); let cursor: string | null = null;
+            for (let page = 0; page < 50; page++) {
+            const res = await fetch(`/api/inventory/bom/deactivated-items${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, {
                 signal,
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -380,9 +387,16 @@ export function useBOMSync(): UseBOMSyncReturn {
             if (res.ok) {
                 const data = await res.json();
                 if (signal.aborted) return;
-                setDeactivatedItems(data.items || []);
+                if (!Array.isArray(data.items) || data.items.length > 200) throw new Error('Invalid deactivated component page');
+                items.push(...data.items);
+                if (!data.nextCursor) { setDeactivatedItems(items); return; }
+                if (typeof data.nextCursor !== 'string' || seen.has(data.nextCursor)) throw new Error('Invalid component cursor');
+                seen.add(data.nextCursor); cursor = data.nextCursor;
+            } else throw new Error('Could not load deactivated components');
             }
+            throw new Error('Deactivated component list exceeds the display limit');
         } catch (err) {
+            if (!signal.aborted) setLoadError('Deactivated components could not be fully loaded. Refresh before using this list.');
             if (!signal.aborted) Logger.error('Failed to fetch deactivated items', { error: err });
         }
     }, [accountId, token, getSignal]);
@@ -423,6 +437,7 @@ export function useBOMSync(): UseBOMSyncReturn {
         statusRequestRef.current = null;
         runningRef.current = false;
         startingRef.current = false;
+        singleSyncRef.current = null;
         statusVersionRef.current++;
         setPendingChanges([]);
         setDeactivatedItems([]);

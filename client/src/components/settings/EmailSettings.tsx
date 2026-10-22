@@ -247,7 +247,7 @@ export function EmailSettings() {
                         onChange={setEmailFooterHtml}
                         placeholder="<p>You are receiving this email from Your Store...</p>"
                         variant="standard"
-                        features={['bold', 'italic', 'underline', 'link', 'list', 'align', 'mergeTag']}
+                        features={['bold', 'italic', 'underline', 'link', 'list', 'align', 'mergeTag', 'image', 'social']}
                         mergeTags={EMAIL_FOOTER_MERGE_TAGS}
                     />
                     <div className="flex justify-end">

@@ -13,7 +13,7 @@ import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { MetaMessagingService } from '../services/messaging/MetaMessagingService';
 import { MetaTokenService } from '../services/meta/MetaTokenService';
-import { buildCallbackUrl, buildFrontendUrl, createSignedOauthState, verifySignedOauthState } from './oauthHelpers';
+import { buildCallbackUrl, buildFrontendUrl, createSignedOauthState, verifySignedOauthState, assertOauthPermission } from './oauthHelpers';
 import { getOauthAccountIdOrReply } from './oauthRouteHelpers';
 
 /** Current Meta Graph API version */
@@ -26,7 +26,9 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/meta/exchange', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
             const { shortLivedToken } = request.body as { shortLivedToken?: string };
-            if (!shortLivedToken) return reply.code(400).send({ error: 'Missing shortLivedToken' });
+            if (typeof shortLivedToken !== 'string' || !shortLivedToken || shortLivedToken.length > 20000) return reply.code(400).send({ error: 'Invalid token' });
+            if (!request.accountId || !request.user?.id) return reply.code(400).send({ error: 'Select an account' });
+            await assertOauthPermission(request.user.id, request.accountId, 'META_ADS');
 
             // Use MetaTokenService for proper error handling
             const result = await MetaTokenService.exchangeForLongLived(shortLivedToken, 'META_ADS');
@@ -37,7 +39,7 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             };
         } catch (error: any) {
             Logger.error('Meta token exchange failed', { error });
-            return reply.code(500).send({ error: error.message });
+            return reply.code(503).send({ error: 'Meta operation unavailable' });
         }
     });
 
@@ -55,10 +57,12 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             const { appId } = await MetaTokenService.getCredentials('META_ADS');
             const state = await createSignedOauthState({
                 accountId,
+                userId: request.user!.id,
+                callbackUrl: buildCallbackUrl(request, 'meta/ads/callback'),
                 frontendRedirect,
                 reconnectId,
                 provider: 'META_ADS'
-            });
+            }, reply);
 
             const callbackUrl = buildCallbackUrl(request, 'meta/ads/callback');
 
@@ -67,7 +71,7 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             return { authUrl };
         } catch (error: any) {
             Logger.error('Meta Ads OAuth init failed', { error });
-            return reply.code(500).send({ error: error.message });
+            return reply.code(503).send({ error: 'Could not start Meta connection' });
         }
     });
 
@@ -80,26 +84,24 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
 
         try {
             const query = request.query as { code?: string; state?: string; error?: string; error_description?: string };
-            const { code, state, error, error_description } = query;
+            const { code, state, error } = query;
+            if (!state || (!code && !error) || code && (typeof code !== 'string' || code.length > 4096)) return reply.redirect(buildFrontendUrl(defaultPath, { error: 'missing_params' }));
 
-            if (error) {
-                Logger.warn('[MetaAdsOAuth] OAuth denied by user', { error, error_description });
-                return reply.redirect(buildFrontendUrl(defaultPath, { error: 'oauth_denied', message: error_description || error }));
-            }
-            if (!code || !state) return reply.redirect(buildFrontendUrl(defaultPath, { error: 'missing_params' }));
-
-            const stateData = await verifySignedOauthState<{ accountId: string; frontendRedirect: string; reconnectId?: string; provider: string }>(state);
+            const stateData = await verifySignedOauthState(state, request, reply, 'META_ADS');
             if (!stateData || stateData.provider !== 'META_ADS') {
                 return reply.redirect(buildFrontendUrl(defaultPath, { error: 'invalid_state' }));
             }
             if (stateData.frontendRedirect) redirectPath = stateData.frontendRedirect;
+            if (error) return reply.redirect(buildFrontendUrl(redirectPath, { error: 'oauth_denied' }));
+            if (!code) return reply.redirect(buildFrontendUrl(defaultPath, { error: 'missing_params' }));
 
             const { appId, appSecret } = await MetaTokenService.getCredentials('META_ADS');
-            const callbackUrl = buildCallbackUrl(request, 'meta/ads/callback');
+            const callbackUrl = stateData.callbackUrl;
 
             // Step 1: Exchange code for short-lived token
             Logger.info('[MetaAdsOAuth] Exchanging code for access token');
             const tokenResponse = await fetch(`https://graph.facebook.com/${API_VERSION}/oauth/access_token`, {
+                signal: AbortSignal.timeout(20000),
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({
@@ -111,9 +113,9 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             });
             const tokenData = await tokenResponse.json() as any;
 
-            if (tokenData.error) {
+            if (!tokenResponse.ok || tokenData.error || typeof tokenData.access_token !== 'string' || !tokenData.access_token || tokenData.access_token.length > 20000) {
                 Logger.error('[MetaAdsOAuth] Code exchange failed', { error: tokenData.error });
-                throw new Error(tokenData.error.message);
+                throw new Error('Token exchange failed');
             }
 
             // Step 2: Exchange for long-lived token
@@ -122,6 +124,7 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
 
             // If reconnecting an existing account, update its tokens
             if (stateData.reconnectId) {
+                await assertOauthPermission(stateData.userId, stateData.accountId, stateData.provider);
                 await AdsService.updateAccountTokens(stateData.accountId, stateData.reconnectId, {
                     accessToken: tokenResult.accessToken
                 });
@@ -146,6 +149,7 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             // For now, connect the first active ad account (status 1 = active)
             const activeAccount = adAccountsData.data.find((acc: any) => acc.account_status === 1) || adAccountsData.data[0];
 
+            await assertOauthPermission(stateData.userId, stateData.accountId, stateData.provider);
             await AdsService.connectAccount(stateData.accountId, {
                 platform: 'META',
                 externalId: activeAccount.id,
@@ -162,7 +166,7 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
 
         } catch (error: any) {
             Logger.error('[MetaAdsOAuth] Callback failed', { error: error.message });
-            return reply.redirect(buildFrontendUrl(redirectPath, { error: 'oauth_failed', message: error.message }));
+            return reply.redirect(buildFrontendUrl(redirectPath, { error: 'oauth_failed' }));
         }
     });
 
@@ -181,8 +185,10 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             const state = await createSignedOauthState({
                 accountId,
                 frontendRedirect,
+                userId: request.user!.id,
+                callbackUrl: buildCallbackUrl(request, 'meta/messaging/callback'),
                 provider: 'META_MESSAGING'
-            });
+            }, reply);
 
             const callbackUrl = buildCallbackUrl(request, 'meta/messaging/callback');
 
@@ -191,7 +197,7 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             return { authUrl };
         } catch (error: any) {
             Logger.error('Meta messaging OAuth init failed', { error });
-            return reply.code(500).send({ error: error.message });
+            return reply.code(503).send({ error: 'Could not start Meta connection' });
         }
     });
 
@@ -204,28 +210,26 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
 
         try {
             const query = request.query as { code?: string; state?: string; error?: string; error_description?: string };
-            const { code, state, error, error_description } = query;
+            const { code, state, error } = query;
+            if (!state || (!code && !error) || code && (typeof code !== 'string' || code.length > 4096)) return reply.redirect(buildFrontendUrl(defaultPath, { error: 'missing_params' }));
 
-            if (error) {
-                Logger.warn('[MetaOAuth] OAuth denied by user', { error, error_description });
-                return reply.redirect(buildFrontendUrl(defaultPath, { error: 'oauth_denied', message: error_description || error }));
-            }
-            if (!code || !state) return reply.redirect(buildFrontendUrl(defaultPath, { error: 'missing_params' }));
-
-            const stateData = await verifySignedOauthState<{ accountId: string; frontendRedirect: string; provider: string }>(state);
+            const stateData = await verifySignedOauthState(state, request, reply, 'META_MESSAGING');
             if (!stateData || stateData.provider !== 'META_MESSAGING') {
                 return reply.redirect(buildFrontendUrl(defaultPath, { error: 'invalid_state' }));
             }
             if (stateData.frontendRedirect) redirectPath = stateData.frontendRedirect;
             const accountId = stateData.accountId;
+            if (error) return reply.redirect(buildFrontendUrl(redirectPath, { error: 'oauth_denied' }));
+            if (!code) return reply.redirect(buildFrontendUrl(defaultPath, { error: 'missing_params' }));
 
             // Get credentials via unified service
             const { appId, appSecret } = await MetaTokenService.getCredentials('META_MESSAGING');
-            const callbackUrl = buildCallbackUrl(request, 'meta/messaging/callback');
+            const callbackUrl = stateData.callbackUrl;
 
             // Step 1: Exchange code for short-lived token
             Logger.info('[MetaOAuth] Exchanging code for access token');
             const tokenResponse = await fetch(`https://graph.facebook.com/${API_VERSION}/oauth/access_token`, {
+                signal: AbortSignal.timeout(20000),
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({
@@ -237,9 +241,9 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             });
             const tokenData = await tokenResponse.json() as any;
 
-            if (tokenData.error) {
+            if (!tokenResponse.ok || tokenData.error || typeof tokenData.access_token !== 'string' || !tokenData.access_token || tokenData.access_token.length > 20000) {
                 Logger.error('[MetaOAuth] Code exchange failed', { error: tokenData.error });
-                throw new Error(tokenData.error.message);
+                throw new Error('Token exchange failed');
             }
 
             // Step 2: Exchange for long-lived token - NO SILENT FALLBACK
@@ -255,7 +259,7 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
                 });
                 return reply.redirect(buildFrontendUrl(redirectPath, {
                     error: 'token_exchange_failed',
-                    message: exchangeError.message
+                    message: 'Could not acquire a long-lived token'
                 }));
             }
 
@@ -276,6 +280,7 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             const igAccount = await MetaMessagingService.getInstagramBusinessAccount(page.accessToken, page.id);
 
             // Store Facebook + Instagram accounts atomically
+            await assertOauthPermission(stateData.userId, stateData.accountId, stateData.provider);
             await prisma.$transaction(async (tx) => {
                 await tx.socialAccount.upsert({
                     where: { accountId_platform_externalId: { accountId, platform: 'FACEBOOK', externalId: page.id } },
@@ -357,7 +362,7 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
 
         } catch (error: any) {
             Logger.error('Meta messaging OAuth callback failed', { error });
-            return reply.redirect(buildFrontendUrl(redirectPath, { error: 'oauth_failed', message: error.message }));
+            return reply.redirect(buildFrontendUrl(redirectPath, { error: 'oauth_failed' }));
         }
     });
 };

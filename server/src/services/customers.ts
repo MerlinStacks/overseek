@@ -1047,16 +1047,17 @@ export class CustomersService {
             : { accountId, id: customerId };
 
         const customer = await prisma.wooCustomer.findFirst({ where: whereClause });
-        if (!customer) return { duplicates: [] };
+        if (!customer) throw Object.assign(new Error('Customer unavailable'), { statusCode: 404 });
 
         const email = customer.email;
+        if (!email || !email.includes('@')) return { target: { id: customer.id, wooId: customer.wooId, firstName: customer.firstName, lastName: customer.lastName, email, updatedAt: customer.updatedAt }, duplicates: [], truncated: false };
 
         // Find other customers with matching email
         const duplicates = await prisma.wooCustomer.findMany({
             where: {
                 accountId,
                 id: { not: customer.id },
-                email: email
+                email: { equals: email, mode: 'insensitive' }
             },
             select: {
                 id: true,
@@ -1065,8 +1066,11 @@ export class CustomersService {
                 lastName: true,
                 email: true,
                 ordersCount: true,
-                totalSpent: true
-            }
+                totalSpent: true,
+                updatedAt: true
+            },
+            orderBy: { id: 'asc' },
+            take: 101
         });
 
         return {
@@ -1077,9 +1081,10 @@ export class CustomersService {
                 lastName: customer.lastName,
                 email: customer.email,
                 ordersCount: customer.ordersCount,
-                totalSpent: customer.totalSpent
+                totalSpent: customer.totalSpent,
+                updatedAt: customer.updatedAt
             },
-            duplicates
+            duplicates: duplicates.slice(0, 100), truncated: duplicates.length > 100
         };
     }
 
@@ -1087,85 +1092,8 @@ export class CustomersService {
      * Merge source customer into target customer.
      * Transfers orders, conversations, automation enrollments, then deletes source.
      */
-    static async mergeCustomers(accountId: string, targetId: string, sourceId: string) {
-        Logger.info(`Merging customer ${sourceId} into ${targetId}`, { accountId });
-
-        // Get both customers before entering the transaction
-        const target = await prisma.wooCustomer.findFirst({ where: { accountId, id: targetId } });
-        const source = await prisma.wooCustomer.findFirst({ where: { accountId, id: sourceId } });
-
-        if (!target || !source) {
-            throw new Error('Customer not found');
-        }
-
-        // Fetch orders to update before the transaction (read-only, no lock needed)
-        const sourceOrders = await prisma.wooOrder.findMany({
-            where: {
-                accountId,
-                rawData: { path: ['customer_id'], equals: source.wooId }
-            },
-            select: { id: true, rawData: true }
-        });
-
-        // All writes are atomic — if any step fails the whole merge rolls back.
-        // Why: a crash between steps would leave a partially-merged record.
-        // timeout: 30s — customers with large order histories can have 50+ concurrent
-        // order updates inside the transaction; the default 5s is too tight.
-        const result = await prisma.$transaction(async (tx) => {
-            // 1. Transfer Orders (unique rawData per order — parallel within transaction)
-            const orderUpdates = sourceOrders.map(order => {
-                const rawData = order.rawData as any;
-                rawData.customer_id = target.wooId;
-                return tx.wooOrder.update({
-                    where: { id: order.id },
-                    data: { rawData }
-                });
-            });
-            await Promise.all(orderUpdates);
-
-            // 2. Transfer Conversations
-            await tx.conversation.updateMany({
-                where: { accountId, wooCustomerId: source.id },
-                data: { wooCustomerId: target.id }
-            });
-
-            // 3. Transfer Automation Enrollments
-            await tx.automationEnrollment.updateMany({
-                where: { email: source.email },
-                data: { email: target.email }
-            });
-
-            // 4. Update target totals
-            const newTotalSpent = Number(target.totalSpent) + Number(source.totalSpent);
-            await tx.wooCustomer.update({
-                where: { id: target.id },
-                data: {
-                    ordersCount: target.ordersCount + source.ordersCount,
-                    totalSpent: newTotalSpent
-                }
-            });
-
-            // 5. Delete source customer
-            await tx.wooCustomer.delete({ where: { id: source.id } });
-
-            return sourceOrders.length;
-        }, {
-            // Default Prisma interactive tx timeout is 5s — too tight for customers with
-            // 50+ orders doing parallel updates inside the transaction.
-            timeout: 30_000
-        });
-
-
-        Logger.info(`Customer merge complete`, {
-            targetId,
-            sourceId,
-            ordersTransferred: result
-        });
-
-        return {
-            success: true,
-            ordersTransferred: result,
-            targetId
-        };
+    static async mergeCustomers(accountId: string, targetId: string, input: unknown, userId: string) {
+        const { mergeCustomersSafely } = await import('./customers/SafeCustomerMerge');
+        return mergeCustomersSafely(accountId, userId, targetId, input);
     }
 }

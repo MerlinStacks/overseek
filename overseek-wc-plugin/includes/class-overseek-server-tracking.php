@@ -880,6 +880,12 @@ class OverSeek_Server_Tracking
             return;
         }
 
+        // The thank-you page can display failed payments, and the Blocks hook
+        // can run before payment. Neither is proof of a completed purchase.
+        if (!$order->is_paid()) {
+            return;
+        }
+
         // Prevent duplicate tracking
         if ($order->get_meta('_overseek_tracked')) {
             return;

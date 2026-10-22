@@ -28,7 +28,7 @@ import type {
     AIKeywordRecommendation,
 } from '../../hooks/useSeoKeywords';
 import { useApi } from '../../hooks/useApi';
-import { navigateToSafeUrl } from '../../utils/url';
+import { navigateToOAuthUrl } from '../../utils/url';
 
 /** Priority badge color mapping */
 const PRIORITY_COLORS = {
@@ -139,7 +139,7 @@ function SearchConsoleActionPrompt({
         setLoading(true);
         try {
             const res = await api.get<{ authUrl: string }>('/api/oauth/search-console/authorize?redirect=/seo');
-            if (!navigateToSafeUrl(res.authUrl)) throw new Error('Invalid Search Console OAuth redirect URL');
+            if (!navigateToOAuthUrl(res.authUrl)) throw new Error('Invalid Search Console OAuth redirect URL');
         } catch {
             setLoading(false);
         }
@@ -204,8 +204,9 @@ function SummaryBar({ siteUrl }: { siteUrl?: string }) {
 
 /** Low-hanging fruit: keywords position 5-20 with upside potential */
 function LowHangingFruitPanel({ siteUrl }: { siteUrl?: string }) {
-    const { data, isLoading } = useKeywordRecommendations(siteUrl);
+    const { data, isLoading, error, refetch } = useKeywordRecommendations(siteUrl);
     const items = data?.lowHangingFruit || [];
+    if (error) return <p role="alert">Recommendation observations unavailable. <button type="button" onClick={() => void refetch()}>Retry recommendations</button></p>;
 
     return (
         <PanelCard
@@ -216,8 +217,9 @@ function LowHangingFruitPanel({ siteUrl }: { siteUrl?: string }) {
             iconBg="bg-orange-100 dark:bg-orange-900/30"
             loading={isLoading}
         >
+            <p className="text-xs text-slate-500">Heuristic upside assumes 15% CTR and constant impressions from a returned query sample; it is not a traffic forecast. {data?.warnings?.join('; ')}</p>
             {items.length === 0 ? (
-                <EmptyPanel message="No low-hanging fruit found. Connect more data or check back later." />
+                <EmptyPanel message="No candidates returned from this query sample; this does not establish absence of opportunities." />
             ) : (
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -307,15 +309,16 @@ function TrendingPanel({ siteUrl }: { siteUrl?: string }) {
 
 /** Keyword gaps: products without organic coverage */
 function KeywordGapsPanel({ siteUrl }: { siteUrl?: string }) {
-    const { data, isLoading } = useKeywordRecommendations(siteUrl);
+    const { data, isLoading, error } = useKeywordRecommendations(siteUrl);
     const items = data?.keywordGaps || [];
+    if (error || data?.warnings?.includes('keywordGaps unavailable')) return <p role="status">Catalog candidate analysis unavailable.</p>;
 
     if (!isLoading && items.length === 0) return null;
 
     return (
         <PanelCard
-            title="Keyword Gaps"
-            subtitle="Products without organic search coverage"
+            title="Keyword Candidates"
+            subtitle="Terms absent from the returned query sample, not proven visibility gaps"
             icon={Search}
             iconColor="text-purple-500 dark:text-purple-400"
             iconBg="bg-purple-100 dark:bg-purple-900/30"
@@ -347,8 +350,9 @@ function KeywordGapsPanel({ siteUrl }: { siteUrl?: string }) {
 
 /** AI-generated strategic recommendations */
 function AIRecommendationsPanel({ siteUrl }: { siteUrl?: string }) {
-    const { data, isLoading } = useKeywordRecommendations(siteUrl);
+    const { data, isLoading, error } = useKeywordRecommendations(siteUrl);
     const items = data?.aiRecommendations || [];
+    if (error || data?.warnings?.includes('aiRecommendations unavailable')) return <p role="status">AI synthesis unavailable or not configured; this is not a successful empty analysis.</p>;
 
     if (!isLoading && items.length === 0) return null;
 

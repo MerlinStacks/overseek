@@ -7,7 +7,7 @@
 
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
-import { cacheAside, CacheTTL } from '../utils/cache';
+import { readPublishedPolicies } from './PublishedPolicyReader';
 import { extractOrderTracking, TrackingItem } from '../utils/orderTracking';
 
 async function safeOpenRouterJson(response: Response, context: string): Promise<any> {
@@ -94,15 +94,7 @@ export class InboxAIService {
             const context = this.buildConversationContext(conversation, recentOrders);
 
             // 5. Fetch published policies for the account
-            const policies = await cacheAside(
-                `policies:${accountId}`,
-                async () => prisma.policy.findMany({
-                    where: { accountId, isPublished: true },
-                    select: { title: true, content: true, type: true },
-                    orderBy: [{ type: 'asc' }, { title: 'asc' }]
-                }),
-                { ttl: CacheTTL.LONG }
-            );
+            const policies = await readPublishedPolicies(accountId);
 
             // EDGE CASE: Warn when no policies are configured - AI will give generic responses
             const noPoliciesWarning = policies.length === 0;
@@ -210,15 +202,7 @@ Generate a complete reply that incorporates and improves upon the current draft.
             }
 
             // Fetch published policies for context
-            const policies = await cacheAside(
-                `policies:${accountId}`,
-                async () => prisma.policy.findMany({
-                    where: { accountId, isPublished: true },
-                    select: { title: true, content: true, type: true },
-                    orderBy: [{ type: 'asc' }, { title: 'asc' }]
-                }),
-                { ttl: CacheTTL.LONG }
-            );
+            const policies = await readPublishedPolicies(accountId);
 
             const policiesText = policies.length > 0
                 ? policies.map(p => `### ${p.title}\n${this.stripHtmlTags(p.content)}`).join('\n\n')

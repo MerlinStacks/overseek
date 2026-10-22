@@ -67,9 +67,9 @@ export function evaluateEmailPreflight({ html, subject = '', emailCategory = 'MA
         issues.push({ id: 'cta', severity: 'warning', message: 'No CTA link detected. Consider adding at least one action link.' });
     }
 
-    const hasUnsubscribe = lower.includes('unsubscribe');
+    const hasUnsubscribe = /<a\b[^>]*\bhref\s*=\s*["'][^"']*(?:unsubscribe|preferences_url)[^"']*["']/i.test(trimmedHtml);
     if (emailCategory === 'MARKETING' && !hasUnsubscribe) {
-        issues.push({ id: 'unsubscribe', severity: 'blocking', message: 'Marketing emails should include unsubscribe wording.' });
+        issues.push({ id: 'unsubscribe', severity: 'blocking', message: 'Marketing emails need an unsubscribe or preferences link, not just wording.' });
     }
 
     const hasGenericMergeTag = /{{\s*}}/.test(trimmedHtml) || /{{\s*}}/.test(trimmedSubject);

@@ -21,17 +21,19 @@ function initialDesign() {
 
 beforeEach(() => {
     localStorage.clear();
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url === '/api/marketing/preview-email' ? {
+        html: '<html><body>Prepared</body></html>', canonicalHtml: '<p>Prepared canonical content</p>', subject: 'Saved subject', previewText: 'Keep my preview', text: 'Prepared', hash: 'a'.repeat(64), rendererVersion: 'test-renderer', assets: [], missingTags: [], orderId: null, scenario: 'standard',
+    } : url === '/api/marketing/designer/sections' ? { presets: [] } : [] })));
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('email designer integration', () => {
-    it('keeps the desktop HTML viewport wider than the mobile CSS breakpoint', () => {
+    it('keeps the desktop HTML viewport wider than the mobile CSS breakpoint', async () => {
         render(<EmailDesignEditorV2 initialDesign={initialDesign()} onSave={vi.fn()} onCancel={vi.fn()} />);
-        fireEvent.click(screen.getByText('Real Email', { exact: true }));
-        expect(screen.getByTitle('Compiled email HTML preview').parentElement).toHaveStyle({ width: '920px' });
+        fireEvent.click(screen.getByRole('button', { name: 'Delivery preview' }));
+        expect((await screen.findByTitle('Prepared delivery HTML preview')).parentElement).toHaveStyle({ width: '920px' });
         fireEvent.change(screen.getByLabelText('Preview device'), { target: { value: 'iphone-se' } });
-        expect(screen.getByTitle('Compiled email HTML preview').parentElement).toHaveStyle({ width: '375px' });
+        expect(screen.getByTitle('Prepared delivery HTML preview').parentElement).toHaveStyle({ width: '375px' });
     });
 
     it('preserves embedded preview text when no explicit override is provided', async () => {
@@ -62,14 +64,16 @@ describe('email designer integration', () => {
     });
 
     it('sends tests using the flow category and explicit preview text', async () => {
-        const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
-        vi.stubGlobal('fetch', fetchMock);
+        const fetchMock = vi.mocked(fetch);
         render(<EmailDesignEditorV2 initialDesign={initialDesign()} emailCategory="TRANSACTIONAL" previewOrderMode="none" onSave={vi.fn()} onCancel={vi.fn()} />);
         fireEvent.click(screen.getByText('Test', { exact: true }));
         fireEvent.click(screen.getByText('Send test', { exact: true }));
+        await screen.findByTitle('Prepared delivery HTML preview');
+        expect(fetchMock.mock.calls.some(([url]) => url === '/api/marketing/test-email')).toBe(false);
+        fireEvent.click(screen.getByText('Send test', { exact: true }));
         await screen.findByText('Test email sent to tester@example.com.');
         const call = fetchMock.mock.calls.find(([url]) => url === '/api/marketing/test-email')!;
-        expect(JSON.parse(call[1].body)).toMatchObject({ category: 'TRANSACTIONAL', previewText: 'Keep my preview', orderId: null });
+        expect(JSON.parse(call[1]!.body as string)).toMatchObject({ category: 'TRANSACTIONAL', previewText: 'Keep my preview', orderId: null, content: '<p>Prepared canonical content</p>' });
     });
 
     it('loads only history and reusable sections from this account AND email', async () => {

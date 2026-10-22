@@ -1,339 +1,71 @@
-/**
- * Learning Service
- * 
- * Manages account-specific marketing learnings that extend the static knowledge base.
- * Supports user-created rules and AI-derived suggestions (requiring approval).
- * 
- * Part of AI Marketing Intelligence Phase 4.
- */
-
+import crypto from 'node:crypto';
+import { z } from 'zod';
+import type { MarketingLearning } from '@prisma/client';
 import { prisma } from '../../../utils/prisma';
-import { Logger } from '../../../utils/logger';
-
-
-export type LearningPlatform = 'google' | 'meta' | 'both';
-export type LearningCategory = 'bid_strategy' | 'audience' | 'creative' | 'budget' | 'structure' | 'optimization';
+import { PermissionService } from '../../PermissionService';
+const id = z.string().trim().min(1).max(200);
+const platform = z.enum(['google', 'meta', 'both']), category = z.enum(['bid_strategy', 'audience', 'creative', 'budget', 'structure', 'optimization']);
+export const createLearningSchema = z.object({ id: z.string().uuid(), platform, category, condition: z.string().trim().min(1).max(4000), recommendation: z.string().trim().min(1).max(10000), explanation: z.string().max(10000).optional() }).strict();
+export const updateLearningSchema = createLearningSchema.omit({ id: true, platform: true, category: true }).partial().extend({ isActive: z.boolean().optional(), version: z.string().datetime() }).strict();
+export const learningVersionSchema = z.object({ version: z.string().datetime() }).strict();
+export type LearningPlatform = z.infer<typeof platform>;
+export type LearningCategory = z.infer<typeof category>;
 export type LearningSource = 'user' | 'ai_derived';
-
-export interface CreateLearningInput {
-    platform: LearningPlatform;
-    category: LearningCategory;
-    condition: string;
-    recommendation: string;
-    explanation?: string;
-    source?: LearningSource;
-    isPending?: boolean;
-    derivedFromRecommendationIds?: string[];
-}
-
-export interface UpdateLearningInput {
-    condition?: string;
-    recommendation?: string;
-    explanation?: string;
-    isActive?: boolean;
-    isPending?: boolean;
-}
-
-export interface LearningWithStats {
-    id: string;
-    platform: string;
-    category: string;
-    condition: string;
-    recommendation: string;
-    explanation: string | null;
-    source: string;
-    isActive: boolean;
-    isPending: boolean;
-    appliedCount: number;
-    successCount: number;
-    successRate: number;
-    createdAt: Date;
-}
-
-
+export type CreateLearningInput = z.infer<typeof createLearningSchema>;
+export type UpdateLearningInput = z.infer<typeof updateLearningSchema>;
+export type LearningWithStats = Omit<MarketingLearning, 'derivedFromRecommendationIds'> & { successRate: null };
+const conflict = () => Object.assign(new Error('Learning changed or unavailable; reload'), { statusCode: 409 });
+const present = (row: MarketingLearning): LearningWithStats => { const { derivedFromRecommendationIds: _lineage, ...rest } = row; return { ...rest, successRate: null }; };
+async function authorize(accountId: string, userId: string) { id.parse(accountId); id.parse(userId); if (!await PermissionService.hasPermission(userId, accountId, 'manage_marketing')) throw Object.assign(new Error('Marketing management permission required'), { statusCode: 403 }); }
 export class LearningService {
-    /**
-     * Create a new learning rule.
-     */
-    static async create(
-        accountId: string,
-        input: CreateLearningInput
-    ): Promise<LearningWithStats> {
-        const learning = await prisma.marketingLearning.create({
-            data: {
-                accountId,
-                platform: input.platform,
-                category: input.category,
-                condition: input.condition,
-                recommendation: input.recommendation,
-                explanation: input.explanation,
-                source: input.source || 'user',
-                isPending: input.isPending || false,
-                derivedFromRecommendationIds: input.derivedFromRecommendationIds
-                    ? JSON.stringify(input.derivedFromRecommendationIds)
-                    : undefined
-            }
-        });
-
-        Logger.info('Created marketing learning', {
-            learningId: learning.id,
-            accountId,
-            source: input.source
-        });
-
-        return this.toLearningWithStats(learning);
+    static async create(accountId: string, input: CreateLearningInput, userId: string): Promise<LearningWithStats> {
+        await authorize(accountId, userId); const data = createLearningSchema.parse(input);
+        try { return present(await prisma.marketingLearning.create({ data: { ...data, accountId, source: 'user', isActive: true, isPending: false } })); }
+        catch (error) {
+            if ((error as { code?: string }).code !== 'P2002') throw error;
+            const row = await prisma.marketingLearning.findFirst({ where: { id: data.id, accountId, source: 'user' } });
+            if (!row || Object.entries(data).some(([key, value]) => row[key as keyof typeof row] !== value)) throw conflict(); return present(row);
+        }
     }
-
-    /**
-     * Update an existing learning rule.
-     */
-    static async update(
-        id: string,
-        accountId: string,
-        input: UpdateLearningInput
-    ): Promise<LearningWithStats | null> {
-        const existing = await prisma.marketingLearning.findFirst({
-            where: { id, accountId }
+    static async update(learningId: string, accountId: string, input: unknown, userId: string): Promise<LearningWithStats> {
+        await authorize(accountId, userId); id.parse(learningId); const { version, ...data } = updateLearningSchema.parse(input);
+        return prisma.$transaction(async tx => {
+            const changed = await tx.marketingLearning.updateMany({ where: { id: learningId, accountId, updatedAt: new Date(version), isPending: false }, data: { ...data, updatedAt: new Date(Math.max(Date.now(), Date.parse(version) + 1)) } });
+            if (changed.count !== 1) throw conflict(); return present(await tx.marketingLearning.findFirstOrThrow({ where: { id: learningId, accountId } }));
         });
-
-        if (!existing) return null;
-
-        const updated = await prisma.marketingLearning.update({
-            where: { id },
-            data: {
-                condition: input.condition,
-                recommendation: input.recommendation,
-                explanation: input.explanation,
-                isActive: input.isActive,
-                isPending: input.isPending
-            }
-        });
-
-        return this.toLearningWithStats(updated);
     }
-
-    /**
-     * Delete a learning rule.
-     */
-    static async delete(id: string, accountId: string): Promise<boolean> {
-        const existing = await prisma.marketingLearning.findFirst({
-            where: { id, accountId }
-        });
-
-        if (!existing) return false;
-
-        await prisma.marketingLearning.delete({ where: { id } });
-        Logger.info('Deleted marketing learning', { learningId: id, accountId });
+    static async delete(learningId: string, accountId: string, input: unknown, userId: string) {
+        await authorize(accountId, userId); id.parse(learningId); const { version } = learningVersionSchema.parse(input);
+        if ((await prisma.marketingLearning.deleteMany({ where: { id: learningId, accountId, updatedAt: new Date(version) } })).count !== 1) throw conflict(); return true;
+    }
+    static async list(accountId: string, options: { includeInactive?: boolean; includePending?: boolean; platform?: LearningPlatform; category?: LearningCategory } = {}): Promise<LearningWithStats[]> {
+        id.parse(accountId); const parsed = z.object({ includeInactive: z.boolean().optional(), includePending: z.boolean().optional(), platform: platform.optional(), category: category.optional() }).strict().parse(options);
+        const rows = await prisma.marketingLearning.findMany({ where: { accountId, ...(!parsed.includeInactive ? { isActive: true } : {}), ...(!parsed.includePending ? { isPending: false } : {}), ...(parsed.platform ? { platform: { in: [parsed.platform, 'both'] } } : {}), ...(parsed.category ? { category: parsed.category } : {}) }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 501 });
+        if (rows.length > 500) throw Object.assign(new Error('Learning coverage limit exceeded; narrow configuration'), { statusCode: 409 });
+        return rows.map(present);
+    }
+    static async getById(learningId: string, accountId: string) { id.parse(accountId); id.parse(learningId); const row = await prisma.marketingLearning.findFirst({ where: { id: learningId, accountId } }); return row ? present(row) : null; }
+    static async getPending(accountId: string) { return (await this.list(accountId, { includeInactive: true, includePending: true })).filter(row => row.isPending && row.source === 'ai_derived'); }
+    static async approvePending(learningId: string, accountId: string, input: unknown, userId: string) {
+        await authorize(accountId, userId); id.parse(learningId); const { version } = learningVersionSchema.parse(input);
+        if ((await prisma.marketingLearning.updateMany({ where: { id: learningId, accountId, source: 'ai_derived', isPending: true, updatedAt: new Date(version) }, data: { isPending: false, isActive: true, updatedAt: new Date(Math.max(Date.now(), Date.parse(version) + 1)) } })).count !== 1) throw conflict();
         return true;
     }
-
-    /**
-     * Get all learnings for an account.
-     */
-    static async list(
-        accountId: string,
-        options?: {
-            includeInactive?: boolean;
-            includePending?: boolean;
-            platform?: LearningPlatform;
-            category?: LearningCategory;
-        }
-    ): Promise<LearningWithStats[]> {
-        const where: any = { accountId };
-
-        if (!options?.includeInactive) {
-            where.isActive = true;
-        }
-        if (!options?.includePending) {
-            where.isPending = false;
-        }
-        if (options?.platform) {
-            where.platform = { in: [options.platform, 'both'] };
-        }
-        if (options?.category) {
-            where.category = options.category;
-        }
-
-        const learnings = await prisma.marketingLearning.findMany({
-            where,
-            orderBy: { createdAt: 'desc' }
-        });
-
-        return learnings.map(l => this.toLearningWithStats(l));
-    }
-
-    /**
-     * Get a single learning by ID.
-     */
-    static async getById(id: string, accountId: string): Promise<LearningWithStats | null> {
-        const learning = await prisma.marketingLearning.findFirst({
-            where: { id, accountId }
-        });
-
-        return learning ? this.toLearningWithStats(learning) : null;
-    }
-
-    /**
-     * Approve a pending AI-derived learning.
-     */
-    static async approvePending(id: string, accountId: string): Promise<boolean> {
-        const existing = await prisma.marketingLearning.findFirst({
-            where: { id, accountId, isPending: true }
-        });
-
-        if (!existing) return false;
-
-        await prisma.marketingLearning.update({
-            where: { id },
-            data: { isPending: false }
-        });
-
-        Logger.info('Approved marketing learning', { learningId: id, accountId });
-        return true;
-    }
-
-    /**
-     * Get pending AI-derived learnings awaiting approval.
-     */
-    static async getPending(accountId: string): Promise<LearningWithStats[]> {
-        const learnings = await prisma.marketingLearning.findMany({
-            where: { accountId, isPending: true, source: 'ai_derived' },
-            orderBy: { createdAt: 'desc' }
-        });
-
-        return learnings.map(l => this.toLearningWithStats(l));
-    }
-
-    /**
-     * Increment the applied count for a learning.
-     * Called when a learning rule matches and generates a recommendation.
-     */
-    static async recordApplication(id: string): Promise<void> {
-        await prisma.marketingLearning.update({
-            where: { id },
-            data: { appliedCount: { increment: 1 } }
+    /** Only an explicitly admitted occurrence can count; matching/display alone is not application. */
+    static async recordApplication(accountId: string, userId: string, learningId: string, version: string, occurrence: string) {
+        await authorize(accountId, userId); id.parse(learningId); id.parse(occurrence); z.string().datetime().parse(version);
+        const claimId = crypto.createHash('sha256').update(JSON.stringify(['learning-application', accountId, learningId, occurrence])).digest('hex');
+        return prisma.$transaction(async tx => {
+            await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${claimId}, 0))`;
+            if (await tx.scopedOperation.findUnique({ where: { id: claimId } })) return;
+            const changed = await tx.marketingLearning.updateMany({ where: { id: learningId, accountId, isActive: true, isPending: false, updatedAt: new Date(version) }, data: { appliedCount: { increment: 1 } } });
+            if (changed.count !== 1) throw conflict();
+            await tx.scopedOperation.create({ data: { id: claimId, accountId, kind: 'learning-application', result: { learningId, userId, version } } });
         });
     }
-
-    /**
-     * Record a successful outcome for a learning.
-     * Called when an implemented recommendation leads to improved metrics.
-     */
-    static async recordSuccess(id: string): Promise<void> {
-        await prisma.marketingLearning.update({
-            where: { id },
-            data: { successCount: { increment: 1 } }
-        });
-    }
-
-    /**
-     * Analyze recommendation outcomes and suggest new learnings.
-     * Creates pending AI-derived rules from patterns in successful recommendations.
-     */
-    static async deriveFromOutcomes(accountId: string): Promise<LearningWithStats[]> {
-        // Find recommendation patterns with 3+ successful implementations
-        const successfulPatterns = await prisma.recommendationLog.groupBy({
-            by: ['recommendationId', 'category', 'platform'],
-            where: {
-                accountId,
-                wasSuccessful: true,
-                status: 'implemented'
-            },
-            _count: { id: true },
-            having: {
-                id: { _count: { gte: 3 } }
-            }
-        });
-
-        const existingDerivedLearnings = await prisma.marketingLearning.findMany({
-            where: {
-                accountId,
-                source: 'ai_derived'
-            },
-            select: {
-                category: true,
-                platform: true
-            }
-        });
-        const existingDerivedKeys = new Set(
-            existingDerivedLearnings.map((l) => `${l.category}:${l.platform}`)
-        );
-
-        const derivedLearnings: LearningWithStats[] = [];
-
-        for (const pattern of successfulPatterns) {
-            const patternKey = `${pattern.category}:${pattern.platform || 'both'}`;
-            if (existingDerivedKeys.has(patternKey)) continue;
-
-            // Get sample recommendations to build the learning
-            const samples = await prisma.recommendationLog.findMany({
-                where: {
-                    accountId,
-                    recommendationId: pattern.recommendationId,
-                    wasSuccessful: true
-                },
-                take: 5,
-                orderBy: { roasChange: 'desc' }
-            });
-
-            if (samples.length === 0) continue;
-
-            // Create a suggested learning based on the pattern
-            const learning = await this.create(accountId, {
-                platform: (pattern.platform as LearningPlatform) || 'both',
-                category: pattern.category as LearningCategory,
-                condition: `Pattern detected: ${pattern.recommendationId} has been successful ${pattern._count.id} times`,
-                recommendation: samples[0].text,
-                explanation: `AI-derived from ${pattern._count.id} successful implementations. Average ROAS improvement: ${this.calculateAverageRoasChange(samples)}%`,
-                source: 'ai_derived',
-                isPending: true,
-                derivedFromRecommendationIds: samples.map(s => s.id)
-            });
-
-            derivedLearnings.push(learning);
-            existingDerivedKeys.add(patternKey);
-        }
-
-        if (derivedLearnings.length > 0) {
-            Logger.info('Derived new marketing learnings', {
-                accountId,
-                count: derivedLearnings.length
-            });
-        }
-
-        return derivedLearnings;
-    }
-
-    // =============================================================================
-    // HELPERS
-    // =============================================================================
-
-    private static toLearningWithStats(learning: any): LearningWithStats {
-        const successRate = learning.appliedCount > 0
-            ? Math.round((learning.successCount / learning.appliedCount) * 100)
-            : 0;
-
-        return {
-            id: learning.id,
-            platform: learning.platform,
-            category: learning.category,
-            condition: learning.condition,
-            recommendation: learning.recommendation,
-            explanation: learning.explanation,
-            source: learning.source,
-            isActive: learning.isActive,
-            isPending: learning.isPending,
-            appliedCount: learning.appliedCount,
-            successCount: learning.successCount,
-            successRate,
-            createdAt: learning.createdAt
-        };
-    }
-
-    private static calculateAverageRoasChange(samples: any[]): string {
-        const changes = samples.filter(s => s.roasChange != null).map(s => s.roasChange);
-        if (changes.length === 0) return 'N/A';
-        const avg = changes.reduce((sum, c) => sum + c, 0) / changes.length;
-        return avg.toFixed(1);
+    static async recordSuccess(accountId: string, userId: string): Promise<never> { await authorize(accountId, userId); throw conflict(); }
+    static async deriveFromOutcomes(accountId: string, userId: string): Promise<never> {
+        await authorize(accountId, userId);
+        throw Object.assign(new Error('Derivation unavailable: legacy associations do not establish causal effectiveness'), { statusCode: 409 });
     }
 }

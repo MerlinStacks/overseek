@@ -11,12 +11,12 @@ interface Props {
     onStockChange?: (newStock: number, variantId?: number) => void;
 }
 export interface StockManagementPanelRef { save(): Promise<boolean> }
-interface Variant { wooId: number; sku?: string; stockQuantity: number | null; manageStock: boolean; attributes?: string }
+interface Variant { wooId: number; sku?: string; stockQuantity: number | null; manageStock: boolean; isBOMBased?: boolean; attributes?: string }
 interface StockInfo { stockQuantity: number | null; isBOMBased: boolean; manageStock: boolean; isVariable?: boolean; variants?: Variant[] }
 const stockValue = (value: unknown) => value === null || (typeof value === 'number' && Number.isSafeInteger(value));
 function decodeStock(value: unknown): StockInfo {
     if (!isRecord(value) || !stockValue(value.stockQuantity) || typeof value.isBOMBased !== 'boolean' || typeof value.manageStock !== 'boolean' || (value.isVariable != null && typeof value.isVariable !== 'boolean') ||
-        (value.variants !== undefined && (!Array.isArray(value.variants) || !value.variants.every(item => isRecord(item) && typeof item.wooId === 'number' && Number.isSafeInteger(item.wooId) && item.wooId > 0 && stockValue(item.stockQuantity) && typeof item.manageStock === 'boolean' && ['sku', 'attributes'].every(key => item[key] == null || typeof item[key] === 'string')))) ||
+        (value.variants !== undefined && (!Array.isArray(value.variants) || !value.variants.every(item => isRecord(item) && typeof item.wooId === 'number' && Number.isSafeInteger(item.wooId) && item.wooId > 0 && stockValue(item.stockQuantity) && typeof item.manageStock === 'boolean' && (item.isBOMBased === undefined || typeof item.isBOMBased === 'boolean') && ['sku', 'attributes'].every(key => item[key] == null || typeof item[key] === 'string')))) ||
         (value.isVariable && (!Array.isArray(value.variants) || value.variants.length === 0))) throw new Error('Invalid stock information');
     const data = value as unknown as StockInfo;
     if (data.variants && new Set(data.variants.map(item => item.wooId)).size !== data.variants.length) throw new Error('Duplicate variants');
@@ -45,11 +45,12 @@ const StockEditor = forwardRef<StockManagementPanelRef, Props & { token: string;
     const [expanded, setExpanded] = useState(true); const id = useId();
     const [validation, setValidation] = useState<string | null>(null); const [savingId, setSavingId] = useState<number | null>(null);
     const mutation = useScopedMutation();
-    const rows = stock.variants?.length ? stock.variants : [{ wooId: 0, stockQuantity: stock.stockQuantity, manageStock: stock.manageStock, attributes: 'Product' }];
+    const rows: Variant[] = stock.variants?.length ? stock.variants : [{ wooId: 0, stockQuantity: stock.stockQuantity, manageStock: stock.manageStock, attributes: 'Product' }];
+    const readOnlyParentBOM = stock.isBOMBased && !stock.isVariable;
     const save = async (onlyId?: number): Promise<boolean> => {
         if (mutation.isPending()) return false;
-        if (stock.isBOMBased) return true;
-        const targets = rows.filter(row => (onlyId === undefined || row.wooId === onlyId) && edits[row.wooId] !== (row.stockQuantity?.toString() ?? ''));
+        if (readOnlyParentBOM) return true;
+        const targets = rows.filter(row => !row.isBOMBased && (onlyId === undefined || row.wooId === onlyId) && edits[row.wooId] !== (row.stockQuantity?.toString() ?? ''));
         if (!targets.length) return !mutation.busy;
         if (targets.some(row => quantity(edits[row.wooId] ?? '') === null)) { setValidation('Enter a whole stock quantity of zero or greater.'); return false; }
         setValidation(null);
@@ -73,8 +74,9 @@ const StockEditor = forwardRef<StockManagementPanelRef, Props & { token: string;
     return <section aria-label="Stock management" className="p-6 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 space-y-4">
         <button type="button" aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded(!expanded)} className="font-semibold">Stock On Hand {expanded ? '−' : '+'}{stock.isBOMBased ? ' · BOM Calculated' : ''}</button>
         {(validation || mutation.error) && <p role="alert">{validation || mutation.error}</p>}
-        <div id={id} hidden={!expanded}>{stock.isBOMBased ? <><p className="text-3xl font-semibold">{stock.stockQuantity ?? 'Unavailable'}</p><p>Stock is calculated from BOM components and cannot be edited here.</p></> : <fieldset disabled={mutation.busy} className="space-y-4">
-            {rows.map(row => <div key={row.wooId} className="flex flex-wrap items-center gap-3"><label htmlFor={`${id}-${row.wooId}`} className="min-w-32">{row.attributes || row.sku || `Variation #${row.wooId}`} stock</label><span className="text-xs">{row.sku}</span><button type="button" aria-label={`Decrease ${row.wooId || 'product'} stock`} onClick={() => { const value = quantity(edits[row.wooId]); if (value !== null) setEdits(previous => ({ ...previous, [row.wooId]: String(Math.max(0, value - 1)) })); }}>−</button>
+        {stock.isVariable && stock.isBOMBased && <p>Independent variant BOM capacities may share components; total capacity is unavailable.</p>}
+        <div id={id} hidden={!expanded}>{readOnlyParentBOM ? <><p className="text-3xl font-semibold">{stock.stockQuantity ?? 'Unavailable'}</p><p>Stock is calculated from BOM components and cannot be edited here.</p></> : <fieldset disabled={mutation.busy} className="space-y-4">
+            {rows.map(row => row.isBOMBased ? <p key={row.wooId}>{row.attributes || row.sku || `Variation #${row.wooId}`} stock: {row.stockQuantity ?? 'Unavailable'} (BOM calculated; read-only)</p> : <div key={row.wooId} className="flex flex-wrap items-center gap-3"><label htmlFor={`${id}-${row.wooId}`} className="min-w-32">{row.attributes || row.sku || `Variation #${row.wooId}`} stock</label><span className="text-xs">{row.sku}</span><button type="button" aria-label={`Decrease ${row.wooId || 'product'} stock`} onClick={() => { const value = quantity(edits[row.wooId]); if (value !== null) setEdits(previous => ({ ...previous, [row.wooId]: String(Math.max(0, value - 1)) })); }}>−</button>
                 <input id={`${id}-${row.wooId}`} type="number" min="0" step="1" value={edits[row.wooId] ?? ''} onChange={event => setEdits(previous => ({ ...previous, [row.wooId]: event.target.value }))} className="w-24 p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900" />
                 <button type="button" aria-label={`Increase ${row.wooId || 'product'} stock`} onClick={() => { const value = quantity(edits[row.wooId]); if (value !== null && Number.isSafeInteger(value + 1)) setEdits(previous => ({ ...previous, [row.wooId]: String(value + 1) })); }}>+</button>
                 <button type="button" disabled={edits[row.wooId] === (row.stockQuantity?.toString() ?? '')} onClick={() => void save(row.wooId)} className="px-3 py-2 rounded-lg bg-indigo-600 text-white disabled:opacity-50">{savingId === row.wooId ? 'Saving...' : row.wooId ? 'Save variant' : 'Update Stock'}</button>

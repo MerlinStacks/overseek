@@ -1,268 +1,71 @@
-import { AlertTriangle, Mail, TrendingUp, UserX } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { useApiQuery } from '../hooks/useApiQuery';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { useEffect, useRef, useState } from 'react';
+import { usePermissions } from '../hooks/usePermissions';
+import { useScopedRequest } from '../hooks/useScopedRequest';
+import { isRecord } from '../utils/responseValidation';
+import { DeliveryHealthPanel } from '../components/marketing/DeliveryHealthPanel';
 
-interface UnsubscribeRow {
-    id: string;
-    email: string;
-    scope: string;
-    reason: string | null;
-    createdAt: string;
+interface Dashboard {
+    days: number; rangeStart: string; rangeEnd: string; timezone: string; currency: string | null;
+    kpis: { flowRevenue: number | null; broadcastRevenue: number | null; flowSends: number; broadcastSends: number; totalUnsubscribes: number; attemptedCount: number; failedCount: number; failureRate: number | null };
+    trends: { date: string; unsubscribes: number; failureRate: number | null }[];
+    recentUnsubscribes: { id: string; email: string; scope: string; reason: string | null; createdAt: string }[];
+    coverage: { trendComplete: boolean; currentDayPartial: boolean; revenue: string; failureDefinition: string; unsubscribeDefinition: string; unknownStatusRows: number };
 }
-
-interface EmailDashboardResponse {
-    days: number;
-    rangeStart: string;
-    kpis: {
-        flowRevenue: number;
-        broadcastRevenue: number;
-        flowSends: number;
-        broadcastSends: number;
-        totalUnsubscribes: number;
-        bounceRate: number;
-        sentCount: number;
-        failedCount: number;
-    };
-    recentUnsubscribes: UnsubscribeRow[];
-    trends: Array<{
-        date: string;
-        unsubscribes: number;
-        bounceRate: number;
-    }>;
+const count = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+const ratio = (value: unknown) => value === null || typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100;
+const string = (value: unknown, max = 2000) => typeof value === 'string' && value.length <= max;
+const date = (value: unknown) => string(value, 40) && Number.isFinite(Date.parse(String(value)));
+function decode(value: unknown): Dashboard {
+    if (!isRecord(value) || !count(value.days) || value.days < 1 || value.days > 365 || !date(value.rangeStart) || !date(value.rangeEnd) || Date.parse(String(value.rangeStart)) > Date.parse(String(value.rangeEnd)) || value.timezone !== 'UTC' || value.currency !== null && (typeof value.currency !== 'string' || !/^[A-Z]{3}$/.test(value.currency))) throw new Error('Invalid reporting window');
+    const kpi = value.kpis, coverage = value.coverage;
+    if (!isRecord(kpi) || !['flowSends', 'broadcastSends', 'totalUnsubscribes', 'attemptedCount', 'failedCount'].every(key => count(kpi[key])) || !ratio(kpi.failureRate) || Number(kpi.failedCount) > Number(kpi.attemptedCount) || !['flowRevenue', 'broadcastRevenue'].every(key => kpi[key] === null || typeof kpi[key] === 'number' && Number.isFinite(kpi[key]) && Number(kpi[key]) >= 0) || !isRecord(coverage) || typeof coverage.trendComplete !== 'boolean' || typeof coverage.currentDayPartial !== 'boolean' || !count(coverage.unknownStatusRows) || !['revenue', 'failureDefinition', 'unsubscribeDefinition'].every(key => string(coverage[key]))) throw new Error('Invalid observations');
+    if (!Array.isArray(value.trends) || value.trends.length > 365 || value.trends.some(row => !isRecord(row) || typeof row.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(row.date) || !date(row.date) || !count(row.unsubscribes) || !ratio(row.failureRate)) || new Set(value.trends.map(row => row.date)).size !== value.trends.length) throw new Error('Invalid trends');
+    if (value.trends.some(row => new Date(`${row.date}T00:00:00Z`).toISOString().slice(0, 10) !== row.date || row.date < String(value.rangeStart).slice(0, 10) || row.date > String(value.rangeEnd).slice(0, 10))) throw new Error('Trend date outside reporting window');
+    if (!Array.isArray(value.recentUnsubscribes) || value.recentUnsubscribes.length > 10 || value.recentUnsubscribes.some(row => !isRecord(row) || !string(row.id, 200) || !string(row.email, 320) || !string(row.scope, 100) || row.reason !== null && !string(row.reason) || !date(row.createdAt))) throw new Error('Invalid unsubscribe records');
+    return value as unknown as Dashboard;
 }
-
-function formatMoney(value: number) {
-    return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        maximumFractionDigits: 2
-    }).format(value || 0);
-}
-
-function formatNumber(value: number) {
-    return new Intl.NumberFormat('en-US').format(value || 0);
-}
-
-function formatPercent(value: number) {
-    return `${(value || 0).toFixed(2)}%`;
-}
-
+const card = 'rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4';
 export function EmailDashboardPage() {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
+    const { user, token } = useAuth(); const { currentAccount } = useAccount(); const { hasPermission } = usePermissions();
+    if (!token || !currentAccount) return <p role="status">Sign in and select an account.</p>;
+    if (!hasPermission('view_marketing')) return <p role="status">Marketing view permission required.</p>;
+    return <ScopedEmailDashboard key={JSON.stringify([user?.id, token, currentAccount.id])} token={token} accountId={currentAccount.id} />;
+}
+function ScopedEmailDashboard({ token, accountId }: { token: string; accountId: string }) {
     const [days, setDays] = useState(30);
-    const unsubscribesSectionRef = useRef<HTMLDivElement | null>(null);
-    const focusTimerRef = useRef<number | null>(null);
-
-    const { data, isLoading, error } = useApiQuery<EmailDashboardResponse>({
-        queryKey: ['email-dashboard', currentAccount?.id, days],
-        enabled: Boolean(token && currentAccount?.id),
-        staleTime: 60_000,
-        refetchOnWindowFocus: false,
-        queryFn: async () => {
-            const res = await fetch(`/api/marketing/analytics/email-dashboard?days=${days}`, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || ''
-                }
-            });
-
-            if (!res.ok) {
-                throw new Error('Failed to load email dashboard');
-            }
-
-            return res.json();
-        }
-    });
-
-    const kpis = data?.kpis;
-
-    const maxUnsubscribes = Math.max(1, ...(data?.trends.map((point) => point.unsubscribes) || [0]));
-
+    return <main className="space-y-5 text-slate-900 dark:text-slate-100"><h1 className="text-2xl font-bold">Email Hub</h1>
+        <div aria-label="Reporting period" className="flex gap-3">{[7, 30, 90].map(value => <button type="button" key={value} aria-pressed={days === value} onClick={() => setDays(value)} className={days === value ? 'rounded bg-indigo-600 text-white px-3 py-2' : 'rounded border px-3 py-2'}>{value}d</button>)}</div>
+        <DashboardRead key={days} token={token} accountId={accountId} days={days} />
+        <DeliveryHealthPanel token={token} accountId={accountId} />
+    </main>;
+}
+function DashboardRead({ token, accountId, days }: { token: string; accountId: string; days: number }) {
+    const { data, loading, error, retry } = useScopedRequest(`/api/marketing/analytics/email-dashboard?days=${days}`, accountId, token, decode);
+    const section = useRef<HTMLDivElement>(null), location = useLocation();
     useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const focus = params.get('focus');
-        const section = unsubscribesSectionRef.current;
-
-        if (focus === 'unsubscribes' && section) {
-            section.dataset.focused = 'true';
-            section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-            focusTimerRef.current = window.setTimeout(() => {
-                if (section) section.dataset.focused = 'false';
-            }, 2600);
-        }
-
-        return () => {
-            if (focusTimerRef.current !== null) {
-                window.clearTimeout(focusTimerRef.current);
-                focusTimerRef.current = null;
-            }
-        };
-    }, []);
-
-    return (
-        <div className="space-y-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex flex-col gap-2">
-                    <h1 className="text-2xl font-bold text-gray-900">Email Hub</h1>
-                    <p className="text-gray-500">Key email performance signals for your selected period.</p>
-                </div>
-                <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1">
-                    {[7, 30, 90].map((value) => (
-                        <button
-                            key={value}
-                            onClick={() => setDays(value)}
-                            className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
-                                days === value
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'text-gray-600 hover:bg-gray-100'
-                            }`}
-                        >
-                            {value}d
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            {error && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {error.message}
-                </div>
-            )}
-
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <Link to="/emails/logs?source=AUTOMATION" className="rounded-xl border border-gray-200 bg-white p-4 transition hover:border-indigo-300 hover:shadow-sm">
-                    <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-500">
-                        <TrendingUp size={16} /> Flow Revenue
-                    </div>
-                    <p className="text-2xl font-semibold text-gray-900">{isLoading ? '...' : formatMoney(kpis?.flowRevenue || 0)}</p>
-                    <p className="mt-1 text-xs text-gray-500">From automation purchases</p>
-                </Link>
-
-                <Link to="/emails/logs?source=CAMPAIGN" className="rounded-xl border border-gray-200 bg-white p-4 transition hover:border-indigo-300 hover:shadow-sm">
-                    <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-500">
-                        <Mail size={16} /> Broadcast Revenue
-                    </div>
-                    <p className="text-2xl font-semibold text-gray-900">{isLoading ? '...' : formatMoney(kpis?.broadcastRevenue || 0)}</p>
-                    <p className="mt-1 text-xs text-gray-500">From campaign purchases</p>
-                </Link>
-
-                <Link to="/emails?focus=unsubscribes" className="rounded-xl border border-gray-200 bg-white p-4 transition hover:border-indigo-300 hover:shadow-sm">
-                    <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-500">
-                        <UserX size={16} /> Unsubscribes
-                    </div>
-                    <p className="text-2xl font-semibold text-gray-900">{isLoading ? '...' : formatNumber(kpis?.totalUnsubscribes || 0)}</p>
-                    <p className="mt-1 text-xs text-gray-500">Unsubscribe events tracked</p>
-                </Link>
-
-                <Link to="/emails/logs?status=FAILED,BOUNCED,COMPLAINED" className="rounded-xl border border-gray-200 bg-white p-4 transition hover:border-indigo-300 hover:shadow-sm">
-                    <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-500">
-                        <AlertTriangle size={16} /> Bounce Rate
-                    </div>
-                    <p className="text-2xl font-semibold text-gray-900">{isLoading ? '...' : formatPercent(kpis?.bounceRate || 0)}</p>
-                    <p className="mt-1 text-xs text-gray-500">
-                        {isLoading ? '...' : `${formatNumber(kpis?.failedCount || 0)} failed of ${formatNumber(kpis?.sentCount || 0)} sends`}
-                    </p>
-                </Link>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-xl border border-gray-200 bg-white p-4">
-                    <p className="text-sm font-medium text-gray-500">Flow Sends</p>
-                    <p className="mt-2 text-2xl font-semibold text-gray-900">{isLoading ? '...' : formatNumber(kpis?.flowSends || 0)}</p>
-                </div>
-                <div className="rounded-xl border border-gray-200 bg-white p-4">
-                    <p className="text-sm font-medium text-gray-500">Broadcast Sends</p>
-                    <p className="mt-2 text-2xl font-semibold text-gray-900">{isLoading ? '...' : formatNumber(kpis?.broadcastSends || 0)}</p>
-                </div>
-            </div>
-
-            <div
-                ref={unsubscribesSectionRef}
-                data-focused="false"
-                className="rounded-xl border border-gray-200 bg-white transition-all duration-700 data-[focused=true]:border-indigo-400 data-[focused=true]:shadow-lg data-[focused=true]:shadow-indigo-100 data-[focused=true]:ring-2 data-[focused=true]:ring-indigo-200"
-            >
-                <div className="border-b border-gray-200 px-4 py-3">
-                    <h2 className="text-sm font-semibold text-gray-900">Delivery Trend</h2>
-                </div>
-                <div className="grid gap-3 px-4 py-4 sm:grid-cols-2">
-                    <div>
-                        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">Unsubscribes per day</p>
-                        <div className="space-y-1">
-                            {(data?.trends.slice(-10) || []).map((point) => (
-                                <div key={point.date} className="flex items-center gap-2">
-                                    <span className="w-16 text-xs text-gray-500">{point.date.slice(5)}</span>
-                                    <div className="h-2 flex-1 overflow-hidden rounded bg-gray-100">
-                                        <div
-                                            className="h-full rounded bg-indigo-500"
-                                            style={{ width: `${Math.max(4, (point.unsubscribes / maxUnsubscribes) * 100)}%` }}
-                                        />
-                                    </div>
-                                    <span className="w-8 text-right text-xs text-gray-700">{point.unsubscribes}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                    <div>
-                        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">Bounce rate per day</p>
-                        <div className="space-y-1">
-                            {(data?.trends.slice(-10) || []).map((point) => (
-                                <div key={`${point.date}-bounce`} className="flex items-center justify-between rounded bg-gray-50 px-2 py-1">
-                                    <span className="text-xs text-gray-500">{point.date}</span>
-                                    <span className="text-xs font-medium text-gray-700">{formatPercent(point.bounceRate)}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div className="rounded-xl border border-gray-200 bg-white">
-                <div className="border-b border-gray-200 px-4 py-3">
-                    <h2 className="text-sm font-semibold text-gray-900">Recent 10 Unsubscribes</h2>
-                </div>
-
-                <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200 text-sm">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="px-4 py-3 text-left font-medium text-gray-500">Email</th>
-                                <th className="px-4 py-3 text-left font-medium text-gray-500">Scope</th>
-                                <th className="px-4 py-3 text-left font-medium text-gray-500">Reason</th>
-                                <th className="px-4 py-3 text-left font-medium text-gray-500">Unsubscribed At</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {isLoading && (
-                                <tr>
-                                    <td colSpan={4} className="px-4 py-4 text-gray-500">Loading unsubscribes...</td>
-                                </tr>
-                            )}
-
-                            {!isLoading && (data?.recentUnsubscribes.length || 0) === 0 && (
-                                <tr>
-                                    <td colSpan={4} className="px-4 py-4 text-gray-500">No recent unsubscribes found.</td>
-                                </tr>
-                            )}
-
-                            {!isLoading && data?.recentUnsubscribes.map((row) => (
-                                <tr key={row.id}>
-                                    <td className="whitespace-nowrap px-4 py-3 text-gray-900">{row.email}</td>
-                                    <td className="whitespace-nowrap px-4 py-3 text-gray-700">{row.scope}</td>
-                                    <td className="px-4 py-3 text-gray-700">{row.reason || 'No reason provided'}</td>
-                                    <td className="whitespace-nowrap px-4 py-3 text-gray-700">
-                                        {new Date(row.createdAt).toLocaleString()}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+        const element = section.current;
+        if (!element || loading || error || !data || new URLSearchParams(location.search).get('focus') !== 'unsubscribes') return;
+        element.dataset.focused = 'true'; element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const timer = window.setTimeout(() => { element.dataset.focused = 'false'; }, 2600);
+        return () => { window.clearTimeout(timer); element.dataset.focused = 'false'; };
+    }, [loading, error, data, location.search]);
+    if (loading) return <p role="status">Loading email observations…</p>;
+    if (error || !data || data.days !== days) return <p role="alert">Email observations unavailable. No zero values have been inferred. <button type="button" onClick={retry}>Retry email dashboard</button></p>;
+    const money = (value: number | null) => value === null || !data.currency ? 'Unavailable' : new Intl.NumberFormat(undefined, { style: 'currency', currency: data.currency }).format(value);
+    const percent = (value: number | null) => value === null ? 'Unavailable' : `${value.toFixed(2)}%`;
+    const max = Math.max(1, ...data.trends.map(row => row.unsubscribes));
+    return <>
+        <p>{data.rangeStart} to {data.rangeEnd} ({data.timezone}; current day {data.coverage.currentDayPartial ? 'partial' : 'complete'}).</p>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[['Flow revenue', money(data.kpis.flowRevenue)], ['Broadcast revenue', money(data.kpis.broadcastRevenue)], ['New unsubscribe records', data.kpis.totalUnsubscribes.toLocaleString()], ['Failed-status share', percent(data.kpis.failureRate)], ['Flow send events', data.kpis.flowSends.toLocaleString()], ['Broadcast send events', data.kpis.broadcastSends.toLocaleString()]].map(([label, value]) => <div className={card} key={label}><h2>{label}</h2><p className="text-2xl font-semibold">{value}</p></div>)}
         </div>
-    );
+        <div className={card}><p>{data.coverage.revenue}</p><p>{data.coverage.failureDefinition}</p><p>{data.kpis.failedCount} failed-status rows / {data.kpis.attemptedCount} terminal-status rows; {data.coverage.unknownStatusRows} other-status rows excluded.</p><p>{data.coverage.unsubscribeDefinition}</p></div>
+        <div className={card}><h2 className="font-semibold">UTC delivery observations</h2>{!data.coverage.trendComplete ? <p role="status">Daily trends unavailable: row coverage limit exceeded.</p> : data.trends.slice(-10).map(row => <div key={row.date} className="flex flex-wrap items-center gap-3 py-1"><span>{row.date}</span><div className="flex-1 min-w-20 rounded bg-slate-100 dark:bg-slate-800 h-2" aria-hidden="true"><div className="h-2 bg-indigo-500 rounded" style={{ width: `${row.unsubscribes / max * 100}%` }} /></div><span>{row.unsubscribes} new unsubscribe records</span><span>{percent(row.failureRate)} failed-status share</span></div>)}</div>
+        <div ref={section} data-focused="false" className={`${card} data-[focused=true]:ring-2 data-[focused=true]:ring-indigo-500`}><h2 className="font-semibold">Recent unsubscribe records in this window</h2>
+            {!data.recentUnsubscribes.length ? <p>No unsubscribe records in this window.</p> : <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr><th>Email</th><th>Scope</th><th>Reason</th><th>Created</th></tr></thead><tbody>{data.recentUnsubscribes.map(row => <tr key={row.id}><td className="p-2">{row.email}</td><td className="p-2">{row.scope}</td><td className="p-2">{row.reason || 'Not provided'}</td><td className="p-2">{new Date(row.createdAt).toLocaleString()}</td></tr>)}</tbody></table></div>}
+        </div>
+    </>;
 }

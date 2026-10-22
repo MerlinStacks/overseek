@@ -10,6 +10,7 @@ import { ChannelSelector, ConversationChannel } from './ChannelSelector';
 import { CannedResponse } from '../../hooks/useCannedResponses';
 import { ComposerToolbar } from './ComposerToolbar';
 import type { OutboundSafetyIssue } from '../../utils/outboundSafety';
+import { composerText, hasComposerText } from '../../utils/composerContent';
 
 interface ChannelOption {
     channel: ConversationChannel;
@@ -50,7 +51,7 @@ interface ChatComposerProps {
     showCanned: boolean;
     filteredCanned: CannedResponse[];
     cannedResponses: CannedResponse[];
-    onSelectCanned: (response: CannedResponse) => void;
+    onSelectCanned: (response: CannedResponse, preserveDraft?: boolean) => void;
     onOpenCannedManager: () => void;
     // AI Draft
     isGeneratingDraft: boolean;
@@ -130,8 +131,13 @@ export const ChatComposer = memo(function ChatComposer({
     onDismissSafetyWarnings
 }: ChatComposerProps) {
     const [selectedChannel, setSelectedChannel] = useState<ConversationChannel>(currentChannel || 'CHAT');
+    const [localPicker, setLocalPicker] = useState(false);
+    const pickerOpen = showCanned || localPicker;
+    const pickerResponses = localPicker ? cannedResponses : filteredCanned;
+    const selectReply = (response: CannedResponse) => { const preserveDraft = localPicker; setLocalPicker(false); onSelectCanned(response, preserveDraft); };
 
     useEffect(() => {
+        setLocalPicker(false);
         const currentIsAvailable = availableChannels?.some(
             option => option.channel === currentChannel && option.available,
         );
@@ -141,8 +147,8 @@ export const ChatComposer = memo(function ChatComposer({
 
     const GSM_7BIT_REGEX = /^[\r\n\x20-\x7E\u00A3\u00A5\u00A7\u00BF\u00C4\u00C5\u00C6\u00C9\u00D1\u00D6\u00D8\u00DC\u00DF\u00E0\u00E4\u00E5\u00E6\u00E8\u00E9\u00EC\u00F1\u00F2\u00F6\u00F8\u00F9\u00FC\u0393\u0394\u0398\u039B\u039E\u03A0\u03A3\u03A6\u03A8\u03A9\u20AC^{}\\[~\]|]+$/;
     const MAX_SMS_LENGTH = 1600;
-    const plainTextLength = input.replace(/<[^>]*>/g, '').length;
-    const isGsm = GSM_7BIT_REGEX.test(input.replace(/<[^>]*>/g, ''));
+    const plainTextLength = composerText(input).length;
+    const isGsm = GSM_7BIT_REGEX.test(composerText(input));
     const smsSingleLimit = isGsm ? 160 : 70;
     const smsMultipartLimit = isGsm ? 153 : 67;
     const smsSegments = plainTextLength === 0
@@ -153,16 +159,16 @@ export const ChatComposer = memo(function ChatComposer({
     const isSmsTooLong = selectedChannel === 'SMS' && plainTextLength > MAX_SMS_LENGTH;
 
     return (
-        <div className="border-t border-gray-200 bg-white">
+        <div className="border-t border-gray-200 bg-white dark:bg-slate-900" onKeyDown={event => { if (event.key === 'Escape') setLocalPicker(false); }}>
             {/* Canned Responses Dropdown */}
-            {showCanned && (
+            {pickerOpen && (
                 <div className="border-b border-gray-200 bg-white max-h-48 overflow-y-auto">
                     <div className="p-2 text-xs text-gray-500 border-b bg-gray-50 flex items-center justify-between">
-                        <span>Canned Responses (type to filter)</span>
+                        <span>{localPicker ? 'Saved replies (selection appends to your draft)' : 'Canned Responses (type to filter)'}</span>
                         <button
+                            type="button"
                             onClick={() => {
-                                onOpenCannedManager();
-                                onInputChange('');
+                                 setLocalPicker(false); onOpenCannedManager();
                             }}
                             className="flex items-center gap-1 text-blue-600 hover:text-blue-700"
                         >
@@ -170,11 +176,12 @@ export const ChatComposer = memo(function ChatComposer({
                             Manage
                         </button>
                     </div>
-                    {filteredCanned.length > 0 ? (
-                        filteredCanned.map(r => (
+                    {pickerResponses.length > 0 ? (
+                        pickerResponses.map(r => (
                             <button
                                 key={r.id}
-                                onClick={() => onSelectCanned(r)}
+                                type="button"
+                                onClick={() => selectReply(r)}
                                 className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-0"
                             >
                                 <span className="text-xs font-mono bg-gray-100 px-1.5 py-0.5 rounded-sm text-gray-600">
@@ -311,8 +318,9 @@ export const ChatComposer = memo(function ChatComposer({
                         <div className="mt-2 flex items-center gap-2">
                             {requiresSafetyApproval && onApproveSafetySend && (
                                 <button
-                                    type="button"
-                                    onClick={() => onApproveSafetySend(selectedChannel)}
+                                     type="button"
+                                     disabled={!hasComposerText(input) || isSending || !!pendingSend || isUploading || isGeneratingDraft || pickerOpen || isSmsTooLong}
+                                     onClick={() => onApproveSafetySend(selectedChannel)}
                                     className="px-2.5 py-1 rounded bg-red-600 text-white text-[11px] font-semibold hover:bg-red-700"
                                 >
                                     Approve And Send
@@ -334,23 +342,23 @@ export const ChatComposer = memo(function ChatComposer({
                     value={input}
                     onChange={onInputChange}
                     onSubmit={() => {
-                        if (!showCanned) {
+                        if (!pickerOpen && hasComposerText(input) && !isSending && !pendingSend && !isUploading && !isGeneratingDraft && !isSmsTooLong) {
                             onSend(undefined, selectedChannel);
-                        } else if (filteredCanned.length > 0) {
-                            onSelectCanned(filteredCanned[0]);
+                        } else if (pickerOpen && pickerResponses.length > 0) {
+                            selectReply(pickerResponses[0]);
                         }
                     }}
                     placeholder={isInternal
                         ? "Add a private note (only visible to team)..."
                         : "Type your reply... (/ for canned responses)"}
                     isInternal={isInternal}
-                    cannedPickerOpen={showCanned}
+                    cannedPickerOpen={pickerOpen}
                     toolbarRightSlot={(
                         <ComposerToolbar
                             input={input}
                             isInternal={isInternal}
                             isSending={isSending}
-                            showCanned={showCanned}
+                            showCanned={pickerOpen}
                             pendingSend={pendingSend}
                             recipientEmail={recipientEmail}
                             signatureEnabled={signatureEnabled}
@@ -358,7 +366,7 @@ export const ChatComposer = memo(function ChatComposer({
                             isGeneratingDraft={isGeneratingDraft}
                             onGenerateAIDraft={onGenerateAIDraft}
                             isUploading={isUploading}
-                            onInputChange={onInputChange}
+                            onOpenCanned={() => setLocalPicker(value => !value)}
                             fileInputRef={fileInputRef}
                             onFileUpload={onFileUpload}
                             stagedAttachments={stagedAttachments}

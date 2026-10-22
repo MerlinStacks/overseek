@@ -1,213 +1,56 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Logger } from '../../utils/logger';
-import { useAccount } from '../../context/AccountContext';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { api } from '../../services/api';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
+import { useAccount } from '../../context/AccountContext';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
 import { DateRangeFilter } from '../../components/analytics/DateRangeFilter';
-import {
-    BarChart3, ShoppingCart, TrendingDown, Search,
-    ArrowUpRight
-} from 'lucide-react';
-import FunnelWidget from '../../components/widgets/FunnelWidget';
-import AnalyticsStatsWidget from '../../components/widgets/AnalyticsStatsWidget';
+import { record, rows, metric, count, label } from '../../components/analytics/analyticsRead';
+import { reportingWindow } from '../../utils/reportingWindow';
 import { CROView } from '../../components/analytics/CROView';
 import { GeographyView } from '../../components/analytics/GeographyView';
-
-interface AbandonmentData {
-    addedToCartCount: number;
-    purchasedCount: number;
-    abandonedCount: number;
-    abandonmentRate: number;
-}
-
-interface SearchData {
-    topQueries: { query: string; count: number }[];
-    totalSearches: number;
-}
-
-interface ExitData {
-    topExitPages: { page: string; count: number }[];
-}
-
-export const AnalyticsOverviewPage: React.FC = () => {
-    const [days, setDays] = useState(1); // Default to Today
-    const { currentAccount } = useAccount();
-    const { token } = useAuth();
-    const [abandonment, setAbandonment] = useState<AbandonmentData | null>(null);
-    const [searches, setSearches] = useState<SearchData | null>(null);
-    const [exits, setExits] = useState<ExitData | null>(null);
-
-    const dateRangeOption = useMemo(() => {
-        if (days === -1) return 'yesterday';
-        if (days === 1) return 'today';
-        if (days === 7) return '7d';
-        if (days === 30) return '30d';
-        if (days === 90) return '90d';
-        return `${days}d`;
-    }, [days]);
-
-    useEffect(() => {
-        const fetchData = async () => {
-            if (!currentAccount || !token) return;
-            try {
-                const [abandonmentRes, searchesRes, exitsRes] = await Promise.all([
-                    api.get<AbandonmentData>(`/api/tracking/abandonment?days=${days}`, token, currentAccount.id),
-                    api.get<SearchData>(`/api/tracking/searches?days=${days}`, token, currentAccount.id),
-                    api.get<ExitData>(`/api/tracking/exits?days=${days}`, token, currentAccount.id)
-                ]);
-                setAbandonment(abandonmentRes);
-                setSearches(searchesRes);
-                setExits(exitsRes);
-            } catch (error) {
-                Logger.error('Failed to fetch overview:', { error: error });
-            }
-        };
-        fetchData();
-    }, [currentAccount, token, days]);
-
-    /** Derive startDate/endDate from the days filter for widget props */
-    const dateRange = useMemo(() => {
-        const end = new Date();
-        const start = new Date();
-
-        if (days === -1) {
-            start.setDate(end.getDate() - 1);
-            end.setDate(end.getDate() - 1);
-        } else {
-            start.setDate(end.getDate() - Math.max(days - 1, 0));
-        }
-
-        return {
-            startDate: start.toISOString().split('T')[0],
-            endDate: end.toISOString().split('T')[0]
-        };
-    }, [days]);
-
-    return (
-        <div className="p-6 space-y-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-gray-900">Analytics Overview</h1>
-                <DateRangeFilter value={days} onChange={setDays} />
-            </div>
-
-            {/* Top Row - Funnel & Stats */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card className="border-0 shadow-xs">
-                    <CardHeader>
-                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                            <TrendingDown className="w-4 h-4 text-green-500" />
-                            Conversion Funnel
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-0">
-                        <FunnelWidget dateRange={dateRange} />
-                    </CardContent>
-                </Card>
-
-                <Card className="border-0 shadow-xs">
-                    <CardHeader>
-                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                            <BarChart3 className="w-4 h-4 text-purple-500" />
-                            Audience Insights
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-0">
-                        <AnalyticsStatsWidget dateRange={dateRange} />
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Middle Row - Cart Abandonment */}
-            {abandonment && (
-                <Card className="border-0 shadow-xs">
-                    <CardHeader>
-                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                            <ShoppingCart className="w-4 h-4 text-orange-500" />
-                            Cart Abandonment
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div className="bg-blue-50 rounded-xl p-4 text-center">
-                                <p className="text-2xl font-bold text-blue-600">{abandonment.addedToCartCount}</p>
-                                <p className="text-xs text-gray-500">Added to Cart</p>
-                            </div>
-                            <div className="bg-green-50 rounded-xl p-4 text-center">
-                                <p className="text-2xl font-bold text-green-600">{abandonment.purchasedCount}</p>
-                                <p className="text-xs text-gray-500">Purchased</p>
-                            </div>
-                            <div className="bg-orange-50 rounded-xl p-4 text-center">
-                                <p className="text-2xl font-bold text-orange-600">{abandonment.abandonedCount}</p>
-                                <p className="text-xs text-gray-500">Abandoned</p>
-                            </div>
-                            <div className="bg-red-50 rounded-xl p-4 text-center">
-                                <p className="text-2xl font-bold text-red-600">{abandonment.abandonmentRate}%</p>
-                                <p className="text-xs text-gray-500">Abandonment Rate</p>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
-
-            {/* Bottom Row - Searches & Exits */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {searches && (
-                    <Card className="border-0 shadow-xs">
-                        <CardHeader>
-                            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                                <Search className="w-4 h-4 text-blue-500" />
-                                Top Search Terms
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            {searches.topQueries.length === 0 ? (
-                                <p className="text-sm text-gray-500 italic">No search data yet</p>
-                            ) : (
-                                <div className="space-y-2">
-                                    {searches.topQueries.slice(0, 8).map((item) => (
-                                        <div key={item.query} className="flex justify-between text-sm py-1.5 border-b border-gray-50 last:border-0">
-                                            <span className="text-gray-700">{item.query}</span>
-                                            <span className="text-gray-400">{item.count}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-                )}
-
-                {exits && (
-                    <Card className="border-0 shadow-xs">
-                        <CardHeader>
-                            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                                <ArrowUpRight className="w-4 h-4 text-red-500" />
-                                Top Exit Pages
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            {exits.topExitPages.length === 0 ? (
-                                <p className="text-sm text-gray-500 italic">No exit data yet</p>
-                            ) : (
-                                <div className="space-y-2">
-                                    {exits.topExitPages.slice(0, 8).map((item) => (
-                                        <div key={item.page} className="flex justify-between text-sm py-1.5 border-b border-gray-50 last:border-0">
-                                            <span className="text-gray-700 truncate max-w-[250px]">{item.page}</span>
-                                            <span className="text-gray-400">{item.count}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-                )}
-            </div>
-
-            {/* CRO & Geography */}
-            <CROView dateRange={dateRangeOption} />
-            <GeographyView dateRange={dateRangeOption} />
-        </div>
-    );
+const abandonment = (value: unknown) => {
+    const data = record(value); const added = count(data.addedToCartCount), purchased = count(data.purchasedCount), abandoned = count(data.abandonedCount);
+    const rate = metric(data.abandonmentRate); if (rate > 100) throw new Error('Invalid abandonment rate'); return { added, purchased, abandoned, rate: added ? rate : null };
 };
-
+const searches = (value: unknown) => rows(record(value).topQueries).map(row => ({ label: label(row.query), count: count(row.count) }));
+const exits = (value: unknown) => rows(record(value).topExitPages).map(row => ({ label: label(row.page), count: count(row.count) }));
+const funnel = (value: unknown) => rows(record(value).stages).map(row => ({ label: label(row.name), count: count(row.count) }));
+const audience = (value: unknown) => {
+    const data = record(value); return { total: count(data.totalSessions), duration: metric(data.avgSessionDuration),
+        countries: rows(data.countries).map(row => ({ label: label(row.country), count: count(row.sessions) })),
+        devices: rows(data.devices).map(row => ({ label: label(row.type), count: count(row.sessions) })) };
+};
+export const AnalyticsOverviewPage = () => {
+    const { token, user } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p>Sign in and select an account to view analytics.</p>;
+    return <ScopedOverview key={JSON.stringify([user?.id, token, currentAccount.id, currentAccount.timezone])} token={token} accountId={currentAccount.id} timezone={currentAccount.timezone} />;
+};
+function ScopedOverview({ token, accountId, timezone }: { token: string; accountId: string; timezone?: string }) {
+    const [days, setDays] = useState(1); const [now, setNow] = useState(() => new Date());
+    useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(timer); }, []);
+    let window: ReturnType<typeof reportingWindow> | null = null;
+    try { window = reportingWindow(days, timezone, now); } catch { /* Invalid timezone is an unavailable report, not a guessed local range. */ }
+    return <div className="p-4 space-y-5 text-slate-900 dark:text-slate-100"><header className="flex flex-wrap justify-between gap-3"><h1 className="text-2xl font-bold">Analytics Overview</h1><DateRangeFilter value={days} onChange={setDays} /></header>
+        {!window ? <p role="alert">Reporting window unavailable. Check the account timezone.</p> : <>
+            <p>Reporting calendar: {window.timezone}{window.timezoneUnavailable ? ' (account timezone unavailable; UTC fallback)' : ''}. All sections use {window.startDate} through {window.endDate}.</p>
+            <OverviewContent key={`${window.startDate}:${window.endDate}`} accountId={accountId} token={token} range={window} />
+        </>}
+    </div>;
+}
+function OverviewContent({ accountId, token, range }: { accountId: string; token: string; range: { startDate: string; endDate: string } }) {
+    const query = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate }).toString();
+    const cart = useScopedRequest(`/api/tracking/abandonment?${query}`, accountId, token, abandonment);
+    const search = useScopedRequest(`/api/tracking/searches?${query}`, accountId, token, searches);
+    const exit = useScopedRequest(`/api/tracking/exits?${query}`, accountId, token, exits);
+    const flow = useScopedRequest(`/api/tracking/funnel?${query}`, accountId, token, funnel);
+    const stats = useScopedRequest(`/api/tracking/stats?${query}`, accountId, token, audience);
+    const list = (title: string, read: ReturnType<typeof useScopedRequest<{ label: string; count: number }[]>>) => <section className="p-5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"><h2 className="font-semibold">{title}</h2>{read.loading ? <p role="status">Loading {title.toLowerCase()}…</p> : read.error ? <p role="alert">{title} unavailable. <button type="button" onClick={read.retry}>Retry {title.toLowerCase()}</button></p> : !read.data?.length ? <p>No returned observations in this range.</p> : <ul>{read.data.map((row, index) => <li key={index} className="flex justify-between gap-3"><span className="break-all">{row.label}</span><span>{row.count}</span></li>)}</ul>}</section>;
+    return <div className="space-y-5">
+        <div className="grid md:grid-cols-2 gap-5">{list('Conversion Funnel', flow)}<section><h2>Audience Insights</h2>{stats.loading ? <p role="status">Loading audience…</p> : stats.error || !stats.data ? <p role="alert">Audience unavailable. <button type="button" onClick={stats.retry}>Retry audience</button></p> : <><p>{stats.data.total} tracked sessions · Average duration {stats.data.total ? `${stats.data.duration.toFixed(1)}s` : 'unavailable (no sessions)'}</p><ul>{stats.data.devices.map((row, index) => <li key={index}>{row.label}: {row.count}</li>)}</ul><ul>{stats.data.countries.slice(0, 5).map((row, index) => <li key={index}>{row.label}: {row.count}</li>)}</ul></>}</section></div>
+        <section><h2>Cart Abandonment</h2>{cart.loading ? <p role="status">Loading cart abandonment…</p> : cart.error || !cart.data ? <p role="alert">Cart abandonment unavailable. <button type="button" onClick={cart.retry}>Retry cart abandonment</button></p> : <dl className="grid grid-cols-2 md:grid-cols-4 gap-3"><div><dt>Added to cart</dt><dd>{cart.data.added}</dd></div><div><dt>Purchased</dt><dd>{cart.data.purchased}</dd></div><div><dt>Abandoned</dt><dd>{cart.data.abandoned}</dd></div><div><dt>Abandonment rate</dt><dd>{cart.data.rate == null ? 'Unavailable (no cart observations)' : `${cart.data.rate}%`}</dd></div></dl>}</section>
+        <div className="grid md:grid-cols-2 gap-5">{list('Top Search Terms', search)}{list('Top Exit Pages', exit)}</div>
+        <CROView dateRange="today" explicitRange={range} />
+        <GeographyView dateRange="today" explicitRange={range} />
+        <p className="text-xs">Tracked observations may exclude consent-denied, blocked or unlinked activity. Empty results do not establish zero store activity.</p>
+    </div>;
+}
 export default AnalyticsOverviewPage;

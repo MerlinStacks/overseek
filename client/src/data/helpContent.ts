@@ -42,7 +42,7 @@ const helpCollections: HelpCollection[] = [
                 excerpt: 'An introduction to the OverSeek platform and its core philosophy.',
                 order: 0,
                 collectionSlug: 'getting-started',
-                updatedAt: LAST_UPDATED,
+                updatedAt: '2026-10-22',
                 content: `# Welcome to OverSeek
 
 OverSeek is a modern, high-performance warehouse and analytics dashboard designed specifically for WooCommerce. Unlike traditional dashboards that feel slow and clunky, OverSeek is built on a "local-first" philosophy.
@@ -65,7 +65,7 @@ Instead of loading data from WooCommerce every time you click a page, OverSeek m
 ## What's New in 2026
 - **Saved Views**: Filter presets for Orders and Customers pages
 - **Status Center**: Unified system health monitoring
-- **Revenue Anomaly Detection**: AI-powered alerts for unusual patterns
+- **Revenue Observations**: Investigate unusual patterns; alerts are not proof of a cause
 - **Enhanced Inbox**: Multi-channel with AI drafts and attachment pills
 
 We hope you enjoy using OverSeek!`
@@ -123,7 +123,7 @@ Perform quick actions directly from the palette:
                 excerpt: 'Learn how to personalize your dashboard with drag-and-drop widgets.',
                 order: 0,
                 collectionSlug: 'dashboard-interface',
-                updatedAt: LAST_UPDATED,
+                updatedAt: '2026-10-22',
                 content: `# Customizing Your Dashboard
 
 Your OverSeek dashboard is fully customizable. Add, remove, and rearrange widgets to create the perfect command center for your business.
@@ -140,7 +140,7 @@ Click the **Lock** icon in the top-right to unlock. Now you can:
 - **Remove** widgets using the X button
 
 > [!TIP]
-> Changes are saved automatically when you lock the dashboard again.
+> Desktop layout edits are saved after a short delay while unlocked. Locking is not a save acknowledgement. Watch for save errors: conflicts pause automatic saving and keep local edits visible. Reloading explicitly discards those local edits. Mobile does not save desktop layout changes.
 
 ## Adding Widgets
 
@@ -227,49 +227,20 @@ Period summary showing:
                 id: 'art-dark-mode',
                 title: 'Dark Mode & Theming',
                 slug: 'dark-mode-theming',
-                excerpt: 'Switch between light, dark, and system themes.',
+                excerpt: 'Understand appearance settings and installation-dependent theme support.',
                 order: 2,
                 collectionSlug: 'dashboard-interface',
-                updatedAt: LAST_UPDATED,
+                updatedAt: '2026-10-22',
                 content: `# Dark Mode & Theming
 
-OverSeek features a modern Glassmorphism design with full dark mode support.
+Some components include light and dark styles. That does not establish complete dark-mode coverage or a working Light → Dark → System selector. This build does not provide a verified profile theme toggle or automatic operating-system theme switching.
 
-## Theme Options
+## Account Appearance
 
-### Light Mode
-Bright backgrounds with high contrast. Best for:
-- Well-lit environments
-- Print-friendly viewing
-- Maximum readability
-
-### Dark Mode
-Rich dark backgrounds with subtle gradients. Best for:
-- Low-light environments
-- Reduced eye strain
-- Extended work sessions
-
-### System (Auto)
-Automatically matches your operating system preference. The theme switches when your OS changes between light and dark mode.
-
-## Switching Themes
-
-1. Click your **profile avatar** in the top-right
-2. Find the **Theme** toggle
-3. Click to cycle through: Light → Dark → System
-
-You can also access the theme toggle from **Settings > Appearance**.
-
-## Design Philosophy
-
-The 2026 interface uses "Premium Glassmorphism":
-- Translucent card backgrounds
-- Subtle blur effects
-- Smooth gradient accents
-- Micro-animations for feedback
+Account appearance can supply a primary brand color. This is separate from a personal light/dark preference. Available controls depend on your installation and permissions; do not assume a setting exists because an example screenshot shows it.
 
 > [!TIP]
-> Your theme preference is saved and syncs across all your devices.`
+> Theme persistence depends on the current browser and installation. Cross-device theme synchronization is not guaranteed.`
             },
             {
                 id: 'art-saved-views',
@@ -278,7 +249,7 @@ The 2026 interface uses "Premium Glassmorphism":
                 excerpt: 'Create and manage filter presets for Orders and Customers pages.',
                 order: 3,
                 collectionSlug: 'dashboard-interface',
-                updatedAt: LAST_UPDATED,
+                updatedAt: '2026-10-22',
                 content: `# Saved Views System
 
 Saved Views let you create reusable filter presets for high-traffic pages like Orders and Customers.
@@ -314,7 +285,7 @@ Instead of manually setting filters every time, save your common filter combinat
 
 Saved Views are **account-specific**:
 - Each account has its own saved views
-- Team members share the same views within an account
+- Views belong to the signed-in user and selected account in this browser, not the whole team
 - Switching accounts loads that account's views
 
 > [!NOTE]
@@ -332,26 +303,23 @@ Saved Views are **account-specific**:
         articles: [
             {
                 id: 'art-seo-score',
-                title: 'Achieving 100/100 SEO Score',
+                title: 'Understanding the SEO Checklist',
                 slug: 'seo-score-remediation',
                 excerpt: 'A comprehensive guide to optimizing your products for search engines.',
                 order: 0,
                 collectionSlug: 'product-management',
-                updatedAt: LAST_UPDATED,
+                updatedAt: '2026-10-22',
                 content: `# Maximizing Your SEO Score
 
-OverSeek includes a real-time SEO scoring engine directly in the Product Edit page. The goal is to reach a score of **100/100** for every product.
+OverSeek includes a heuristic SEO checklist in the Product Edit page. A score of **100/100** only means the implemented checks passed; it does not measure rankings, traffic, conversion quality or accessibility. Prioritize accurate, useful product content rather than keyword stuffing to chase a score.
 
 ## Scoring Criteria
 
-### 1. Content Integrity (40 pts)
-- **Title Length**: Product names must be at least 5 characters long.
-- **Description**: You must have a description or short description of at least 50 characters.
-- **Images**: At least one image must be standard.
-- **Price**: The product must have a valid price.
+### Content Checks
+Use the current panel's individual checks and weights as the authority. Titles, descriptions, images and product information are useful review prompts, not evidence that a search engine has indexed or endorsed the page.
 
-### 2. Keyword Optimization (60 pts)
-You must set a **Focus Keyword** in the SEO tab to unlock these points.
+### Keyword Checks
+Set a **Focus Keyword** in the SEO tab if that control is available.
 - **Keyword in Title**: The focus keyword must appear in the product title.
 - **Keyword in Description**: The keyword must be present in the description.
 - **Keyword in URL**: The keyword should be part of the product's permalink/slug.
@@ -723,7 +691,7 @@ Go to **Reports > Products** and toggle between "Top Performers" and "Bottom Per
                 excerpt: 'Set up Google Ads and Meta Ads OAuth connections for unified insights.',
                 order: 1,
                 collectionSlug: 'ai-marketing',
-                updatedAt: LAST_UPDATED,
+                updatedAt: '2026-10-22',
                 content: `# Connecting Ad Platforms
 
 OverSeek integrates directly with Google Ads and Meta Ads to pull campaign performance data.
@@ -770,7 +738,9 @@ OAuth tokens expire periodically. If you see "Reconnect Required", simply re-aut
 
 ### Missing Data
 - Ensure you selected the correct account during setup
-- Data syncs every 6 hours; new campaigns may take time to appear`
+- Data freshness depends on provider access, scheduler health and the reporting window. Check the displayed dates and coverage. Missing or partial data is not zero performance.
+- Compare spend only within a known currency and matching reporting window. Provider-attributed revenue can overlap across platforms and is not a causal sales total.
+- AI recommendations are advice requiring review, not completed actions or guaranteed improvements.`
             }
         ]
     },
@@ -1039,7 +1009,7 @@ View and resend pending invitations. Invitations expire after 7 days.
                 excerpt: 'Create granular permission sets for your team.',
                 order: 2,
                 collectionSlug: 'team-account',
-                updatedAt: LAST_UPDATED,
+                updatedAt: '2026-10-22',
                 content: `# Custom Roles & Permissions
 
 For advanced access control, create custom roles with specific permission sets.
@@ -1091,10 +1061,10 @@ When assigning a role to a team member:
 Permissions are resolved in this order:
 1. **Owner/Admin**: Always has full access
 2. **Custom Role**: Applied to Staff members
-3. **User Overrides**: Individual exceptions (coming soon)
+3. **User Overrides**: Existing explicit user grants or denials override custom-role entries
 
 > [!IMPORTANT]
-> Only Owners and Admins can create and assign custom roles.`
+> Role management requires the current manage_roles permission or wildcard authority. Inbox viewing, messaging-channel connections and marketing changes use separate view_inbox, manage_channels and manage_marketing grants. Existing custom roles are not automatically granted these capabilities.`
             },
             {
                 id: 'art-user-profile',
@@ -1103,7 +1073,7 @@ Permissions are resolved in this order:
                 excerpt: 'Manage your personal settings, security, and active sessions.',
                 order: 3,
                 collectionSlug: 'team-account',
-                updatedAt: LAST_UPDATED,
+                updatedAt: '2026-10-22',
                 content: `# User Profile & Sessions
 
 Your profile contains personal settings that apply across all accounts you belong to.
@@ -1127,11 +1097,7 @@ Update your:
 3. Click **Update Password**
 
 ### Two-Factor Authentication (2FA)
-Add an extra layer of security:
-1. Click **Enable 2FA**
-2. Scan the QR code with an authenticator app
-3. Enter the verification code
-4. Save your **backup codes** securely
+An authenticator enrollment and backup-code flow is not implemented in this build. Do not assume two-factor protection is enabled. Use your deployment's supported identity and access controls and ask the administrator about available protections.
 
 ### Active Sessions
 View all devices where you're currently logged in:

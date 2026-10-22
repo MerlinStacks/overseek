@@ -40,6 +40,14 @@ describe('feed validation', () => {
         expect(check({ sale_price: '8.00 AUD', sale_price_effective_date: '2026-10-01T12:00:00Z/2026-10-02T12:00:00Z' }).some((issue) => issue.code === 'expired_sale')).toBe(true);
         expect(check({ sale_price_effective_date: 'bad/range' }).some((issue) => issue.code === 'invalid_sale_dates')).toBe(true);
     });
+    it('does not warn about missing native GTINs when a different source is mapped', () => {
+        const columns = Object.entries({ ...values, gtin: '' }).map(([targetField, finalValue]) => ({
+            targetField, finalValue, sourceField: targetField === 'gtin' ? 'sku' : targetField,
+        }));
+        expect(validateFeedColumns('google', columns, now)).toEqual([]);
+        columns.find((column) => column.targetField === 'gtin')!.finalValue = 'NOT-A-BARCODE';
+        expect(validateFeedColumns('google', columns, now)).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'invalid_gtin' })]));
+    });
     it('does not change other channels', () => expect(check({ price: 'bad' }, 'pinterest')).toEqual([]));
     it('validates channel-specific variant enums without reinterpreting unknown values', () => {
         expect(check({ gender: 'female', age_group: 'adult', size_system: 'AU', size_type: 'regular' })).toEqual([]);

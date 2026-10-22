@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({ account: { id: 'tenant' }, navigate: vi.fn().m
 vi.mock('../../context/AuthContext', () => ({ useAuth: () => ({ token: 'token' }) }));
 vi.mock('../../context/AccountContext', () => ({ useAccount: () => ({ currentAccount: mocks.account }) }));
 vi.mock('../../hooks/useAccountFeature', () => ({ useAccountFeature: () => true }));
-vi.mock('../../utils/url', () => ({ navigateToSafeUrl: mocks.navigate }));
+vi.mock('../../utils/url', () => ({ navigateToOAuthUrl: mocks.navigate }));
 vi.mock('./AdAccountModals', () => ({ EditAdAccountModal: () => null, PendingSetupModal: () => null }));
 vi.mock('./AdConnectForm', () => ({ AdConnectForm: () => null }));
 

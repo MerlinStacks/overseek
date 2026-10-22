@@ -6,3 +6,8 @@ export * from './invoiceItemUtils';
 export * from './invoiceTaxUtils';
 export * from './contentSeoScoring';
 export * from './deliveryEstimateSnapshot';
+export * from './emailDesign';
+export * from './emailSanitizer';
+export * from './emailDesignValidation';
+export * from './emailConditions';
+export * from './emailDeliveryOptions';

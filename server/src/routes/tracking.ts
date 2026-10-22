@@ -25,6 +25,8 @@ const trackingRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+            const { PermissionService } = await import('../services/PermissionService');
+            if (!request.user?.id || !await PermissionService.hasPermission(request.user.id, accountId, 'manage_channels')) return reply.code(403).send({ error: 'Channel management permission required' });
 
             const account = await prisma.account.findUnique({
                 where: { id: accountId },
@@ -82,6 +84,7 @@ const trackingRoutes: FastifyPluginAsync = async (fastify) => {
 
                 return {
                     success: true,
+                    accountId,
                     storeUrl: account.wooUrl,
                     storeName: account.name,
                     storeReachable: true,

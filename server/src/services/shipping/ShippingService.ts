@@ -564,10 +564,12 @@ export class ShippingService {
         const job = await prisma.shippingPrintJob.findFirst({ where: { id: jobId, accountId }, include: { label: true } });
         if (!job) throw new Error('Print job not found');
         if (!['failed', 'station_offline'].includes(job.status)) throw new Error('Only failed or offline print jobs can be retried');
-        await prisma.shippingPrintJob.update({
-            where: { id: job.id },
+        if (job.attempts > 0) throw Object.assign(new Error('Attempted jobs require physical-print reconciliation before retry'), { statusCode: 409 });
+        const retried = await prisma.shippingPrintJob.updateMany({
+            where: { id: job.id, accountId, updatedAt: job.updatedAt, status: job.status, attempts: 0 },
             data: { status: 'queued', errorMessage: null, pickedUpAt: null, printedAt: null },
         });
+        if (retried.count !== 1) throw Object.assign(new Error('Print job changed'), { statusCode: 409 });
         const updated = await this.getPrintJobForOperations(accountId, job.id);
         if (!updated) throw new Error('Print job not found');
         await this.recordAuditEvent(accountId, 'PRINT_JOB_RETRIED', {
@@ -590,8 +592,9 @@ export class ShippingService {
         if (!station) throw new Error('Print station not found');
         if (job.status === 'printed') throw new Error('Printed jobs cannot be reassigned');
         if (!['queued', 'failed', 'station_offline'].includes(job.status)) throw new Error('Only queued, failed, or offline print jobs can be reassigned');
-        await prisma.shippingPrintJob.update({
-            where: { id: job.id },
+        if (job.attempts > 0) throw Object.assign(new Error('Attempted jobs require reconciliation before reassignment'), { statusCode: 409 });
+        const reassigned = await prisma.shippingPrintJob.updateMany({
+            where: { id: job.id, accountId, updatedAt: job.updatedAt, status: job.status, attempts: 0 },
             data: {
                 printStationId: station.id,
                 reassignedFromStationId: job.printStationId,
@@ -601,6 +604,7 @@ export class ShippingService {
                 printedAt: null,
             },
         });
+        if (reassigned.count !== 1) throw Object.assign(new Error('Print job changed'), { statusCode: 409 });
         const updated = await this.getPrintJobForOperations(accountId, job.id);
         if (!updated) throw new Error('Print job not found');
         await this.recordAuditEvent(accountId, 'PRINT_JOB_REASSIGNED', {
@@ -661,8 +665,11 @@ export class ShippingService {
     }
 
     async listPendingPrintJobsForStation(stationId: string, token: string, agentVersion?: string) {
+        const { requirePrintProtocol, claimPrintJobs } = await import('./PrintAttemptAdmission');
+        requirePrintProtocol(agentVersion);
         const station = await this.authenticatePrintStation(stationId, token);
         if (!station) throw new Error('Invalid print station credentials');
+        requirePrintProtocol(agentVersion, station.minimumSupportedVersion);
         if (agentVersion && station.minimumSupportedVersion && this.compareVersions(agentVersion, station.minimumSupportedVersion) < 0) {
             await prisma.shippingPrintStation.update({
                 where: { id: station.id },
@@ -680,62 +687,17 @@ export class ShippingService {
             await prisma.shippingPrintStation.update({ where: { id: station.id }, data: { agentVersion, lastSeenAt: new Date(), status: 'online', lastErrorCode: null, lastErrorMessage: null } });
         }
 
-        const jobs = await prisma.shippingPrintJob.findMany({
-            where: { accountId: station.accountId, printStationId: station.id, status: { in: ['queued', 'station_offline'] } },
-            orderBy: { requestedAt: 'asc' },
-            take: 10,
-            include: { label: true },
-        });
-
-        const claimedJobs = [];
-        for (const job of jobs) {
-            const claimed = await prisma.shippingPrintJob.updateMany({
-                where: { id: job.id, status: { in: ['queued', 'station_offline'] } },
-                data: { status: 'picked_up', pickedUpAt: new Date(), attempts: { increment: 1 } },
-            });
-            if (claimed.count > 0) claimedJobs.push(job);
-        }
-
-        const dispatchableJobs = [];
-        for (const job of claimedJobs as any[]) {
-            const labelPath = String(job.label?.labelFilePath || '');
-            if (!this.isSafeLabelFilePath(labelPath) || !fs.existsSync(labelPath)) {
-                await prisma.shippingPrintJob.update({
-                    where: { id: job.id },
-                    data: { status: 'failed', errorMessage: 'Stored label PDF path is invalid or missing' },
-                });
-                await this.recordAuditEvent(station.accountId, 'PRINT_JOB_BLOCKED_UNSAFE_LABEL_PATH', {
-                    labelId: job.labelId,
-                    metadata: { printJobId: job.id, labelPath },
-                });
-                continue;
-            }
-            dispatchableJobs.push(job);
-        }
-
-        return {
-            printStation: { id: station.id, name: station.name },
-            jobs: dispatchableJobs.map((job: any) => ({
-                id: job.id,
-                printerName: job.printerName || station.defaultPrinterName,
-                labelFormat: job.label.labelFormat,
-                labelFilePath: job.label.labelFilePath,
-                labelDownloadPath: `/api/shipping/print-agent/jobs/${job.id}/label`,
-                trackingNumber: job.label.trackingNumber,
-                wooOrderId: job.label.wooOrderId,
-            })),
-        };
+        return claimPrintJobs(station, file => this.isSafeLabelFilePath(file));
     }
 
-    async getPrintJobLabelPdfForStation(stationId: string, token: string, jobId: string) {
+    async getPrintJobLabelPdfForStation(stationId: string, token: string, jobId: string, claimId: string, agentVersion?: string) {
+        const { requirePrintProtocol, readClaimedJob, readBoundedLabelPdf } = await import('./PrintAttemptAdmission');
+        requirePrintProtocol(agentVersion);
         const station = await this.authenticatePrintStation(stationId, token);
         if (!station) throw new Error('Invalid print station credentials');
-        const job = await prisma.shippingPrintJob.findFirst({
-            where: { id: jobId, accountId: station.accountId, printStationId: station.id },
-            include: { label: true },
-        });
-        if (!job) throw new Error('Print job not found');
-        if (!['picked_up', 'queued', 'station_offline', 'failed'].includes(job.status)) throw new Error('Print job is not in a downloadable state');
+        requirePrintProtocol(agentVersion, station.minimumSupportedVersion);
+        const { job, claim } = await readClaimedJob(station, jobId, claimId);
+        if (job.status !== 'picked_up' || claim.state !== 'claimed' || job.label.cancelledAt || !job.label.labelStoredUntil || job.label.labelStoredUntil <= new Date() || job.label.updatedAt.toISOString() !== claim.labelVersion) throw Object.assign(new Error('Print job is not in a downloadable state'), { statusCode: 409 });
         const labelPath = String(job.label?.labelFilePath || '');
         if (!this.isSafeLabelFilePath(labelPath) || !fs.existsSync(labelPath)) throw new Error('Stored label PDF path is invalid or unavailable');
 
@@ -747,41 +709,22 @@ export class ShippingService {
         return {
             fileName: `${job.label.wooOrderId}-${job.label.carrierLabelId || job.labelId}.pdf`,
             contentType: 'application/pdf',
-            pdf: await fs.promises.readFile(labelPath),
+            pdf: readBoundedLabelPdf(labelPath, file => this.isSafeLabelFilePath(file)),
         };
     }
 
-    async reportPrintJobResult(stationId: string, token: string, jobId: string, status: 'printed' | 'failed', errorMessage?: string) {
+    async reportPrintJobResult(stationId: string, token: string, jobId: string, status: 'printed' | 'failed', errorMessage: string | undefined, claimId: string, agentVersion?: string) {
+        const { requirePrintProtocol, reportClaimedJob } = await import('./PrintAttemptAdmission');
+        requirePrintProtocol(agentVersion);
         const station = await this.authenticatePrintStation(stationId, token);
         if (!station) throw new Error('Invalid print station credentials');
-        const job = await prisma.shippingPrintJob.findFirst({ where: { id: jobId, accountId: station.accountId, printStationId: station.id } });
-        if (!job) throw new Error('Print job not found');
-        if (job.status === 'printed') return job;
-        if (!['picked_up', 'queued', 'station_offline', 'failed'].includes(job.status)) {
-            throw new Error('Print job is not in a reportable state');
+        requirePrintProtocol(agentVersion, station.minimumSupportedVersion);
+        const result = await reportClaimedJob(station, jobId, claimId, status, errorMessage);
+        if (result.newlyReported && status === 'printed' && await this.getWooFulfillmentBehavior(station.accountId) === 'print_success') {
+            const label = await prisma.shippingLabel.findFirst({ where: { id: result.job.labelId, accountId: station.accountId } });
+            if (label) await this.attemptFulfillmentSyncWithBackoff(station.accountId, label, { printJobId: result.job.id, trigger: 'print_success' });
         }
-
-        const printed = status === 'printed';
-        const updated = await prisma.shippingPrintJob.update({
-            where: { id: job.id },
-            data: {
-                status: printed ? 'printed' : 'failed',
-                printedAt: printed ? new Date() : job.printedAt,
-                errorMessage: printed ? null : errorMessage || 'Print failed',
-            },
-        });
-
-        if (printed) {
-            const label = await prisma.shippingLabel.update({ where: { id: job.labelId }, data: { status: 'printed', printedAt: new Date() } });
-            const fulfillmentBehavior = await this.getWooFulfillmentBehavior(station.accountId);
-            if (fulfillmentBehavior === 'print_success') {
-                await this.attemptFulfillmentSyncWithBackoff(station.accountId, label, { printJobId: job.id, trigger: 'print_success' });
-            }
-        } else {
-            await prisma.shippingLabel.update({ where: { id: job.labelId }, data: { status: 'print_failed', errorMessage: errorMessage || 'Print failed' } });
-        }
-
-        return updated;
+        return result.job;
     }
 
     async testAusPostSettings(accountId: string) {
@@ -990,6 +933,7 @@ export class ShippingService {
     }
 
     async getStoredLabelPdf(accountId: string, labelId: string, userId?: string) {
+        const { readBoundedLabelPdf } = await import('./PrintAttemptAdmission');
         const label = await prisma.shippingLabel.findFirst({ where: { id: labelId, accountId } });
         if (!label) throw new Error('Label not found');
         this.validateLabelFilePath(label);
@@ -1004,7 +948,7 @@ export class ShippingService {
         return {
             fileName: `${label.wooOrderId}-${label.carrierLabelId || label.id}.pdf`,
             contentType: 'application/pdf',
-            pdf: await fs.promises.readFile(label.labelFilePath),
+            pdf: readBoundedLabelPdf(label.labelFilePath, file => this.isSafeLabelFilePath(file)),
         };
     }
 
@@ -2019,41 +1963,27 @@ export class ShippingService {
     }
 
     private async attemptFulfillmentSyncWithBackoff(accountId: string, label: any, metadata: Record<string, unknown>) {
-        let lastResult: any = null;
-        let lastErrorMessage: string | null = null;
-        const delaysMs = [0, 1000, 2500];
-
-        for (let attempt = 0; attempt < delaysMs.length; attempt += 1) {
-            if (delaysMs[attempt] > 0) await this.sleep(delaysMs[attempt]);
-            try {
-                const fulfillmentResult = await shippingFulfillmentService.syncPrintedLabel(accountId, label.id);
-                lastResult = fulfillmentResult;
-                const fulfillmentError = 'error' in fulfillmentResult ? fulfillmentResult.error : null;
-                if (!fulfillmentError) {
-                    await prisma.shippingLabel.update({ where: { id: label.id }, data: { status: 'fulfilled', errorMessage: null } });
-                    await this.recordAuditEvent(accountId, 'LABEL_PRINT_FULFILLMENT_SYNCED', {
-                        orderId: label.orderId,
-                        labelId: label.id,
-                        metadata: { ...metadata, attempt: attempt + 1, wooOrderId: label.wooOrderId, ...fulfillmentResult },
-                    });
-                    return { ok: true, attempts: attempt + 1, result: fulfillmentResult };
-                }
-                lastErrorMessage = fulfillmentError;
-            } catch (error: any) {
-                lastErrorMessage = error?.message || 'Fulfillment sync failed';
-            }
+        // Historical method name retained for internal callers; retries are deliberately disabled.
+        const id = `shipping-fulfillment:${accountId}:${label.id}`;
+        const admitted = await prisma.$transaction(async tx => {
+            await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${id}, 0))`;
+            const previous = await tx.scopedOperation.findUnique({ where: { id } });
+            if (previous) return false;
+            await tx.scopedOperation.create({ data: { id, accountId, kind: 'shipping-fulfillment', result: { state: 'pending', labelId: label.id, metadata: JSON.parse(JSON.stringify(metadata)) } } });
+            return true;
+        });
+        if (!admitted) throw Object.assign(new Error('Fulfillment outcome requires reconciliation before another attempt'), { statusCode: 409 });
+        try {
+            const result = await shippingFulfillmentService.syncPrintedLabel(accountId, label.id);
+            if (!result.wooOrderUpdated || result.skippedReason || 'error' in result && result.error) throw new Error('Fulfillment not acknowledged');
+            const changed = await prisma.shippingLabel.updateMany({ where: { id: label.id, accountId, updatedAt: label.updatedAt, cancelledAt: null }, data: { status: 'fulfilled', errorMessage: null } });
+            if (changed.count !== 1) throw new Error('Label changed after fulfillment');
+            await prisma.scopedOperation.update({ where: { id }, data: { result: { state: 'complete', labelId: label.id, result: JSON.parse(JSON.stringify(result)) } } });
+            return { ok: true, attempts: 1, result };
+        } catch {
+            await prisma.scopedOperation.updateMany({ where: { id }, data: { result: { state: 'uncertain', labelId: label.id } } }).catch(() => undefined);
+            throw Object.assign(new Error('Fulfillment outcome uncertain; do not automatically retry'), { statusCode: 409 });
         }
-
-        await prisma.shippingLabel.update({
-            where: { id: label.id },
-            data: { errorMessage: `WooCommerce sync failed: ${lastErrorMessage || 'Unknown error'}` },
-        });
-        await this.recordAuditEvent(accountId, 'LABEL_PRINT_FULFILLMENT_SYNC_FAILED', {
-            orderId: label.orderId,
-            labelId: label.id,
-            metadata: { ...metadata, wooOrderId: label.wooOrderId, attempts: delaysMs.length, error: lastErrorMessage, fulfillment: lastResult },
-        });
-        return { ok: false, attempts: delaysMs.length, error: lastErrorMessage, result: lastResult };
     }
 
     private async getWooFulfillmentBehavior(accountId: string): Promise<'keep_in_dispatch' | 'label_created' | 'print_success'> {
@@ -2061,7 +1991,7 @@ export class ShippingService {
         const config = (settings?.config as Record<string, unknown> | null) || {};
         const value = this.stringSetting(config.wooFulfillmentBehavior);
         if (value === 'label_created' || value === 'print_success' || value === 'keep_in_dispatch') return value;
-        return 'print_success';
+        return 'keep_in_dispatch';
     }
 
     private async getServiceReadinessError(accountId: string, draft: { selectedServiceCode?: string | null }) {

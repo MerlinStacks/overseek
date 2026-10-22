@@ -1,228 +1,39 @@
-import { useEffect, useState } from 'react';
-import { Logger } from '../../utils/logger';
-import { ShoppingCart, ExternalLink, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { format } from 'date-fns';
-import { formatCurrency } from '../../utils/format';
-import { getStatusBadgeClasses } from '../../utils/orderStatus';
-import { Link } from 'react-router-dom';
-
-interface SaleRecord {
-    orderId: number;
-    orderNumber: string;
-    customerWooId: number | null;
-    date: string;
-    status: string;
-    customerName: string;
-    customerEmail: string;
-    quantity: number;
-    lineTotal: number;
-    orderTotal: number;
-    currency: string;
+import { usePermissions } from '../../hooks/usePermissions';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+import { isRecord } from '../../utils/responseValidation';
+interface Sale { orderId: number; orderNumber: string; customerWooId: number | null; date: string; status: string; customerName: string; customerEmail: string; quantity: number; lineTotal: number | null; orderTotal: number | null; currency: string | null }
+interface History { sales: Sale[]; total: number; page: number; limit: number; totalPages: number }
+const positive = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+const nonnegative = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+function decode(value: unknown): History {
+    if (!isRecord(value) || !positive(value.page) || value.limit !== 15 || !nonnegative(value.total) || !nonnegative(value.totalPages) || value.totalPages !== Math.ceil(value.total / 15) || !Array.isArray(value.sales) || value.sales.length > 15) throw new Error('Invalid history page');
+    for (const row of value.sales) if (!isRecord(row) || !positive(row.orderId) || row.customerWooId !== null && !positive(row.customerWooId) || !['orderNumber', 'status', 'customerName', 'customerEmail'].every(key => typeof row[key] === 'string' && String(row[key]).length <= 1000) || typeof row.date !== 'string' || !Number.isFinite(Date.parse(row.date)) || !positive(row.quantity) || !['lineTotal', 'orderTotal'].every(key => row[key] === null || typeof row[key] === 'number' && Number.isFinite(row[key])) || row.currency !== null && (typeof row.currency !== 'string' || !/^[A-Z]{3}$/.test(row.currency))) throw new Error('Invalid sale');
+    if (new Set(value.sales.map(row => row.orderId)).size !== value.sales.length) throw new Error('Duplicate orders');
+    return value as unknown as History;
 }
-
-interface SalesHistoryResponse {
-    sales: SaleRecord[];
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
+function storeUrl(value: string | undefined) { try { const url = new URL(value || ''); if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) return null; return url.toString().replace(/\/$/, ''); } catch { return null; } }
+export function ProductSalesHistory({ productWooId }: { productWooId: number }) {
+    const { token, user } = useAuth(); const { currentAccount } = useAccount(); const { hasPermission } = usePermissions();
+    if (!token || !currentAccount || !positive(productWooId)) return <p role="status">Select a valid account and product.</p>;
+    if (!hasPermission('view_orders') || !hasPermission('view_customers')) return <p>Order and customer view permissions required.</p>;
+    return <ScopedHistory key={JSON.stringify([user?.id, token, currentAccount.id, productWooId])} token={token} accountId={currentAccount.id} productWooId={productWooId} wooUrl={storeUrl(currentAccount.wooUrl)} />;
 }
-
-interface ProductSalesHistoryProps {
-    productWooId: number;
-}
-
-/**
- * Displays a paginated list of orders containing this product.
- * Fetches data from /api/products/:id/sales-history endpoint.
- */
-export function ProductSalesHistory({ productWooId }: ProductSalesHistoryProps) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const [data, setData] = useState<SalesHistoryResponse | null>(null);
-    const [loading, setLoading] = useState(true);
+function ScopedHistory(props: { token: string; accountId: string; productWooId: number; wooUrl: string | null }) {
     const [page, setPage] = useState(1);
-    const normalizedWooUrl = currentAccount?.wooUrl?.replace(/\/+$/, '');
-
-    useEffect(() => {
-        if (!currentAccount || !token) return;
-
-        const fetchSalesHistory = async () => {
-            setLoading(true);
-            try {
-                const res = await fetch(`/api/products/${productWooId}/sales-history?page=${page}&limit=15`, {
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'X-Account-ID': currentAccount.id
-                    }
-                });
-                if (res.ok) {
-                    setData(await res.json());
-                }
-            } catch (error) {
-                Logger.error('Failed to fetch sales history', { error: error });
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchSalesHistory();
-    }, [productWooId, currentAccount, token, page]);
-
-    if (loading) {
-        return (
-            <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6">
-                <div className="flex items-center gap-2 text-sm font-bold text-gray-900 uppercase tracking-wide">
-                    <ShoppingCart size={16} className="text-blue-600" />
-                    Sales History
-                </div>
-                <div className="mt-4 grid gap-3">
-                    {[1, 2, 3, 4].map(item => (
-                        <div key={item} className="h-14 animate-pulse rounded-lg bg-gray-100" />
-                    ))}
-                </div>
-                <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
-                    <Loader2 className="animate-spin text-blue-600" size={16} />
-                    Loading order history...
-                </div>
-            </div>
-        );
-    }
-
-    if (!data || data.sales.length === 0) {
-        return (
-            <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-8 text-center text-gray-400">
-                <ShoppingCart className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p className="text-lg font-medium text-gray-700">No sales yet</p>
-                <p className="text-sm mt-1">This product has not appeared in synced orders yet. Once orders land, they will show up here automatically.</p>
-            </div>
-        );
-    }
-
-    return (
-        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50">
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-100/50">
-                <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
-                        <ShoppingCart size={16} className="text-blue-600" />
-                        Sales History
-                    </h3>
-                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                        {data.total} order{data.total !== 1 ? 's' : ''}
-                    </span>
-                </div>
-            </div>
-
-            {/* Sales Table */}
-            <div className="overflow-x-auto">
-                <table className="w-full">
-                    <thead>
-                        <tr className="bg-gray-50/50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            <th className="px-6 py-3">Order</th>
-                            <th className="px-6 py-3">Date</th>
-                            <th className="px-6 py-3">Customer</th>
-                            <th className="px-6 py-3 text-center">Qty</th>
-                            <th className="px-6 py-3 text-right">Line Total</th>
-                            <th className="px-6 py-3 text-right">Order Total</th>
-                            <th className="px-6 py-3 text-center">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100/50">
-                        {data.sales.map((sale) => (
-                            <tr key={sale.orderId} className="hover:bg-gray-50/50 transition-colors">
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-2">
-                                        <Link
-                                            to={`/orders/${sale.orderId}`}
-                                            className="font-medium text-gray-900 hover:text-blue-700 transition-colors"
-                                        >
-                                            {sale.orderNumber}
-                                        </Link>
-                                        {normalizedWooUrl && (
-                                            <a
-                                                href={`${normalizedWooUrl}/wp-admin/post.php?post=${sale.orderId}&action=edit`}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="text-blue-600 hover:text-blue-800 transition-colors"
-                                                title="Open in WooCommerce"
-                                            >
-                                                <ExternalLink size={14} />
-                                            </a>
-                                        )}
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 text-sm text-gray-600">
-                                    {format(new Date(sale.date), 'MMM d, yyyy')}
-                                    <span className="block text-xs text-gray-400">
-                                        {format(new Date(sale.date), 'h:mm a')}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <div className="text-sm font-medium text-gray-900">
-                                        {sale.customerWooId ? (
-                                            <Link
-                                                to={`/customers/${sale.customerWooId}`}
-                                                className="hover:text-blue-700 transition-colors"
-                                            >
-                                                {sale.customerName}
-                                            </Link>
-                                        ) : (
-                                            sale.customerName
-                                        )}
-                                    </div>
-                                    {sale.customerEmail && (
-                                        <div className="text-xs text-gray-500">{sale.customerEmail}</div>
-                                    )}
-                                </td>
-                                <td className="px-6 py-4 text-center">
-                                    <span className="inline-flex items-center justify-center min-w-[28px] px-2 py-1 bg-blue-50 text-blue-700 text-sm font-medium rounded-sm">
-                                        {sale.quantity}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4 text-right text-sm font-medium text-gray-900">
-                                    {formatCurrency(sale.lineTotal, sale.currency)}
-                                </td>
-                                <td className="px-6 py-4 text-right text-sm font-medium text-gray-700">
-                                    {formatCurrency(sale.orderTotal, sale.currency)}
-                                </td>
-                                <td className="px-6 py-4 text-center">
-                                    <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full border capitalize ${getStatusBadgeClasses(sale.status)}`}>
-                                        {sale.status.replace('-', ' ')}
-                                    </span>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-
-            {/* Pagination */}
-            {data.totalPages > 1 && (
-                <div className="px-6 py-4 border-t border-gray-100/50 flex items-center justify-between">
-                    <span className="text-sm text-gray-500">
-                        Page {data.page} of {data.totalPages}
-                    </span>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => setPage(p => Math.max(1, p - 1))}
-                            disabled={page <= 1}
-                            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                            <ChevronLeft size={16} />
-                        </button>
-                        <button
-                            onClick={() => setPage(p => Math.min(data.totalPages, p + 1))}
-                            disabled={page >= data.totalPages}
-                            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                            <ChevronRight size={16} />
-                        </button>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
+    return <section className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 text-slate-900 dark:text-slate-100 space-y-3"><h3 className="font-semibold">Sales History</h3><p>Synced local order records, not a complete or live provider sales ledger.</p><HistoryPage key={page} {...props} page={page} setPage={setPage} /></section>;
+}
+function HistoryPage({ token, accountId, productWooId, wooUrl, page, setPage }: { token: string; accountId: string; productWooId: number; wooUrl: string | null; page: number; setPage: (value: number) => void }) {
+    const read = useScopedRequest(`/api/products/${productWooId}/sales-history?page=${page}&limit=15`, accountId, token, decode);
+    if (read.loading) return <p role="status">Loading order history…</p>;
+    if (read.error || !read.data || read.data.page !== page) return <p role="alert">Sales history unavailable. <button onClick={read.retry}>Retry sales history</button></p>;
+    const data = read.data;
+    const money = (amount: number | null, currency: string | null) => { if (amount === null || currency === null) return 'Unavailable'; try { return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount); } catch { return 'Unavailable'; } };
+    return <>
+        {data.sales.length === 0 ? <p>No synced sales in this page.</p> : <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr>{['Order', 'Date', 'Customer', 'Quantity', 'Line total', 'Order total', 'Status'].map(label => <th className="p-2" key={label}>{label}</th>)}</tr></thead><tbody>{data.sales.map(sale => <tr key={sale.orderId}><td className="p-2"><Link to={`/orders/${sale.orderId}`}>{sale.orderNumber}</Link> {wooUrl && <a href={`${wooUrl}/wp-admin/post.php?post=${sale.orderId}&action=edit`} target="_blank" rel="noopener noreferrer" aria-label={`Open order ${sale.orderNumber} in WooCommerce (new tab)`}>↗</a>}</td><td className="p-2">{new Date(sale.date).toLocaleString()}</td><td className="p-2">{sale.customerWooId ? <Link to={`/customers/${sale.customerWooId}`}>{sale.customerName}</Link> : sale.customerName}<p>{sale.customerEmail}</p></td><td className="p-2">{sale.quantity}</td><td className="p-2">{money(sale.lineTotal, sale.currency)}</td><td className="p-2">{money(sale.orderTotal, sale.currency)}</td><td className="p-2">{sale.status}</td></tr>)}</tbody></table></div>}
+        <nav aria-label="Sales history pages" className="flex gap-4"><button disabled={page <= 1} onClick={() => setPage(page - 1)} aria-label="Previous sales page">Previous</button><span>Page {page} · {data.total} synced orders{data.totalPages > 666 ? ' (view limited to 666 pages)' : ''}</span><button disabled={page >= Math.min(data.totalPages, 666)} onClick={() => setPage(page + 1)} aria-label="Next sales page">Next</button></nav>
+    </>;
 }

@@ -18,6 +18,10 @@ interface RoadblockPage {
 }
 
 export class RoadblockAnalytics {
+    private static validateWindow(accountId: string, startDate?: string, endDate?: string) {
+        const start = startDate ? new Date(startDate) : new Date(0), end = endDate ? new Date(endDate) : new Date();
+        if (!accountId || accountId.length > 200 || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start >= end) throw new Error('Valid account and chronological observation window required');
+    }
 
     /**
      * Get pages with high exit rates where visitors had items in cart
@@ -29,6 +33,8 @@ export class RoadblockAnalytics {
         endDate?: string,
         minExitRate: number = 30
     ): Promise<RoadblockPage[]> {
+        this.validateWindow(accountId, startDate, endDate);
+        if (!Number.isFinite(minExitRate) || minExitRate < 0 || minExitRate > 100) throw new Error('Invalid exit threshold');
         try {
             const start = startDate ? new Date(startDate) : new Date(0);
             const end = endDate ? new Date(endDate) : new Date();
@@ -82,7 +88,7 @@ export class RoadblockAnalytics {
                 .slice(0, 50);
         } catch (error) {
             Logger.error('Roadblock Analytics Error', { error });
-            return [];
+            throw error;
         }
     }
 
@@ -95,23 +101,22 @@ export class RoadblockAnalytics {
         startDate?: string,
         endDate?: string
     ) {
+        this.validateWindow(accountId, startDate, endDate);
         try {
             const dateFilter: any = {};
             if (startDate) {
                 dateFilter.gte = new Date(startDate);
             }
             if (endDate) {
-                dateFilter.lte = new Date(endDate);
+                dateFilter.lt = new Date(endDate);
             }
 
             // Count events by type
             const eventCounts = await prisma.analyticsEvent.groupBy({
                 by: ['type'],
                 where: {
-                    session: {
-                        accountId,
-                        ...(Object.keys(dateFilter).length > 0 && { lastActiveAt: dateFilter })
-                    },
+                    session: { accountId },
+                    ...(Object.keys(dateFilter).length > 0 && { createdAt: dateFilter }),
                     type: {
                         in: ['pageview', 'add_to_cart', 'checkout_start', 'purchase']
                     }
@@ -133,30 +138,29 @@ export class RoadblockAnalytics {
 
             return {
                 funnel: [
-                    { stage: 'Product Views', count: productViews, dropOff: null },
+                    { stage: 'Pageview events', count: productViews, dropOff: null },
                     {
                         stage: 'Add to Cart',
                         count: addToCarts,
-                        dropOff: productViews > 0 ? Math.round((1 - addToCarts / productViews) * 100) : 0
+                        dropOff: null
                     },
                     {
                         stage: 'Checkout Started',
                         count: checkoutStarts,
-                        dropOff: addToCarts > 0 ? Math.round((1 - checkoutStarts / addToCarts) * 100) : 0
+                        dropOff: null
                     },
                     {
                         stage: 'Purchase',
                         count: purchases,
-                        dropOff: checkoutStarts > 0 ? Math.round((1 - purchases / checkoutStarts) * 100) : 0
+                        dropOff: null
                     }
                 ],
-                overallConversionRate: productViews > 0
-                    ? Math.round((purchases / productViews) * 10000) / 100
-                    : 0
+                overallConversionRate: null,
+                basis: 'independent event counts in the requested event-time window; not an ordered unique-person funnel'
             };
         } catch (error) {
             Logger.error('Drop-off Funnel Error', { error });
-            return { funnel: [], overallConversionRate: 0 };
+            throw error;
         }
     }
 }

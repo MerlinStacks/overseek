@@ -1,179 +1,37 @@
-import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { api } from '../../services/api';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
-import { Logger } from '../../utils/logger';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { getDateRange } from '../../utils/dateUtils';
-import { Monitor, Smartphone, Tablet, Target, Activity } from 'lucide-react';
-
-interface DeviceData {
-    device: string;
-    sessions: number;
-    conversions: number;
-    conversionRate: number;
+import { record, rows, label, metric, count } from './analyticsRead';
+const decodeDevices = (value: unknown) => decodeRates(value, 'device');
+const decodeSources = (value: unknown) => decodeRates(value, 'source');
+function decodeRates(value: unknown, field: string) { return rows(value).map(row => ({ label: label(row[field]), sessions: count(row.sessions), conversions: count(row.conversions), conversionRate: metric(row.conversionRate) })); }
+function decodeBounce(value: unknown) { const data = record(value); const rate = metric(data.overallBounceRate); if (rate > 100) throw new Error('Invalid bounce rate'); return { rate: data.totalSessions === 0 ? null : rate }; }
+export function CROView({ dateRange, explicitRange }: { dateRange: string; explicitRange?: { startDate: string; endDate: string } }) {
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p>Select an account and sign in to view conversion data.</p>;
+    if (!['today', 'yesterday', '7d', '30d', '90d', 'ytd', 'all'].includes(dateRange)) return <p role="alert">Invalid conversion reporting range.</p>;
+    return <CROContent key={`${currentAccount.id}:${token}:${dateRange}:${explicitRange?.startDate}:${explicitRange?.endDate}`} accountId={currentAccount.id} token={token} dateRange={dateRange} explicitRange={explicitRange} />;
 }
-
-interface SourceData {
-    source: string;
-    sessions: number;
-    conversions: number;
-    conversionRate: number;
+function CROContent({ accountId, token, dateRange, explicitRange }: { accountId: string; token: string; dateRange: string; explicitRange?: { startDate: string; endDate: string } }) {
+    const range = explicitRange ?? getDateRange(dateRange);
+    const query = `startDate=${encodeURIComponent(range.startDate)}&endDate=${encodeURIComponent(range.endDate)}`;
+    const devices = useScopedRequest(`/api/analytics/cro/device?${query}`, accountId, token, decodeDevices);
+    const sources = useScopedRequest(`/api/analytics/cro/source?${query}`, accountId, token, decodeSources);
+    const bounce = useScopedRequest(`/api/analytics/cro/bounce-rate?${query}`, accountId, token, decodeBounce);
+    return <div className="space-y-6 text-slate-900 dark:text-slate-100">
+        <Card><CardHeader><CardTitle>Bounce Rate</CardTitle></CardHeader><CardContent>{bounce.loading ? <p role="status">Loading bounce rate…</p> : bounce.error || bounce.data == null ? <div role="alert">Bounce rate unavailable. <button onClick={bounce.retry}>Retry bounce rate</button></div> : <p>{bounce.data.rate == null ? 'Unavailable (no tracked sessions)' : `${bounce.data.rate.toFixed(1)}%`}</p>}</CardContent></Card>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">{[{ title: 'Conversion Rate by Device', result: devices }, { title: 'Conversion Rate by Source', result: sources }].map(({ title, result }) => {
+            const maximum = Math.max(...(result.data || []).map(row => row.conversionRate), 1);
+            return <Card key={title}><CardHeader><CardTitle>{title}</CardTitle></CardHeader><CardContent>
+                {result.loading ? <p role="status">Loading {title.toLowerCase()}…</p> : result.error ? <div role="alert">{title} unavailable. <button onClick={result.retry}>Retry {title.toLowerCase()}</button></div> : !result.data?.length ? <p>No observations in this range.</p> : result.data.map((row, index) => <div key={`${row.label}:${index}`} className="mb-4">
+                    <div className="flex justify-between gap-4"><span>{row.label}</span><span>{row.sessions ? `${row.conversionRate.toFixed(2)}%` : 'Unavailable (no sessions)'}</span></div>
+                    <div aria-hidden="true" className="h-2 rounded-full bg-slate-100 dark:bg-slate-800"><div className="h-2 rounded-full bg-indigo-500" style={{ width: `${row.sessions ? Math.max(0, Math.min(100, row.conversionRate / maximum * 100)) : 0}%` }} /></div>
+                    <p className="text-xs text-slate-500">{row.sessions.toLocaleString()} sessions · {row.conversions.toLocaleString()} conversions</p>
+                </div>)}
+            </CardContent></Card>;
+        })}</div>
+        <p className="text-xs text-slate-500">Rates use the server's tracked-session definitions; missing or excluded tracking is not proof of zero activity.</p>
+    </div>;
 }
-
-interface BounceRateData {
-    overallBounceRate: number;
-    byPage?: { page: string; bounceRate: number; sessions: number }[];
-}
-
-const deviceIcons: Record<string, React.ReactNode> = {
-    desktop: <Monitor className="w-4 h-4" />,
-    mobile: <Smartphone className="w-4 h-4" />,
-    tablet: <Tablet className="w-4 h-4" />,
-};
-
-export const CROView: React.FC<{ dateRange: string }> = ({ dateRange }) => {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const [deviceData, setDeviceData] = useState<DeviceData[]>([]);
-    const [sourceData, setSourceData] = useState<SourceData[]>([]);
-    const [bounceData, setBounceData] = useState<BounceRateData | null>(null);
-    const [loading, setLoading] = useState(false);
-
-    const fetchData = useCallback(async () => {
-        if (!token || !currentAccount?.id) return;
-        setLoading(true);
-        try {
-            const range = getDateRange(dateRange);
-            const [devices, sources, bounce] = await Promise.all([
-                api.get<DeviceData[]>(`/api/analytics/cro/device?startDate=${range.startDate}&endDate=${range.endDate}`, token, currentAccount.id),
-                api.get<SourceData[]>(`/api/analytics/cro/source?startDate=${range.startDate}&endDate=${range.endDate}`, token, currentAccount.id),
-                api.get<BounceRateData>(`/api/analytics/cro/bounce-rate?startDate=${range.startDate}&endDate=${range.endDate}`, token, currentAccount.id),
-            ]);
-            setDeviceData(devices || []);
-            setSourceData(sources || []);
-            setBounceData(bounce);
-        } catch (e) {
-            Logger.error('Failed to fetch CRO data:', { error: e });
-        } finally {
-            setLoading(false);
-        }
-    }, [dateRange, token, currentAccount?.id]);
-
-    useEffect(() => { fetchData(); }, [fetchData]);
-
-    const maxDeviceRate = Math.max(...deviceData.map(d => d.conversionRate), 1);
-    const maxSourceRate = Math.max(...sourceData.map(s => s.conversionRate), 1);
-
-    return (
-        <div className="space-y-6">
-            {/* Bounce Rate Card */}
-            <Card className="border-0 shadow-xs">
-                <CardContent className="p-5">
-                    <div className="flex items-center gap-4">
-                        <div className={`p-3 rounded-xl ${bounceData && bounceData.overallBounceRate > 60
-                            ? 'bg-red-100 dark:bg-red-900/30'
-                            : 'bg-amber-100 dark:bg-amber-900/30'
-                            }`}>
-                            <Activity className={`w-5 h-5 ${bounceData && bounceData.overallBounceRate > 60
-                                ? 'text-red-600 dark:text-red-400'
-                                : 'text-amber-600 dark:text-amber-400'
-                                }`} />
-                        </div>
-                        <div>
-                            <p className="text-xs text-gray-500 dark:text-slate-400">Bounce Rate</p>
-                            <p className="text-2xl font-bold text-gray-900 dark:text-slate-100">
-                                {bounceData ? `${bounceData.overallBounceRate.toFixed(1)}%` : '—'}
-                            </p>
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Conversion Rate by Device */}
-                <Card className="border-0 shadow-xs">
-                    <CardHeader>
-                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                            <Target className="w-4 h-4 text-indigo-500" />
-                            Conversion Rate by Device
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {loading ? (
-                            <div className="flex justify-center py-8">
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
-                            </div>
-                        ) : deviceData.length === 0 ? (
-                            <p className="text-sm text-gray-500 dark:text-slate-400 italic">No device data yet</p>
-                        ) : (
-                            <div className="space-y-4">
-                                {deviceData.map(item => (
-                                    <div key={item.device}>
-                                        <div className="flex items-center justify-between text-sm mb-1.5">
-                                            <span className="flex items-center gap-2 text-gray-700 dark:text-slate-300 capitalize">
-                                                {deviceIcons[item.device] || <Monitor className="w-4 h-4" />}
-                                                {item.device}
-                                            </span>
-                                            <span className="font-medium text-gray-900 dark:text-slate-100">{item.conversionRate.toFixed(2)}%</span>
-                                        </div>
-                                        <div className="w-full bg-gray-100 dark:bg-slate-700 rounded-full h-2.5">
-                                            <div
-                                                className="bg-indigo-500 h-2.5 rounded-full transition-all"
-                                                style={{ width: `${(item.conversionRate / maxDeviceRate) * 100}%` }}
-                                            />
-                                        </div>
-                                        <div className="flex justify-between text-xs text-gray-400 dark:text-slate-500 mt-1">
-                                            <span>{item.sessions.toLocaleString()} sessions</span>
-                                            <span>{item.conversions.toLocaleString()} conversions</span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                {/* Conversion Rate by Source */}
-                <Card className="border-0 shadow-xs">
-                    <CardHeader>
-                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                            <Target className="w-4 h-4 text-green-500" />
-                            Conversion Rate by Source
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {loading ? (
-                            <div className="flex justify-center py-8">
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
-                            </div>
-                        ) : sourceData.length === 0 ? (
-                            <p className="text-sm text-gray-500 dark:text-slate-400 italic">No source data yet</p>
-                        ) : (
-                            <div className="space-y-4">
-                                {sourceData.map(item => (
-                                    <div key={item.source}>
-                                        <div className="flex items-center justify-between text-sm mb-1.5">
-                                            <span className="text-gray-700 dark:text-slate-300 capitalize">{item.source}</span>
-                                            <span className="font-medium text-gray-900 dark:text-slate-100">{item.conversionRate.toFixed(2)}%</span>
-                                        </div>
-                                        <div className="w-full bg-gray-100 dark:bg-slate-700 rounded-full h-2.5">
-                                            <div
-                                                className="bg-green-500 h-2.5 rounded-full transition-all"
-                                                style={{ width: `${(item.conversionRate / maxSourceRate) * 100}%` }}
-                                            />
-                                        </div>
-                                        <div className="flex justify-between text-xs text-gray-400 dark:text-slate-500 mt-1">
-                                            <span>{item.sessions.toLocaleString()} sessions</span>
-                                            <span>{item.conversions.toLocaleString()} conversions</span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
-        </div>
-    );
-};

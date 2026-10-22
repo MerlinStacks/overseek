@@ -7,7 +7,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { AdsService } from '../services/ads';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
-import { buildCallbackUrl, buildFrontendUrl, createSignedOauthState, verifySignedOauthState } from './oauthHelpers';
+import { buildCallbackUrl, buildFrontendUrl, createSignedOauthState, verifySignedOauthState, assertOauthPermission } from './oauthHelpers';
 import { getOauthAccountIdOrReply } from './oauthRouteHelpers';
 
 const CALLBACK_SUFFIX = 'google/callback';
@@ -41,13 +41,13 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
             const frontendRedirect = sanitizeFrontendRedirect(query.redirect);
             const reconnectId = query.reconnectId;
 
-            const state = await createSignedOauthState({ accountId, frontendRedirect, reconnectId, provider: 'GOOGLE_ADS' });
             const callbackUrl = buildCallbackUrl(request, CALLBACK_SUFFIX);
+            const state = await createSignedOauthState({ accountId, userId: request.user!.id, frontendRedirect, reconnectId, provider: 'GOOGLE_ADS', callbackUrl }, reply);
             const authUrl = await AdsService.getGoogleAuthUrl(callbackUrl, state);
             return { authUrl };
         } catch (error: any) {
             Logger.error('Failed to generate Google OAuth URL', { error });
-            return reply.code(500).send({ error: error.message });
+            return reply.code(503).send({ error: 'Could not start Google connection' });
         }
     });
 
@@ -59,23 +59,21 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
             const query = request.query as { code?: string; state?: string; error?: string };
             const { code, state, error } = query;
 
-            if (error) {
-                Logger.warn('Google OAuth denied', { error });
-                return reply.redirect(buildFrontendUrl(DEFAULT_MARKETING_REDIRECT, { error: 'oauth_denied' }));
-            }
-
-            if (!code || !state) {
+            if (!state || (!code && !error) || code && (typeof code !== 'string' || code.length > 4096)) {
                 return reply.redirect(buildFrontendUrl(DEFAULT_MARKETING_REDIRECT, { error: 'missing_params' }));
             }
 
-            const stateData = await verifySignedOauthState<{ accountId: string; frontendRedirect: string; reconnectId?: string; provider: string }>(state);
+            const stateData = await verifySignedOauthState(state, request, reply, 'GOOGLE_ADS');
             if (!stateData || stateData.provider !== 'GOOGLE_ADS' || !stateData.accountId) {
                 return reply.redirect(buildFrontendUrl(DEFAULT_MARKETING_REDIRECT, { error: 'invalid_state' }));
             }
+            if (error) return reply.redirect(buildFrontendUrl(stateData.frontendRedirect, { error: 'oauth_denied' }));
+            if (!code) return reply.redirect(buildFrontendUrl(DEFAULT_MARKETING_REDIRECT, { error: 'missing_params' }));
 
-            const redirectUri = buildCallbackUrl(request, CALLBACK_SUFFIX);
+            const redirectUri = stateData.callbackUrl;
             const tokens = await AdsService.exchangeGoogleCode(code, redirectUri);
             const safeRedirect = sanitizeFrontendRedirect(stateData.frontendRedirect);
+            await assertOauthPermission(stateData.userId, stateData.accountId, stateData.provider);
 
             // If reconnecting an existing account, update its tokens
             if (stateData.reconnectId) {
@@ -102,7 +100,7 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
 
         } catch (error: any) {
             Logger.error('Google OAuth callback failed', { error: error.message });
-            return reply.redirect(buildFrontendUrl(DEFAULT_MARKETING_REDIRECT, { error: 'oauth_failed', message: error.message }));
+            return reply.redirect(buildFrontendUrl(DEFAULT_MARKETING_REDIRECT, { error: 'oauth_failed' }));
         }
     });
 };

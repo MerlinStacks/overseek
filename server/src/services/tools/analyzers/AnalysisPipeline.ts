@@ -1,19 +1,4 @@
-/**
- * Analysis Pipeline
- * 
- * Orchestrates all AI Marketing Intelligence analyzers, runs them in parallel,
- * and merges results into a unified format.
- */
-
-import { Logger } from '../../../utils/logger';
-import {
-    BaseAnalysisResult,
-    Suggestion,
-    UnifiedAnalysis
-} from '../types/AnalysisTypes';
-import { ActionableRecommendation } from '../types/ActionableTypes';
-
-// Import individual analyzers
+import crypto from 'node:crypto';
 import { MultiPeriodAnalyzer } from './MultiPeriodAnalyzer';
 import { CrossChannelAnalyzer } from './CrossChannelAnalyzer';
 import { LTVAnalyzer } from './LTVAnalyzer';
@@ -26,307 +11,74 @@ import { CannibalizationAnalyzer } from './CannibalizationAnalyzer';
 import { MarketingStrategyAdvisor } from '../advisors/MarketingStrategyAdvisor';
 import { SearchCampaignAdvisor } from '../advisors/SearchCampaignAdvisor';
 import { getFeedbackContext, shouldFilterRecommendation } from '../feedback/FeedbackService';
+import { boundedRead, record, trustedAccount } from '../analysisObservations';
 
-
+interface Advisory { id: string; feedbackId?: string; text: string; source: string; priority: 1 | 2 | 3; category: string; confidence: null; actionability: 'review-only'; provenance: 'legacy-unverified' | 'observed-advisory' }
+interface SourceResult { status: 'fulfilled' | 'unavailable'; hasData: boolean; suggestions: Advisory[]; coverage: unknown; durationMs: number }
+const text = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0 && value.length <= 10000;
+function safeMetadata(value: unknown, depth = 0): boolean {
+    if (depth > 6) return false;
+    if (value === null || typeof value === 'boolean' || typeof value === 'number' && Number.isFinite(value) || typeof value === 'string' && value.length <= 10000) return true;
+    if (Array.isArray(value)) return value.length <= 100 && value.every(item => safeMetadata(item, depth + 1));
+    return !!value && typeof value === 'object' && Object.entries(value).length <= 100 && Object.entries(value).every(([key, entry]) => !['__proto__', 'prototype', 'constructor'].includes(key) && safeMetadata(entry, depth + 1));
+}
+const fields = ['suggestions', 'recommendations', 'unpromotedProducts', 'underperformingProducts', 'highPotentialProducts', 'keywordOpportunities', 'negativeKeywordOpportunities', 'bidAdjustments', 'cannibalized', 'paidOpportunities', 'actionableRecommendations'];
 export class AnalysisPipeline {
-
-    /**
-     * Run all analyzers and merge results.
-     * @param accountId - The account to analyze
-     * @param userContext - Optional business context from user (e.g., "Focus on summer products", "Upcoming sale")
-     */
-    static async runAll(accountId: string, userContext?: string): Promise<UnifiedAnalysis> {
-        const startTime = Date.now();
-
-        // Parse user context for priority keywords
-        const contextKeywords = userContext ? this.parseContextKeywords(userContext) : [];
-
-        // Run all analyzers in parallel — including SC↔Ads intelligence
-        const [
-            multiPeriod,
-            crossChannel,
-            ltv,
-            funnel,
-            audience,
-            productOpp,
-            keywordOpp,
-            negativeKw,
-            cannibalization,
-            strategy,
-            searchCampaigns
-        ] = await Promise.all([
-            MultiPeriodAnalyzer.analyze(accountId),
-            CrossChannelAnalyzer.analyze(accountId),
-            LTVAnalyzer.analyze(accountId),
-            FunnelAnalyzer.analyze(accountId),
-            AudienceAnalyzer.analyze(accountId),
-            ProductOpportunityAnalyzer.analyze(accountId),
-            KeywordOpportunityAnalyzer.analyze(accountId),
-            NegativeKeywordAnalyzer.analyze(accountId),
-            CannibalizationAnalyzer.analyze(accountId),
-            MarketingStrategyAdvisor.analyze(accountId),  // Strategic layer
-            SearchCampaignAdvisor.analyze(accountId)       // Search campaign layer
-        ]);
-
-        // Collect all suggestions
-        const allSuggestions: Suggestion[] = [];
-        const allActions: ActionableRecommendation[] = [];
-
-        // Collect actionable recommendations from new analyzers
-        if (productOpp.unpromotedProducts) allActions.push(...productOpp.unpromotedProducts);
-        if (productOpp.underperformingProducts) allActions.push(...productOpp.underperformingProducts);
-        if (productOpp.highPotentialProducts) allActions.push(...productOpp.highPotentialProducts);
-
-        if (keywordOpp.keywordOpportunities) allActions.push(...keywordOpp.keywordOpportunities);
-        if (keywordOpp.negativeKeywordOpportunities) allActions.push(...keywordOpp.negativeKeywordOpportunities);
-        if (keywordOpp.bidAdjustments) allActions.push(...keywordOpp.bidAdjustments);
-
-        // Negative keyword recommendations (SC↔Ads bridge)
-        if (negativeKw.suggestions) allActions.push(...negativeKw.suggestions);
-
-        // Cannibalization recommendations (SC↔Ads bridge)
-        if (cannibalization.cannibalized) allActions.push(...cannibalization.cannibalized);
-        if (cannibalization.paidOpportunities) allActions.push(...cannibalization.paidOpportunities);
-
-        // Strategic recommendations (executive-level insights)
-        if (strategy.recommendations) allActions.push(...strategy.recommendations);
-
-        // Search campaign recommendations
-        if (searchCampaigns.recommendations) allActions.push(...searchCampaigns.recommendations);
-
-        // Collect actionable recommendations from existing updated analyzers
-        if (multiPeriod.actionableRecommendations) {
-            allActions.push(...multiPeriod.actionableRecommendations);
-        }
-
-        // Convert legacy string suggestions to new format
-        this.convertAndAddSuggestions(allSuggestions, multiPeriod.suggestions, 'MultiPeriodAnalyzer');
-        this.convertAndAddSuggestions(allSuggestions, crossChannel.suggestions, 'CrossChannelAnalyzer');
-        this.convertAndAddSuggestions(allSuggestions, ltv.suggestions, 'LTVAnalyzer');
-        this.convertAndAddSuggestions(allSuggestions, funnel.suggestions, 'FunnelAnalyzer');
-        this.convertAndAddSuggestions(allSuggestions, audience.suggestions, 'AudienceAnalyzer');
-
-        // Deduplicate and sort
-        const dedupedSuggestions = this.deduplicateSuggestions(allSuggestions);
-        const sortedSuggestions = this.sortSuggestions(dedupedSuggestions);
-
-        // Sort actionable recommendations by priority
-        const sortedActions = allActions.sort((a, b) => {
-            if (a.priority !== b.priority) return a.priority - b.priority;
-            return b.confidence - a.confidence;
-        });
-
-        // Apply feedback-based filtering
-        const feedbackContext = await getFeedbackContext(accountId);
-        let filteredActions = sortedActions.filter(
-            rec => !shouldFilterRecommendation(rec, feedbackContext)
-        );
-
-        // Apply user context-based priority boosting
-        if (contextKeywords.length > 0) {
-            filteredActions = filteredActions.map(rec => {
-                const headlineLower = rec.headline.toLowerCase();
-                const matchesContext = contextKeywords.some(kw => headlineLower.includes(kw));
-
-                if (matchesContext && rec.priority > 1) {
-                    // Boost priority for items matching user's stated focus
-                    return { ...rec, priority: (rec.priority - 1) as 1 | 2 | 3, contextBoosted: true };
-                }
-                return rec;
-            });
-
-            // Re-sort after boosting
-            filteredActions.sort((a, b) => {
-                if (a.priority !== b.priority) return a.priority - b.priority;
-                return b.confidence - a.confidence;
-            });
-        }
-
-        Logger.debug('Filtered recommendations based on feedback', {
-            accountId,
-            before: sortedActions.length,
-            after: filteredActions.length,
-            filteredOut: sortedActions.length - filteredActions.length,
-            dismissedIdsCount: feedbackContext.dismissedIds.size,
-            feedbackEntries: feedbackContext.totalFeedbackEntries,
-            contextKeywords: contextKeywords.length
-        });
-
-        // Build unified result
-        const hasData = multiPeriod.hasData || crossChannel.hasData ||
-            ltv.hasData || funnel.hasData || audience.hasData ||
-            productOpp.hasData || keywordOpp.hasData || negativeKw.hasData ||
-            cannibalization.hasData || strategy.hasData || searchCampaigns.hasData;
-
-
-        return {
-            hasData,
-            suggestions: sortedSuggestions,
-            actionableRecommendations: filteredActions,
-            results: {
-                multiPeriod: this.toBaseResult(multiPeriod, 'MultiPeriodAnalyzer', accountId, startTime),
-                crossChannel: this.toBaseResult(crossChannel, 'CrossChannelAnalyzer', accountId, startTime),
-                ltv: this.toBaseResult(ltv, 'LTVAnalyzer', accountId, startTime),
-                funnel: this.toBaseResult(funnel, 'FunnelAnalyzer', accountId, startTime),
-                audience: this.toBaseResult(audience, 'AudienceAnalyzer', accountId, startTime),
-            },
-            summary: {
-                totalSuggestions: sortedSuggestions.length,
-                urgentCount: sortedSuggestions.filter(s => s.priority === 1).length,
-                importantCount: sortedSuggestions.filter(s => s.priority === 2).length,
-                infoCount: sortedSuggestions.filter(s => s.priority === 3).length,
-                topConfidence: sortedSuggestions[0]?.confidence || 0,
-                analyzersRun: 11,
-                totalDurationMs: Date.now() - startTime,
-            },
-            metadata: {
-                analyzedAt: new Date(),
-                durationMs: Date.now() - startTime,
-                source: 'AnalysisPipeline',
-                accountId,
-            },
+    static async runAll(accountId: string, userContext?: string) {
+        trustedAccount(accountId);
+        if (userContext !== undefined && (typeof userContext !== 'string' || userContext.length > 8000)) throw new Error('Invalid business context');
+        const started = Date.now();
+        // Sharing a promise avoids an extra set of provider calls for strategic observations.
+        const multi = Promise.resolve().then(() => MultiPeriodAnalyzer.analyze(accountId));
+        const sources: Record<string, () => Promise<unknown>> = {
+            multiPeriod: () => multi, crossChannel: () => CrossChannelAnalyzer.analyze(accountId), ltv: () => LTVAnalyzer.analyze(accountId), funnel: () => FunnelAnalyzer.analyze(accountId),
+            audience: () => AudienceAnalyzer.analyze(accountId), productOpp: () => ProductOpportunityAnalyzer.analyze(accountId), keywordOpp: () => KeywordOpportunityAnalyzer.analyze(accountId),
+            negativeKw: () => NegativeKeywordAnalyzer.analyze(accountId), cannibalization: () => CannibalizationAnalyzer.analyze(accountId),
+            strategy: async () => MarketingStrategyAdvisor.analyze(accountId, await multi), searchCampaigns: () => SearchCampaignAdvisor.analyze(accountId),
         };
-    }
-
-    /**
-     * Convert legacy string suggestions to Suggestion objects.
-     */
-    private static convertAndAddSuggestions(
-        target: Suggestion[],
-        source: any[],
-        analyzerName: string
-    ): void {
-        for (let i = 0; i < source.length; i++) {
-            const item = source[i];
-
-            if (typeof item === 'string') {
-                // Legacy string format
-                target.push({
-                    id: `${analyzerName}_${i}`,
-                    text: item,
-                    source: analyzerName,
-                    priority: this.inferPriority(item),
-                    category: 'optimization',
-                    confidence: 50,
-                });
-            } else if (item && typeof item === 'object') {
-                // Already a Suggestion-like object
-                target.push({
-                    id: item.id || `${analyzerName}_${i}`,
-                    text: item.text || String(item),
-                    source: item.source || analyzerName,
-                    priority: item.priority || 3,
-                    category: item.category || 'optimization',
-                    confidence: item.confidence || 50,
-                    explanation: item.explanation,
-                    dataPoints: item.dataPoints,
-                    platform: item.platform,
-                });
-            }
-        }
-    }
-
-    /**
-     * Infer priority from suggestion text.
-     */
-    private static inferPriority(text: string): 1 | 2 | 3 {
-        const lower = text.toLowerCase();
-        if (lower.includes('🚨') || lower.includes('critical') || lower.includes('crash')) {
-            return 1;
-        }
-        if (lower.includes('⚠️') || lower.includes('warning') || lower.includes('declining')) {
-            return 2;
-        }
-        return 3;
-    }
-
-    /**
-     * Remove duplicate suggestions (same text).
-     */
-    private static deduplicateSuggestions(suggestions: Suggestion[]): Suggestion[] {
-        const seen = new Set<string>();
-        return suggestions.filter(s => {
-            const key = s.text.substring(0, 100);
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-        });
-    }
-
-    /**
-     * Sort suggestions by priority (urgent first), then confidence (high first).
-     */
-    private static sortSuggestions(suggestions: Suggestion[]): Suggestion[] {
-        return suggestions.sort((a, b) => {
-            if (a.priority !== b.priority) return a.priority - b.priority;
-            return b.confidence - a.confidence;
-        });
-    }
-
-    /**
-     * Convert analyzer result to BaseAnalysisResult format.
-     */
-    private static toBaseResult(
-        result: any,
-        source: string,
-        accountId: string,
-        startTime: number
-    ): BaseAnalysisResult {
-        return {
-            hasData: result.hasData || false,
-            suggestions: [], // Already extracted
-            metadata: {
-                analyzedAt: new Date(),
-                durationMs: Date.now() - startTime,
-                source,
-                accountId,
-            },
-        };
-    }
-
-    /**
-     * Parse user context for priority keywords.
-     * Extracts product names, categories, and focus areas from user's notes.
-     */
-    private static parseContextKeywords(context: string): string[] {
-        const keywords: string[] = [];
-        const contextLower = context.toLowerCase();
-
-        // Extract quoted terms (e.g., "summer products")
-        const quotedMatches = context.match(/"([^"]+)"/g);
-        if (quotedMatches) {
-            for (const match of quotedMatches) {
-                keywords.push(match.replace(/"/g, '').toLowerCase().trim());
-            }
-        }
-
-        // Extract focus patterns
-        const focusPatterns = [
-            /focus on\s+(.+?)(?:\.|,|$)/gi,
-            /prioritize\s+(.+?)(?:\.|,|$)/gi,
-            /push\s+(.+?)(?:\.|,|$)/gi,
-            /promote\s+(.+?)(?:\.|,|$)/gi
-        ];
-
-        for (const pattern of focusPatterns) {
-            let match;
-            while ((match = pattern.exec(contextLower)) !== null) {
-                const term = match[1].trim();
-                if (term.length > 2 && term.length < 50) {
-                    keywords.push(term);
+        const results: Record<string, SourceResult> = Object.fromEntries(await Promise.all(Object.entries(sources).map(async ([source, run]): Promise<[string, SourceResult]> => {
+            const start = Date.now();
+            try {
+                const value = record(await boundedRead(Promise.resolve().then(run), 30000));
+                if (typeof value.hasData !== 'boolean') throw new Error('Invalid source result');
+                if (record(value.metadata).accountId !== undefined && record(value.metadata).accountId !== accountId) throw new Error('Wrong account result');
+                if (value.coverage !== undefined && (!safeMetadata(value.coverage) || JSON.stringify(value.coverage).length > 20000)) throw new Error('Invalid coverage metadata');
+                const entries: Advisory[] = [];
+                for (const field of fields) {
+                    if (value[field] === undefined) continue;
+                    const rows = value[field]; if (!Array.isArray(rows) || rows.length > 500) throw new Error('Invalid source list');
+                    for (const row of rows) {
+                        const data = record(row), body = typeof row === 'string' ? row : data.text ?? data.headline;
+                        if (!text(body)) throw new Error('Invalid advice');
+                        const category = typeof data.category === 'string' && data.category.length <= 80 ? data.category : 'optimization';
+                        const resource = record(data.action);
+                        const identity = JSON.stringify([accountId, source, data.platform, resource.adAccountId, resource.campaignId, resource.productId, resource.keyword, body]);
+                        entries.push({ id: crypto.createHash('sha256').update(identity).digest('hex'), ...(text(data.id) ? { feedbackId: data.id } : {}), text: body, source, priority: typeof data.priority === 'number' && [1, 2, 3].includes(data.priority) ? data.priority as 1 | 2 | 3 : 3,
+                            category, confidence: null, actionability: 'review-only', provenance: ['multiPeriod', 'productOpp', 'keywordOpp', 'strategy', 'searchCampaigns'].includes(source) ? 'observed-advisory' : 'legacy-unverified' });
+                    }
                 }
-            }
+                return [source, { status: 'fulfilled' as const, hasData: value.hasData, suggestions: entries, coverage: value.coverage ?? null, durationMs: Date.now() - start }];
+            } catch { return [source, { status: 'unavailable' as const, hasData: false, suggestions: [] as Advisory[], coverage: null, durationMs: Date.now() - start }]; }
+        })));
+        const feedback = await boundedRead(getFeedbackContext(accountId), 5000).catch(() => null);
+        const feedbackAvailable = feedback !== null && feedback.available !== false;
+        const all: Advisory[] = Object.values(results).flatMap(result => result.suggestions);
+        const unique = new Map<string, Advisory>();
+        // No free-text context is translated into an executable policy or priority boost.
+        // If feedback cannot be checked, fail closed instead of resurfacing dismissed advice.
+        const exclusions = [...(userContext || '').matchAll(/(?:avoid|exclude|do not promote)\s+["“]([^"”]{1,200})["”]/gi)].map(match => match[1].normalize('NFKC').toLowerCase());
+        for (const advisory of all) {
+            if (exclusions.some(term => advisory.text.normalize('NFKC').toLowerCase().includes(term))) continue;
+            if (feedbackAvailable && !shouldFilterRecommendation({ id: advisory.feedbackId || advisory.id, headline: advisory.text, category: advisory.category }, feedback) && !feedback.dismissedIds.has(advisory.id)) unique.set(advisory.id, advisory);
         }
-
-        // Common product categories
-        const categories = ['summer', 'winter', 'holiday', 'sale', 'clearance', 'new arrival', 'best seller', 'premium', 'budget'];
-        for (const cat of categories) {
-            if (contextLower.includes(cat)) {
-                keywords.push(cat);
-            }
-        }
-
-        // Return unique keywords
-        return [...new Set(keywords)];
+        const suggestions = [...unique.values()].sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id)).slice(0, 200);
+        const visible = new Set(suggestions.map(advisory => advisory.id));
+        for (const result of Object.values(results)) result.suggestions = result.suggestions.filter(advisory => visible.has(advisory.id));
+        return { hasData: Object.values(results).some(result => result.hasData), suggestions, actionableRecommendations: [], results,
+            availability: { feedback: feedbackAvailable, complete: Object.values(results).every(result => result.status === 'fulfilled' && result.hasData) },
+            context: { supplied: !!userContext, automaticallyApplied: false, quotedExclusionsApplied: exclusions.length, note: 'Quoted avoid/exclude/do not promote phrases filter displayed advice. Other business notes require manual review; free text is not an execution policy. No action is authorized by this pipeline.' },
+            summary: { totalSuggestions: suggestions.length, urgentCount: suggestions.filter(s => s.priority === 1).length, importantCount: suggestions.filter(s => s.priority === 2).length, infoCount: suggestions.filter(s => s.priority === 3).length,
+                topConfidence: null, analyzersRun: Object.keys(results).length, analyzersAvailable: Object.values(results).filter(result => result.status === 'fulfilled').length, totalDurationMs: Date.now() - started },
+            metadata: { analyzedAt: new Date(), durationMs: Date.now() - started, source: 'AnalysisPipeline', accountId, actionValidation: 'not-performed; all advice is review-only' } };
     }
 }

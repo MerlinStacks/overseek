@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
-import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
+import { useEffect, useId, useState } from 'react';
+import { useWidgetRead } from '../../hooks/useWidgetRead';
+import { isRecord } from '../../utils/responseValidation';
 import {
     RefreshCw,
     CheckCircle,
@@ -22,7 +23,7 @@ import { widgetCardClass, widgetTitleClass } from './widgetStyles';
 /**
  * Health status levels matching backend API response.
  */
-type HealthLevel = 'healthy' | 'warning' | 'critical';
+type HealthLevel = 'healthy' | 'warning' | 'critical' | 'unknown';
 
 /**
  * Individual status section from the API.
@@ -56,6 +57,7 @@ const STATUS_CONFIG: Record<HealthLevel, {
     icon: typeof CheckCircle;
     label: string;
 }> = {
+    unknown: { color: 'text-slate-600 dark:text-slate-300', bgColor: 'bg-slate-100 dark:bg-slate-800', borderColor: 'border-slate-300 dark:border-slate-600', icon: AlertTriangle, label: 'Unknown / not current' },
     healthy: {
         color: 'text-emerald-600 dark:text-emerald-400',
         bgColor: 'bg-emerald-50 dark:bg-emerald-500/10',
@@ -78,6 +80,33 @@ const STATUS_CONFIG: Record<HealthLevel, {
         label: 'Critical'
     }
 };
+const timestamp = (value: unknown): string => typeof value === 'string' && Number.isFinite(Date.parse(value)) && Date.parse(value) <= Date.now() + 60000 ? value : '';
+function decodeStatus(value: unknown): StatusCenterData {
+    if (!isRecord(value)) throw new Error('Invalid status data');
+    const level = (input: unknown): HealthLevel => typeof input === 'string' && Object.prototype.hasOwnProperty.call(STATUS_CONFIG, input) ? input as HealthLevel : 'unknown';
+    const section = (input: unknown): StatusSection => {
+        if (!isRecord(input)) return { status: 'unknown', message: 'Status data unavailable', lastChecked: '' };
+        return { status: level(input.status), message: typeof input.message === 'string' && input.message.trim() ? input.message.slice(0, 1000) : 'Status data unavailable',
+            lastChecked: timestamp(input.lastChecked), details: isRecord(input.details) ? input.details : undefined };
+    };
+    return { overallHealth: level(value.overallHealth), lastUpdated: timestamp(value.lastUpdated), sync: section(value.sync), webhooks: section(value.webhooks), storeHealth: section(value.storeHealth), revenueAlerts: section(value.revenueAlerts) };
+}
+function displayDetail(key: string, value: unknown, details?: Record<string, unknown>): string {
+    if (value == null || typeof value === 'number' && !Number.isFinite(value)) return 'Unavailable';
+    if (typeof value === 'number') {
+        if (['todayRevenue', 'baselineRevenue'].includes(key)) {
+            const currency = details?.currency;
+            return typeof currency === 'string' && /^[A-Z]{3}$/.test(currency) ? `${currency} ${value.toFixed(2)}` : `${value.toFixed(2)} (currency unavailable)`;
+        }
+        if (['failureRate24h', 'percentChange'].includes(key)) return `${value}%`;
+        if (key === 'responseTimeMs') return `${value} ms`;
+        return value.toLocaleString();
+    }
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    if (typeof value !== 'string') return 'Unavailable';
+    if (['lastSuccessAt', 'lastWebhookAt'].includes(key)) return timestamp(value) ? formatRelativeTime(value) : 'Unavailable';
+    return value.slice(0, 1000);
+}
 
 /**
  * StatusCenterWidget - Unified system health dashboard panel.
@@ -86,38 +115,15 @@ const STATUS_CONFIG: Record<HealthLevel, {
 export function StatusCenterWidget({ className }: WidgetProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
-    const [data, setData] = useState<StatusCenterData | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    if (!token || !currentAccount) return <div className={`${widgetCardClass} p-6 ${className || ''}`}>Select an account and sign in to view status.</div>;
+    return <ScopedStatusCenter key={`${currentAccount.id}:${token}`} accountId={currentAccount.id} token={token} className={className} />;
+}
+function ScopedStatusCenter({ accountId, token, className }: { accountId: string; token: string; className?: string }) {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(timer); }, []);
+    const { data, busy: isLoading, error, refresh: fetchStatus } = useWidgetRead('/api/status-center', accountId, token, decodeStatus, 60000);
+    const id = useId();
     const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
-
-    const fetchStatus = useCallback(async () => {
-        if (!token || !currentAccount?.id) return;
-
-        try {
-            const res = await fetch('/api/status-center', {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
-                }
-            });
-
-            if (!res.ok) {
-                throw new Error('Failed to fetch status');
-            }
-
-            const json = await res.json();
-            setData(json);
-            setError(null);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Unknown error');
-        } finally {
-            setIsLoading(false);
-        }
-    }, [token, currentAccount?.id]);
-
-    // Use visibility-aware polling with tab coordination
-    useVisibilityPolling(fetchStatus, 60000, [fetchStatus], 'status-center');
 
     const toggleSection = (section: string) => {
         setExpandedSections(prev => {
@@ -149,6 +155,9 @@ export function StatusCenterWidget({ className }: WidgetProps) {
                 className={`rounded-xl border ${config.borderColor} ${config.bgColor} transition-all duration-300 overflow-hidden group`}
             >
                 <button
+                    type="button"
+                    aria-expanded={isExpanded}
+                    aria-controls={`${id}-${key}`}
                     onClick={() => hasDetails && toggleSection(key)}
                     className={`w-full p-3 flex items-center gap-3 text-left ${hasDetails ? 'cursor-pointer hover:bg-white/40 dark:hover:bg-black/10' : 'cursor-default'} transition-colors`}
                     disabled={!hasDetails}
@@ -162,6 +171,7 @@ export function StatusCenterWidget({ className }: WidgetProps) {
                             <StatusIcon size={14} className={config.color} />
                         </div>
                         <p className={`text-xs font-medium opacity-90 truncate ${config.color}`}>{section.message}</p>
+                        <p className="text-[10px] text-slate-500">Checked {section.lastChecked ? formatRelativeTime(section.lastChecked) : 'time unavailable'}</p>
                     </div>
                     {hasDetails && (
                         <div className={`text-slate-400 dark:text-slate-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
@@ -170,12 +180,12 @@ export function StatusCenterWidget({ className }: WidgetProps) {
                     )}
                 </button>
 
-                <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                {isExpanded && <div id={`${id}-${key}`}>
                     <div className="overflow-hidden">
                         <div className="px-3 pb-3 pt-1 border-t border-slate-200/50 dark:border-slate-700/50">
                             <div className="grid grid-cols-2 gap-2 mt-2">
                                 {section.details && Object.entries(section.details).map(([detailKey, value]) => {
-                                    if (detailKey === 'configured' || detailKey === 'connected' || detailKey === 'error') return null;
+                                    if (detailKey === 'error') return null; // Provider errors can contain secrets; use diagnostics.
 
                                     const label = detailKey
                                         .replace(/([A-Z])/g, ' $1')
@@ -183,26 +193,7 @@ export function StatusCenterWidget({ className }: WidgetProps) {
                                         .replace(/^./, str => str.toUpperCase())
                                         .trim();
 
-                                    let displayValue: string;
-                                    if (value === null || value === undefined) {
-                                        displayValue = '-';
-                                    } else if (typeof value === 'number') {
-                                        if (detailKey.toLowerCase().includes('revenue')) {
-                                            displayValue = `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                                        } else if (detailKey.includes('Rate') || detailKey.includes('Change')) {
-                                            displayValue = `${value}%`;
-                                        } else if (detailKey.includes('Ms')) {
-                                            displayValue = `${value}ms`;
-                                        } else {
-                                            displayValue = value.toLocaleString();
-                                        }
-                                    } else if (typeof value === 'boolean') {
-                                        displayValue = value ? 'Yes' : 'No';
-                                    } else if (typeof value === 'string' && value.includes('T') && value.includes('Z')) {
-                                        displayValue = formatRelativeTime(value);
-                                    } else {
-                                        displayValue = String(value);
-                                    }
+                                    const displayValue = displayDetail(detailKey, value, section.details);
 
                                     return (
                                         <div key={detailKey} className="bg-white/60 dark:bg-slate-800/60 rounded-md px-2.5 py-1.5 backdrop-blur-sm">
@@ -214,12 +205,12 @@ export function StatusCenterWidget({ className }: WidgetProps) {
                             </div>
                         </div>
                     </div>
-                </div>
+                </div>}
             </div>
         );
     };
 
-    if (isLoading) {
+    if (!data && !error) {
         return (
             <div className={`${widgetCardClass} p-6 ${className || ''}`}>
                 <div className="flex items-center gap-3 mb-5">
@@ -237,7 +228,7 @@ export function StatusCenterWidget({ className }: WidgetProps) {
         );
     }
 
-    if (error || !data) {
+    if (!data) {
         return (
             <div className={`${widgetCardClass} p-6 ${className || ''}`}>
                 <div className="flex items-center gap-3 mb-4">
@@ -252,6 +243,8 @@ export function StatusCenterWidget({ className }: WidgetProps) {
                     </div>
                     <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{error || 'Unable to load status'}</p>
                     <button
+                        type="button"
+                        disabled={isLoading}
                         onClick={fetchStatus}
                         className="mt-4 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-sm"
                     >
@@ -262,7 +255,9 @@ export function StatusCenterWidget({ className }: WidgetProps) {
         );
     }
 
-    const overallConfig = STATUS_CONFIG[data.overallHealth];
+    const stale = (time: string) => !time || now - Date.parse(time) > 10 * 60 * 1000;
+    const unverified = Boolean(error || isLoading || stale(data.lastUpdated) || [data.sync, data.webhooks, data.storeHealth, data.revenueAlerts].some(section => section.status === 'unknown' || stale(section.lastChecked)));
+    const overallConfig = STATUS_CONFIG[unverified ? 'unknown' : data.overallHealth];
     const OverallIcon = overallConfig.icon;
 
     return (
@@ -285,10 +280,10 @@ export function StatusCenterWidget({ className }: WidgetProps) {
                         </div>
                     </div>
                     <button
-                        onClick={() => {
-                            setIsLoading(true);
-                            fetchStatus();
-                        }}
+                        type="button"
+                        aria-label="Refresh status"
+                        disabled={isLoading}
+                        onClick={() => void fetchStatus()}
                         className="p-2 hover:bg-white/50 dark:hover:bg-black/20 rounded-lg transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                         title="Refresh status"
                     >
@@ -298,6 +293,7 @@ export function StatusCenterWidget({ className }: WidgetProps) {
             </div>
 
             {/* Status sections */}
+            {unverified && <p role={error ? 'alert' : 'status'} className="px-4 py-2 text-xs text-amber-700 dark:text-amber-300">{error || (isLoading ? 'Refreshing; any values shown are from the previous check.' : 'Some status observations are unavailable or stale; current health is unverified.')}</p>}
             <div className="p-4 space-y-3 flex-1 overflow-y-auto custom-scrollbar">
                 {renderStatusItem('sync', data.sync, RefreshCw, 'Data Sync')}
                 {renderStatusItem('webhooks', data.webhooks, Webhook, 'Webhooks')}
@@ -313,7 +309,7 @@ export function StatusCenterWidget({ className }: WidgetProps) {
             {/* Footer */}
             <div className="px-5 py-3 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
                 <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500">
-                    Updated {formatRelativeTime(data.lastUpdated)}
+                    Updated {data.lastUpdated ? formatRelativeTime(data.lastUpdated) : 'time unavailable'}
                 </p>
                 <a
                     href="/settings?tab=sync"

@@ -16,6 +16,18 @@ interface Role {
 }
 
 const AVAILABLE_PERMISSIONS = [
+    { key: 'manage_order_tag_mappings', label: 'Manage Order Tag Mappings' },
+    { key: 'view_email_settings', label: 'View Email Sending Settings' },
+    { key: 'manage_email_settings', label: 'Manage Email Sending Settings' },
+    { key: 'view_customers', label: 'View Customers & Merge Candidates' },
+    { key: 'manage_customers', label: 'Merge Customers' },
+    { key: 'view_policies', label: 'View Policies & SOPs' },
+    { key: 'manage_policies', label: 'Manage Policies & SOPs' },
+    { key: 'manage_content', label: 'Create, Edit & Publish WordPress Content' },
+    { key: 'manage_ai_prompts', label: 'View & Manage AI Prompt Overrides' },
+    { key: 'view_inbox', label: 'View Inbox' },
+    { key: 'manage_channels', label: 'Connect Messaging Channels' },
+    { key: 'manage_marketing', label: 'Manage Marketing Context & Feedback' },
     { key: 'view_products', label: 'View Products' },
     { key: 'edit_products', label: 'Edit Products' },
     { key: 'manage_inventory', label: 'Manage Inventory (Delivery Cutover & Receipt Reconciliation)' },

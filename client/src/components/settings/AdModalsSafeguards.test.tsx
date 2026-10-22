@@ -4,7 +4,7 @@ const m = vi.hoisted(() => ({ account: { id: 'a' }, navigate: vi.fn(() => true) 
 vi.mock('../../context/AuthContext', () => ({ useAuth: () => ({ token: 'token' }) }));
 vi.mock('../../context/AccountContext', () => ({ useAccount: () => ({ currentAccount: m.account }) }));
 vi.mock('../../hooks/useAccountFeature', () => ({ useAccountFeature: () => true }));
-vi.mock('../../utils/url', () => ({ navigateToSafeUrl: m.navigate }));
+vi.mock('../../utils/url', () => ({ navigateToOAuthUrl: m.navigate }));
 import { EditAdAccountModal, PendingSetupModal } from './AdAccountModals';
 import { AdAccountSettings } from './AdAccountSettings';
 const account = { id: 'ad', name: 'Private connection', platform: 'GOOGLE', externalId: '1234567890' };

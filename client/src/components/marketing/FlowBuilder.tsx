@@ -57,6 +57,7 @@ import {
     AutomationRecipe,
 } from './flow';
 import { groupFlowIssuesByNode, validateFlow, type FlowIssue } from './flowValidation';
+import { FlowSimulationPanel } from './flow/FlowSimulationPanel';
 
 // Define Node Types - Cast needed for React 19 compatibility with @xyflow/react types
 const nodeTypes = {
@@ -112,7 +113,7 @@ function FlowHealthPanel({ issues, onOpenTest }: { issues: FlowIssue[]; onOpenTe
                     <div className="mt-0.5 text-xs text-slate-500">
                         {issues.length === 0 ? 'No obvious setup issues found.' : `${blocking.length} blocking, ${warnings.length} warning`}
                     </div>
-                    <div className="mt-1 text-[11px] text-slate-400">Edits sync to the automation draft immediately.</div>
+                    <div className="mt-1 text-[11px] text-slate-400">Changes autosave to a draft. Review & publish to update the live flow.</div>
                 </div>
                 <button
                     type="button"
@@ -138,7 +139,7 @@ function FlowHealthPanel({ issues, onOpenTest }: { issues: FlowIssue[]; onOpenTe
     );
 }
 
-function FlowPathTestModal({ nodes, edges, issues, onClose }: { nodes: Node[]; edges: Edge[]; issues: FlowIssue[]; onClose: () => void }) {
+function FlowPathTestModal({ nodes, edges, issues, onClose, flowId }: { nodes: Node[]; edges: Edge[]; issues: FlowIssue[]; onClose: () => void; flowId?: string }) {
     const trigger = nodes.find((node) => node.type === 'trigger');
     const orderedNodes: Node[] = [];
     const visited = new Set<string>();
@@ -161,9 +162,11 @@ function FlowPathTestModal({ nodes, edges, issues, onClose }: { nodes: Node[]; e
             <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
                 <div className="border-b px-6 py-4">
                     <div className="text-lg font-semibold text-slate-900">Test This Path</div>
-                    <p className="text-sm text-slate-500">Client-side preview using the first YES/default route. No emails are sent.</p>
+                    <p className="text-sm text-slate-500">{flowId ? 'Evaluate conditions using the production condition evaluator. No actions are executed.' : 'Client-side preview using the first YES/default route. No emails are sent.'}</p>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                    {flowId && <FlowSimulationPanel flowId={flowId} nodes={nodes} edges={edges} />}
+                    {!flowId && <>
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                         Mock contact: Alex Customer, alex@example.com, order #1001, cart recovery URL available.
                     </div>
@@ -193,6 +196,7 @@ function FlowPathTestModal({ nodes, edges, issues, onClose }: { nodes: Node[]; e
                             })}
                         </div>
                     </div>
+                    </>}
                     {issues.length > 0 && (
                         <div>
                             <div className="mb-2 text-sm font-semibold text-slate-900">Checks</div>
@@ -214,6 +218,8 @@ function FlowPathTestModal({ nodes, edges, issues, onClose }: { nodes: Node[]; e
     );
 }
 
+import { usePermissions } from '../../hooks/usePermissions';
+
 interface Props {
     initialFlow?: { nodes: Node[], edges: Edge[] } | null;
     onFlowChange?: (flow: { nodes: Node[], edges: Edge[] }) => void;
@@ -225,6 +231,8 @@ interface Props {
 }
 
 const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndoRedoStateChange, onUndoRedoHandlersChange, invalidNodeIds = [], flowId, onViewNodeAnalytics }) => {
+    const { hasPermission } = usePermissions();
+    const canInsert = hasPermission('manage_marketing');
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -240,6 +248,11 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
     const [stepPopupPosition, setStepPopupPosition] = useState({ x: 0, y: 0 });
     const [pendingNodeParent, setPendingNodeParent] = useState<string | null>(null);
     const [pendingInsertEdgeId, setPendingInsertEdgeId] = useState<string | null>(null);
+    const insertSnapshot = useRef<{ edgeId: string; source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null; flowId?: string } | null>(null);
+    const currentInsertEdge = () => {
+        const snapshot = insertSnapshot.current;
+        return !pendingInsertEdgeId || !!snapshot && snapshot.flowId === flowId && edges.some(edge => edge.id === pendingInsertEdgeId && edge.id === snapshot.edgeId && edge.source === snapshot.source && edge.target === snapshot.target && edge.sourceHandle === snapshot.sourceHandle && edge.targetHandle === snapshot.targetHandle && nodes.some(node => node.id === edge.source) && nodes.some(node => node.id === edge.target));
+    };
     const [pendingActionParent, setPendingActionParent] = useState<string | null>(null);
     const [pendingConditionSourceHandle, setPendingConditionSourceHandle] = useState<string | null>(null);
     const [pendingActionSourceHandle, setPendingActionSourceHandle] = useState<string | null>(null);
@@ -623,12 +636,15 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
     }, []);
 
     const handleOpenInsertEdgePopup = useCallback((edgeId: string, buttonPosition: { x: number; y: number }) => {
+        const edge = edges.find(value => value.id === edgeId);
+        if (!canInsert || !edge || !nodes.some(node => node.id === edge.source) || !nodes.some(node => node.id === edge.target) || !Number.isFinite(buttonPosition.x) || !Number.isFinite(buttonPosition.y)) return;
+        insertSnapshot.current = { edgeId, source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle, targetHandle: edge.targetHandle, flowId };
         setPendingInsertEdgeId(edgeId);
         setPendingNodeParent(null);
         setPendingConditionSourceHandle(null);
         setStepPopupPosition(buttonPosition);
         setShowStepPopup(true);
-    }, []);
+    }, [canInsert, edges, nodes, flowId]);
 
     // --- Event (Trigger) Selection ---
     const handleEventSelect = useCallback((event: { triggerType: string; label: string }) => {
@@ -702,6 +718,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
     }, [setNodes, setEdges, handleOpenStepPopup, onNodeDelete, flowDensity]);
 
     const handleStepSelect = (stepType: StepType) => {
+        if (!canInsert || !currentInsertEdge()) return;
         const edgeToInsertInto = pendingInsertEdgeId
             ? edges.find((edge) => edge.id === pendingInsertEdgeId)
             : null;
@@ -761,6 +778,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
 
     // --- Action Selection ---
     const handleActionSelect = (action: { actionType: string; label: string }) => {
+        if (!canInsert || !currentInsertEdge()) return;
         const parentId = pendingActionParentRef.current || pendingActionParent || pendingNodeParent;
         if (!parentId) return;
 
@@ -1072,6 +1090,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
 
             {showPathTest && (
                 <FlowPathTestModal
+                    flowId={flowId}
                     nodes={nodes}
                     edges={edges}
                     issues={flowIssues}

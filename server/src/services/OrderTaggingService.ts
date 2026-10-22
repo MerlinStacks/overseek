@@ -1,267 +1,82 @@
+import { z } from 'zod';
 import { prisma } from '../utils/prisma';
-import { Logger } from '../utils/logger';
-
-/**
- * Tag mapping configuration stored in Account.orderTagMappings
- */
-export interface TagMapping {
-    productTag?: string;  // Legacy single tag from WooCommerce product
-    productTags?: string[]; // New multi-tag mapping support
-    orderTag: string;    // The tag name to apply to orders
-    enabled: boolean;    // Whether this mapping is active
-    color?: string;      // Optional hex color for display (e.g. "#3B82F6")
+const id = z.string().trim().min(1).max(200), name = z.string().trim().min(1).max(100);
+const mappingSchema = z.object({ productTag: name.optional(), productTags: z.array(name).max(100).optional(), orderTag: name, enabled: z.boolean(), color: z.string().regex(/^#[a-fA-F0-9]{6}$/).optional() }).strict().refine(row => !!row.productTag || !!row.productTags?.length, 'At least one product tag required');
+export type TagMapping = z.infer<typeof mappingSchema>;
+const schema = z.array(mappingSchema).max(500);
+export const tagMappingsWriteSchema = z.object({ mappings: schema, version: z.string().datetime() }).strict();
+const fail = (message: string, statusCode = 409) => Object.assign(new Error(message), { statusCode });
+export function validateOrderTags(value: unknown): string[] {
+    return z.array(name).max(100).parse(value);
 }
-
-interface NormalizedTagMapping {
-    productTags: string[];
-    orderTag: string;
-    enabled: boolean;
-    color?: string;
+export function mergeOrderTags(...groups: unknown[]): string[] {
+    const result = new Map<string, string>();
+    for (const group of groups) for (const tag of validateOrderTags(group)) if (!result.has(tag.toLowerCase())) result.set(tag.toLowerCase(), tag);
+    if (result.size > 100) throw fail('Combined order tags exceed limit');
+    return [...result.values()];
 }
-
-/**
- * Service for computing order tags from product tags using configurable mappings.
- * Only applies tags that have an enabled mapping in the account settings.
- */
+function normalize(value: unknown): TagMapping[] {
+    return schema.parse(value).map(row => ({ orderTag: row.orderTag, enabled: row.enabled, ...(row.color ? { color: row.color } : {}), productTags: [...new Map([...(row.productTags || []), ...(row.productTag ? [row.productTag] : [])].map(tag => [tag.toLowerCase(), tag])).values()] }));
+}
 export class OrderTaggingService {
-    private static normalizeMappings(mappings: TagMapping[]): NormalizedTagMapping[] {
-        return mappings
-            .map((mapping) => {
-                const tagsFromArray = Array.isArray(mapping.productTags)
-                    ? mapping.productTags
-                    : [];
-                const legacyTag = typeof mapping.productTag === 'string' ? [mapping.productTag] : [];
-                const normalizedTags = Array.from(
-                    new Set(
-                        [...tagsFromArray, ...legacyTag]
-                            .map((tag) => String(tag || '').trim())
-                            .filter(Boolean)
-                            .map((tag) => tag.toLowerCase())
-                    )
-                );
-
-                return {
-                    productTags: normalizedTags,
-                    orderTag: String(mapping.orderTag || '').trim(),
-                    enabled: Boolean(mapping.enabled),
-                    color: mapping.color
-                };
-            })
-            .filter((mapping) => mapping.productTags.length > 0 && mapping.orderTag.length > 0);
+    static async getTagMappingSnapshot(accountId: string) {
+        id.parse(accountId);
+        const account = await prisma.account.findUnique({ where: { id: accountId }, select: { orderTagMappings: true, updatedAt: true } });
+        if (!account) throw fail('Account unavailable', 404);
+        return { mappings: normalize(account.orderTagMappings ?? []), version: account.updatedAt.toISOString() };
     }
-
-    /**
-     * Get tag mappings for an account
-     */
     static async getTagMappings(accountId: string): Promise<TagMapping[]> {
-        const account = await prisma.account.findUnique({
-            where: { id: accountId },
-            select: { orderTagMappings: true }
-        });
-
-        if (!account?.orderTagMappings) return [];
-
-        try {
-            const mappings = account.orderTagMappings as unknown as TagMapping[];
-            return Array.isArray(mappings) ? mappings : [];
-        } catch {
-            return [];
-        }
+        // Internal readers still use the validated array; no malformed-config-as-empty fallback.
+        id.parse(accountId);
+        const account = await prisma.account.findUnique({ where: { id: accountId }, select: { orderTagMappings: true } });
+        if (!account) throw fail('Account unavailable', 404); return normalize(account.orderTagMappings ?? []);
     }
-
-    /**
-     * Save tag mappings for an account
-     */
-    static async saveTagMappings(accountId: string, mappings: TagMapping[]): Promise<void> {
-        const normalizedMappings = this.normalizeMappings(mappings);
-        // Prisma 7 requires proper JSON serialization for Json fields
-        const sanitizedMappings = JSON.parse(JSON.stringify(normalizedMappings));
-
-        await prisma.account.update({
-            where: { id: accountId },
-            data: { orderTagMappings: sanitizedMappings }
-        });
-        Logger.info('Tag mappings saved', { accountId, count: normalizedMappings.length });
+    static async saveTagMappings(accountId: string, input: unknown, userId: string) {
+        id.parse(accountId); id.parse(userId);
+        const { PermissionService } = await import('./PermissionService');
+        if (!await PermissionService.hasPermission(userId, accountId, 'manage_order_tag_mappings')) throw fail('Tag mapping management permission required', 403);
+        const { version, mappings } = tagMappingsWriteSchema.parse(input), normalized = normalize(mappings);
+        const updatedAt = new Date(Math.max(Date.now(), Date.parse(version) + 1));
+        const result = await prisma.account.updateMany({ where: { id: accountId, updatedAt: new Date(version) }, data: { orderTagMappings: normalized, updatedAt } });
+        if (result.count !== 1) throw fail('Account settings changed; reload mappings');
+        return { success: true, version: updatedAt.toISOString(), mappings: normalized };
     }
-
-    /**
-     * Batch extract tags for multiple orders.
-     * Efficiently fetches products in a single query.
-     * @param accountId - The account ID
-     * @param orders - Array of raw WooCommerce order data
-     * @returns Map of orderId -> Array of mapped order tag names
-     */
-    static async extractTagsForOrders(accountId: string, orders: any[]): Promise<Map<number, string[]>> {
-        const result = new Map<number, string[]>();
-        if (!orders.length) return result;
-
-        // Initialize empty arrays for all orders
-        for (const order of orders) {
-            if (order.id) result.set(order.id, []);
-        }
-
-        // Get tag mappings for this account
-        const mappings = await this.getTagMappings(accountId);
-        const enabledMappings = this.normalizeMappings(mappings).filter(m => m.enabled);
-
-        // If no mappings configured, return empty map (all orders have empty tags)
-        if (enabledMappings.length === 0) return result;
-
-        // Build lookup: productTag -> orderTag
-        const mappingLookup = new Map<string, string>();
-        for (const m of enabledMappings) {
-            for (const productTag of m.productTags) {
-                mappingLookup.set(productTag, m.orderTag);
-            }
-        }
-
-        // Collect all unique product IDs from all orders
-        const allProductIds = new Set<number>();
-        const orderProductMap = new Map<number, number[]>(); // orderId -> productIds
-
-        for (const order of orders) {
-            const lineItems = order.line_items || [];
-            const pIds = lineItems
-                .map((item: any) => item.product_id)
-                .filter((id: number) => id && id > 0);
-
-            if (pIds.length > 0) {
-                orderProductMap.set(order.id, pIds);
-                pIds.forEach((id: number) => allProductIds.add(id));
-            }
-        }
-
-        if (allProductIds.size === 0) return result;
-
-        // Fetch products from database
-        const products = await prisma.wooProduct.findMany({
-            where: {
-                accountId,
-                wooId: { in: Array.from(allProductIds) }
-            },
-            select: { wooId: true, rawData: true }
-        });
-
-        // Create product lookup map
-        const productLookup = new Map<number, any>();
-        for (const product of products) {
-            productLookup.set(product.wooId, product.rawData);
-        }
-
-        // Process each order
-        for (const order of orders) {
-            const orderId = order.id;
-            const pIds = orderProductMap.get(orderId);
-
-            if (!pIds || pIds.length === 0) continue;
-
-            const orderTags = new Set<string>();
-            for (const pid of pIds) {
-                const rawData = productLookup.get(pid);
-                if (rawData) {
-                    const tags = rawData.tags || [];
-                    for (const tag of tags) {
-                        if (tag?.name) {
-                            const mappedTag = mappingLookup.get(tag.name.toLowerCase());
-                            if (mappedTag) {
-                                orderTags.add(mappedTag);
-                            }
-                        }
-                    }
-                }
-            }
-            result.set(orderId, Array.from(orderTags));
-        }
-
+    static async extractTagsForOrders(accountId: string, orders: unknown[], knownMappings?: TagMapping[]): Promise<Map<number, string[]>> {
+        id.parse(accountId);
+        const parsed = z.array(z.object({ id: z.number().int().positive(), line_items: z.array(z.object({ product_id: z.number().int().nonnegative() }).passthrough()).max(200) }).passthrough()).max(200).parse(orders);
+        if (!parsed.length) return new Map();
+        if (new Set(parsed.map(order => order.id)).size !== parsed.length) throw fail('Duplicate order identities');
+        const mappings = normalize(knownMappings ?? await this.getTagMappings(accountId)).filter(row => row.enabled);
+        const result = new Map<number, string[]>(parsed.map(order => [order.id, []]));
+        if (!mappings.length) return result;
+        // One input tag may deliberately map to multiple output tags; union, never last-wins.
+        const lookup = new Map<string, Set<string>>();
+        for (const mapping of mappings) for (const tag of mapping.productTags!) { const targets = lookup.get(tag.toLowerCase()) || new Set<string>(); targets.add(mapping.orderTag); lookup.set(tag.toLowerCase(), targets); }
+        const ids = [...new Set(parsed.flatMap(order => order.line_items.map(item => item.product_id).filter(value => value > 0)))];
+        if (ids.length > 2000) throw fail('Product coverage limit exceeded');
+        if (!ids.length) return result;
+        const products = await prisma.wooProduct.findMany({ where: { accountId, wooId: { in: ids } }, select: { wooId: true, rawData: true }, orderBy: { wooId: 'asc' }, take: 2001 });
+        if (products.length !== ids.length || new Set(products.map(row => row.wooId)).size !== ids.length) throw fail('Product tag coverage unavailable; existing tags must be preserved');
+        const productsById = new Map(products.map(product => {
+            const raw = z.object({ tags: z.array(z.object({ name }).passthrough()).max(500) }).passthrough().parse(product.rawData);
+            return [product.wooId, raw.tags.flatMap(tag => [...(lookup.get(tag.name.toLowerCase()) || [])])];
+        }));
+        for (const order of parsed) result.set(order.id, mergeOrderTags(...order.line_items.filter(item => item.product_id > 0).map(item => productsById.get(item.product_id) || [])));
         return result;
     }
-
-    /**
-     * Extract tags from order line items and apply mappings.
-     * Only returns tags that have an enabled mapping defined.
-     * @param accountId - The account ID
-     * @param rawOrderData - Raw WooCommerce order data containing line_items
-     * @param knownMappings - Optional optimization: pass already loaded mappings to avoid DB lookup
-     * @returns Array of mapped order tag names
-     */
-    static async extractTagsFromOrder(accountId: string, rawOrderData: any, knownMappings?: TagMapping[]): Promise<string[]> {
-        const lineItems = rawOrderData?.line_items || [];
-        if (lineItems.length === 0) return [];
-
-        // Get tag mappings for this account
-        const mappings = knownMappings || await this.getTagMappings(accountId);
-        const enabledMappings = this.normalizeMappings(mappings).filter(m => m.enabled);
-
-        // If no mappings configured, return empty (user must configure first)
-        if (enabledMappings.length === 0) return [];
-
-        // Build lookup: productTag -> orderTag
-        const mappingLookup = new Map<string, string>();
-        for (const m of enabledMappings) {
-            for (const productTag of m.productTags) {
-                mappingLookup.set(productTag, m.orderTag);
-            }
-        }
-
-        // Get unique product IDs from line items
-        const rawIds = lineItems
-            .map((item: any) => item.product_id)
-            .filter((id: number) => id && id > 0);
-        const productIds: number[] = Array.from(new Set(rawIds));
-
-        if (productIds.length === 0) return [];
-
-        // Fetch products from database
-        const products = await prisma.wooProduct.findMany({
-            where: {
-                accountId,
-                wooId: { in: productIds }
-            },
-            select: { wooId: true, rawData: true }
-        });
-
-        // Extract product tags and apply mappings
-        const orderTags = new Set<string>();
-        for (const product of products) {
-            const rawData = product.rawData as any;
-            const tags = rawData?.tags || [];
-            for (const tag of tags) {
-                if (tag?.name) {
-                    const mappedTag = mappingLookup.get(tag.name.toLowerCase());
-                    if (mappedTag) {
-                        orderTags.add(mappedTag);
-                    }
-                }
-            }
-        }
-
-        return Array.from(orderTags);
+    static async extractTagsFromOrder(accountId: string, rawOrderData: unknown, knownMappings?: TagMapping[]) {
+        const order = z.object({ id: z.number().int().positive() }).passthrough().parse(rawOrderData);
+        return (await this.extractTagsForOrders(accountId, [order], knownMappings)).get(order.id)!;
     }
-
-    /**
-     * Get all unique product tags across all products for an account.
-     * Used to populate the settings UI with available tags to map.
-     * Limited to 5000 products to prevent memory issues on large catalogs.
-     */
-    static async getAllProductTags(accountId: string): Promise<string[]> {
-        const MAX_PRODUCTS = 5000;
-        const products = await prisma.wooProduct.findMany({
-            where: { accountId },
-            select: { rawData: true },
-            take: MAX_PRODUCTS
-        });
-
-        const tagSet = new Set<string>();
-        for (const product of products) {
-            const rawData = product.rawData as any;
-            const tags = rawData?.tags || [];
-            for (const tag of tags) {
-                if (tag?.name) {
-                    tagSet.add(tag.name);
-                }
-            }
+    static async getAllProductTags(accountId: string) {
+        id.parse(accountId);
+        const products = await prisma.wooProduct.findMany({ where: { accountId }, select: { rawData: true }, orderBy: { id: 'asc' }, take: 5001 });
+        const tags = new Set<string>();
+        for (const product of products.slice(0, 5000)) {
+            const raw = z.object({ tags: z.array(z.object({ name }).passthrough()).max(500) }).passthrough().parse(product.rawData);
+            for (const tag of raw.tags) tags.add(tag.name);
+            if (tags.size > 10000) throw fail('Catalog tag limit exceeded');
         }
-
-        return Array.from(tagSet).sort();
+        return { tags: [...tags].sort(), coverage: { complete: products.length <= 5000, productLimit: 5000, basis: 'local-catalog-sample' } };
     }
 }

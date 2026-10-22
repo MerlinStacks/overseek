@@ -7,16 +7,13 @@
  */
 
 import { FastifyPluginAsync } from 'fastify';
-import crypto from 'crypto';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
-import { buildCallbackUrl, buildFrontendUrl } from './oauthHelpers';
+import { buildCallbackUrl, buildFrontendUrl, createSignedOauthState, verifySignedOauthState, assertOauthPermission } from './oauthHelpers';
 import { getCredentials } from '../services/ads/types';
 import { getOauthAccountIdOrReply } from './oauthRouteHelpers';
 
-/** Why HMAC: prevent forged state params — an attacker could craft a state to link SC to their account */
-const STATE_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || 'overseek-oauth-state';
 
 async function safeJson<T>(response: Response, context: string): Promise<T> {
     const contentType = response.headers.get('content-type') || '';
@@ -27,27 +24,6 @@ async function safeJson<T>(response: Response, context: string): Promise<T> {
     }
 
     return response.json() as Promise<T>;
-}
-
-/** Sign a state payload with HMAC-SHA256 */
-function signState(payload: object): string {
-    const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
-    const sig = crypto.createHmac('sha256', STATE_SECRET).update(data).digest('base64url');
-    return `${data}.${sig}`;
-}
-
-/** Verify and parse a signed state string. Returns null on tamper/expiry. */
-function verifyState(state: string): { accountId: string; frontendRedirect: string } | null {
-    const [data, sig] = state.split('.');
-    if (!data || !sig) return null;
-    const expected = crypto.createHmac('sha256', STATE_SECRET).update(data).digest('base64url');
-    if (Buffer.byteLength(sig) !== Buffer.byteLength(expected)) return null;
-    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
-    try {
-        return JSON.parse(Buffer.from(data, 'base64url').toString('utf-8'));
-    } catch {
-        return null;
-    }
 }
 
 /** Only allow relative paths to prevent open-redirect attacks */
@@ -128,9 +104,8 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
             const query = request.query as { redirect?: string };
             const frontendRedirect = sanitizeRedirect(query.redirect);
 
-            const state = signState({ accountId, frontendRedirect });
-
             const redirectUri = buildCallbackUrl(request, 'search-console/callback');
+            const state = await createSignedOauthState({ accountId, userId: request.user!.id, frontendRedirect, provider: 'SEARCH_CONSOLE', callbackUrl: redirectUri }, reply);
 
             const params = new URLSearchParams({
                 client_id: creds.clientId,
@@ -157,16 +132,11 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
 
         try {
             const query = request.query as { code?: string; state?: string; error?: string };
-            if (query.error) {
-                Logger.warn('Search Console OAuth denied', { error: query.error });
-                return reply.redirect(buildFrontendUrl(frontendRedirect, { error: 'oauth_denied' }));
-            }
-
-            if (!query.code || !query.state) {
+            if (!query.state || (!query.code && !query.error) || query.code && (typeof query.code !== 'string' || query.code.length > 4096)) {
                 return reply.redirect(buildFrontendUrl(frontendRedirect, { error: 'missing_params' }));
             }
 
-            const stateData = verifyState(query.state);
+            const stateData = await verifySignedOauthState(query.state, request, reply, 'SEARCH_CONSOLE');
             if (!stateData) {
                 Logger.warn('OAuth state verification failed — possible CSRF attempt');
                 return reply.redirect(buildFrontendUrl(frontendRedirect, { error: 'invalid_state' }));
@@ -174,13 +144,15 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
             if (stateData.frontendRedirect) {
                 frontendRedirect = sanitizeRedirect(stateData.frontendRedirect);
             }
+            if (query.error) return reply.redirect(buildFrontendUrl(frontendRedirect, { error: 'oauth_denied' }));
+            if (!query.code) return reply.redirect(buildFrontendUrl(frontendRedirect, { error: 'missing_params' }));
 
             const creds = await getCredentials('GOOGLE_ADS');
             if (!creds?.clientId || !creds?.clientSecret) {
                 return reply.redirect(buildFrontendUrl(frontendRedirect, { error: 'missing_credentials' }));
             }
 
-            const redirectUri = buildCallbackUrl(request, 'search-console/callback');
+            const redirectUri = stateData.callbackUrl;
 
             const tokens = await exchangeCodeForTokens(query.code, redirectUri, creds.clientId, creds.clientSecret);
 
@@ -197,6 +169,7 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
 
             // Store all verified sites so the user can select later
             for (const site of sites) {
+                await assertOauthPermission(stateData.userId, stateData.accountId, stateData.provider);
                 await prisma.searchConsoleAccount.upsert({
                     where: {
                         accountId_siteUrl: {
@@ -229,7 +202,7 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
 
         } catch (error: any) {
             Logger.error('Search Console OAuth callback failed', { error: error.message });
-            return reply.redirect(buildFrontendUrl(frontendRedirect, { error: 'oauth_failed', message: error.message }));
+            return reply.redirect(buildFrontendUrl(frontendRedirect, { error: 'oauth_failed' }));
         }
     });
 

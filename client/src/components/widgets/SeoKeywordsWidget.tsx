@@ -1,232 +1,35 @@
-/**
- * SeoKeywordsWidget — Dashboard widget for at-a-glance SEO keyword health.
- *
- * Why a separate widget: Lets users monitor organic search directly from the
- * dashboard without navigating to the full SEO page. Self-gates on GSC
- * connection status so no server permission guard is needed.
- */
-
-import { WidgetProps } from './WidgetRegistry';
-import {
-    useSearchConsoleStatus,
-    useSearchAnalytics,
-    useKeywordMovers,
-} from '../../hooks/useSeoKeywords';
-import type { QueryAnalytics, QueryTrend } from '../../hooks/useSeoKeywords';
-import {
-    Search,
-    TrendingUp,
-    TrendingDown,
-    ArrowRight,
-    Loader2,
-    MousePointerClick,
-    Eye,
-    Crosshair,
-} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { widgetCardClass, widgetTitleClass, widgetHeaderRowClass, widgetHeaderIconBadgeClass } from './widgetStyles';
-
-/** Position badge color based on ranking bucket */
-function positionColor(pos: number): string {
-    if (pos <= 3) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400';
-    if (pos <= 10) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400';
-    if (pos <= 20) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400';
-    return 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400';
-}
-
+import { useAuth } from '../../context/AuthContext';
+import { useAccount } from '../../context/AccountContext';
+import { useSearchConsoleStatus, useSearchAnalytics, useKeywordMovers } from '../../hooks/useSeoKeywords';
+import { WidgetProps } from './WidgetRegistry';
+import { widgetCardClass } from './widgetStyles';
 export function SeoKeywordsWidget({ className }: WidgetProps) {
-    const navigate = useNavigate();
-    const { data: status, isLoading: statusLoading } = useSearchConsoleStatus();
-    const connected = status?.connected ?? false;
-
-    const { data: analyticsData, isLoading: analyticsLoading } = useSearchAnalytics(28);
-    const { data: trendsData, isLoading: trendsLoading } = useKeywordMovers(undefined, 14);
-
-    const isLoading = statusLoading || (connected && (analyticsLoading || trendsLoading));
-
-    const queries: QueryAnalytics[] = analyticsData?.queries ?? [];
-    /* Pick keywords with largest movement over the last 7 days */
-    const trends: QueryTrend[] = trendsData?.movers ?? trendsData?.trends ?? [];
-    const topMovers = [...trends]
-        .sort((a, b) => Math.abs(b.positionChange) - Math.abs(a.positionChange))
-        .slice(0, 5);
-
-    /* Aggregate stats */
-    const totalClicks = queries.reduce((sum, q) => sum + q.clicks, 0);
-    const totalImpressions = queries.reduce((sum, q) => sum + q.impressions, 0);
-    const avgPosition = queries.length > 0
-        ? queries.reduce((sum, q) => sum + q.position, 0) / queries.length
-        : 0;
-
-    return (
-        <div
-            className={`${widgetCardClass} h-full w-full p-5 flex flex-col overflow-hidden ${className || ''}`}
-        >
-            {/* Header */}
-            <div className={widgetHeaderRowClass}>
-                <h3 className={widgetTitleClass}>SEO Keywords</h3>
-                <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-blue-400 to-cyan-600 shadow-cyan-500/20`}>
-                    <Search size={16} />
-                </div>
-            </div>
-
-            {/* Body */}
-            <div className="flex-1 overflow-y-auto space-y-4">
-                {isLoading ? (
-                    <div className="flex justify-center p-4">
-                        <Loader2 className="animate-spin text-slate-400" />
-                    </div>
-                ) : !connected ? (
-                    <NotConnectedPrompt onNavigate={() => navigate('/seo')} />
-                ) : status?.authError ? (
-                    <div className="flex flex-col items-center justify-center text-center gap-3 py-6">
-                        <div className="p-3 rounded-full bg-amber-100 dark:bg-amber-900/30">
-                            <Search size={20} className="text-amber-500 dark:text-amber-400" />
-                        </div>
-                        <div>
-                            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                                Search Console needs reconnection
-                            </p>
-                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                                Your access has expired or been revoked.
-                            </p>
-                        </div>
-                        <button
-                            onClick={() => navigate('/seo')}
-                            className="text-xs font-semibold text-amber-500 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 flex items-center gap-1 transition-colors"
-                        >
-                            Reconnect on SEO page <ArrowRight size={12} />
-                        </button>
-                    </div>
-                ) : queries.length === 0 ? (
-                    <div className="text-center text-slate-400 dark:text-slate-500 py-4 text-sm">
-                        No keyword data yet
-                    </div>
-                ) : (
-                    <>
-                        {/* Summary Stats */}
-                        <div className="grid grid-cols-3 gap-2">
-                            <StatPill
-                                icon={<MousePointerClick size={12} />}
-                                label="Clicks"
-                                value={totalClicks.toLocaleString()}
-                                color="text-blue-600 dark:text-blue-400"
-                                bg="bg-blue-50 dark:bg-blue-900/20"
-                            />
-                            <StatPill
-                                icon={<Eye size={12} />}
-                                label="Impressions"
-                                value={formatCompact(totalImpressions)}
-                                color="text-violet-600 dark:text-violet-400"
-                                bg="bg-violet-50 dark:bg-violet-900/20"
-                            />
-                            <StatPill
-                                icon={<Crosshair size={12} />}
-                                label="Avg Pos"
-                                value={avgPosition.toFixed(1)}
-                                color="text-emerald-600 dark:text-emerald-400"
-                                bg="bg-emerald-50 dark:bg-emerald-900/20"
-                            />
-                        </div>
-
-                        {/* Trending Keywords */}
-                        {topMovers.length > 0 && (
-                            <div className="space-y-1.5">
-                                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                                    Trending Keywords (7d movement)
-                                </span>
-                                {topMovers.map((mv) => {
-                                    const improved = mv.positionChange > 0;
-                                    return (
-                                        <div
-                                            key={mv.query}
-                                            className="flex justify-between items-center text-sm px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg transition-colors"
-                                        >
-                                            <span className="font-medium text-slate-800 dark:text-slate-200 truncate" title={mv.query}>
-                                                {mv.query}
-                                            </span>
-                                            <div className="flex items-center gap-2 shrink-0">
-                                                <span
-                                                    className={`flex items-center gap-0.5 text-xs font-bold ${improved
-                                                        ? 'text-emerald-600 dark:text-emerald-400'
-                                                        : 'text-rose-500 dark:text-rose-400'
-                                                        }`}
-                                                >
-                                                    {improved ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-                                                    {Math.abs(mv.positionChange).toFixed(1)}
-                                                </span>
-                                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${positionColor(mv.currentPosition)}`}>
-                                                    #{Math.round(mv.currentPosition)}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-
-                        {/* Footer link */}
-                        <button
-                            onClick={() => navigate('/seo')}
-                            className="w-full text-center text-xs text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium flex items-center justify-center gap-1 pt-1 transition-colors"
-                        >
-                            View full SEO dashboard <ArrowRight size={12} />
-                        </button>
-                    </>
-                )}
-            </div>
-        </div>
-    );
+    const { user, token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p>Sign in and select an account to view SEO keywords.</p>;
+    return <SeoContent key={JSON.stringify([user?.id, token, currentAccount.id])} className={className} />;
 }
-
-/* ─── Sub-components ────────────────────────────────── */
-
-/** Compact stat pill for the top summary row */
-function StatPill({ icon, label, value, color, bg }: {
-    icon: React.ReactNode;
-    label: string;
-    value: string;
-    color: string;
-    bg: string;
-}) {
-    return (
-        <div className={`${bg} rounded-xl px-2.5 py-2 flex flex-col items-center gap-0.5`}>
-            <span className={`flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider ${color}`}>
-                {icon} {label}
-            </span>
-            <span className={`text-base font-bold ${color}`}>{value}</span>
-        </div>
-    );
-}
-
-/** Prompt shown when GSC is not connected */
-function NotConnectedPrompt({ onNavigate }: { onNavigate: () => void }) {
-    return (
-        <div className="flex flex-col items-center justify-center text-center gap-3 py-6">
-            <div className="p-3 rounded-full bg-slate-100 dark:bg-slate-700">
-                <Search size={20} className="text-slate-400 dark:text-slate-500" />
-            </div>
-            <div>
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                    Google Search Console not connected
-                </p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                    Connect GSC to see keyword data here.
-                </p>
-            </div>
-            <button
-                onClick={onNavigate}
-                className="text-xs font-semibold text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center gap-1 transition-colors"
-            >
-                Go to SEO page <ArrowRight size={12} />
-            </button>
-        </div>
-    );
-}
-
-/** Format large numbers compactly (e.g. 12345 → 12.3K) */
-function formatCompact(n: number): string {
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-    return n.toLocaleString();
+function SeoContent({ className }: { className?: string }) {
+    const navigate = useNavigate(); const status = useSearchConsoleStatus();
+    const connected = status.data?.connected === true && !status.data.authError && !status.error;
+    const analytics = useSearchAnalytics(28, status.data?.defaultSiteUrl ?? undefined, connected);
+    const movers = useKeywordMovers(status.data?.defaultSiteUrl ?? undefined, 14, connected);
+    const queries = analytics.data?.queries ?? [];
+    const impressions = queries.reduce((sum, row) => sum + row.impressions, 0);
+    const clicks = queries.reduce((sum, row) => sum + row.clicks, 0);
+    const position = queries.reduce((sum, row) => sum + row.position * row.impressions, 0) / impressions;
+    return <section className={`${widgetCardClass} p-5 space-y-3 text-slate-900 dark:text-slate-100 ${className ?? ''}`} aria-label="SEO keywords">
+        <h3 className="font-semibold">SEO Keywords</h3>
+        {status.isLoading ? <p role="status">Loading Search Console status…</p> : status.error ? <p role="alert">Search Console status unavailable. <button type="button" onClick={() => void status.refetch()}>Retry status</button></p> : status.data?.authError ? <p role="alert">Search Console needs reconnection.</p> : !connected ? <p>Search Console is not connected.</p> : <>
+            {analytics.isLoading ? <p role="status">Loading query observations…</p> : analytics.error ? <p role="alert">Query observations unavailable. <button type="button" onClick={() => void analytics.refetch()}>Retry queries</button></p> : !queries.length ? <p>No query rows returned; this is not proof of zero search activity.</p> : <dl className="grid grid-cols-3 gap-2">
+                <div><dt>Clicks</dt><dd>{Number.isSafeInteger(clicks) ? clicks.toLocaleString() : 'Unavailable'}</dd></div>
+                <div><dt>Impressions</dt><dd>{Number.isSafeInteger(impressions) ? impressions.toLocaleString() : 'Unavailable'}</dd></div>
+                <div><dt>Weighted position</dt><dd>{impressions > 0 && Number.isFinite(position) ? position.toFixed(1) : 'Unavailable'}</dd></div>
+            </dl>}
+            <p className="text-xs">Returned query sample, last 28 days. Anonymized or omitted queries may be absent.</p>
+            <h4 className="text-sm font-medium">Last 7 days vs preceding 7 days (14-day window)</h4>
+            {movers.error ? <p role="alert">Keyword movement unavailable. <button type="button" onClick={() => void movers.refetch()}>Retry movement</button></p> : movers.isLoading ? <p role="status">Loading movement…</p> : <ul>{[...(movers.data?.movers ?? [])].sort((a, b) => Math.abs(b.positionChange) - Math.abs(a.positionChange)).slice(0, 5).map(row => <li key={row.query} className="flex justify-between gap-3"><span className="truncate">{row.query}</span><span>{row.positionChange > 0 ? 'Improved' : row.positionChange < 0 ? 'Declined' : 'Unchanged'} {Math.abs(row.positionChange).toFixed(1)} · {row.currentPosition >= 1 ? `#${row.currentPosition.toFixed(1)}` : 'Position unavailable'}</span></li>)}</ul>}
+        </>}
+        <button type="button" onClick={() => navigate('/seo')}>View SEO dashboard</button>
+    </section>;
 }

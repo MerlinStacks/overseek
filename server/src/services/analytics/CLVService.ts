@@ -5,6 +5,7 @@ import type { Prisma } from '@prisma/client';
 import { normalizeSource } from './utils';
 
 export interface CLVDashboard {
+    observation: { basis: 'observed-window-spend'; start: string; end: string; currency: string | null; ordersTruncated: boolean; sessionsTruncated: boolean; excludedOrders: number };
     averageCLV: number;
     medianCLV: number;
     distribution: {
@@ -38,26 +39,30 @@ export interface CLVDashboard {
 export class CLVService {
     async getCLVDashboard(accountId: string, monthsBack: number = 12): Promise<CLVDashboard> {
         try {
-            const cutoffDate = new Date();
-            cutoffDate.setMonth(cutoffDate.getMonth() - monthsBack);
-            cutoffDate.setDate(1);
-            cutoffDate.setHours(0, 0, 0, 0);
+            if (!accountId?.trim() || !Number.isInteger(monthsBack) || monthsBack < 1 || monthsBack > 60) throw new Error('Invalid customer spend scope or month window');
+            const now = new Date();
+            const cutoffDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsBack, 1));
 
-            const orders = await prisma.wooOrder.findMany({
+            const foundOrders = await prisma.wooOrder.findMany({
                 where: {
                     accountId,
                     status: { in: REVENUE_STATUSES },
-                    dateCreated: { gte: cutoffDate }
+                    dateCreated: { gte: cutoffDate, lte: now }
                 },
                 select: {
                     id: true,
                     dateCreated: true,
                     total: true,
+                    currency: true,
                     rawData: true
                 },
-                orderBy: { dateCreated: 'asc' },
-                take: 50000
+                orderBy: [{ dateCreated: 'asc' }, { id: 'asc' }],
+                take: 50001
             });
+            const orders = foundOrders.slice(0, 50000);
+            const currencies = new Set(orders.map(order => order.currency));
+            const currency = currencies.size === 1 && typeof orders[0]?.currency === 'string' && /^[A-Z]{3}$/.test(orders[0].currency) ? orders[0].currency : null;
+            let excludedOrders = 0;
 
             const customerOrders = new Map<string, {
                 orders: Array<{ date: Date; total: number }>;
@@ -67,8 +72,9 @@ export class CLVService {
             for (const order of orders) {
                 const rawData = order.rawData as Prisma.JsonObject | null;
                 const billing = typeof rawData?.billing === 'object' && rawData?.billing !== null ? (rawData.billing as Prisma.JsonObject) : null;
-                const email = typeof billing?.email === 'string' ? billing.email.toLowerCase() : undefined;
-                if (!email) continue;
+                const email = typeof billing?.email === 'string' ? billing.email.trim().toLowerCase() : undefined;
+                if (!email?.trim()) { excludedOrders++; continue; }
+                if (!Number.isFinite(Number(order.total)) || Number(order.total) < 0) throw new Error('Invalid observed order total');
 
                 if (!customerOrders.has(email)) {
                     customerOrders.set(email, { orders: [] });
@@ -155,11 +161,11 @@ export class CLVService {
                 };
             });
 
-            const sessions = await prisma.analyticsSession.findMany({
+            const foundSessions = await prisma.analyticsSession.findMany({
                 where: {
                     accountId,
                     wooCustomerId: { not: null },
-                    createdAt: { gte: cutoffDate }
+                    createdAt: { gte: cutoffDate, lte: now }
                 },
                 select: {
                     wooCustomerId: true,
@@ -167,8 +173,10 @@ export class CLVService {
                     utmSource: true,
                     referrer: true
                 },
-                take: 100000
+                orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+                take: 100001
             });
+            const sessions = foundSessions.slice(0, 100000);
 
             const customerSource = new Map<string, string>();
             const emailToCustomerId = new Map<number, string>();
@@ -184,7 +192,8 @@ export class CLVService {
                 if (!session.wooCustomerId) continue;
                 const email = emailToCustomerId.get(session.wooCustomerId);
                 if (!email) continue;
-                const source = normalizeSource(session.firstTouchSource || session.utmSource || session.referrer);
+                const evidence = session.firstTouchSource || session.utmSource || session.referrer;
+                const source = evidence ? normalizeSource(evidence) : 'Unknown';
                 if (!customerSource.has(email)) {
                     customerSource.set(email, source);
                 }
@@ -193,7 +202,7 @@ export class CLVService {
             const sourceData = new Map<string, { customers: number; revenue: number }>();
 
             for (const [email, data] of customerCLVs) {
-                const source = customerSource.get(email) || 'Direct';
+                const source = customerSource.get(email) || 'Unknown';
                 if (!sourceData.has(source)) {
                     sourceData.set(source, { customers: 0, revenue: 0 });
                 }
@@ -212,7 +221,7 @@ export class CLVService {
             const monthlyCLVMap = new Map<string, { totalCLV: number; count: number }>();
 
             for (const [, data] of customerCLVs) {
-                const monthKey = `${data.firstOrderDate.getFullYear()}-${String(data.firstOrderDate.getMonth() + 1).padStart(2, '0')}`;
+                const monthKey = `${data.firstOrderDate.getUTCFullYear()}-${String(data.firstOrderDate.getUTCMonth() + 1).padStart(2, '0')}`;
                 if (!monthlyCLVMap.has(monthKey)) {
                     monthlyCLVMap.set(monthKey, { totalCLV: 0, count: 0 });
                 }
@@ -230,6 +239,8 @@ export class CLVService {
                 }));
 
             return {
+                observation: { basis: 'observed-window-spend', start: cutoffDate.toISOString(), end: now.toISOString(), currency,
+                    ordersTruncated: foundOrders.length > 50000, sessionsTruncated: foundSessions.length > 100000, excludedOrders },
                 averageCLV,
                 medianCLV,
                 distribution,

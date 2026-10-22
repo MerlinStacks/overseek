@@ -1,14 +1,39 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SendEmailConfig } from './SendEmailConfig';
 
 vi.mock('../common/RichTextEditor', () => ({ RichTextEditor: ({ onChange }: { onChange: (value: string) => void }) => <button onClick={() => onChange('<p>Rich edit</p>')}>Edit rich text</button> }));
 vi.mock('./MarketingEmailDesigner', () => ({ MarketingEmailDesigner: () => <div>Visual editor</div> }));
+vi.mock('./flow/InlineEmailPreview', () => ({ InlineEmailPreview: () => <div>Inline preview</div> }));
 vi.mock('./flow/EmailPreviewModal', () => ({ EmailPreviewModal: ({ onPreviewed, onClose }: { onPreviewed: () => void; onClose: () => void }) => <div><button onClick={onPreviewed}>Preview finished loading</button><button onClick={onClose}>Close preview</button></div> }));
 
 afterEach(() => vi.restoreAllMocks());
 
 describe('flow email configuration', () => {
+    it('groups message details and content into responsive columns with preview controls beside the editor', () => {
+        render(<SendEmailConfig config={{ subject: 'Order confirmation', htmlContent: '<p>Thanks</p>' }} onUpdate={vi.fn()} />);
+        const details = screen.getByRole('region', { name: 'Message details' });
+        const content = screen.getByRole('region', { name: 'Email content' });
+        expect(details.parentElement).toHaveClass('lg:grid-cols-2');
+        expect(content.parentElement).toBe(details.parentElement);
+        expect(within(details).getByDisplayValue('Order confirmation')).toBeInTheDocument();
+        expect(within(details).getByLabelText('Delivery Category')).toBeInTheDocument();
+        expect(within(content).getByRole('button', { name: 'Edit Design' })).toBeInTheDocument();
+        expect(within(content).getByRole('button', { name: 'Preview and Test' })).toBeEnabled();
+    });
+
+    it('keeps advanced settings collapsed without losing configured values', () => {
+        const update = vi.fn();
+        render(<SendEmailConfig config={{ campaignSource: 'newsletter', overrideFrom: true, fromEmail: 'sender@example.com' }} onUpdate={update} />);
+        const advanced = screen.getByText('Tracking and sender settings').closest('details');
+        expect(advanced).not.toHaveAttribute('open');
+        advanced?.setAttribute('open', '');
+        expect(screen.getByDisplayValue('newsletter')).toBeVisible();
+        expect(screen.getByDisplayValue('sender@example.com')).toBeVisible();
+        fireEvent.change(screen.getByDisplayValue('newsletter'), { target: { value: 'orders' } });
+        expect(update).toHaveBeenCalledWith('campaignSource', 'orders');
+    });
+
     it('switches to the visual builder without asking to restore stale content', () => {
         vi.spyOn(window, 'confirm').mockReturnValue(false);
         const update = vi.fn();

@@ -5,7 +5,7 @@
  * Extracted from OrdersPage.tsx for maintainability.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -47,7 +47,7 @@ interface OrderAttribution {
 
 export function useOrders() {
     const [searchParams, setSearchParams] = useSearchParams();
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const { currentAccount } = useAccount();
 
     // Initialize from URL
@@ -82,7 +82,12 @@ export function useOrders() {
 
     // Picklist state
     const [picklistStatus, setPicklistStatus] = useState('processing');
-    const [isGeneratingPicklist, setIsGeneratingPicklist] = useState(false);
+    const picklistScope = JSON.stringify([user?.id, token, currentAccount?.id]);
+    const activePicklistScope = useRef(picklistScope);
+    const picklistLock = useRef<string | null>(null), picklistAbort = useRef<AbortController | null>(null), picklistPreview = useRef<(() => void) | null>(null);
+    const [picklistRequest, setPicklistRequest] = useState({ scope: '', busy: false });
+    const isGeneratingPicklist = picklistRequest.scope === picklistScope && picklistRequest.busy;
+    useLayoutEffect(() => { activePicklistScope.current = picklistScope; return () => { picklistAbort.current?.abort(); picklistPreview.current?.(); activePicklistScope.current = ''; }; }, [picklistScope]);
 
     const debouncedSearch = useDebouncedValue(searchQuery, 400);
     const shouldRefreshOnVisible = useVisibilityRefreshThrottle(45_000);
@@ -263,27 +268,32 @@ export function useOrders() {
     }, []);
 
     const handleGeneratePicklist = useCallback(async () => {
-        if (!currentAccount || !token) return;
-        setIsGeneratingPicklist(true);
+        if (!currentAccount || !token || picklistLock.current === picklistScope) return;
+        const scope = picklistScope;
+        picklistLock.current = scope; picklistAbort.current?.abort(); picklistAbort.current = new AbortController();
+        setPicklistRequest({ scope, busy: true });
         try {
             const params = new URLSearchParams({ status: picklistStatus, limit: '100' });
             const res = await fetch(`/api/inventory/picklist?${params}`, {
+                signal: picklistAbort.current.signal,
                 headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
             });
             if (res.ok) {
                 const data = await res.json();
+                if (activePicklistScope.current !== scope) return;
                 if (data.length === 0) alert('No items found for the selected status.');
-                else printPicklist(data);
+                else { picklistPreview.current?.(); picklistPreview.current = printPicklist({ accountId: currentAccount.id, accountName: currentAccount.name, generatedAt: new Date().toISOString(), status: picklistStatus, orderLimit: 100, items: data }); }
             } else {
-                alert('Failed to generate picklist');
+                if (activePicklistScope.current === scope) alert('Picklist observations unavailable');
             }
         } catch (error) {
             Logger.error('Error generating picklist', { error });
-            alert('Error generating picklist');
+            if (activePicklistScope.current === scope) alert('Picklist preview unavailable. Check bounded whole-unit quantities and source coverage.');
         } finally {
-            setIsGeneratingPicklist(false);
+            if (picklistLock.current === scope) picklistLock.current = null;
+            if (activePicklistScope.current === scope) setPicklistRequest({ scope, busy: false });
         }
-    }, [currentAccount, token, picklistStatus]);
+    }, [currentAccount, token, picklistStatus, picklistScope]);
 
     const removeTag = useCallback(async (orderId: number, tag: string) => {
         if (!currentAccount || !token) return;

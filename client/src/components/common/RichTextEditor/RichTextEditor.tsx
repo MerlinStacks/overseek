@@ -21,6 +21,9 @@ import { ToolbarPlugin, type MergeTagOption, type ToolbarFeature } from './plugi
 import { OnChangePlugin } from './plugins/OnChangePlugin';
 import { InitialValuePlugin } from './plugins/InitialValuePlugin';
 import { EnterSubmitPlugin } from './plugins/EnterSubmitPlugin';
+import { EmailImageNode } from './EmailImageNode';
+import { EmailLinkNode } from './EmailLinkNode';
+import { EmailMediaPlugin } from './plugins/EmailMediaPlugin';
 
 import './RichTextEditor.css';
 
@@ -108,8 +111,14 @@ export function RichTextEditor({
             ListItemNode,
             HeadingNode,
             QuoteNode,
+            ...(enabledFeatures.includes('image') || enabledFeatures.includes('social') ? [EmailImageNode] : []),
+            ...(enabledFeatures.includes('image') || enabledFeatures.includes('social') ? [EmailLinkNode, {
+                replace: LinkNode,
+                with: (node: LinkNode) => new EmailLinkNode(node.getURL(), { target: node.getTarget(), rel: node.getRel(), title: node.getTitle() }),
+                withKlass: EmailLinkNode,
+            }] : []),
         ],
-    }), [onError]);
+    }), [onError, enabledFeatures]);
 
     // Memoize onChange to prevent unnecessary re-renders
     const handleChange = useCallback((html: string) => {
@@ -122,6 +131,7 @@ export function RichTextEditor({
     return (
         <div className={`rich-text-editor ${variantClass} ${internalClass} ${className}`.trim()}>
             <LexicalComposer initialConfig={initialConfig}>
+                {(enabledFeatures.includes('image') || enabledFeatures.includes('social')) && <EmailMediaPlugin images={enabledFeatures.includes('image')} social={enabledFeatures.includes('social')} />}
                 {/* Toolbar - position depends on variant */}
                 {variant !== 'compact' && (
                     <ToolbarPlugin features={enabledFeatures} rightSlot={toolbarRightSlot} mergeTags={mergeTags} />

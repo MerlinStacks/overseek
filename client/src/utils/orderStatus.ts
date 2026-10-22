@@ -1,139 +1,26 @@
-/**
- * Centralized Order Status Configuration.
- * 
- * Why: Status colors, icons, and labels were duplicated in 4+ files:
- * - MobileOrders.tsx
- * - MobileCustomerDetail.tsx  
- * - ContactPanel.tsx
- * - OrdersPage.tsx
- */
+import { Clock, Package, Truck, CheckCircle, XCircle, RefreshCw, AlertCircle, type LucideIcon } from 'lucide-react';
 
-import {
-    Clock,
-    Package,
-    Truck,
-    CheckCircle,
-    XCircle,
-    RefreshCw,
-    AlertCircle,
-    type LucideIcon
-} from 'lucide-react';
-
-interface StatusConfig {
-    icon: LucideIcon;
-    color: string;
-    bg: string;
-    label: string;
-    /** Next status in the workflow (for status advancement) */
-    next?: string;
-}
-
-/**
- * Complete order status configuration map.
- * Covers all WooCommerce standard statuses plus common custom ones.
- */
+interface StatusConfig { icon: LucideIcon; color: string; bg: string; label: string }
+/** Display metadata only. Allowed transitions must come from the store, not a guessed workflow. */
 const ORDER_STATUS_CONFIG: Record<string, StatusConfig> = {
-    pending: {
-        icon: Clock,
-        color: 'text-amber-600',
-        bg: 'bg-amber-100',
-        label: 'Pending',
-        next: 'processing'
-    },
-    processing: {
-        icon: Package,
-        color: 'text-blue-600',
-        bg: 'bg-blue-100',
-        label: 'Processing',
-        next: 'shipped'
-    },
-    'on-hold': {
-        icon: AlertCircle,
-        color: 'text-orange-600',
-        bg: 'bg-orange-100',
-        label: 'On Hold',
-        next: 'processing'
-    },
-    shipped: {
-        icon: Truck,
-        color: 'text-purple-600',
-        bg: 'bg-purple-100',
-        label: 'Shipped',
-        next: 'completed'
-    },
-    delivered: {
-        icon: CheckCircle,
-        color: 'text-emerald-600',
-        bg: 'bg-emerald-100',
-        label: 'Delivered'
-    },
-    completed: {
-        icon: CheckCircle,
-        color: 'text-emerald-600',
-        bg: 'bg-emerald-100',
-        label: 'Completed'
-    },
-    cancelled: {
-        icon: XCircle,
-        color: 'text-red-600',
-        bg: 'bg-red-100',
-        label: 'Cancelled'
-    },
-    refunded: {
-        icon: RefreshCw,
-        color: 'text-gray-600',
-        bg: 'bg-gray-100',
-        label: 'Refunded'
-    },
-    failed: {
-        icon: XCircle,
-        color: 'text-red-600',
-        bg: 'bg-red-100',
-        label: 'Failed'
-    }
+    pending: { icon: Clock, color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-100 dark:bg-amber-950', label: 'Pending' },
+    processing: { icon: Package, color: 'text-blue-700 dark:text-blue-300', bg: 'bg-blue-100 dark:bg-blue-950', label: 'Processing' },
+    'on-hold': { icon: AlertCircle, color: 'text-orange-700 dark:text-orange-300', bg: 'bg-orange-100 dark:bg-orange-950', label: 'On Hold' },
+    shipped: { icon: Truck, color: 'text-purple-700 dark:text-purple-300', bg: 'bg-purple-100 dark:bg-purple-950', label: 'Shipped' },
+    delivered: { icon: CheckCircle, color: 'text-emerald-700 dark:text-emerald-300', bg: 'bg-emerald-100 dark:bg-emerald-950', label: 'Delivered' },
+    completed: { icon: CheckCircle, color: 'text-emerald-700 dark:text-emerald-300', bg: 'bg-emerald-100 dark:bg-emerald-950', label: 'Completed' },
+    cancelled: { icon: XCircle, color: 'text-red-700 dark:text-red-300', bg: 'bg-red-100 dark:bg-red-950', label: 'Cancelled' },
+    refunded: { icon: RefreshCw, color: 'text-slate-700 dark:text-slate-300', bg: 'bg-slate-100 dark:bg-slate-800', label: 'Refunded' },
+    failed: { icon: XCircle, color: 'text-red-700 dark:text-red-300', bg: 'bg-red-100 dark:bg-red-950', label: 'Failed' },
 };
-
-/** Default config for unknown statuses */
-const DEFAULT_STATUS: StatusConfig = {
-    icon: Clock,
-    color: 'text-gray-600',
-    bg: 'bg-gray-100',
-    label: 'Unknown'
-};
-
-/**
- * Get the full status configuration for a given status string.
- * Handles case-insensitive matching and unknown statuses.
- */
-export function getStatusConfig(status: string): StatusConfig {
-    const normalized = status?.toLowerCase().trim() || 'pending';
-    return ORDER_STATUS_CONFIG[normalized] || DEFAULT_STATUS;
+const UNKNOWN: StatusConfig = { icon: Clock, color: 'text-slate-700 dark:text-slate-300', bg: 'bg-slate-100 dark:bg-slate-800', label: 'Unknown' };
+export function getStatusConfig(status: unknown): StatusConfig {
+    const normalized = typeof status === 'string' ? status.trim().toLowerCase().replace(/^wc-/, '') : '';
+    return { ...(Object.prototype.hasOwnProperty.call(ORDER_STATUS_CONFIG, normalized) ? ORDER_STATUS_CONFIG[normalized] : UNKNOWN) };
 }
-
-/**
- * Get just the Tailwind color classes for a status badge.
- * Returns combined background + text color classes.
- */
-export function getStatusColor(status: string): string {
-    const config = getStatusConfig(status);
-    return `${config.bg} ${config.color}`;
+export function getStatusColor(status: unknown): string {
+    const config = getStatusConfig(status); return `${config.bg} ${config.color}`;
 }
-
-/**
- * Get Tailwind classes for a status badge (bg + text + border).
- * Useful for components that want a bordered badge appearance.
- */
-export function getStatusBadgeClasses(status: string): string {
-    const normalized = status?.toLowerCase().trim() || 'pending';
-    const badgeStyles: Record<string, string> = {
-        completed: 'bg-green-100 text-green-700 border-green-200',
-        processing: 'bg-blue-100 text-blue-700 border-blue-200',
-        'on-hold': 'bg-yellow-100 text-yellow-700 border-yellow-200',
-        pending: 'bg-gray-100 text-gray-600 border-gray-200',
-        cancelled: 'bg-red-100 text-red-700 border-red-200',
-        refunded: 'bg-purple-100 text-purple-700 border-purple-200',
-        shipped: 'bg-purple-100 text-purple-700 border-purple-200',
-        failed: 'bg-red-100 text-red-700 border-red-200',
-    };
-    return badgeStyles[normalized] || 'bg-gray-100 text-gray-600 border-gray-200';
+export function getStatusBadgeClasses(status: unknown): string {
+    return `${getStatusColor(status)} border-current/20`;
 }

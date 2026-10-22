@@ -22,11 +22,7 @@ import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { getUploadsDir } from '../utils/uploadPaths';
 
-// Ensure uploads directory exists
 const INVOICE_DIR = path.join(getUploadsDir(), 'invoices');
-if (!fs.existsSync(INVOICE_DIR)) {
-    fs.mkdirSync(INVOICE_DIR, { recursive: true });
-}
 
 type InvoiceTemplateLayout = {
     grid: any[];
@@ -415,7 +411,7 @@ export class InvoiceService {
         accountId: string,
         orderId: string,
         templateId: string,
-        options: { layoutMode?: 'template' | 'operational-a4' } = {}
+        options: { layoutMode?: 'template' | 'operational-a4'; expectedTemplateUpdatedAt?: Date; expectedOrderUpdatedAt?: Date } = {}
     ): Promise<{ relativeUrl: string, absolutePath: string }> {
         const layoutMode = options.layoutMode || 'template';
         Logger.warn('[InvoiceService] Using non-canonical server PDF renderer (PDFKit)', {
@@ -451,6 +447,7 @@ export class InvoiceService {
         });
 
         if (!template) throw new Error("Invoice Template not found");
+        if (options.expectedTemplateUpdatedAt && template.updatedAt.getTime() !== options.expectedTemplateUpdatedAt.getTime() || options.expectedOrderUpdatedAt && order.updatedAt.getTime() !== options.expectedOrderUpdatedAt.getTime()) throw new Error('Invoice source changed before rendering');
 
         const normalizedLayout = this.normalizeLayout(template.layout);
         const settings = normalizedLayout.settings;
@@ -465,6 +462,7 @@ export class InvoiceService {
 
         const mergedSettings = settingsWithTimezone(mergeInvoiceSettings(settings), order.account?.timezone);
         const nextNumber = Math.max(1, Number(mergedSettings.numbering.nextNumber ?? 1001));
+        if (!Number.isSafeInteger(nextNumber) || nextNumber >= Number.MAX_SAFE_INTEGER) throw new Error('Invalid invoice sequence');
         const invoiceNumber = buildInvoiceNumber(mergedSettings);
         const issueDate = resolveWooOrderPlacedDate(order, rawData);
         const termsDays = Number(mergedSettings.compliance.paymentTermsDays ?? 14);
@@ -505,9 +503,10 @@ export class InvoiceService {
             paymentQrBuffer
         };
 
-        await prisma.invoiceTemplate.update({
-            where: { id: template.id },
+        const reserved = await prisma.invoiceTemplate.updateMany({
+            where: { id: template.id, accountId, updatedAt: template.updatedAt },
             data: {
+                updatedAt: new Date(Math.max(Date.now(), template.updatedAt.getTime() + 1)),
                 layout: {
                     ...normalizedLayout,
                     settings: {
@@ -521,9 +520,13 @@ export class InvoiceService {
             }
         });
 
-        // 4. Generate PDF invoice
-        const fileName = `invoice-${order.number}-${Date.now()}.pdf`;
-        const filePath = path.join(INVOICE_DIR, fileName);
+        if (reserved.count !== 1) throw new Error('Invoice sequence changed; generation requires reconciliation');
+        if (!/^[a-zA-Z0-9_-]{1,200}$/.test(accountId)) throw new Error('Invalid invoice account identity');
+        const fileName = `invoice-${randomUUID()}.pdf`;
+        const accountDir = path.join(INVOICE_DIR, accountId);
+        fs.mkdirSync(accountDir, { recursive: true });
+        if (fs.realpathSync(accountDir) !== path.join(fs.realpathSync(INVOICE_DIR), accountId) || fs.lstatSync(accountDir).isSymbolicLink()) throw new Error('Unsafe invoice account directory');
+        const filePath = path.join(accountDir, fileName);
 
         await this.createPdf(filePath, order, billing, shipping, lineItems, template, normalizedLayout, invoiceContext, { layoutMode });
 
@@ -531,7 +534,7 @@ export class InvoiceService {
 
         // Return relative URL and absolute path
         return {
-            relativeUrl: `/uploads/invoices/${fileName}`,
+            relativeUrl: `/uploads/invoices/${accountId}/${fileName}`,
             absolutePath: filePath
         };
     }

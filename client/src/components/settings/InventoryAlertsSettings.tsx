@@ -1,174 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Logger } from '../../utils/logger';
-import { Save, Loader2, Mail, AlertTriangle } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { z } from 'zod';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { useToast } from '../../context/ToastContext';
-
-export function InventoryAlertsSettings() {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const toast = useToast();
-
-    const [isLoading, setIsLoading] = useState(true);
-    const [isSaving, setIsSaving] = useState(false);
-
-    const [isEnabled, setIsEnabled] = useState(false);
-    const [threshold, setThreshold] = useState(14);
-    const [emailInput, setEmailInput] = useState('');
-    const [emails, setEmails] = useState<string[]>([]);
-
-    const fetchSettings = useCallback(async () => {
-        if (!currentAccount?.id) return;
-        try {
-            // Need a backend endpoint for settings. 
-            // Assuming GET /api/inventory/settings
-            const res = await fetch('/api/inventory/settings', {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setIsEnabled(data.isEnabled || false);
-                setThreshold(data.lowStockThresholdDays || 14);
-                setEmails(data.alertEmails || []);
-            }
-        } catch (error) {
-            Logger.error('An error occurred', { error: error });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [currentAccount, token]);
-
-    useEffect(() => {
-        if (!currentAccount) return;
-        fetchSettings();
-    }, [currentAccount, fetchSettings]);
-
-    const handleSave = async () => {
-        if (!currentAccount) return;
-        setIsSaving(true);
-        try {
-            const res = await fetch('/api/inventory/settings', {
-                method: 'POST', // or PUT
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
-                },
-                body: JSON.stringify({
-                    isEnabled,
-                    lowStockThresholdDays: Number(threshold),
-                    alertEmails: emails
-                })
-            });
-            if (!res.ok) throw new Error('Failed to save');
-            toast.success('Inventory alert settings saved.');
-        } catch (error) {
-            Logger.error('An error occurred', { error: error });
-            toast.error('Failed to save inventory alert settings.');
-        } finally {
-            setIsSaving(false);
-        }
+import { usePermissions } from '../../hooks/usePermissions';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+const configSchema = z.object({ isEnabled: z.boolean(), lowStockThresholdDays: z.number().int().min(0).max(3650), alertEmails: z.array(z.string().trim().email().max(254)).max(25).refine(values => new Set(values.map(value => value.toLowerCase())).size === values.length) }).strict().refine(value => !value.isEnabled || value.alertEmails.length > 0);
+function decode(value: unknown) { return z.object({ config: configSchema, version: z.string().datetime().nullable() }).parse(value); }
+export function InventoryAlertsSettings() { const { token, user } = useAuth(); const { currentAccount } = useAccount(); const { hasPermission } = usePermissions(); if (!token || !currentAccount || !hasPermission('view_inventory')) return <p role="alert">Inventory read access and a selected account required.</p>; return <ScopedAlerts key={JSON.stringify([user?.id, token, currentAccount.id])} token={token} accountId={currentAccount.id} editable={hasPermission('manage_inventory')} />; }
+function ScopedAlerts(props: { token: string; accountId: string; editable: boolean }) { const read = useScopedRequest('/api/inventory/settings', props.accountId, props.token, decode); if (read.loading) return <p role="status">Loading alert settings…</p>; if (read.error || !read.data) return <p role="alert">Alert settings unavailable. <button type="button" onClick={read.retry}>Retry settings</button></p>; return <AlertDraft {...props} initial={read.data} reload={read.retry} />; }
+function AlertDraft({ token, accountId, editable, initial, reload }: { token: string; accountId: string; editable: boolean; initial: ReturnType<typeof decode>; reload: () => void }) {
+    const [enabled, setEnabled] = useState(initial.config.isEnabled), [threshold, setThreshold] = useState(String(initial.config.lowStockThresholdDays)), [emails, setEmails] = useState(initial.config.alertEmails.join('\n')), [version, setVersion] = useState(initial.version), [baseline, setBaseline] = useState(JSON.stringify([enabled, threshold, emails])), [message, setMessage] = useState(''), [pending, setPending] = useState(false), [blocked, setBlocked] = useState(false);
+    const dirty = JSON.stringify([enabled, threshold, emails]) !== baseline, lock = useRef(false), alive = useRef(true), controller = useRef<AbortController | null>(null), operation = useRef(crypto.randomUUID());
+    useEffect(() => { alive.current = true; return () => { alive.current = false; controller.current?.abort(); }; }, []);
+    useEffect(() => { const guard = (event: BeforeUnloadEvent) => { if (dirty || lock.current) { event.preventDefault(); event.returnValue = ''; } }; window.addEventListener('beforeunload', guard); return () => window.removeEventListener('beforeunload', guard); }, [dirty]);
+    const save = async () => {
+        if (!editable || lock.current || blocked || !dirty) return;
+        const parsed = configSchema.safeParse({ isEnabled: enabled, lowStockThresholdDays: /^\d+$/.test(threshold) ? Number(threshold) : NaN, alertEmails: emails.split('\n').map(value => value.trim()).filter(Boolean) });
+        if (!parsed.success) { setMessage('Use an integer threshold from 0–3650 and up to 25 unique valid recipient emails, one per line. Enabled alerts need a recipient.'); return; }
+        lock.current = true; setPending(true); controller.current = new AbortController(); const timeout = setTimeout(() => controller.current?.abort(), 30000);
+        try { const response = await fetch('/api/inventory/settings', { method: 'POST', signal: controller.current.signal, headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId, 'Content-Type': 'application/json' }, body: JSON.stringify({ operationId: operation.current, version, config: parsed.data }) }); if (!response.ok) throw new Error('unacknowledged'); const saved = decode(await response.json()); if (!alive.current) return; const nextThreshold = String(saved.config.lowStockThresholdDays), nextEmails = saved.config.alertEmails.join('\n'); setEnabled(saved.config.isEnabled); setThreshold(nextThreshold); setEmails(nextEmails); setVersion(saved.version); setBaseline(JSON.stringify([saved.config.isEnabled, nextThreshold, nextEmails])); operation.current = crypto.randomUUID(); setMessage('Settings save acknowledged. No test alert was sent.'); }
+        catch { if (alive.current) { setBlocked(true); setMessage(`Save outcome unavailable or conflicted. Draft retained; reconcile operation ${operation.current} before retrying.`); } }
+        finally { clearTimeout(timeout); lock.current = false; if (alive.current) setPending(false); }
     };
-
-    const addEmail = () => {
-        if (emailInput && !emails.includes(emailInput)) {
-            setEmails([...emails, emailInput]);
-            setEmailInput('');
-        }
-    };
-
-    const removeEmail = (email: string) => {
-        setEmails(emails.filter(e => e !== email));
-    };
-
-    if (isLoading) return <div className="p-4 text-center">Loading...</div>;
-
-    return (
-        <div className="space-y-6 max-w-2xl">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h3 className="text-lg font-medium text-gray-900">Low Stock Alerts</h3>
-                    <p className="text-sm text-gray-500">Get notified when products are running low based on sales velocity.</p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" checked={isEnabled} onChange={e => setIsEnabled(e.target.checked)} className="sr-only peer" />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-hidden peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                </label>
-            </div>
-
-            {isEnabled && (
-                <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex gap-3">
-                        <AlertTriangle className="text-amber-600 shrink-0" size={20} />
-                        <p className="text-sm text-amber-800">
-                            We calculate "Days Remaining" by dividing current stock by the average daily sales over the last 30 days.
-                        </p>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Alert Threshold (Days)
-                        </label>
-                        <div className="flex items-center gap-2">
-                            <input
-                                type="number"
-                                value={threshold}
-                                onChange={e => setThreshold(Number(e.target.value))}
-                                className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden"
-                            />
-                            <span className="text-gray-500">days remaining</span>
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Email Recipients
-                        </label>
-                        <div className="flex gap-2 mb-2">
-                            <input
-                                type="email"
-                                value={emailInput}
-                                onChange={e => setEmailInput(e.target.value)}
-                                placeholder="colleague@example.com"
-                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden"
-                                onKeyDown={e => e.key === 'Enter' && addEmail()}
-                            />
-                            <button
-                                onClick={addEmail}
-                                type="button"
-                                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-                            >
-                                Add
-                            </button>
-                        </div>
-                        <div className="space-y-2">
-                            {emails.map(email => (
-                                <div key={email} className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-3 py-2">
-                                    <div className="flex items-center gap-2 text-sm text-gray-700">
-                                        <Mail size={16} className="text-gray-400" />
-                                        {email}
-                                    </div>
-                                    <button onClick={() => removeEmail(email)} className="text-red-500 hover:text-red-700 text-sm">
-                                        Remove
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <div className="pt-4 border-t border-gray-200">
-                <button
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-md shadow-blue-500/20 disabled:opacity-50 transition-all"
-                >
-                    {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-                    Save Settings
-                </button>
-            </div>
-        </div>
-    );
+    return <div className="space-y-4 rounded-xl border p-4 text-slate-900 dark:text-slate-100"><h3 className="font-semibold">Inventory alert settings</h3><p>Threshold policy only. Actual remaining stock/velocity coverage and future delivery are not established by this form.</p>{message && <p role="status">{message}</p>}<fieldset disabled={!editable || pending || blocked} className="space-y-3"><label className="block"><input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} /> Enable inventory alerts</label><label className="block">Threshold days (0–3650)<input className="block border dark:bg-slate-800" inputMode="numeric" value={threshold} maxLength={4} onChange={event => setThreshold(event.target.value)} /></label><label className="block">Recipient emails (one per line)<textarea className="block w-full border dark:bg-slate-800" rows={5} maxLength={6400} value={emails} onChange={event => setEmails(event.target.value)} /></label></fieldset><div className="flex gap-4"><button type="button" disabled={!editable || pending || blocked || !dirty} onClick={() => void save()}>Save alert settings</button><button type="button" disabled={pending} onClick={() => { if ((!dirty && !blocked) || window.confirm('Discard this draft and reload? An unacknowledged save may already have committed.')) reload(); }}>Discard / reload</button></div></div>;
 }

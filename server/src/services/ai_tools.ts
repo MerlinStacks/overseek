@@ -9,6 +9,7 @@ import { AnalyticsTools } from './tools/AnalyticsTools';
 import { SearchConsoleTools } from './tools/SearchConsoleTools';
 import { SearchToAdsTools } from './tools/SearchToAdsTools';
 import { Logger } from '../utils/logger';
+import { z } from 'zod';
 
 export interface ToolDefinition {
     name: string;
@@ -22,8 +23,7 @@ export interface ToolDefinition {
 
 export class AIToolsService {
     private static normalizePositiveInt(value: unknown, fallback: number): number {
-        const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
-        return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+        return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= 365 ? value : fallback;
     }
 
     static getDefinitions(): ToolDefinition[] {
@@ -342,13 +342,22 @@ export class AIToolsService {
      * Uses a registry pattern instead of switch for maintainability.
      */
     static async executeTool(name: string, args: Record<string, unknown>, accountId: string): Promise<unknown> {
-        Logger.debug(`[AITools] Executing ${name} for account ${accountId}`, { args });
-
-        const handler = this.TOOL_REGISTRY[name];
-        if (!handler) {
-            throw new Error(`Unknown tool: ${name}`);
+        if (typeof name !== 'string' || !Object.prototype.hasOwnProperty.call(this.TOOL_REGISTRY, name)) throw new Error('Unknown tool');
+        if (typeof accountId !== 'string' || !accountId.trim() || accountId.length > 200) throw new Error('Account scope required');
+        const definition = this.getDefinitions().find(tool => tool.name === name)!;
+        const shape: Record<string, z.ZodType> = {};
+        for (const [key, property] of Object.entries(definition.parameters.properties as Record<string, { type: string; enum?: string[] }>)) {
+            let field: z.ZodType = property.type === 'integer' ? z.number().int().min(1).max(key === 'days' ? 365 : name === 'get_recent_orders' ? 20 : 100)
+                : property.enum?.length ? z.enum(property.enum as [string, ...string[]]) : z.string().trim().min(1).max(1000);
+            if (!definition.parameters.required.includes(key)) field = field.optional();
+            shape[key] = field;
         }
-
-        return handler(args, accountId);
+        const parsed = z.object(shape).strict().safeParse(args);
+        if (!parsed.success || JSON.stringify(parsed.data).length > 10000) throw new Error('Invalid tool arguments');
+        Logger.debug('Executing validated AI tool', { tool: name, accountId });
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            return await Promise.race([this.TOOL_REGISTRY[name](parsed.data, accountId), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Tool execution deadline exceeded')), 30000); timer.unref?.(); })]);
+        } finally { if (timer) clearTimeout(timer); }
     }
 }

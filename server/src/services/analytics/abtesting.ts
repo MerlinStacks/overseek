@@ -1,444 +1,164 @@
-import { prisma } from '../../utils/prisma';
-import { Logger } from '../../utils/logger';
+import { randomUUID } from 'crypto';
+import { z } from 'zod';
+import { prisma, type Prisma } from '../../utils/prisma';
+import { REVENUE_STATUSES } from '../../constants/orderStatus';
 
-export interface ExperimentConfig {
-    id: string;
-    accountId: string;
-    name: string;
-    description: string;
-    variantNames: string[];
-    status: 'draft' | 'running' | 'completed';
-    conversionEvent: string;
-    createdAt: Date;
-    updatedAt: Date;
+const date = z.union([z.date(), z.iso.datetime().transform(value => new Date(value))]);
+const variants = z.array(z.string().trim().min(1).max(100)).min(2).max(10).refine(values => new Set(values).size === values.length, 'Variants must be unique');
+const configSchema = z.object({ id: z.string().uuid(), accountId: z.string().min(1), name: z.string().trim().min(1).max(200), description: z.string().max(4000), variantNames: variants,
+    status: z.enum(['draft', 'running', 'completed']), conversionEvent: z.literal('purchase'), createdAt: date, updatedAt: date, startedAt: date.optional(), completedAt: date.optional() });
+export type ExperimentConfig = z.output<typeof configSchema>;
+export interface VariantResult { variant: string; impressions: number; conversions: number; conversionRate: number; revenue: number; avgRevenuePerUser: number }
+export interface ExperimentResults { experiment: ExperimentConfig; variants: VariantResult[]; totalImpressions: number; totalConversions: number; currency: string | null; excludedContaminatedVisitors: number; basis: string }
+export interface StatisticalSignificance { pValue: number | null; confidenceLevel: null; isSignificant: boolean; sampleSizeSufficient: boolean | null; normalApproximationValid: boolean; mde: null; method: string; reason?: string;
+    comparisons: Array<{ control: string; treatment: string; adjustedPValue: number | null; approximationValid: boolean }> }
+const KEY = 'ab_experiments';
+const object = (value: unknown): Record<string, any> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {};
+const scope = (accountId: string) => z.string().trim().min(1).max(128).parse(accountId);
+type DB = Pick<Prisma.TransactionClient, 'account'>;
+
+async function getExperiments(accountId: string, db: DB = prisma): Promise<Record<string, ExperimentConfig>> {
+    scope(accountId);
+    const account = await db.account.findUnique({ where: { id: accountId }, select: { appearance: true } });
+    if (!account) throw new Error('Experiment account not found');
+    const raw = object(account.appearance)[KEY];
+    if (raw !== undefined && (!raw || typeof raw !== 'object' || Array.isArray(raw))) throw new Error('Experiment configuration unavailable');
+    const stored = object(raw);
+    if (Object.keys(stored).length > 100) throw new Error('Experiment coverage limit exceeded');
+    const result = Object.create(null) as Record<string, ExperimentConfig>;
+    for (const [id, value] of Object.entries(stored)) {
+        const experiment = configSchema.parse(value);
+        if (id !== experiment.id || experiment.accountId !== accountId) throw new Error('Invalid experiment ownership');
+        result[id] = experiment;
+    }
+    return result;
 }
-
-export interface VariantResult {
-    variant: string;
-    impressions: number;
-    conversions: number;
-    conversionRate: number;
-    revenue: number;
-    avgRevenuePerUser: number;
-}
-
-export interface ExperimentResults {
-    experiment: ExperimentConfig;
-    variants: VariantResult[];
-    totalImpressions: number;
-    totalConversions: number;
-}
-
-export interface StatisticalSignificance {
-    pValue: number;
-    confidenceLevel: number;
-    isSignificant: boolean;
-    sampleSizeSufficient: boolean;
-    mde: number;
-}
-
-const EXPERIMENTS_KEY = 'ab_experiments';
-
-async function getExperiments(accountId: string): Promise<Record<string, ExperimentConfig>> {
-    const account = await prisma.account.findUnique({
-        where: { id: accountId },
-        select: { appearance: true }
-    });
-
-    const appearance = account?.appearance as Record<string, any> | null | undefined;
-    return (appearance?.[EXPERIMENTS_KEY] as Record<string, ExperimentConfig>) || {};
-}
-
-async function saveExperiments(accountId: string, experiments: Record<string, ExperimentConfig>): Promise<void> {
-    const account = await prisma.account.findUnique({
-        where: { id: accountId },
-        select: { appearance: true }
-    });
-
-    const appearance = (account?.appearance as Record<string, any> | null) || {};
-    appearance[EXPERIMENTS_KEY] = experiments;
-
-    await prisma.account.update({
-        where: { id: accountId },
-        data: { appearance: appearance as any }
+async function editExperiments<T>(accountId: string, edit: (experiments: Record<string, ExperimentConfig>) => T) {
+    scope(accountId);
+    return prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM "Account" WHERE id = ${accountId} FOR NO KEY UPDATE`;
+        const experiments = await getExperiments(accountId, tx);
+        const result = edit(experiments);
+        // Update only this JSON namespace, never overwrite unrelated appearance edits.
+        await tx.$executeRaw`UPDATE "Account" SET "appearance" = jsonb_set(COALESCE("appearance", '{}'::jsonb), '{ab_experiments}', ${JSON.stringify(experiments)}::jsonb), "updatedAt" = NOW() WHERE id = ${accountId}`;
+        return result;
     });
 }
+const identity = (event: any) => typeof event.session?.visitorId === 'string' && event.session.visitorId ? event.session.visitorId : typeof object(event.payload).visitorId === 'string' ? object(event.payload).visitorId : null;
 
 export class ABTestingService {
-    async createExperiment(
-        accountId: string,
-        name: string,
-        description: string,
-        variantNames: string[]
-    ): Promise<ExperimentConfig> {
-        try {
-            if (variantNames.length < 2) {
-                throw new Error('At least 2 variants are required');
-            }
-
-            const id = crypto.randomUUID();
-            const experiments = await getExperiments(accountId);
-
-            const experiment: ExperimentConfig = {
-                id,
-                accountId,
-                name,
-                description,
-                variantNames,
-                status: 'draft',
-                conversionEvent: 'purchase',
-                createdAt: new Date(),
-                updatedAt: new Date()
-            };
-
-            experiments[id] = experiment;
-            await saveExperiments(accountId, experiments);
-
-            Logger.info('[ABTestingService] Experiment created', { experimentId: id, accountId });
-            return experiment;
-        } catch (error) {
-            Logger.error('[ABTestingService] Create experiment error', { error, accountId });
-            throw error;
-        }
-    }
-
-    async updateExperimentStatus(
-        accountId: string,
-        experimentId: string,
-        status: 'draft' | 'running' | 'completed'
-    ): Promise<ExperimentConfig> {
-        try {
-            const experiments = await getExperiments(accountId);
-            const experiment = experiments[experimentId];
-
-            if (!experiment) {
-                throw new Error('Experiment not found');
-            }
-
-            if (experiment.accountId !== accountId) {
-                throw new Error('Experiment not found');
-            }
-
-            experiment.status = status;
-            experiment.updatedAt = new Date();
-            experiments[experimentId] = experiment;
-            await saveExperiments(accountId, experiments);
-
-            return experiment;
-        } catch (error) {
-            Logger.error('[ABTestingService] Update experiment error', { error, experimentId });
-            throw error;
-        }
-    }
-
-    async trackExposure(
-        accountId: string,
-        experimentId: string,
-        variant: string,
-        visitorId: string,
-        email?: string
-    ): Promise<void> {
-        try {
-            const experiments = await getExperiments(accountId);
-            const experiment = experiments[experimentId];
-
-            if (!experiment || experiment.status !== 'running') {
-                return;
-            }
-
-            if (!experiment.variantNames.includes(variant)) {
-                throw new Error('Invalid variant');
-            }
-
-            await prisma.analyticsEvent.create({
-                data: {
-                    sessionId: await this.getOrCreateSession(accountId, visitorId, email),
-                    type: 'experiment_exposure',
-                    url: '',
-                    payload: {
-                        experimentId,
-                        variant,
-                        visitorId,
-                        email: email || null
-                    }
-                }
-            });
-        } catch (error) {
-            Logger.error('[ABTestingService] Track exposure error', { error, experimentId });
-        }
-    }
-
-    async getExperimentResults(
-        accountId: string,
-        experimentId: string
-    ): Promise<ExperimentResults> {
-        try {
-            const experiments = await getExperiments(accountId);
-            const experiment = experiments[experimentId];
-
-            if (!experiment) {
-                throw new Error('Experiment not found');
-            }
-
-            const exposureEvents = await prisma.analyticsEvent.findMany({
-                where: {
-                    type: 'experiment_exposure',
-                    session: { accountId },
-                    payload: {
-                        path: ['experimentId'],
-                        equals: experimentId
-                    }
-                },
-                include: {
-                    session: {
-                        select: {
-                            email: true,
-                            wooCustomerId: true
-                        }
-                    }
-                }
-            });
-
-            const variantData = new Map<string, {
-                impressions: Set<string>;
-                conversions: Set<string>;
-                revenue: number;
-            }>();
-
-            for (const variant of experiment.variantNames) {
-                variantData.set(variant, {
-                    impressions: new Set(),
-                    conversions: new Set(),
-                    revenue: 0
-                });
-            }
-
-            const userVariant = new Map<string, string>();
-
-            for (const event of exposureEvents) {
-                const payload = event.payload as any;
-                const variant = payload?.variant;
-                const visitorId = payload?.visitorId;
-                const email = (event.session as any)?.email;
-
-                if (!variant || !variantData.has(variant)) continue;
-
-                const userId = visitorId || email || '';
-                if (!userId) continue;
-
-                variantData.get(variant)!.impressions.add(userId);
-                userVariant.set(userId, variant);
-            }
-
-            const purchaseEvents = await prisma.analyticsEvent.findMany({
-                where: {
-                    type: 'purchase',
-                    session: { accountId }
-                },
-                include: {
-                    session: {
-                        select: {
-                            email: true,
-                            visitorId: true
-                        }
-                    }
-                }
-            });
-
-            for (const event of purchaseEvents) {
-                const session = event.session as any;
-                const email = session?.email;
-                const visitorId = session?.visitorId;
-
-                const userId = visitorId || email;
-                if (!userId) continue;
-
-                const variant = userVariant.get(userId);
-                if (!variant || !variantData.has(variant)) continue;
-
-                variantData.get(variant)!.conversions.add(userId);
-                const payload = event.payload as any;
-                variantData.get(variant)!.revenue += payload?.total || 0;
-            }
-
-            const variants: VariantResult[] = experiment.variantNames.map(variant => {
-                const data = variantData.get(variant)!;
-                const impressions = data.impressions.size;
-                const conversions = data.conversions.size;
-
-                return {
-                    variant,
-                    impressions,
-                    conversions,
-                    conversionRate: impressions > 0 ? Math.round((conversions / impressions) * 10000) / 100 : 0,
-                    revenue: Math.round(data.revenue * 100) / 100,
-                    avgRevenuePerUser: impressions > 0 ? Math.round((data.revenue / impressions) * 100) / 100 : 0
-                };
-            });
-
-            return {
-                experiment,
-                variants,
-                totalImpressions: variants.reduce((sum, v) => sum + v.impressions, 0),
-                totalConversions: variants.reduce((sum, v) => sum + v.conversions, 0)
-            };
-        } catch (error) {
-            Logger.error('[ABTestingService] Get experiment results error', { error, experimentId });
-            throw error;
-        }
-    }
-
-    async getStatisticalSignificance(
-        accountId: string,
-        experimentId: string
-    ): Promise<StatisticalSignificance> {
-        try {
-            const results = await this.getExperimentResults(accountId, experimentId);
-            const variants = results.variants;
-
-            if (variants.length < 2) {
-                return {
-                    pValue: 1,
-                    confidenceLevel: 0,
-                    isSignificant: false,
-                    sampleSizeSufficient: false,
-                    mde: 0
-                };
-            }
-
-            const sorted = [...variants].sort((a, b) => b.conversionRate - a.conversionRate);
-            const control = sorted[sorted.length - 1];
-            const treatment = sorted[0];
-
-            const p1 = treatment.conversions / Math.max(treatment.impressions, 1);
-            const p2 = control.conversions / Math.max(control.impressions, 1);
-            const pPooled = (treatment.conversions + control.conversions) /
-                Math.max(treatment.impressions + control.impressions, 1);
-
-            const se = Math.sqrt(pPooled * (1 - pPooled) * (1 / treatment.impressions + 1 / control.impressions));
-            const zScore = se > 0 ? Math.abs(p1 - p2) / se : 0;
-
-            const pValue = 2 * (1 - this.normalCDF(zScore));
-            const confidenceLevel = Math.round((1 - pValue) * 10000) / 100;
-            const isSignificant = pValue < 0.05;
-
-            const minSampleSize = this.calculateMinSampleSize(p1, p2, 0.05, 0.8);
-            const sampleSizeSufficient = Math.min(treatment.impressions, control.impressions) >= minSampleSize;
-
-            const mde = this.calculateMDE(Math.min(treatment.impressions, control.impressions), 0.05, 0.8);
-
-            return {
-                pValue: Math.round(pValue * 10000) / 10000,
-                confidenceLevel,
-                isSignificant,
-                sampleSizeSufficient,
-                mde: Math.round(mde * 10000) / 10000
-            };
-        } catch (error) {
-            Logger.error('[ABTestingService] Statistical significance error', { error, experimentId });
-            throw error;
-        }
-    }
-
-    async getExperimentsList(accountId: string): Promise<ExperimentConfig[]> {
-        try {
-            const experiments = await getExperiments(accountId);
-            return Object.values(experiments);
-        } catch (error) {
-            Logger.error('[ABTestingService] Get experiments list error', { error, accountId });
-            throw error;
-        }
-    }
-
-    // Gaussian CDF approximation
-    private normalCDF(x: number): number {
-        const a1 = 0.254829592;
-        const a2 = -0.284496736;
-        const a3 = 1.421413741;
-        const a4 = -1.453152027;
-        const a5 = 1.061405429;
-        const p = 0.3275911;
-
-        const sign = x < 0 ? -1 : 1;
-        x = Math.abs(x) / Math.sqrt(2);
-
-        const t = 1 / (1 + p * x);
-        const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
-
-        return 0.5 * (1 + sign * y);
-    }
-
-    private calculateMinSampleSize(p1: number, p2: number, alpha: number, power: number): number {
-        const zAlpha = this.inverseNormalCDF(1 - alpha / 2);
-        const zBeta = this.inverseNormalCDF(power);
-        const pAvg = (p1 + p2) / 2;
-
-        const numerator = Math.pow(zAlpha * Math.sqrt(2 * pAvg * (1 - pAvg)) + zBeta * Math.sqrt(p1 * (1 - p1) + p2 * (1 - p2)), 2);
-        const denominator = Math.pow(p1 - p2, 2);
-
-        return denominator > 0 ? Math.ceil(numerator / denominator) : Infinity;
-    }
-
-    private calculateMDE(n: number, alpha: number, power: number): number {
-        const zAlpha = this.inverseNormalCDF(1 - alpha / 2);
-        const zBeta = this.inverseNormalCDF(power);
-
-        return (zAlpha + zBeta) * Math.sqrt(2 / n);
-    }
-
-    private inverseNormalCDF(p: number): number {
-        if (p <= 0) return -Infinity;
-        if (p >= 1) return Infinity;
-        if (p === 0.5) return 0;
-
-        const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
-            1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
-        const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
-            6.680131188771972e+01, -1.328068155288572e+01];
-        const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
-            -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
-        const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00];
-
-        const pLow = 0.02425;
-        const pHigh = 1 - pLow;
-
-        let q, r;
-
-        if (p < pLow) {
-            q = Math.sqrt(-2 * Math.log(p));
-            return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
-                ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
-        } else if (p <= pHigh) {
-            q = p - 0.5;
-            r = q * q;
-            return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q /
-                (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
-        } else {
-            q = Math.sqrt(-2 * Math.log(1 - p));
-            return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
-                ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
-        }
-    }
-
-    private async getOrCreateSession(accountId: string, visitorId: string, email?: string): Promise<string> {
-        let session = await prisma.analyticsSession.findFirst({
-            where: { accountId, visitorId },
-            orderBy: { createdAt: 'desc' }
+    async createExperiment(accountId: string, name: string, description: string, variantNames: string[]): Promise<ExperimentConfig> {
+        const experiment = configSchema.parse({ id: randomUUID(), accountId, name, description, variantNames, status: 'draft', conversionEvent: 'purchase', createdAt: new Date(), updatedAt: new Date() });
+        return editExperiments(accountId, experiments => {
+            if (Object.keys(experiments).length >= 100) throw new Error('Maximum 100 experiments reached');
+            experiments[experiment.id] = experiment; return experiment;
         });
-
-        if (!session) {
-            session = await prisma.analyticsSession.create({
-                data: {
-                    accountId,
-                    visitorId,
-                    email: email || null,
-                    userAgent: 'ab-testing-service'
-                }
-            });
-        }
-
-        return session.id;
     }
+    async updateExperimentStatus(accountId: string, experimentId: string, status: 'draft' | 'running' | 'completed'): Promise<ExperimentConfig> {
+        z.string().uuid().parse(experimentId); z.enum(['draft', 'running', 'completed']).parse(status);
+        return editExperiments(accountId, experiments => {
+            const experiment = experiments[experimentId];
+            if (!experiment) throw new Error('Experiment not found');
+            if (status === experiment.status) return experiment;
+            if (!(experiment.status === 'draft' && status === 'running' || experiment.status === 'running' && status === 'completed')) throw new Error('Invalid experiment transition; use a new experiment instead of reusing observations');
+            if (status === 'running') experiment.startedAt = new Date();
+            else if (!experiment.startedAt) throw new Error('Legacy experiment has no observation window; create a new experiment');
+            else experiment.completedAt = new Date();
+            experiment.status = status; experiment.updatedAt = new Date(); return experiment;
+        });
+    }
+    async trackExposure(accountId: string, experimentId: string, variant: string, visitorId: string, email?: string): Promise<void> {
+        scope(accountId); z.string().uuid().parse(experimentId); z.string().min(1).max(256).parse(visitorId); z.string().min(1).max(100).parse(variant);
+        if (email !== undefined) z.email().parse(email);
+        await prisma.$transaction(async tx => {
+            await tx.$queryRaw`SELECT id FROM "Account" WHERE id = ${accountId} FOR NO KEY UPDATE`;
+            const experiment = (await getExperiments(accountId, tx))[experimentId];
+            if (!experiment || experiment.status !== 'running' || !experiment.startedAt) throw new Error('Experiment is not running with a known observation window');
+            if (!experiment.variantNames.includes(variant)) throw new Error('Invalid variant');
+            const existing = await tx.analyticsEvent.findFirst({ where: { type: 'experiment_exposure', session: { accountId, visitorId }, payload: { path: ['experimentId'], equals: experimentId } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
+            if (existing) { if (object(existing.payload).variant !== variant) throw new Error('Visitor already assigned to another variant'); return; }
+            let session = await tx.analyticsSession.findFirst({ where: { accountId, visitorId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
+            if (!session) session = await tx.analyticsSession.create({ data: { accountId, visitorId, email: email || null, userAgent: 'ab-testing-service' } });
+            await tx.analyticsEvent.create({ data: { sessionId: session.id, type: 'experiment_exposure', url: '', payload: { experimentId, variant, visitorId } } });
+        });
+    }
+    async getExperimentResults(accountId: string, experimentId: string): Promise<ExperimentResults> {
+        z.string().uuid().parse(experimentId);
+        const experiment = (await getExperiments(accountId))[experimentId];
+        if (!experiment) throw new Error('Experiment not found');
+        if (!experiment.startedAt) throw new Error('Experiment observation window is unavailable');
+        const end = experiment.completedAt || new Date();
+        if (end < experiment.startedAt) throw new Error('Invalid experiment observation window');
+        const query = { createdAt: { gte: experiment.startedAt, lte: end }, session: { accountId } };
+        const [exposures, purchases] = await Promise.all([
+            prisma.analyticsEvent.findMany({ where: { ...query, type: 'experiment_exposure', payload: { path: ['experimentId'], equals: experimentId } }, include: { session: { select: { visitorId: true } } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 50001 }),
+            prisma.analyticsEvent.findMany({ where: { ...query, type: 'purchase' }, include: { session: { select: { visitorId: true } } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 50001 }),
+        ]);
+        if (exposures.length > 50000 || purchases.length > 50000) throw new Error('Experiment observation coverage limit exceeded');
+        const assignments = new Map<string, { variant: string; at: Date }>(); const contaminated = new Set<string>();
+        for (const event of exposures) {
+            const user = identity(event); const variant = object(event.payload).variant;
+            if (!user || !experiment.variantNames.includes(variant)) throw new Error('Invalid experiment exposure');
+            const previous = assignments.get(user);
+            if (previous && previous.variant !== variant) contaminated.add(user);
+            if (!previous) assignments.set(user, { variant, at: event.createdAt });
+        }
+        const observed = new Map<number, { user: string; at: Date }>();
+        for (const event of purchases) {
+            const user = identity(event); const assigned = user && assignments.get(user);
+            if (!assigned || contaminated.has(user) || event.createdAt < assigned.at) continue;
+            const value = object(event.payload).orderId ?? object(event.payload).order_id;
+            if (!['number', 'string'].includes(typeof value) || !/^\d+$/.test(String(value)) || !Number.isSafeInteger(Number(value)) || Number(value) <= 0 || Number(value) > 2147483647) throw new Error('Stable purchase order ID unavailable for experiment attribution');
+            const previous = observed.get(Number(value));
+            if (previous && previous.user !== user) throw new Error('Purchase has ambiguous experiment identity');
+            if (!previous) observed.set(Number(value), { user, at: event.createdAt });
+        }
+        if (observed.size > 10000) throw new Error('Experiment purchase coverage limit exceeded');
+        const orders = observed.size ? await prisma.wooOrder.findMany({ where: { accountId, wooId: { in: [...observed.keys()] } }, select: { wooId: true, total: true, currency: true, dateCreated: true, status: true } }) : [];
+        if (orders.length !== observed.size) throw new Error('Authoritative experiment order coverage unavailable; synchronize orders before reporting');
+        const currencies = new Set(orders.map(order => order.currency));
+        if (currencies.size > 1) throw new Error('Experiment revenue currencies are mixed');
+        const data = new Map(experiment.variantNames.map(variant => [variant, { users: new Set<string>(), conversions: new Set<string>(), revenue: 0 }]));
+        for (const [user, assignment] of assignments) if (!contaminated.has(user)) data.get(assignment.variant)!.users.add(user);
+        for (const order of orders) {
+            if (!REVENUE_STATUSES.includes(order.status)) continue;
+            const purchase = observed.get(order.wooId)!; const assigned = assignments.get(purchase.user)!;
+            if (order.dateCreated < assigned.at || order.dateCreated > end) continue;
+            const total = Number(order.total);
+            if (!Number.isFinite(total) || total < 0 || !/^[A-Z]{3}$/.test(order.currency)) throw new Error('Experiment order revenue unavailable');
+            const row = data.get(assigned.variant)!; row.conversions.add(purchase.user); row.revenue += total;
+        }
+        const results = experiment.variantNames.map(variant => {
+            const row = data.get(variant)!; const impressions = row.users.size; const conversions = row.conversions.size;
+            return { variant, impressions, conversions, conversionRate: impressions ? conversions / impressions * 100 : 0, revenue: row.revenue, avgRevenuePerUser: impressions ? row.revenue / impressions : 0 };
+        });
+        return { experiment, variants: results, totalImpressions: results.reduce((sum, row) => sum + row.impressions, 0), totalConversions: results.reduce((sum, row) => sum + row.conversions, 0),
+            currency: orders[0]?.currency ?? null, excludedContaminatedVisitors: contaminated.size, basis: 'Known experiment window, stable visitor assignment, unique authoritative local revenue orders after exposure' };
+    }
+    async getStatisticalSignificance(accountId: string, experimentId: string): Promise<StatisticalSignificance> {
+        const results = await this.getExperimentResults(accountId, experimentId);
+        const control = results.variants[0];
+        const comparisons = results.variants.slice(1).map(treatment => {
+            const valid = [control, treatment].every(row => row.conversions >= 10 && row.impressions - row.conversions >= 10);
+            let adjustedPValue: number | null = null;
+            if (valid) {
+                const pooled = (control.conversions + treatment.conversions) / (control.impressions + treatment.impressions);
+                const se = Math.sqrt(pooled * (1 - pooled) * (1 / control.impressions + 1 / treatment.impressions));
+                const z = Math.abs(control.conversions / control.impressions - treatment.conversions / treatment.impressions) / se;
+                const t = 1 / (1 + 0.2316419 * z);
+                const tail = Math.exp(-z * z / 2) / Math.sqrt(2 * Math.PI) * t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+                adjustedPValue = Math.min(1, Math.max(0, 2 * tail * (results.variants.length - 1)));
+            }
+            return { control: control.variant, treatment: treatment.variant, adjustedPValue, approximationValid: valid };
+        });
+        const values = comparisons.flatMap(row => row.adjustedPValue == null ? [] : [row.adjustedPValue]);
+        return { pValue: values.length ? Math.min(...values) : null, confidenceLevel: null, mde: null,
+            isSignificant: results.experiment.status === 'completed' && comparisons.some(row => row.adjustedPValue != null && row.adjustedPValue < 0.05),
+            sampleSizeSufficient: comparisons.every(row => row.approximationValid) ? null : false,
+            normalApproximationValid: comparisons.every(row => row.approximationValid), comparisons,
+            method: 'First configured variant is control; two-sided two-proportion normal approximation with Bonferroni correction. No winner probability or power/MDE claim.',
+            reason: results.experiment.status !== 'completed' ? 'Running results are exploratory; no stopping/peeking correction is provided' : values.length !== comparisons.length ? 'Insufficient success/failure counts for normal approximation' : undefined };
+    }
+    async getExperimentsList(accountId: string): Promise<ExperimentConfig[]> { return Object.values(await getExperiments(accountId)); }
 }
-
 export const abTestingService = new ABTestingService();

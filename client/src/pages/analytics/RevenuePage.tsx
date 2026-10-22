@@ -1,219 +1,44 @@
-import React, { useState, useEffect } from 'react';
-import { Logger } from '../../utils/logger';
+import { useState } from 'react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
-import { api } from '../../services/api';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { DateRangeFilter } from '../../components/analytics/DateRangeFilter';
-import { DollarSign, TrendingUp, ShoppingCart, Globe, Monitor, Smartphone, Tablet } from 'lucide-react';
 import { AOVTrendView } from '../../components/analytics/AOVTrendView';
+import { record, metric, count, rows, label, money, validDays } from '../../components/analytics/analyticsRead';
 
-interface RevenueData {
-    totalRevenue: number;
-    orderCount: number;
-    aov: number;
-    byFirstTouch: { source: string; revenue: number }[];
-    byLastTouch: { source: string; revenue: number }[];
-    byCountry: { country: string; revenue: number }[];
-    byDevice: { device: string; revenue: number }[];
+function decodeRevenue(value: unknown) {
+    const data = record(value);
+    const breakdown = (key: string, field: string) => rows(data[key]).map(row => ({ label: label(row[field]), revenue: metric(row.revenue) })).sort((a, b) => b.revenue - a.revenue);
+    return { totalRevenue: metric(data.totalRevenue), orderCount: count(data.orderCount), aov: metric(data.aov),
+        groups: [{ title: 'Revenue by First Touch', rows: breakdown('byFirstTouch', 'source') }, { title: 'Revenue by Last Touch', rows: breakdown('byLastTouch', 'source') },
+            { title: 'Revenue by Country', rows: breakdown('byCountry', 'country') }, { title: 'Revenue by Device', rows: breakdown('byDevice', 'device') }] };
 }
 
-export const RevenuePage: React.FC = () => {
+export function RevenuePage() {
     const [days, setDays] = useState(30);
-    const { currentAccount } = useAccount();
-    const { token } = useAuth();
-    const [data, setData] = useState<RevenueData | null>(null);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        const fetchData = async () => {
-            if (!currentAccount || !token) return;
-            setLoading(true);
-            try {
-                const result = await api.get<RevenueData>(`/api/tracking/revenue?days=${days}`, token, currentAccount.id);
-                setData(result);
-            } catch (error) {
-                Logger.error('Failed to fetch revenue:', { error: error });
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchData();
-    }, [currentAccount, token, days]);
-
-    const getDeviceIcon = (device: string) => {
-        switch (device) {
-            case 'mobile': return <Smartphone className="w-4 h-4" />;
-            case 'tablet': return <Tablet className="w-4 h-4" />;
-            default: return <Monitor className="w-4 h-4" />;
-        }
-    };
-
-    if (loading) {
-        return (
-            <div className="p-6 flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            </div>
-        );
-    }
-
-    if (!data) {
-        return <div className="p-6 text-gray-500">No data available</div>;
-    }
-
-    return (
-        <div className="p-6 space-y-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-gray-900">Revenue Analytics</h1>
-                <DateRangeFilter value={days} onChange={setDays} />
-            </div>
-
-            {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="border-0 shadow-xs">
-                    <CardContent className="p-6">
-                        <div className="flex items-center gap-3">
-                            <div className="p-3 bg-green-100 rounded-xl">
-                                <DollarSign className="w-6 h-6 text-green-600" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-gray-500">Total Revenue</p>
-                                <p className="text-2xl font-bold text-gray-900">${data.totalRevenue.toLocaleString()}</p>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="border-0 shadow-xs">
-                    <CardContent className="p-6">
-                        <div className="flex items-center gap-3">
-                            <div className="p-3 bg-blue-100 rounded-xl">
-                                <ShoppingCart className="w-6 h-6 text-blue-600" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-gray-500">Orders</p>
-                                <p className="text-2xl font-bold text-gray-900">{data.orderCount}</p>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="border-0 shadow-xs">
-                    <CardContent className="p-6">
-                        <div className="flex items-center gap-3">
-                            <div className="p-3 bg-purple-100 rounded-xl">
-                                <TrendingUp className="w-6 h-6 text-purple-600" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-gray-500">Avg Order Value</p>
-                                <p className="text-2xl font-bold text-gray-900">${data.aov.toFixed(2)}</p>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* AOV Trend */}
-            <AOVTrendView days={days} />
-
-            {/* Revenue by Source */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card className="border-0 shadow-xs">
-                    <CardHeader>
-                        <CardTitle className="text-sm font-semibold">Revenue by First Touch</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-3">
-                            {data.byFirstTouch.slice(0, 8).map(item => {
-                                const maxRevenue = data.byFirstTouch[0]?.revenue || 1;
-                                const percentage = (item.revenue / maxRevenue) * 100;
-                                return (
-                                    <div key={item.source}>
-                                        <div className="flex justify-between text-sm mb-1">
-                                            <span className="capitalize text-gray-700">{item.source}</span>
-                                            <span className="font-medium">${item.revenue.toLocaleString()}</span>
-                                        </div>
-                                        <div className="w-full bg-gray-100 rounded-full h-2">
-                                            <div
-                                                className="bg-blue-500 h-2 rounded-full transition-all"
-                                                style={{ width: `${percentage}%` }}
-                                            />
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card className="border-0 shadow-xs">
-                    <CardHeader>
-                        <CardTitle className="text-sm font-semibold">Revenue by Last Touch</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-3">
-                            {data.byLastTouch.slice(0, 8).map(item => {
-                                const maxRevenue = data.byLastTouch[0]?.revenue || 1;
-                                const percentage = (item.revenue / maxRevenue) * 100;
-                                return (
-                                    <div key={item.source}>
-                                        <div className="flex justify-between text-sm mb-1">
-                                            <span className="capitalize text-gray-700">{item.source}</span>
-                                            <span className="font-medium">${item.revenue.toLocaleString()}</span>
-                                        </div>
-                                        <div className="w-full bg-gray-100 rounded-full h-2">
-                                            <div
-                                                className="bg-green-500 h-2 rounded-full transition-all"
-                                                style={{ width: `${percentage}%` }}
-                                            />
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Revenue by Country & Device */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card className="border-0 shadow-xs">
-                    <CardHeader>
-                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                            <Globe className="w-4 h-4" /> Revenue by Country
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-2">
-                            {data.byCountry.map(item => (
-                                <div key={item.country} className="flex justify-between text-sm py-1.5 border-b border-gray-50 last:border-0">
-                                    <span className="text-gray-700">{item.country}</span>
-                                    <span className="font-medium">${item.revenue.toLocaleString()}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card className="border-0 shadow-xs">
-                    <CardHeader>
-                        <CardTitle className="text-sm font-semibold">Revenue by Device</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="flex gap-4">
-                            {data.byDevice.map(item => (
-                                <div key={item.device} className="flex-1 bg-gray-50 rounded-xl p-4 text-center">
-                                    <div className="flex justify-center mb-2 text-gray-500">
-                                        {getDeviceIcon(item.device)}
-                                    </div>
-                                    <p className="text-xs text-gray-500 capitalize">{item.device}</p>
-                                    <p className="text-lg font-bold text-gray-900">${item.revenue.toLocaleString()}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-        </div>
-    );
-};
-
+    const { currentAccount } = useAccount(); const { token } = useAuth();
+    return <div className="p-6 space-y-6 text-slate-900 dark:text-slate-100">
+        <div className="flex flex-wrap justify-between gap-4"><h1 className="text-2xl font-bold">Revenue Analytics</h1><DateRangeFilter value={days} onChange={setDays} /></div>
+        {!currentAccount || !token ? <p>Select an account and sign in to view revenue.</p> : !validDays(days) ? <p role="alert">Invalid reporting range.</p> :
+            <RevenueContent key={`${currentAccount.id}:${token}:${days}:${currentAccount.currency}`} accountId={currentAccount.id} token={token} days={days} currency={currentAccount.currency} />}
+    </div>;
+}
+function RevenueContent({ accountId, token, days, currency }: { accountId: string; token: string; days: number; currency: string }) {
+    const { data, loading, error, retry } = useScopedRequest(`/api/tracking/revenue?days=${days}`, accountId, token, decodeRevenue);
+    if (loading) return <p role="status">Loading revenue…</p>;
+    if (error || !data) return <div role="alert">Revenue unavailable. <button onClick={retry}>Retry revenue</button></div>;
+    return <>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">{[
+            ['Total Revenue', money(data.totalRevenue, currency)], ['Orders', data.orderCount.toLocaleString()], ['Avg Order Value', data.orderCount ? money(data.aov, currency) : 'Unavailable (no orders)'],
+        ].map(([title, value]) => <Card key={title}><CardContent className="p-6"><p className="text-sm text-slate-500 dark:text-slate-400">{title}</p><p className="text-2xl font-bold">{value}</p></CardContent></Card>)}</div>
+        <AOVTrendView days={days} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">{data.groups.map(group => <Card key={group.title}><CardHeader><CardTitle>{group.title}</CardTitle></CardHeader><CardContent>
+            {!group.rows.length ? <p>No attributed revenue in this range.</p> : group.rows.slice(0, 8).map((row, index) => <div key={`${row.label}:${index}`} className="mb-3">
+                <div className="flex justify-between gap-4 text-sm"><span>{row.label}</span><span>{money(row.revenue, currency)}</span></div>
+                <div aria-hidden="true" className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full"><div className="h-2 bg-blue-500 rounded-full" style={{ width: `${group.rows[0].revenue > 0 ? Math.min(100, row.revenue / group.rows[0].revenue * 100) : 0}%` }} /></div>
+            </div>)}
+        </CardContent></Card>)}</div>
+    </>;
+}
 export default RevenuePage;

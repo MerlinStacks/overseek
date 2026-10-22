@@ -1,29 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { buildContentLookupWhere } from '../contentHelpers';
-
-describe('buildContentLookupWhere', () => {
-    it('builds account-scoped OR lookup for numeric Woo ID', () => {
-        expect(buildContentLookupWhere('12345', 'acct_1')).toEqual({
-            accountId: 'acct_1',
-            OR: [{ id: '12345' }, { wooId: 12345 }],
-        });
-    });
-
-    it('builds account-scoped UUID lookup for non-numeric ID', () => {
-        const id = '0f5ce436-fb3d-4067-8a8e-6ceff4f5d113';
-
-        expect(buildContentLookupWhere(id, 'acct_2')).toEqual({
-            id,
-            accountId: 'acct_2',
-        });
-    });
-
-    it('keeps account scoping for mixed IDs that are not pure numbers', () => {
-        const id = '12345-legacy';
-
-        expect(buildContentLookupWhere(id, 'acct_3')).toEqual({
-            id,
-            accountId: 'acct_3',
-        });
-    });
+import { expect, it, vi } from 'vitest';
+import { buildContentLookupWhere, findContentById } from '../contentHelpers';
+it.each(['0', '01', '2147483648', '9999999999999999999999999', '-2', '1.5', 'bad id', ''])('rejects unsafe content identifier %s', id => { expect(() => buildContentLookupWhere(id, 'a')).toThrow(); });
+it('resolves internal IDs before numeric Woo identifiers, always with trusted account', async () => {
+    const find = vi.fn().mockResolvedValueOnce({ id: '123' }); expect(await findContentById('123', 'a', find)).toEqual({ id: '123' }); expect(find).toHaveBeenCalledOnce();
+    find.mockReset().mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'internal' }); expect(await findContentById('123', 'a', find)).toEqual({ id: 'internal' }); expect(find.mock.calls).toEqual([[{ id: '123', accountId: 'a' }], [{ wooId: 123, accountId: 'a' }]]);
 });

@@ -644,26 +644,22 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         fastify.get('/settings', async (request, _reply) => {
             const accountId = request.accountId;
             if (!accountId) return {};
-            const feature = await prisma.accountFeature.findUnique({
-                where: { accountId_featureKey: { accountId, featureKey: 'CHAT_SETTINGS' } }
-            });
-            return feature?.config || {};
+            try { const { readChatSettings } = await import('../services/ChatSettingsStore'); return await readChatSettings(accountId); }
+            catch { return _reply.code(409).send({ error: 'Stored chat settings unavailable; reconcile legacy configuration before editing' }); }
         });
 
         fastify.post('/settings', async (request, _reply) => {
             if (!(await requireInboxMutationAccess(request, _reply))) return;
             const accountId = request.accountId;
             if (!accountId) return {};
-            const { enabled, businessHours, autoReply, position, showOnMobile, primaryColor, headerText, welcomeMessage, businessTimezone } = request.body as any;
-            const config = { enabled, businessHours, autoReply, position, showOnMobile, primaryColor, headerText, welcomeMessage, businessTimezone };
-
-            await prisma.accountFeature.upsert({
-                where: { accountId_featureKey: { accountId, featureKey: 'CHAT_SETTINGS' } },
-                update: { config, isEnabled: true },
-                create: { accountId, featureKey: 'CHAT_SETTINGS', isEnabled: true, config }
-            });
-            void syncStorefrontConfigToWoo(accountId, ['chat']);
-            return { success: true };
+            const { PermissionService } = await import('../services/PermissionService');
+            if (!await PermissionService.hasPermission(request.user!.id, accountId, 'manage_channels')) return _reply.code(403).send({ error: 'Channel management permission required' });
+            try {
+                const { saveChatSettings } = await import('../services/ChatSettingsStore');
+                const saved = await saveChatSettings(accountId, request.user!.id, request.body);
+                if (saved.newlySaved) void syncStorefrontConfigToWoo(accountId, ['chat']).catch(error => Logger.error('Chat storefront sync remains unconfirmed', { accountId, error }));
+                return saved;
+            } catch (error) { const code = (error as { statusCode?: number }).statusCode === 409 ? 409 : (error as Error).name === 'ZodError' ? 400 : 503; return _reply.code(code).send({ error: code === 409 ? 'Settings conflict; preserve your draft and reload' : code === 400 ? 'Invalid chat configuration' : 'Save acknowledgement unavailable; reconcile before retrying' }); }
         });
 
         // GET /:id

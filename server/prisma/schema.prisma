@@ -57,6 +57,34 @@ model User {
   wholesaleSharesCreated        WholesaleCatalogShare[]      @relation("WholesaleShareCreator")
 }
 
+// Opaque, browser-bound, single-use OAuth grants. No provider credentials are stored here.
+model OauthConnectionState {
+  reconnectId String?
+  tokenHash String @id
+  browserHash String
+  provider String
+  userId String
+  accountId String
+  redirectPath String
+  callbackUrl String
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([expiresAt])
+}
+
+model OrderTagIndexOutbox {
+  orderId String @id
+  accountId String
+  revision Int @default(1)
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  leaseUntil DateTime?
+  leaseOwner String?
+  updatedAt DateTime @updatedAt
+  @@index([nextAttemptAt])
+}
+
 model RefreshToken {
   id        String   @id @default(uuid())
   token     String   @unique
@@ -182,6 +210,7 @@ model Account {
   marketingAutomations MarketingAutomation[]
   automationEnrollments AutomationEnrollment[]
   emailTemplates       EmailTemplate[]
+  emailSectionPresets  EmailSectionPreset[]
   emailLists           EmailList[]
   emailListMembers     EmailListMember[]
   AnalyticsSession     AnalyticsSession[]
@@ -1395,6 +1424,8 @@ model AdPerformanceSnapshot {
 
 /// Tracks AI-generated recommendations and their outcomes for learning.
 model RecommendationLog {
+  outcomeObservation Json?
+  resourceAccountId String?
   id          String   @id @default(uuid())
   accountId   String
   
@@ -1444,6 +1475,15 @@ model RecommendationLog {
 
 /// Account-specific marketing learnings and optimization rules.
 /// These are user-created or AI-suggested rules that extend the static knowledge base.
+model ScopedOperation {
+  id String @id
+  accountId String
+  kind String
+  result Json
+  createdAt DateTime @default(now())
+  @@index([accountId, kind, createdAt])
+}
+
 model MarketingLearning {
   id          String   @id @default(uuid())
   accountId   String
@@ -1476,7 +1516,16 @@ model MarketingLearning {
 // --------------------------------------
 
 /// Stores proactive ad performance alerts for audit and deduplication.
+model AdCopyGenerationQuota {
+  accountId String @id
+  windowStart DateTime
+  units Int
+  leaseOwner String?
+  leaseUntil DateTime
+}
+
 model AdAlert {
+  notificationStatus String @default("pending")
   id          String   @id @default(uuid())
   accountId   String
   
@@ -2201,6 +2250,19 @@ model EmailTemplate {
   @@unique([accountId, name])
 }
 
+model EmailSectionPreset {
+  id        String @id @default(uuid())
+  accountId String
+  name      String
+  section   Json
+  version   Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, updatedAt])
+}
+
 model MarketingCampaign {
   id        String @id @default(uuid())
   accountId String
@@ -2208,12 +2270,14 @@ model MarketingCampaign {
 
   subject    String
   content    String @db.Text // Rendered HTML
+  subjectB   String? // Optional deterministic 50/50 subject experiment
   designJson Json? // For drag-and-drop builder state
 
   status String @default("DRAFT") // DRAFT, SCHEDULED, SENDING, SENT, FAILED
 
   scheduledAt DateTime?
   sentAt      DateTime?
+  scheduleTimezone String? // Explicit wall-clock zone used when scheduling
 
   segmentId String?
   segment   CustomerSegment? @relation(fields: [segmentId], references: [id])
@@ -2248,6 +2312,10 @@ model MarketingAutomation {
 
   // Flow Definition (React Flow Graph)
   flowDefinition Json? @default("{}")
+  // Editor autosaves never alter the executable definition.
+  draftDefinition Json?
+  draftRevision Int @default(0)
+  publishedAt DateTime?
 
   status String @default("PAUSED") // ACTIVE, PAUSED, DRAFT
 
@@ -2640,6 +2708,7 @@ model EmailLog {
   // Context (what triggered this email)
   source         String?  // "AUTOMATION", "REPORT", "INVENTORY_ALERT", "MANUAL"
   sourceId       String?  // e.g. automationId, reportScheduleId
+  campaignVariant String? // A/B assignment pinned with the logical email
   
   messageId      String?  // SMTP message ID on success
   idempotencyKey String?  // Stable logical send key; retries reuse this row
@@ -2668,6 +2737,7 @@ model EmailLog {
   @@index([accountId, createdAt])
   @@unique([accountId, idempotencyKey])
   @@index([accountId, lastAttemptAt])
+  @@index([accountId, source, sourceId, campaignVariant])
   @@index([emailAccountId])
   @@index([trackingId])
   @@index([status, canRetry]) // For finding retryable failed emails

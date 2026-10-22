@@ -16,6 +16,10 @@ import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 import { SeoKeywordsPanel } from '../components/Seo/SeoKeywordsPanel';
 import { KeywordTrackerPanel } from '../components/Seo/KeywordTrackerPanel';
 import { useSearchConsoleStatus, useSetDefaultSite } from '../hooks/useSeoKeywords';
+import { useAuth } from '../context/AuthContext';
+import { useAccount } from '../context/AccountContext';
+import { useScopedMutation } from '../hooks/useScopedMutation';
+import { isRecord } from '../utils/responseValidation';
 
 type TabId = 'overview' | 'tracker';
 
@@ -37,11 +41,26 @@ function prettySiteUrl(raw: string): string {
 }
 
 export function SeoPage() {
+    const { user, token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p>Sign in and select an account to view SEO data.</p>;
+    return <ScopedSeoPage key={JSON.stringify([user?.id, token, currentAccount.id])} />;
+}
+function ScopedSeoPage() {
     const [activeTab, setActiveTab] = useState<TabId>('overview');
     const status = useSearchConsoleStatus();
     const sites = useMemo(() => status.data?.sites ?? [], [status.data?.sites]);
     const [selectedSiteUrl, setSelectedSiteUrl] = useState<string | undefined>();
     const setDefaultSite = useSetDefaultSite();
+    const { run, busy, error } = useScopedMutation();
+    const changeSite = async (url: string) => {
+        if (!sites.some(site => site.siteUrl === url)) return;
+        const result = await run(async () => {
+            const response = await setDefaultSite.mutateAsync(url);
+            if (!isRecord(response) || response.success !== true || response.defaultSiteUrl !== url) throw new Error('Site update not acknowledged');
+            return url;
+        }, 'Could not change the default site. The previous selection remains active.');
+        if (result.ok) setSelectedSiteUrl(result.value);
+    };
 
     const activeSiteUrl = useMemo(() => {
         if (selectedSiteUrl && sites.some((s: { siteUrl: string }) => s.siteUrl === selectedSiteUrl)) {
@@ -56,6 +75,8 @@ export function SeoPage() {
 
     return (
         <div className="space-y-8">
+            {status.error && <p role="alert">Search Console status unavailable. <button type="button" onClick={() => void status.refetch()}>Retry status</button></p>}
+            {error && <p role="alert">{error}</p>}
             {/* Hero Header with mesh background */}
             <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 via-blue-50/50 to-violet-50/30 dark:from-slate-900 dark:via-blue-950/30 dark:to-violet-950/20 border border-slate-200/60 dark:border-slate-700/40 px-8 py-8">
                 {/* Decorative gradient orbs */}
@@ -87,11 +108,12 @@ export function SeoPage() {
                                     <Globe size={14} className="absolute left-3 text-blue-500 pointer-events-none z-10" />
                                     <select
                                         id="seo-domain-selector"
+                                        aria-label="Search Console property for overview and suggestions"
+                                        disabled={busy || !!status.error}
                                         value={activeSiteUrl ?? ''}
                                         onChange={e => {
                                             const url = e.target.value;
-                                            setSelectedSiteUrl(url);
-                                            setDefaultSite.mutate(url);
+                                            void changeSite(url);
                                         }}
                                         className="appearance-none pl-8 pr-8 py-2 rounded-xl bg-white/70 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/60 dark:border-slate-700/40 text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer hover:border-blue-300 dark:hover:border-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                                     >
@@ -116,6 +138,8 @@ export function SeoPage() {
                     const isActive = activeTab === tab.id;
                     return (
                         <button
+                            type="button"
+                            aria-pressed={isActive}
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
                             className={`flex items-center gap-2 px-5 py-2.5 font-medium text-sm rounded-lg transition-all duration-200 ${isActive
@@ -131,7 +155,7 @@ export function SeoPage() {
             </div>
 
             {/* Animated Tab Content */}
-            <div key={activeTab} className="animate-fade-slide-up">
+            <div key={`${activeTab}:${activeSiteUrl ?? ''}`} className="animate-fade-slide-up">
                 {activeTab === 'overview' && (
                     <ErrorBoundary>
                         <SeoKeywordsPanel siteUrl={activeSiteUrl} />
@@ -140,7 +164,7 @@ export function SeoPage() {
 
                 {activeTab === 'tracker' && (
                     <ErrorBoundary>
-                        <KeywordTrackerPanel />
+                        <KeywordTrackerPanel siteUrl={activeSiteUrl} />
                     </ErrorBoundary>
                 )}
             </div>

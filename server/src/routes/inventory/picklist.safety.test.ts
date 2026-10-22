@@ -1,0 +1,13 @@
+import Fastify from 'fastify';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+const m = vi.hoisted(() => ({ scope: true, allowed: true, generate: vi.fn() }));
+vi.mock('../../middleware/auth', () => ({ requireAuthFastify: async (request: any) => { request.accountId = m.scope ? 'a' : undefined; request.user = { id: 'u' }; } }));
+vi.mock('../../services/PermissionService', () => ({ PermissionService: { hasPermission: async () => m.allowed } }));
+vi.mock('../../services/PicklistService', () => ({ PicklistService: class { generatePicklist = m.generate; } }));
+import routes from './picklist';
+let app: ReturnType<typeof Fastify>;
+beforeEach(async () => { vi.clearAllMocks(); m.scope = true; m.allowed = true; m.generate.mockResolvedValue({ items: [] }); app = Fastify(); await app.register(routes); });
+afterEach(async () => { await app.close(); });
+it.each(['limit=501', 'limit=1e2', 'limit=01', 'status=invalid'])('rejects invalid options as HTTP 400: %s', async query => { expect((await app.inject(`/picklist?${query}`)).statusCode).toBe(400); expect(m.generate).not.toHaveBeenCalled(); });
+it('requires selected scope and order-view permission', async () => { m.scope = false; expect((await app.inject('/picklist')).statusCode).toBe(400); m.scope = true; m.allowed = false; expect((await app.inject('/picklist')).statusCode).toBe(403); expect(m.generate).not.toHaveBeenCalled(); });
+it('forwards validated bounded scope and options', async () => { expect((await app.inject('/picklist?limit=100&status=processing')).statusCode).toBe(200); expect(m.generate).toHaveBeenCalledWith('a', { limit: 100, status: 'processing' }); });

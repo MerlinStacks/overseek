@@ -49,7 +49,9 @@ export class AutomationContextService {
 
             return {
                 ...baseContext,
-                order: input.exactEmailOrder ? baseContext.order : this.mergeOrderContext(baseContext.order, orderRaw) || baseContext.order,
+                order: requiredFields.has('order.productTagId')
+                    ? await this.enrichProductTagOrder(input.accountId, baseContext, orderRaw)
+                    : input.exactEmailOrder ? baseContext.order : this.mergeOrderContext(baseContext.order, orderRaw) || baseContext.order,
                 billing: baseContext.billing || orderRaw?.billing || undefined,
                 customer: {
                     ...(baseContext.customer || {}),
@@ -91,6 +93,9 @@ export class AutomationContextService {
         const latestReview = (requiredFields.has('customer.reviewedInLastDays') || requiredFields.has('customer.latestReviewRating'))
             ? await this.getLatestReview(input.accountId, customer?.id || null, normalizedEmail)
             : undefined;
+        const purchasedProductTagIds = requiredFields.has('customer.purchasedProductTagIds')
+            ? await this.getPurchasedProductTagIds(input.accountId, input.wooCustomerId ?? customer?.wooId, normalizedEmail)
+            : undefined;
 
         const orderRaw = await this.enrichOrderLineItemPermalinks(input.accountId, {
             ...this.asRecord(order?.rawData), deliveryEstimateSnapshot: order?.deliveryEstimateSnapshot ?? null
@@ -108,6 +113,7 @@ export class AutomationContextService {
             customer: {
                 ...customerRaw,
                 ...(baseContext.customer || {}),
+                ...(purchasedProductTagIds ? { purchasedProductTagIds } : {}),
                 id: baseContext.customer?.id || customer?.wooId || input.wooCustomerId || null,
                 wooCustomerRecordId: customer?.id || null,
                 email: baseContext.customer?.email || normalizedEmail || customer?.email || '',
@@ -127,7 +133,9 @@ export class AutomationContextService {
                 latestReviewRating: baseContext.customer?.latestReviewRating ?? latestReview?.rating ?? null,
                 hasInboxEmail: baseContext.customer?.hasInboxEmail ?? hasInboxEmail ?? false
             },
-            order: input.exactEmailOrder ? baseContext.order : this.mergeOrderContext(baseContext.order, orderRaw) || baseContext.order || undefined,
+            order: requiredFields.has('order.productTagId')
+                ? await this.enrichProductTagOrder(input.accountId, baseContext, orderRaw)
+                : input.exactEmailOrder ? baseContext.order : this.mergeOrderContext(baseContext.order, orderRaw) || baseContext.order || undefined,
             billing: baseContext.billing || orderRaw?.billing || undefined,
             segmentIds: baseContext.segmentIds || segmentIds || [],
             inbox: {
@@ -156,6 +164,51 @@ export class AutomationContextService {
         });
 
         return Boolean(match);
+    }
+
+    private async getPurchasedProductTagIds(accountId: string, wooCustomerId?: number | null, email?: string | null): Promise<string[]> {
+        if (!wooCustomerId && !email) return [];
+        const productIds = new Set<number>();
+        // Page purchase history rather than silently limiting it to the latest order.
+        let cursor: string | undefined;
+        for (;;) {
+            const orders = await prisma.wooOrder.findMany({
+                where: { accountId, status: { in: PURCHASE_STATUSES }, OR: [
+                    ...(wooCustomerId ? [{ wooCustomerId }] : []),
+                    ...(email ? [{ billingEmail: { equals: email, mode: 'insensitive' as const } }] : [])
+                ] },
+                select: { id: true, rawData: true }, orderBy: { id: 'asc' }, take: 250,
+                ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+            });
+            for (const order of orders) {
+                const raw = this.asRecord(order.rawData);
+                const items = raw?.line_items || raw?.lineItems || [];
+                if (Array.isArray(items)) for (const item of items) {
+                    const id = Number(item.product_id || item.productId);
+                    if (Number.isInteger(id) && id > 0) productIds.add(id);
+                }
+            }
+            if (orders.length < 250) break;
+            cursor = orders[orders.length - 1].id;
+        }
+        const tags = new Set<string>();
+        const ids = [...productIds];
+        for (let offset = 0; offset < ids.length; offset += 500) {
+            const products = await prisma.wooProduct.findMany({ where: { accountId, wooId: { in: ids.slice(offset, offset + 500) } }, select: { rawData: true } });
+            for (const product of products) {
+                const raw = this.asRecord(product.rawData);
+                if (Array.isArray(raw?.tags)) for (const tag of raw.tags) {
+                    const id = tag?.id ?? tag?.term_id;
+                    if (id !== undefined && id !== null && id !== '') tags.add(String(id));
+                }
+            }
+        }
+        return [...tags];
+    }
+
+    private async enrichProductTagOrder(accountId: string, context: Record<string, any>, raw: Record<string, any> | undefined) {
+        const base = context.order || (Array.isArray(context.line_items) || Array.isArray(context.lineItems) ? context : undefined);
+        return enrichOrderLineItemPermalinks(accountId, this.mergeOrderContext(base, raw) || {});
     }
 
     private async getLatestOrder(accountId: string, wooCustomerId?: number | null, email?: string | null) {

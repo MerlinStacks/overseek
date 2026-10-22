@@ -314,10 +314,11 @@ export const adsActionsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get<{ Querystring: { page?: string; limit?: string } }>('/action-history', async (request, reply) => {
         const accountId = getAdsAccountIdOrReply(request, reply);
         if (!accountId) return;
+        let page: number; let limit: number;
+        try { page = parsePositiveInt(request.query.page, 1, 10000); limit = parsePositiveInt(request.query.limit, 20, 100); }
+        catch { return reply.code(400).send({ error: 'page must be an integer from 1 to 10000 and limit from 1 to 100' }); }
 
         try {
-            const page = parsePositiveInt(request.query.page, 1);
-            const limit = Math.min(parsePositiveInt(request.query.limit, 20), 100);
             const skip = (page - 1) * limit;
 
             const [actions, total] = await Promise.all([

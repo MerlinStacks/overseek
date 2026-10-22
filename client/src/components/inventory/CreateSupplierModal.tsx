@@ -1,185 +1,44 @@
 import { useMemo, useState } from 'react';
-import { Logger } from '../../utils/logger';
 import { Modal } from '../ui/Modal';
-import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { usePermissions } from '../../hooks/usePermissions';
+import { useRecoveryAttempt } from '../../hooks/useRecoveryAttempt';
 import { useModalDraftState } from '../../hooks/useModalDraftState';
-
-interface CreateSupplierModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    /** Called with the newly created supplier after successful creation */
-    onSuccess: (supplier: { id: string; name: string; currency: string }) => void;
+import { isRecord } from '../../utils/responseValidation';
+interface Props { isOpen: boolean; onClose: () => void; onSuccess: (supplier: { id: string; name: string; currency: string }) => void }
+export function CreateSupplierModal(props: Props) {
+    const { token, user } = useAuth(); const { currentAccount } = useAccount();
+    if (!props.isOpen) return null;
+    if (!token || !currentAccount) return <Modal isOpen onClose={props.onClose} title="Create New Supplier"><p>Sign in and select an account.</p></Modal>;
+    return <ScopedCreate key={JSON.stringify([user?.id, token, currentAccount.id])} {...props} accountId={currentAccount.id} token={token} />;
 }
-
-/**
- * Modal form for inline supplier creation during Purchase Order editing.
- * Reuses the form structure from SuppliersList.tsx for consistency.
- */
-export function CreateSupplierModal({ isOpen, onClose, onSuccess }: CreateSupplierModalProps) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const emptyForm = useMemo(() => ({
-        name: '',
-        contactName: '',
-        email: '',
-        currency: 'USD',
-        leadTimeMin: '',
-        leadTimeMax: '',
-        paymentTerms: ''
-    }), []);
-    const { draft: formData, setDraft: setFormData, resetDraft } = useModalDraftState(emptyForm, isOpen);
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!currentAccount || !token) return;
-
-        setIsSubmitting(true);
+function ScopedCreate({ accountId, token, onClose, onSuccess }: Props & { accountId: string; token: string }) {
+    const initial = useMemo(() => ({ id: crypto.randomUUID(), name: '', contactName: '', email: '', phone: '', currency: '', leadTimeMin: '', leadTimeMax: '', paymentTerms: '' }), []);
+    const { draft, setDraft } = useModalDraftState(initial, true, accountId);
+    const { hasPermission } = usePermissions(); const attempt = useRecoveryAttempt();
+    const [busy, setBusy] = useState(false), [error, setError] = useState(''), [blocked, setBlocked] = useState(false);
+    const close = () => { if (busy || Object.entries(draft).some(([key, value]) => key !== 'id' && value) && !window.confirm('Discard this supplier draft? If a write was attempted, reconcile the creation identity before starting another.')) return; onClose(); };
+    async function submit(event: React.FormEvent) {
+        event.preventDefault(); if (blocked || !hasPermission('manage_inventory')) return;
+        const lead = (value: string) => value === '' || /^\d+$/.test(value) && Number(value) <= 3650;
+        if (!draft.name.trim() || !/^[A-Z]{3}$/.test(draft.currency) || !lead(draft.leadTimeMin) || !lead(draft.leadTimeMax) || draft.leadTimeMin !== '' && draft.leadTimeMax !== '' && Number(draft.leadTimeMin) > Number(draft.leadTimeMax)) { setError('Choose a currency and valid ordered whole-day lead times (0–3650).'); return; }
+        const active = attempt.begin(); if (!active) return; setBusy(true); setError(''); const timer = setTimeout(() => active.abort(), 30000);
         try {
-            const res = await fetch('/api/inventory/suppliers', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
-                },
-                body: JSON.stringify(formData)
-            });
-
-            if (!res.ok) {
-                throw new Error('Failed to create supplier');
-            }
-
-            const newSupplier = await res.json();
-            resetDraft();
-            onSuccess(newSupplier);
-        } catch (error) {
-            Logger.error('Error creating supplier:', { error: error });
-            alert('Failed to create supplier. Please try again.');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    const handleClose = () => {
-        if (!isSubmitting) {
-            resetDraft();
-            onClose();
-        }
-    };
-
-    return (
-        <Modal isOpen={isOpen} onClose={handleClose} title="Create New Supplier" maxWidth="max-w-xl">
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Supplier Name <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                            type="text"
-                            required
-                            placeholder="e.g. ABC Manufacturing"
-                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            value={formData.name}
-                            onChange={e => setFormData({ ...formData, name: e.target.value })}
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Contact Name</label>
-                        <input
-                            type="text"
-                            placeholder="John Smith"
-                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
-                            value={formData.contactName}
-                            onChange={e => setFormData({ ...formData, contactName: e.target.value })}
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                        <input
-                            type="email"
-                            placeholder="supplier@example.com"
-                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
-                            value={formData.email}
-                            onChange={e => setFormData({ ...formData, email: e.target.value })}
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
-                        <select
-                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
-                            value={formData.currency}
-                            onChange={e => setFormData({ ...formData, currency: e.target.value })}
-                        >
-                            <option value="USD">USD</option>
-                            <option value="EUR">EUR</option>
-                            <option value="GBP">GBP</option>
-                            <option value="AUD">AUD</option>
-                            <option value="CAD">CAD</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
-                        <input
-                            type="text"
-                            placeholder="e.g. Net 30"
-                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
-                            value={formData.paymentTerms}
-                            onChange={e => setFormData({ ...formData, paymentTerms: e.target.value })}
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Min Lead Time (Days)</label>
-                        <input
-                            type="number"
-                            min="0"
-                            placeholder="7"
-                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
-                            value={formData.leadTimeMin}
-                            onChange={e => setFormData({ ...formData, leadTimeMin: e.target.value })}
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Max Lead Time (Days)</label>
-                        <input
-                            type="number"
-                            min="0"
-                            placeholder="14"
-                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
-                            value={formData.leadTimeMax}
-                            onChange={e => setFormData({ ...formData, leadTimeMax: e.target.value })}
-                        />
-                    </div>
-                </div>
-
-                <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                    <button
-                        type="button"
-                        onClick={handleClose}
-                        disabled={isSubmitting}
-                        className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium transition-colors disabled:opacity-50"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        type="submit"
-                        disabled={isSubmitting || !formData.name.trim()}
-                        className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                    >
-                        {isSubmitting && <Loader2 className="animate-spin" size={16} />}
-                        Create Supplier
-                    </button>
-                </div>
-            </form>
-        </Modal>
-    );
+            const response = await fetch('/api/inventory/suppliers', { method: 'POST', signal: active.signal, headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId, 'Content-Type': 'application/json' }, body: JSON.stringify(draft) });
+            const value = await response.json();
+            if (!response.ok || !isRecord(value) || value.id !== draft.id || typeof value.name !== 'string' || !value.name.trim() || value.name.length > 200 || value.currency !== draft.currency) throw new Error('Unacknowledged');
+            if (!attempt.current(active)) return;
+            onSuccess({ id: draft.id, name: value.name, currency: draft.currency }); onClose();
+        } catch { if (attempt.current(active, true)) { setError('Creation unacknowledged or rejected. It may have committed. Check suppliers using this creation identity before starting another request.'); setBlocked(true); } }
+        finally { clearTimeout(timer); attempt.finish(); if (attempt.current(active, true)) setBusy(false); }
+    }
+    const fields = [{ key: 'name', label: 'Supplier Name', max: 200 }, { key: 'contactName', label: 'Contact Name', max: 200 }, { key: 'email', label: 'Email', max: 320 }, { key: 'phone', label: 'Phone', max: 50 }, { key: 'leadTimeMin', label: 'Minimum lead days', max: 4 }, { key: 'leadTimeMax', label: 'Maximum lead days', max: 4 }, { key: 'paymentTerms', label: 'Payment Terms', max: 500 }] as const;
+    return <Modal isOpen onClose={close} title="Create New Supplier" maxWidth="max-w-xl"><form onSubmit={event => void submit(event)} className="space-y-4 text-slate-900 dark:text-slate-100">
+        {error && <p role="alert">{error}</p>}{blocked && <p>Creation identity: <code className="break-all">{draft.id}</code>. Reload the supplier list to reconcile; do not blindly create again.</p>}
+        {!hasPermission('manage_inventory') && <p>Inventory management permission required.</p>}
+        <fieldset disabled={busy || blocked || !hasPermission('manage_inventory')} className="grid gap-3 sm:grid-cols-2"><legend className="sr-only">Supplier details</legend>{fields.map(field => <label key={field.key}>{field.label}<input className="block w-full rounded border bg-white dark:bg-slate-950 p-2" required={field.key === 'name'} type={field.key === 'email' ? 'email' : 'text'} inputMode={field.key.startsWith('lead') ? 'numeric' : undefined} maxLength={field.max} value={draft[field.key]} onChange={event => setDraft(current => ({ ...current, [field.key]: event.target.value }))} /></label>)}
+        <label>Currency<select className="block rounded border bg-white dark:bg-slate-950 p-2" required value={draft.currency} onChange={event => setDraft(current => ({ ...current, currency: event.target.value }))}><option value="" disabled>Select currency</option>{['USD', 'EUR', 'GBP', 'AUD', 'CAD', 'NZD', 'CNY', 'JPY'].map(value => <option key={value}>{value}</option>)}</select></label><button type="submit">{busy ? 'Creating…' : 'Create Supplier'}</button></fieldset>
+        <button type="button" disabled={busy} onClick={close}>Close</button>
+    </form></Modal>;
 }

@@ -10,13 +10,15 @@
  * the static SEO score logic, keeping both maintainable independently.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import {
     Search, TrendingUp, MousePointerClick, Eye, ArrowUpDown,
     Loader2, Link2, BarChart3, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { useApi } from '../../hooks/useApi';
-import { navigateToSafeUrl } from '../../utils/url';
+import { useScopedMutation } from '../../hooks/useScopedMutation';
+import { getSafeNavigationUrl, navigateToOAuthUrl } from '../../utils/url';
+import { isRecord } from '../../utils/responseValidation';
 import {
     useProductSearchInsights,
     type ProductQueryRow
@@ -34,32 +36,18 @@ interface Props {
  * Fetches and displays page-scoped Search Console analytics.
  */
 export function ProductSearchInsightsPanel({ permalink }: Props) {
-    const { queries, summary, isLoading, isConnected, isStatusLoading } = useProductSearchInsights(permalink);
+    const { queries, summary, error, retry, isLoading, isConnected, isStatusLoading } = useProductSearchInsights(permalink);
+    const api = useApi();
     const [sortField, setSortField] = useState<SortField>('clicks');
     const [sortDir, setSortDir] = useState<SortDir>('desc');
-    const [hasResolvedOnce, setHasResolvedOnce] = useState(false);
-    const prevPermalinkRef = useRef(permalink);
-
-    // Reset tracking when permalink changes, mark resolved when loading finishes
-    useEffect(() => {
-        /* eslint-disable react-hooks/set-state-in-effect */
-        if (prevPermalinkRef.current !== permalink) {
-            prevPermalinkRef.current = permalink;
-            setHasResolvedOnce(false);
-        } else if (permalink && !isStatusLoading && !isLoading && !hasResolvedOnce) {
-            setHasResolvedOnce(true);
-        }
-        /* eslint-enable react-hooks/set-state-in-effect */
-    }, [permalink, isLoading, isStatusLoading, hasResolvedOnce]);
-
-    const isInitialLoading = permalink && !hasResolvedOnce && (isStatusLoading || isLoading);
-
-    if (isInitialLoading) {
+    if (isStatusLoading || isLoading) {
         return <LoadingSkeleton />;
     }
 
+    if (error) return <div role="alert" className="p-6 text-amber-800 dark:text-amber-200">{error} <button type="button" onClick={retry}>Retry search insights</button></div>;
+
     if (!isConnected) {
-        return <ConnectPrompt />;
+        return <ConnectPrompt key={JSON.stringify([api.accountId, api.token])} />;
     }
 
     if (queries.length === 0) {
@@ -117,13 +105,13 @@ export function ProductSearchInsightsPanel({ permalink }: Props) {
                         />
                         <SummaryCard
                             label="Avg Position"
-                            value={summary.avgPosition.toFixed(1)}
+                            value={summary.avgPosition?.toFixed(1) ?? 'Unavailable'}
                             icon={TrendingUp}
                             color="emerald"
                         />
                         <SummaryCard
-                            label="Avg CTR"
-                            value={`${summary.avgCtr.toFixed(1)}%`}
+                            label="Query CTR"
+                            value={summary.avgCtr == null ? 'Unavailable' : `${summary.avgCtr.toFixed(1)}%`}
                             icon={ArrowUpDown}
                             color="amber"
                         />
@@ -195,15 +183,15 @@ function SortableHeader({ field, current, dir, onSort, children }: {
     return (
         <th
             className="text-right px-6 py-3 text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wide cursor-pointer select-none hover:text-gray-700 dark:hover:text-slate-300 transition-colors"
-            onClick={() => onSort(field)}
+            aria-sort={isActive ? dir === 'desc' ? 'descending' : 'ascending' : 'none'}
         >
-            <span className="inline-flex items-center gap-1">
+            <button type="button" onClick={() => onSort(field)} className="inline-flex items-center gap-1">
                 {children}
                 {isActive && (dir === 'desc'
                     ? <ChevronDown size={12} />
                     : <ChevronUp size={12} />
                 )}
-            </span>
+            </button>
         </th>
     );
 }
@@ -228,11 +216,11 @@ function QueryRow({ row }: { row: ProductQueryRow }) {
                 {row.impressions.toLocaleString()}
             </td>
             <td className="px-6 py-3 text-right text-gray-600 dark:text-slate-400 tabular-nums">
-                {row.ctr.toFixed(1)}%
+                {row.impressions > 0 ? `${row.ctr.toFixed(1)}%` : 'Unavailable'}
             </td>
             <td className="px-6 py-3 text-right">
                 <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${posColor}`}>
-                    {row.position.toFixed(1)}
+                    {row.impressions > 0 ? row.position.toFixed(1) : 'Unavailable'}
                 </span>
             </td>
         </tr>
@@ -242,16 +230,16 @@ function QueryRow({ row }: { row: ProductQueryRow }) {
 /** Prompt shown when Search Console isn't connected */
 function ConnectPrompt() {
     const api = useApi();
-    const [loading, setLoading] = useState(false);
+    const { run, busy: loading, error } = useScopedMutation();
 
     const handleConnect = async () => {
-        setLoading(true);
-        try {
-            const res = await api.get<{ authUrl: string }>('/api/oauth/search-console/authorize?redirect=/seo');
-            if (!navigateToSafeUrl(res.authUrl)) throw new Error('Invalid Search Console OAuth redirect URL');
-        } catch {
-            setLoading(false);
-        }
+        const result = await run(async signal => {
+            const value = await api.get<unknown>('/api/oauth/search-console/authorize?redirect=/seo', { signal });
+            const url = isRecord(value) && typeof value.authUrl === 'string' ? getSafeNavigationUrl(value.authUrl) : null;
+            if (!url) throw new Error('Invalid authorization URL');
+            return url;
+        }, 'Could not start Search Console connection. Please retry.');
+        if (result.ok) navigateToOAuthUrl(result.value);
     };
 
     return (
@@ -267,6 +255,7 @@ function ConnectPrompt() {
                     Link your Google Search Console to see which organic queries drive traffic to this product.
                 </p>
                 <button
+                    type="button"
                     onClick={handleConnect}
                     disabled={loading}
                     className="btn-gradient btn-shimmer flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
@@ -274,6 +263,7 @@ function ConnectPrompt() {
                     {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
                     Connect Search Console
                 </button>
+                {error && <p role="alert">{error}</p>}
             </div>
         </div>
     );
@@ -291,8 +281,7 @@ function EmptyState() {
                     No Organic Data Yet
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-slate-400 text-center max-w-sm">
-                    This product doesn't have any organic search impressions in the last 28 days.
-                    Data will appear once Google indexes the page and users find it via search.
+                    No query rows were returned for this URL in the last 28 days. Search Console can omit anonymized queries; this is not proof of zero impressions or indexing status.
                 </p>
             </div>
         </div>

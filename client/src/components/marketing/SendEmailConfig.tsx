@@ -13,6 +13,7 @@ import type { EmailTemplate } from './flow/EmailTemplateSelectorModal';
 import { evaluateEmailPreflight, groupPreflightIssues, type PreflightIssue } from '../../utils/emailPreflight';
 import { EMAIL_MERGE_TAGS, type MergeTagDefinition } from './emailDesignerV2/mergeTags';
 import { LTR_TEXT_STYLE, sanitizeBidiText } from './textInputBidi';
+import { InlineEmailPreview } from './flow/InlineEmailPreview';
 
 interface SendEmailNodeConfig {
     templateType?: 'visual' | 'richtext' | 'html';
@@ -96,6 +97,15 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
         { label: 'Preview/test', done: previewChecked },
     ];
     const completedSetupSteps = setupSteps.filter((step) => step.done).length;
+    const readinessIssues = evaluateEmailPreflight({ html: config.htmlContent || '', subject: config.subject, emailCategory, to: config.to || '{{customer.email}}', overrideFrom: config.overrideFrom, fromEmail: config.fromEmail, replyToEmail: config.replyToEmail });
+    const focusIssue = (id: string) => {
+        const field = id.startsWith('recipient') ? toInputRef.current : id === 'subject' ? subjectInputRef.current : null;
+        if (field) { field.focus(); field.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }); return; }
+        const target = document.getElementById(id === 'from-email' || id === 'reply-to-email' ? 'flow-email-advanced' : 'flow-email-content');
+        if (target instanceof HTMLDetailsElement) target.open = true;
+        target?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+        target?.querySelector<HTMLElement>('input, textarea, button')?.focus();
+    };
 
     const handleTemplateSelect = (template: EmailTemplate) => {
         const updates: Record<string, unknown> = {
@@ -219,16 +229,23 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                     </div>
                     <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-indigo-700 shadow-xs">{completedSetupSteps}/{setupSteps.length}</span>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="mt-3 flex flex-wrap gap-2">
                     {setupSteps.map((step) => (
-                        <div key={step.label} className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs ${step.done ? 'border-emerald-200 bg-white text-emerald-700' : 'border-indigo-100 bg-white/70 text-indigo-700'}`}>
+                        <div key={step.label} className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${step.done ? 'border-emerald-200 bg-white text-emerald-700' : 'border-indigo-100 bg-white/70 text-indigo-700'}`}>
                             {step.done ? <CheckCircle size={14} /> : <Circle size={14} />}
                             <span>{step.label}</span>
                         </div>
                     ))}
                 </div>
+                {readinessIssues.length > 0 && <details className="mt-3 border-t border-indigo-100 pt-2">
+                    <summary className="cursor-pointer text-xs font-medium text-indigo-900">Readiness: {readinessIssues.filter(issue => issue.severity === 'blocking').length} blockers · {readinessIssues.filter(issue => issue.severity === 'warning').length} suggestions</summary>
+                    <ul className="mt-2 space-y-1">{readinessIssues.map(issue => <li key={issue.id}><button type="button" onClick={() => focusIssue(issue.id)} className={`text-left text-xs underline underline-offset-2 ${issue.severity === 'blocking' ? 'text-red-700' : 'text-amber-800'}`}>{issue.severity === 'blocking' ? 'Required' : 'Suggestion'}: {issue.message}</button></li>)}</ul>
+                </details>}
             </div>
 
+            <div className="grid items-start gap-6 lg:grid-cols-2">
+            <section aria-label="Message details" className="min-w-0 space-y-4">
+            <h4 className="text-sm font-semibold text-gray-900">Message details</h4>
             <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">
                     To <span className="text-red-500">*</span>
@@ -306,6 +323,28 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                 </div>
             </div>
 
+            <div className="space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                <label htmlFor="flow-email-category" className="block text-sm font-medium text-blue-900">Delivery Category</label>
+                <select
+                    id="flow-email-category"
+                    value={emailCategory}
+                    onChange={(e) => {
+                        const nextValue = e.target.value === 'TRANSACTIONAL' ? 'TRANSACTIONAL' : 'MARKETING';
+                        updateMany({ emailCategory: nextValue, isTransactional: nextValue === 'TRANSACTIONAL' });
+                    }}
+                    className="w-full rounded-lg border border-blue-200 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                >
+                    <option value="MARKETING">Marketing</option>
+                    <option value="TRANSACTIONAL">Transactional</option>
+                </select>
+                <p className="text-xs text-blue-800">
+                    Marketing emails honor unsubscribe preferences. Transactional emails can still be sent for important order or account updates.
+                </p>
+            </div>
+            </section>
+
+            <section id="flow-email-content" aria-label="Email content" className="min-w-0 space-y-4">
+            <h4 className="text-sm font-semibold text-gray-900">Email content</h4>
             <div>
                 <label className="mb-2 block text-sm font-medium text-gray-700">Template Type</label>
                 <div className="flex flex-wrap items-center gap-4">
@@ -365,8 +404,8 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
             </div>
 
             {templateType === 'visual' && (
-                <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-                    <div className="mb-3 flex justify-center">
+                <div className="flex flex-wrap items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="flex justify-center">
                         <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-3 shadow-sm">
                             <svg className="h-8 w-8 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth="1.5" />
@@ -374,13 +413,15 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                             </svg>
                         </div>
                     </div>
+                    <div className="min-w-0 flex-1">
                     {config.htmlContent ? (
-                        <p className="mb-3 text-sm font-medium text-green-600">Email content configured</p>
+                        <p className="text-sm font-medium text-green-600">Email content configured</p>
                     ) : (
-                        <p className="mb-3 text-sm text-gray-600">
-                            Utilize our drag and drop builder to craft elegant email templates including WooCommerce blocks.
+                        <p className="text-sm text-gray-600">
+                            Build your email with drag-and-drop content and WooCommerce blocks.
                         </p>
                     )}
+                    </div>
                     <button
                         type="button"
                         onClick={() => setShowVisualBuilder(true)}
@@ -414,7 +455,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                 </div>
             )}
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
                 <button
                     type="button"
                     onClick={() => setShowSaveAsTemplate(true)}
@@ -427,29 +468,20 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                     type="button"
                     onClick={handlePreviewAndTest}
                     disabled={!config.htmlContent}
-                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     Preview and Test
                 </button>
             </div>
 
-            <div className="space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
-                <label className="block text-sm font-medium text-blue-900">Delivery Category</label>
-                <select
-                    value={emailCategory}
-                    onChange={(e) => {
-                        const nextValue = e.target.value === 'TRANSACTIONAL' ? 'TRANSACTIONAL' : 'MARKETING';
-                        updateMany({ emailCategory: nextValue, isTransactional: nextValue === 'TRANSACTIONAL' });
-                    }}
-                    className="w-full rounded-lg border border-blue-200 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
-                >
-                    <option value="MARKETING">Marketing</option>
-                    <option value="TRANSACTIONAL">Transactional</option>
-                </select>
-                <p className="text-xs text-blue-800">
-                    Marketing emails honor unsubscribe preferences. Transactional emails can still be sent for important order or account updates.
-                </p>
+            <InlineEmailPreview html={config.htmlContent || ''} subject={config.subject} previewText={config.previewText} category={emailCategory} onPreviewed={() => setCheckedRevision(revision)} onTestSent={() => setCheckedRevision(revision)} />
+            </section>
             </div>
+
+            <details id="flow-email-advanced" className="rounded-xl border border-gray-200 bg-gray-50/60">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-gray-700">Tracking and sender settings</summary>
+            <div className="grid items-start gap-6 border-t border-gray-200 p-4 lg:grid-cols-2">
+            <div className="min-w-0 space-y-4">
 
             <label className="flex cursor-pointer items-center gap-2">
                 <input
@@ -462,7 +494,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
             </label>
 
             <div className="space-y-3">
-                <div className="grid grid-cols-[140px_1fr] items-start gap-3">
+                <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
                     <label className="pt-2 text-sm font-medium text-gray-700">Campaign Source</label>
                     <div>
                         <input
@@ -478,7 +510,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                     </div>
                 </div>
 
-                <div className="grid grid-cols-[140px_1fr] items-start gap-3">
+                <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
                     <label className="pt-2 text-sm font-medium text-gray-700">Campaign Medium</label>
                     <div>
                         <input
@@ -494,7 +526,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                     </div>
                 </div>
 
-                <div className="grid grid-cols-[140px_1fr] items-start gap-3">
+                <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
                     <label className="pt-2 text-sm font-medium text-gray-700">Campaign Name</label>
                     <div>
                         <input
@@ -510,7 +542,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                     </div>
                 </div>
 
-                <div className="grid grid-cols-[140px_1fr] items-start gap-3">
+                <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
                     <label className="pt-2 text-sm font-medium text-gray-700">Campaign Term</label>
                     <div>
                         <input
@@ -525,7 +557,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                     </div>
                 </div>
 
-                <div className="grid grid-cols-[140px_1fr] items-start gap-3">
+                <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
                     <label className="pt-2 text-sm font-medium text-gray-700">Campaign Content</label>
                     <div>
                         <input
@@ -541,6 +573,8 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                 </div>
             </div>
 
+            </div>
+            <div className="min-w-0 space-y-4">
             <label className="flex cursor-pointer items-center gap-2">
                 <input
                     type="checkbox"
@@ -553,7 +587,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
 
             {config.overrideFrom && (
                 <div className="space-y-3 rounded-lg border bg-gray-50 p-3">
-                    <div className="grid grid-cols-[140px_1fr] items-center gap-3">
+                    <div className="grid grid-cols-1 items-center gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
                         <label className="text-sm font-medium text-gray-700">From Name</label>
                         <input
                             type="text"
@@ -565,7 +599,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                             style={LTR_TEXT_STYLE}
                         />
                     </div>
-                    <div className="grid grid-cols-[140px_1fr] items-center gap-3">
+                    <div className="grid grid-cols-1 items-center gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
                         <label className="text-sm font-medium text-gray-700">From Email</label>
                         <input
                             type="email"
@@ -577,7 +611,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                             style={LTR_TEXT_STYLE}
                         />
                     </div>
-                    <div className="grid grid-cols-[140px_1fr] items-center gap-3">
+                    <div className="grid grid-cols-1 items-center gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
                         <label className="text-sm font-medium text-gray-700">Reply To Email</label>
                         <input
                             type="email"
@@ -591,6 +625,10 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                     </div>
                 </div>
             )}
+
+            </div>
+            </div>
+            </details>
 
             {showTemplateSelector && (
                 <EmailTemplateSelectorModal
@@ -626,6 +664,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                     storageScope={storageScope}
                     initialHtml={config.htmlContent}
                     emailCategory={emailCategory}
+                    deliveryOptions={{ automationId: storageScope?.match(/^flow:([^:]+):node:/)?.[1], appendUtm: config.appendUtm, campaignSource: config.campaignSource, campaignMedium: config.campaignMedium, campaignName: config.campaignName, campaignTerm: config.campaignTerm, campaignContent: config.campaignContent, overrideFrom: config.overrideFrom, fromName: config.fromName, fromEmail: config.fromEmail, replyToEmail: config.replyToEmail }}
                     onTestSent={(html, _design, meta) => setCheckedRevision(getEmailSetupRevision({ ...config, htmlContent: html, subject: meta.subject, previewText: meta.previewText }))}
                     initialDesign={config.designJson}
                     initialSubject={config.subject}

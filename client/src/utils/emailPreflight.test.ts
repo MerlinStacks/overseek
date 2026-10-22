@@ -25,6 +25,9 @@ describe('evaluateEmailPreflight', () => {
         });
         expect(issues.some((issue) => issue.id === 'unsubscribe')).toBe(false);
     });
+    it('does not treat unsubscribe wording without a link as ready to send', () => {
+        expect(evaluateEmailPreflight({ subject: 'Offer', html: '<p>Unsubscribe</p>' })).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'unsubscribe', severity: 'blocking' })]));
+    });
 
     it('flags unresolved merge tags and missing alt text', () => {
         const issues = evaluateEmailPreflight({

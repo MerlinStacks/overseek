@@ -6,6 +6,7 @@ import { Send, Loader2, Zap, Paperclip, FileSignature, Sparkles, ChevronDown } f
 import { cn } from '../../utils/cn';
 import { useAuth } from '../../context/AuthContext';
 import type { ConversationChannel } from './ChannelSelector';
+import { hasComposerText } from '../../utils/composerContent';
 
 interface ComposerToolbarProps {
     input: string;
@@ -19,7 +20,7 @@ interface ComposerToolbarProps {
     isGeneratingDraft: boolean;
     onGenerateAIDraft: () => void;
     isUploading: boolean;
-    onInputChange: (value: string) => void;
+    onOpenCanned: () => void;
     fileInputRef: React.RefObject<HTMLInputElement | null>;
     onFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
     stagedAttachments: File[];
@@ -47,7 +48,7 @@ export function ComposerToolbar({
     isGeneratingDraft,
     onGenerateAIDraft,
     isUploading,
-    onInputChange,
+    onOpenCanned,
     fileInputRef,
     onFileUpload,
     stagedAttachments,
@@ -60,8 +61,8 @@ export function ComposerToolbar({
     onOpenSchedule
 }: ComposerToolbarProps) {
     const { user } = useAuth();
-    const hasTextContent = input.replace(/<[^>]*>/g, '').trim().length > 0;
-    const isSendDisabled = !hasTextContent || isSending || showCanned || !!pendingSend || isSmsTooLong;
+    const hasTextContent = hasComposerText(input);
+    const isSendDisabled = !hasTextContent || isSending || isUploading || isGeneratingDraft || showCanned || !!pendingSend || isSmsTooLong;
 
     return (
         <>
@@ -69,7 +70,7 @@ export function ComposerToolbar({
                 <button
                     type="button"
                     onClick={onGenerateAIDraft}
-                    disabled={isGeneratingDraft}
+                    disabled={isGeneratingDraft || isSending || isUploading || !!pendingSend}
                     className="p-2 rounded-sm hover:bg-purple-50 text-purple-500 hover:text-purple-600 transition-colors disabled:opacity-50"
                     title="Generate AI Draft Reply"
                     aria-label="Generate AI draft reply"
@@ -78,7 +79,9 @@ export function ComposerToolbar({
                 </button>
                 <button
                     type="button"
-                    onClick={() => onInputChange('/')}
+                    onClick={onOpenCanned}
+                    aria-expanded={showCanned}
+                    disabled={isSending || !!pendingSend}
                     className="p-2 rounded-sm hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
                     title="Canned Responses"
                     aria-label="Insert canned response"
@@ -127,6 +130,8 @@ export function ComposerToolbar({
                                 : "Enable email signature"
                         }
                         disabled={!user?.emailSignature}
+                        aria-label="Email signature"
+                        aria-pressed={signatureEnabled}
                     >
                         <FileSignature size={18} />
                     </button>
@@ -141,6 +146,7 @@ export function ComposerToolbar({
 
             <div className="relative flex">
                 <button
+                    type="button"
                     onClick={() => onSend(undefined, selectedChannel)}
                     disabled={isSendDisabled}
                     className={cn(
@@ -162,6 +168,7 @@ export function ComposerToolbar({
                 </button>
                 {!isInternal && (
                     <button
+                        type="button"
                         onClick={onOpenSchedule}
                         disabled={isSendDisabled}
                         className={cn(
@@ -170,6 +177,7 @@ export function ComposerToolbar({
                             "disabled:opacity-50 disabled:cursor-not-allowed"
                         )}
                         title="Schedule for later"
+                        aria-label="Schedule for later"
                     >
                         <ChevronDown size={14} />
                     </button>

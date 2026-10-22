@@ -119,6 +119,7 @@ const segmentsRoutes: FastifyPluginAsync = async (fastify) => {
             return customers;
         } catch (error) {
             Logger.error('Error', { error });
+            if ((error as { statusCode?: number }).statusCode === 400) return reply.code(400).send({ error: 'Invalid preview filters' });
             return reply.code(500).send({ error: 'Failed to preview segment' });
         }
     });

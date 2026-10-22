@@ -1,0 +1,10 @@
+import { beforeEach, expect, it, vi } from 'vitest';
+const m = vi.hoisted(() => ({ allowed: true, receipt: vi.fn(), claim: vi.fn(), create: vi.fn() }));
+vi.mock('../utils/prisma', () => { const tx = { $queryRaw: vi.fn(), scopedOperation: { findUnique: m.receipt, create: m.claim }, supplier: { create: m.create } }; return { prisma: { $transaction: async (run: (tx: unknown) => unknown) => run(tx) } }; });
+vi.mock('./PermissionService', () => ({ PermissionService: { hasPermission: async () => m.allowed } }));
+import { createSupplier, supplierCreateSchema } from './SupplierCreation';
+const input = { id: '8e5c4ff6-4db5-4e38-abaa-21ce4652785f', name: 'Supplier', currency: 'AUD', leadTimeMin: '0', leadTimeMax: '7' };
+beforeEach(() => { vi.clearAllMocks(); m.allowed = true; m.receipt.mockResolvedValue(null); m.create.mockResolvedValue({ ...input, accountId: 'a' }); });
+it('requires current inventory authority and explicit stable identity/currency', async () => { m.allowed = false; await expect(createSupplier('a', 'u', input)).rejects.toMatchObject({ statusCode: 403 }); expect(m.create).not.toHaveBeenCalled(); expect(supplierCreateSchema.safeParse({ ...input, id: undefined }).success).toBe(false); expect(supplierCreateSchema.safeParse({ ...input, currency: '' }).success).toBe(false); });
+it('rejects fractional/unordered/out-of-bound lead times without writes', async () => { for (const data of [{ leadTimeMin: '8', leadTimeMax: '7' }, { leadTimeMin: '1.5' }, { leadTimeMax: '3651' }]) await expect(createSupplier('a', 'u', { ...input, ...data })).rejects.toThrow(); expect(m.create).not.toHaveBeenCalled(); });
+it('stores account-bound receipts and acknowledges same-payload retries without duplicate creation', async () => { await createSupplier('a', 'u', input); const receipt = m.claim.mock.calls[0][0].data; expect(receipt).toMatchObject({ accountId: 'a', kind: 'supplier-create' }); m.receipt.mockResolvedValue({ result: receipt.result }); await createSupplier('a', 'u', input); expect(m.create).toHaveBeenCalledOnce(); await expect(createSupplier('a', 'u', { ...input, name: 'Other' })).rejects.toMatchObject({ statusCode: 409 }); });

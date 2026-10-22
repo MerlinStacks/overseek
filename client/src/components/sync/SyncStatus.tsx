@@ -27,6 +27,8 @@ type SyncEntityKey = typeof SYNC_ENTITIES[number]['key'];
 
 /** Staleness → dot color mapping */
 const STALENESS_COLORS = {
+    unknown: 'bg-slate-400 dark:bg-slate-500',
+    future: 'bg-amber-500',
     fresh: 'bg-green-500',
     stale: 'bg-amber-500',
     critical: 'bg-red-500',
@@ -34,6 +36,8 @@ const STALENESS_COLORS = {
 } as const;
 
 const STALENESS_LABELS = {
+    unknown: 'Observation time unavailable',
+    future: 'Future timestamp; check clocks',
     fresh: 'Up to date',
     stale: 'Getting stale',
     critical: 'Needs sync',
@@ -498,7 +502,7 @@ function HealthSummaryBar({ summary }: { summary: { lastSuccessAt: string | null
 interface EntityCardProps {
     label: string;
     Icon: React.ElementType;
-    staleness: 'fresh' | 'stale' | 'critical' | 'never';
+    staleness: ReturnType<typeof getStalenessLevel>;
     lastSyncedAt: string | null | undefined;
     activeJob?: { id: string; queue: string; progress: number };
     schedule?: { enabled: boolean; intervalMinutes: number; nextRunAt: string };

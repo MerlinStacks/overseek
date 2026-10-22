@@ -399,7 +399,7 @@ export const ChatWindow = memo(function ChatWindow({
                 showCanned={showCanned}
                 filteredCanned={filteredCanned}
                 cannedResponses={cannedResponses}
-                onSelectCanned={(r) => {
+                onSelectCanned={(r, preserveDraft) => {
                     const context = {
                         firstName: customerData?.firstName,
                         lastName: customerData?.lastName,
@@ -410,7 +410,10 @@ export const ChatWindow = memo(function ChatWindow({
                         agentFirstName: user?.fullName?.split(' ')[0],
                         agentFullName: user?.fullName || undefined
                     };
-                    messageSend.setInput(selectCanned(r, context));
+                    const reply = selectCanned(r, context);
+                    const text = messageSend.input;
+                    const plain = text.replace(/<[^>]*>/g, '').trim();
+                    messageSend.setInput(plain && (preserveDraft || !plain.startsWith('/')) ? `${text}<p><br></p>${reply}` : reply);
                 }}
                 onOpenCannedManager={() => setShowCannedManager(true)}
                 isGeneratingDraft={aiDraft.isGeneratingDraft}

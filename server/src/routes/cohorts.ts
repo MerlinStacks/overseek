@@ -19,14 +19,15 @@ const cohortRoutes: FastifyPluginAsync = async (fastify) => {
     }>('/retention', async (request, reply) => {
         try {
             const accountId = request.accountId;
-            const parsedMonths = Number.parseInt(request.query.months || '6', 10);
-            const months = Number.isFinite(parsedMonths) && parsedMonths > 0 ? parsedMonths : 6;
+            const value = request.query.months;
+            if (value !== undefined && (typeof value !== 'string' || !/^[1-9]\d?$/.test(value) || Number(value) > 24)) return reply.code(400).send({ error: 'months must be an integer from 1 to 24' });
+            const months = value === undefined ? 6 : Number(value);
 
             const cohorts = await CustomerCohortService.getRetentionCohorts(accountId, months);
             return cohorts;
         } catch (e: any) {
             Logger.error('[Cohorts] Retention error', { error: e });
-            return reply.code(500).send({ error: e.message });
+            return reply.code(500).send({ error: 'Cohort retention unavailable' });
         }
     });
 
@@ -79,7 +80,8 @@ const cohortRoutes: FastifyPluginAsync = async (fastify) => {
             // Calculate summary stats
             const totalCustomers = retention.reduce((sum, c) => sum + c.totalCustomers, 0);
             const latestCohort = retention[retention.length - 1];
-            const avgRetention30d = latestCohort?.retention[0]?.retentionRate || 0;
+            const firstCompletedPeriod = latestCohort?.retention.find(period => period.monthsAfter === 1);
+            const avgRetention30d = firstCompletedPeriod?.retentionRate ?? null;
 
             const topSource = acquisition[0];
             const topProduct = product[0];
@@ -88,7 +90,8 @@ const cohortRoutes: FastifyPluginAsync = async (fastify) => {
                 overview: {
                     totalCohortsAnalyzed: retention.length,
                     totalCustomersTracked: totalCustomers,
-                    latestCohortRetention: avgRetention30d
+                    latestCohortRetention: avgRetention30d,
+                    retentionObservation: { cohortMonth: latestCohort?.cohortMonth ?? null, monthsAfter: firstCompletedPeriod?.monthsAfter ?? null, method: 'cumulative-repeat-purchase-complete-months', available: !!firstCompletedPeriod }
                 },
                 topAcquisitionSource: topSource ? {
                     source: topSource.source,

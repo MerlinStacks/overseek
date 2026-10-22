@@ -335,7 +335,7 @@ class OverSeek_Pixel_Ecommerce_Events {
 		}
 
 		$order = wc_get_order( $order_id );
-		if ( ! $order ) {
+		if ( ! $order || ! $order->is_paid() ) {
 			return '';
 		}
 

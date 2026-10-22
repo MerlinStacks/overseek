@@ -127,7 +127,10 @@ export function EmailLogPanel() {
     const clearFilters = () => {
         setSearchQuery('');
         setDebouncedSearch('');
-        navigate('/emails/logs');
+        const params = new URLSearchParams(location.search);
+        params.delete('status');
+        params.delete('source');
+        navigate(`${location.pathname}${params.toString() ? `?${params}` : ''}`);
     };
 
     const setTypeFilter = (source: string) => {
@@ -137,7 +140,7 @@ export function EmailLogPanel() {
         } else {
             params.delete('source');
         }
-        navigate(`/emails/logs${params.toString() ? `?${params.toString()}` : ''}`);
+        navigate(`${location.pathname}${params.toString() ? `?${params.toString()}` : ''}`);
     };
 
     const formatDate = (dateStr: string) => {

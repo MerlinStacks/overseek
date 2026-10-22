@@ -1,252 +1,58 @@
-import { useMemo, useState } from 'react';
-import { Bot, RefreshCw, Sparkles, TrendingUp, XCircle } from 'lucide-react';
+import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { useApiMutation, useApiQuery } from '../hooks/useApiQuery';
-
-type SuggestionStatus = 'pending' | 'implemented' | 'dismissed';
-
-interface AiManagerSuggestion {
-    id: string;
-    title: string;
-    text: string;
-    type: string;
-    source: string;
-    priority: 1 | 2 | 3;
-    confidence: number;
-    status: SuggestionStatus;
-    createdAt: string;
-    dataPoints: string[];
+import { usePermissions } from '../hooks/usePermissions';
+import { useScopedRequest } from '../hooks/useScopedRequest';
+import { useRecoveryAttempt } from '../hooks/useRecoveryAttempt';
+import { isRecord } from '../utils/responseValidation';
+interface Suggestion { id: string; title: string; text: string; type: string; source: string; priority: number; confidence: null; status: string; version: string; dataPoints: string[] }
+function suggestions(value: unknown): { items: Suggestion[]; coverage: { truncated: boolean; limit: number } } {
+    if (!isRecord(value) || !Array.isArray(value.items) || value.items.length > 100 || !isRecord(value.coverage) || typeof value.coverage.truncated !== 'boolean' || typeof value.coverage.limit !== 'number') throw new Error('Invalid suggestions');
+    for (const row of value.items) if (!isRecord(row) || !['id', 'title', 'text', 'type', 'source', 'version'].every(key => typeof row[key] === 'string' && String(row[key]).length <= 10000) || !Number.isFinite(Date.parse(String(row.version))) || !['pending', 'implemented', 'dismissed', 'expired'].includes(String(row.status)) || ![1, 2, 3].includes(Number(row.priority)) || row.confidence !== null || !Array.isArray(row.dataPoints) || row.dataPoints.length > 30 || row.dataPoints.some(point => typeof point !== 'string' || point.length > 2000)) throw new Error('Invalid suggestion');
+    return value as unknown as ReturnType<typeof suggestions>;
 }
-
-interface SuggestionResponse {
-    items: AiManagerSuggestion[];
+function health(value: unknown): Record<string, number> {
+    if (!isRecord(value) || value.providerHealth !== 'unverified' || !isRecord(value.configured) || !['searchConsole', 'googleAds', 'metaAds'].every(key => typeof value.configured === 'object' && value.configured !== null && Number.isSafeInteger((value.configured as Record<string, unknown>)[key]) && Number((value.configured as Record<string, unknown>)[key]) >= 0)) throw new Error('Invalid configuration counts');
+    return value.configured as Record<string, number>;
 }
-
-interface SourceHealth {
-    searchConsoleConnected: boolean;
-    googleAdsConnected: boolean;
-    metaAdsConnected: boolean;
-}
-
 export function AiManagerPage() {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const [statusFilter, setStatusFilter] = useState<'all' | SuggestionStatus>('all');
-
-    const suggestionsQuery = useApiQuery<SuggestionResponse>({
-        queryKey: ['ai-manager', currentAccount?.id, statusFilter],
-        enabled: Boolean(token && currentAccount?.id),
-        refetchOnWindowFocus: false,
-        queryFn: async () => {
-            if (!token || !currentAccount?.id) throw new Error('Account context is required');
-            const params = new URLSearchParams();
-            if (statusFilter !== 'all') params.set('status', statusFilter);
-            params.set('limit', '60');
-            const res = await fetch(`/api/ai-manager/suggestions?${params.toString()}`, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount.id,
-                }
-            });
-            if (!res.ok) throw new Error('Failed to load AI manager suggestions');
-            return await res.json();
-        }
-    });
-
-    const healthQuery = useApiQuery<SourceHealth>({
-        queryKey: ['ai-manager-health', currentAccount?.id],
-        enabled: Boolean(token && currentAccount?.id),
-        refetchOnWindowFocus: false,
-        queryFn: async () => {
-            if (!token || !currentAccount?.id) throw new Error('Account context is required');
-            const res = await fetch('/api/ai-manager/health', {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount.id,
-                }
-            });
-            if (!res.ok) throw new Error('Failed to load source health');
-            return await res.json();
-        }
-    });
-
-    const refreshMutation = useApiMutation<{ created: number }>({
-        mutationFn: async () => {
-            if (!token || !currentAccount?.id) throw new Error('Account context is required');
-            const res = await fetch('/api/ai-manager/suggestions/refresh', {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount.id,
-                    'content-type': 'application/json',
-                },
-            });
-            if (!res.ok) throw new Error('Failed to refresh suggestions');
-            return await res.json();
-        },
-        onSuccess: () => {
-            void suggestionsQuery.refetch();
-        }
-    });
-
-    const statusMutation = useApiMutation<{ success: boolean }, { id: string; status: 'implemented' | 'dismissed' }>({
-        mutationFn: async ({ id, status }) => {
-            if (!token || !currentAccount?.id) throw new Error('Account context is required');
-            const res = await fetch(`/api/ai-manager/suggestions/${id}/status`, {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount.id,
-                    'content-type': 'application/json',
-                },
-                body: JSON.stringify({ status }),
-            });
-            if (!res.ok) throw new Error('Failed to update suggestion status');
-            return await res.json();
-        },
-        onSuccess: () => {
-            void suggestionsQuery.refetch();
-        }
-    });
-
-    const items = useMemo(() => suggestionsQuery.data?.items ?? [], [suggestionsQuery.data?.items]);
-
-    const stats = useMemo(() => {
-        const pending = items.filter(i => i.status === 'pending').length;
-        const reviewed = items.filter(i => i.status === 'implemented').length;
-        const highPriority = items.filter(i => i.priority === 1 && i.status === 'pending').length;
-        return { pending, reviewed, highPriority, total: items.length };
-    }, [items]);
-
-    return (
-        <div className="space-y-6">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">AI Manager</h1>
-                    <p className="text-slate-600 dark:text-slate-400">Proactive SEO and ads recommendations only. AI Manager never applies actions.</p>
-                </div>
-                <button
-                    onClick={() => refreshMutation.mutate()}
-                    disabled={refreshMutation.isPending}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-60"
-                >
-                    <RefreshCw size={16} className={refreshMutation.isPending ? 'animate-spin' : ''} />
-                    Refresh Suggestions
-                </button>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-4">
-                <StatCard icon={Bot} label="Total" value={stats.total} />
-                <StatCard icon={Sparkles} label="Pending" value={stats.pending} />
-                <StatCard icon={TrendingUp} label="High Priority" value={stats.highPriority} />
-                <StatCard icon={XCircle} label="Reviewed" value={stats.reviewed} />
-            </div>
-
-            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">Source Health</p>
-                <div className="flex flex-wrap gap-2">
-                    <SourcePill label="Search Console" connected={Boolean(healthQuery.data?.searchConsoleConnected)} />
-                    <SourcePill label="Google Ads" connected={Boolean(healthQuery.data?.googleAdsConnected)} />
-                    <SourcePill label="Meta Ads" connected={Boolean(healthQuery.data?.metaAdsConnected)} />
-                </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-                {(['all', 'pending', 'implemented', 'dismissed'] as const).map((status) => (
-                    <button
-                        key={status}
-                        onClick={() => setStatusFilter(status)}
-                        className={`px-3 py-1.5 rounded-lg text-sm border ${statusFilter === status
-                            ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-300 dark:border-indigo-500/30'
-                            : 'bg-white text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'}`}
-                    >
-                        {status === 'all' ? 'All' : status}
-                    </button>
-                ))}
-            </div>
-
-            {suggestionsQuery.isLoading && <div className="text-sm text-slate-500">Loading suggestions...</div>}
-            {suggestionsQuery.error && <div className="text-sm text-red-600">Failed to load suggestions.</div>}
-
-            <div className="space-y-3">
-                {items.map((item) => (
-                    <article key={item.id} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div>
-                                <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">{item.title}</h2>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{item.type} · {item.source} · confidence {item.confidence}%</p>
-                            </div>
-                            <span className={`text-xs px-2 py-1 rounded-full ${item.priority === 1
-                                ? 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'
-                                : item.priority === 2
-                                    ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'
-                                    : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200'}`}
-                            >
-                                P{item.priority}
-                            </span>
-                        </div>
-
-                        <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{item.text}</p>
-
-                        {item.dataPoints.length > 0 && (
-                            <div className="mt-3 grid gap-1">
-                                {item.dataPoints.slice(0, 4).map((point, idx) => (
-                                    <p key={idx} className="text-xs text-slate-500 dark:text-slate-400">- {point}</p>
-                                ))}
-                            </div>
-                        )}
-
-                        <div className="mt-3 flex items-center gap-2">
-                            {item.status === 'pending' ? (
-                                <>
-                                    <button
-                                        onClick={() => statusMutation.mutate({ id: item.id, status: 'implemented' })}
-                                        className="px-3 py-1.5 text-xs font-medium rounded-md bg-green-50 text-green-700 border border-green-200 hover:bg-green-100"
-                                    >
-                                        Mark Reviewed
-                                    </button>
-                                    <button
-                                        onClick={() => statusMutation.mutate({ id: item.id, status: 'dismissed' })}
-                                        className="px-3 py-1.5 text-xs font-medium rounded-md bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200"
-                                    >
-                                        Dismiss
-                                    </button>
-                                </>
-                            ) : (
-                                <span className="text-xs text-slate-500 dark:text-slate-400">Status: {item.status}</span>
-                            )}
-                        </div>
-                    </article>
-                ))}
-                {!suggestionsQuery.isLoading && items.length === 0 && (
-                    <div className="text-sm text-slate-500">No suggestions yet. Click Refresh Suggestions to generate the first batch.</div>
-                )}
-            </div>
-        </div>
-    );
+    const { token, user } = useAuth(); const { currentAccount } = useAccount(); const { hasPermission } = usePermissions();
+    if (!token || !currentAccount) return <p>Select an account and sign in.</p>;
+    if (!hasPermission('view_marketing')) return <p>Marketing view permission required.</p>;
+    return <ScopedManager key={JSON.stringify([user?.id, token, currentAccount.id])} accountId={currentAccount.id} token={token} />;
 }
-
-function StatCard({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: number }) {
-    return (
-        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
-            <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-                <Icon size={14} />
-                <span className="text-xs uppercase tracking-wide">{label}</span>
-            </div>
-            <p className="text-2xl font-semibold text-slate-900 dark:text-slate-100 mt-2">{value}</p>
-        </div>
-    );
+function ScopedManager({ accountId, token }: { accountId: string; token: string }) {
+    const [filter, setFilter] = useState('');
+    return <main className="space-y-4 text-slate-900 dark:text-slate-100"><h1 className="text-2xl font-bold">AI Manager</h1><p>Review-only local heuristics. Confidence and provider health are unverified. No actions are applied.</p>
+        <label>Status <select value={filter} onChange={event => setFilter(event.target.value)} className="bg-white dark:bg-slate-900">{['', 'pending', 'implemented', 'dismissed', 'expired'].map(value => <option value={value} key={value}>{value || 'All'}</option>)}</select></label>
+        <ManagerRead key={filter} accountId={accountId} token={token} filter={filter} />
+    </main>;
 }
-
-function SourcePill({ label, connected }: { label: string; connected: boolean }) {
-    return (
-        <span
-            className={`px-2.5 py-1 text-xs rounded-full border ${connected
-                ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-300 dark:border-green-500/30'
-                : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30'}`}
-        >
-            {label}: {connected ? 'Connected' : 'Not Connected'}
-        </span>
-    );
+function ManagerRead({ accountId, token, filter }: { accountId: string; token: string; filter: string }) {
+    const list = useScopedRequest(`/api/ai-manager/suggestions?limit=60${filter ? `&status=${filter}` : ''}`, accountId, token, suggestions);
+    const sources = useScopedRequest('/api/ai-manager/health', accountId, token, health);
+    const attempt = useRecoveryAttempt(); const { hasPermission } = usePermissions();
+    const [busy, setBusy] = useState(false), [error, setError] = useState('');
+    async function write(item?: Suggestion, status?: string) {
+        if (error || !hasPermission('manage_marketing')) return;
+        const active = attempt.begin(); if (!active) return; setBusy(true);
+        const timer = setTimeout(() => active.abort(), 30000);
+        try {
+            const response = await fetch(item ? `/api/ai-manager/suggestions/${encodeURIComponent(item.id)}/status` : '/api/ai-manager/suggestions/refresh', { method: 'POST', signal: active.signal, headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId, 'Content-Type': 'application/json' }, body: JSON.stringify(item ? { status, version: item.version } : { occurrence: crypto.randomUUID() }) });
+            const result = await response.json();
+            if (!response.ok || !isRecord(result) || (item ? result.success !== true || typeof result.version !== 'string' : typeof result.created !== 'number' || !Number.isInteger(result.created))) throw new Error('Unacknowledged');
+            if (attempt.current(active)) list.retry();
+        } catch { if (attempt.current(active, true)) setError('Write not acknowledged, conflicted or rate limited. Reload to reconcile before further writes.'); }
+        finally { clearTimeout(timer); attempt.finish(); if (attempt.current(active, true)) setBusy(false); }
+    }
+    return <>
+        {sources.loading ? <p role="status">Loading configuration…</p> : sources.error ? <p role="alert">Source configuration unavailable. <button onClick={sources.retry}>Retry sources</button></p> : <p>Configured records: Search Console {sources.data?.searchConsole}, Google Ads {sources.data?.googleAds}, Meta Ads {sources.data?.metaAds}. Not a connection-health check.</p>}
+        {error && <p role="alert">{error} <button onClick={() => window.location.reload()}>Reload AI Manager</button></p>}
+        {hasPermission('manage_marketing') && <button disabled={busy || !!error} onClick={() => void write()}>Refresh Suggestions (hourly limit)</button>}
+        {list.loading ? <p role="status">Loading suggestions…</p> : list.error ? <p role="alert">Suggestions unavailable. <button onClick={list.retry}>Retry suggestions</button></p> : <>
+            <p>{list.data?.items.length} shown{list.data?.coverage.truncated ? '; more records exist (bounded view)' : ''}. Counts refer only to this view.</p>
+            {list.data?.items.length === 0 && <p>No suggestions in this view.</p>}
+            {list.data?.items.map(item => <article className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 space-y-2" key={item.id}><h2 className="font-semibold">{item.title}</h2><p>{item.type} · {item.source} · P{item.priority} · confidence unavailable</p><p>{item.text}</p><ul>{item.dataPoints.map((point, index) => <li key={index}>{point}</li>)}</ul><p>Status: {item.status}</p>{item.status === 'pending' && hasPermission('manage_marketing') && <div className="flex gap-3"><button disabled={busy || !!error} onClick={() => void write(item, 'implemented')}>Mark implemented (self-reported)</button><button disabled={busy || !!error} onClick={() => void write(item, 'dismissed')}>Dismiss</button></div>}</article>)}
+        </>}
+    </>;
 }

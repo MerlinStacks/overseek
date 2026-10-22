@@ -6,6 +6,9 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import {
     $getSelection,
+    $setSelection,
+    FORMAT_ELEMENT_COMMAND,
+    type RangeSelection,
     $isRangeSelection,
     FORMAT_TEXT_COMMAND,
     SELECTION_CHANGE_COMMAND,
@@ -41,6 +44,7 @@ export type ToolbarFeature =
     | 'heading'
     | 'emoji'
     | 'image'
+    | 'social'
     | 'align'
     | 'mergeTag';
 
@@ -62,6 +66,13 @@ const EMOJI_LIST = [
     '📦', '🚚', '💳', '📧', '📞', '🛒', '💰', '🎁',
 ];
 
+export function validatedEditorLink(value: string): string | null {
+    const raw = value.trim();
+    // Merge tags in destinations require a separate renderer-aware contract; never accept them here.
+    if (!raw || raw.length > 2048 || /[\s{}]/.test(raw) || [...raw].some(character => character.charCodeAt(0) < 32)) return null;
+    try { const url = new URL(raw); return ['https:', 'http:', 'mailto:', 'tel:'].includes(url.protocol) && !url.username && !url.password && (url.protocol === 'mailto:' ? /^[^@]+@[^@]+$/.test(url.pathname) : url.protocol === 'tel:' ? /^\+?[0-9().-]{3,30}$/.test(url.pathname) : !!url.hostname) ? url.href : null; } catch { return null; }
+}
+
 export function ToolbarPlugin({ features, rightSlot, mergeTags = [] }: ToolbarPluginProps) {
     const [editor] = useLexicalComposerContext();
     const [isBold, setIsBold] = useState(false);
@@ -73,6 +84,12 @@ export function ToolbarPlugin({ features, rightSlot, mergeTags = [] }: ToolbarPl
     const [linkUrl, setLinkUrl] = useState('');
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const emojiPickerRef = useRef<HTMLDivElement>(null);
+    const savedSelection = useRef<RangeSelection | null>(null);
+    const [linkError, setLinkError] = useState('');
+    const linkTrigger = useRef<HTMLButtonElement>(null);
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const captureSelection = () => editor.getEditorState().read(() => { const selection = $getSelection(); savedSelection.current = $isRangeSelection(selection) ? selection.clone() : null; });
+    const closeLink = () => { setShowLinkModal(false); setLinkError(''); linkTrigger.current?.focus(); };
 
     const updateToolbar = useCallback(() => {
         const selection = $getSelection();
@@ -101,7 +118,7 @@ export function ToolbarPlugin({ features, rightSlot, mergeTags = [] }: ToolbarPl
                     setListType(null);
                 }
             }
-        }
+        } else { setIsBold(false); setIsItalic(false); setIsUnderline(false); setIsLink(false); setListType(null); }
     }, [editor]);
 
     useEffect(() => {
@@ -114,6 +131,8 @@ export function ToolbarPlugin({ features, rightSlot, mergeTags = [] }: ToolbarPl
             COMMAND_PRIORITY_CRITICAL
         );
     }, [editor, updateToolbar]);
+
+    useEffect(() => editor.registerUpdateListener(({ editorState }) => editorState.read(updateToolbar)), [editor, updateToolbar]);
 
     // Close emoji picker when clicking outside
     useEffect(() => {
@@ -136,29 +155,30 @@ export function ToolbarPlugin({ features, rightSlot, mergeTags = [] }: ToolbarPl
         if (isLink) {
             editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
         } else {
+            captureSelection();
+            setLinkError('');
             setLinkUrl('https://');
             setShowLinkModal(true);
         }
     };
 
     const confirmLink = () => {
-        if (linkUrl && linkUrl !== 'https://') {
-            editor.dispatchCommand(TOGGLE_LINK_COMMAND, linkUrl);
-        }
-        setShowLinkModal(false);
+        const url = validatedEditorLink(linkUrl);
+        if (!url || !savedSelection.current) { setLinkError('Select editor text and enter a valid HTTP(S), email or telephone URL. Merge-tag URLs are not supported here.'); return; }
+        editor.update(() => {
+            const selection = savedSelection.current;
+            if (!selection || !selection.anchor.getNode().isAttached() || !selection.focus.getNode().isAttached()) return;
+            $setSelection(selection.clone());
+            editor.dispatchCommand(TOGGLE_LINK_COMMAND, { url, target: '_blank', rel: 'noopener noreferrer' });
+        });
+        closeLink();
         setLinkUrl('');
     };
 
     const insertBulletList = () => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
     const insertNumberedList = () => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
     const formatAlignment = (value: 'left' | 'center' | 'right') => {
-        editor.update(() => {
-            const selection = $getSelection();
-            if (!$isRangeSelection(selection)) return;
-            const anchorNode = selection.anchor.getNode();
-            const element = anchorNode.getTopLevelElementOrThrow();
-            element.setFormat(value);
-        });
+        editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, value);
     };
 
     const alignLeft = () => formatAlignment('left');
@@ -179,7 +199,7 @@ export function ToolbarPlugin({ features, rightSlot, mergeTags = [] }: ToolbarPl
     const has = (feature: ToolbarFeature) => features.includes(feature);
 
     const insertMergeTag = (value: string) => {
-        if (!value) return;
+        if (!value || !mergeTags.some(tag => tag.value === value) || value.length > 200) return;
         editor.update(() => {
             const selection = $getSelection();
             if ($isRangeSelection(selection)) selection.insertText(value);
@@ -188,7 +208,7 @@ export function ToolbarPlugin({ features, rightSlot, mergeTags = [] }: ToolbarPl
 
     return (
         <>
-            <div className="rte-toolbar">
+            <div className="rte-toolbar" onMouseDown={event => { if ((event.target as HTMLElement).closest('button')) event.preventDefault(); }}>
                 <div className="rte-toolbar-main">
                     {/* Text Formatting Group */}
                     {(has('bold') || has('italic') || has('underline')) && (
@@ -200,6 +220,7 @@ export function ToolbarPlugin({ features, rightSlot, mergeTags = [] }: ToolbarPl
                                     className={`rte-toolbar-btn ${isBold ? 'active' : ''}`}
                                     title="Bold (Ctrl+B)"
                                     aria-label="Format Bold"
+                                    aria-pressed={isBold}
                                 >
                                     <Bold size={16} />
                                 </button>
@@ -211,6 +232,7 @@ export function ToolbarPlugin({ features, rightSlot, mergeTags = [] }: ToolbarPl
                                     className={`rte-toolbar-btn ${isItalic ? 'active' : ''}`}
                                     title="Italic (Ctrl+I)"
                                     aria-label="Format Italic"
+                                    aria-pressed={isItalic}
                                 >
                                     <Italic size={16} />
                                 </button>
@@ -222,6 +244,7 @@ export function ToolbarPlugin({ features, rightSlot, mergeTags = [] }: ToolbarPl
                                     className={`rte-toolbar-btn ${isUnderline ? 'active' : ''}`}
                                     title="Underline (Ctrl+U)"
                                     aria-label="Format Underline"
+                                    aria-pressed={isUnderline}
                                 >
                                     <Underline size={16} />
                                 </button>
@@ -235,6 +258,8 @@ export function ToolbarPlugin({ features, rightSlot, mergeTags = [] }: ToolbarPl
                             <button
                                 type="button"
                                 onClick={insertLink}
+                                ref={linkTrigger}
+                                aria-pressed={isLink}
                                 className={`rte-toolbar-btn ${isLink ? 'active' : ''}`}
                                 title="Insert Link"
                                 aria-label="Insert Link"
@@ -253,6 +278,7 @@ export function ToolbarPlugin({ features, rightSlot, mergeTags = [] }: ToolbarPl
                                 className={`rte-toolbar-btn ${listType === 'bullet' ? 'active' : ''}`}
                                 title="Bullet List"
                                 aria-label="Insert Bullet List"
+                                aria-pressed={listType === 'bullet'}
                             >
                                 <List size={16} />
                             </button>
@@ -262,6 +288,7 @@ export function ToolbarPlugin({ features, rightSlot, mergeTags = [] }: ToolbarPl
                                 className={`rte-toolbar-btn ${listType === 'number' ? 'active' : ''}`}
                                 title="Numbered List"
                                 aria-label="Insert Numbered List"
+                                aria-pressed={listType === 'number'}
                             >
                                 <ListOrdered size={16} />
                             </button>
@@ -337,25 +364,28 @@ export function ToolbarPlugin({ features, rightSlot, mergeTags = [] }: ToolbarPl
 
             {/* Link Modal */}
             {showLinkModal && (
-                <div className="rte-link-modal-overlay" onClick={() => setShowLinkModal(false)}>
-                    <div className="rte-link-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="rte-link-modal-overlay" onClick={closeLink}>
+                    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Insert Link" className="rte-link-modal" onClick={(e) => e.stopPropagation()} onKeyDown={event => {
+                        if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeLink(); }
+                        if (event.key === 'Enter' && (event.target as HTMLElement).tagName === 'INPUT') { event.preventDefault(); event.stopPropagation(); confirmLink(); }
+                        if (event.key === 'Tab') { const controls = dialogRef.current?.querySelectorAll<HTMLElement>('input, button'); if (!controls?.length) return; const first = controls[0], last = controls[controls.length - 1]; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } }
+                    }}>
                         <h3>Insert Link</h3>
+                        {linkError && <p role="alert">{linkError}</p>}
                         <input
                             type="url"
+                            aria-label="Link URL"
+                            maxLength={2048}
                             value={linkUrl}
                             onChange={(e) => setLinkUrl(e.target.value)}
                             placeholder="Enter URL..."
                             autoFocus
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') confirmLink();
-                                if (e.key === 'Escape') setShowLinkModal(false);
-                            }}
                         />
                         <div className="rte-link-modal-actions">
                             <button
                                 type="button"
                                 className="rte-link-modal-btn cancel"
-                                onClick={() => setShowLinkModal(false)}
+                                onClick={closeLink}
                             >
                                 Cancel
                             </button>

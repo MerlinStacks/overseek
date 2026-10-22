@@ -1,483 +1,65 @@
-import { useState, useEffect, useRef, useCallback, type KeyboardEvent } from 'react';
-import { Logger } from '../../utils/logger';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Loader2, Save, Tag, Plus, X, ChevronDown, Search } from 'lucide-react';
-
-interface TagMapping {
-    productTag?: string;
-    productTags?: string[];
-    orderTag: string;
-    enabled: boolean;
-    color?: string;  // Hex color for display (e.g. "#3B82F6")
+import { usePermissions } from '../../hooks/usePermissions';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+import { useRecoveryAttempt } from '../../hooks/useRecoveryAttempt';
+import { isRecord } from '../../utils/responseValidation';
+interface Mapping { productTags: string[]; orderTag: string; enabled: boolean; color?: string }
+const text = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0 && value.length <= 100;
+function snapshot(value: unknown): { mappings: Mapping[]; version: string } {
+    if (!isRecord(value) || !Array.isArray(value.mappings) || value.mappings.length > 500 || typeof value.version !== 'string' || !Number.isFinite(Date.parse(value.version))) throw new Error('Invalid mappings snapshot');
+    const mappings = value.mappings.map(row => {
+        if (!isRecord(row) || !text(row.orderTag) || typeof row.enabled !== 'boolean' || !Array.isArray(row.productTags) || !row.productTags.length || row.productTags.length > 100 || !row.productTags.every(text) || row.color !== undefined && (typeof row.color !== 'string' || !/^#[a-f0-9]{6}$/i.test(row.color))) throw new Error('Invalid mapping');
+        return row as unknown as Mapping;
+    });
+    return { mappings, version: value.version };
 }
-
-function getMappingProductTags(mapping: TagMapping): string[] {
-    const fromArray = Array.isArray(mapping.productTags) ? mapping.productTags : [];
-    const fromLegacy = mapping.productTag ? [mapping.productTag] : [];
-    return Array.from(new Set([...fromArray, ...fromLegacy].filter(Boolean)));
+function catalog(value: unknown): { tags: string[]; complete: boolean } {
+    if (!isRecord(value) || !Array.isArray(value.tags) || value.tags.length > 10000 || !value.tags.every(text) || !isRecord(value.coverage) || typeof value.coverage.complete !== 'boolean') throw new Error('Invalid tag catalog');
+    return { tags: value.tags, complete: value.coverage.complete };
 }
-
-/**
- * Settings component for configuring product tag to order tag mappings.
- * Compact UI: shows only added mappings with an "Add" button to add more.
- */
 export function OrderTagSettings() {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-
-    const [productTags, setProductTags] = useState<string[]>([]);
-    const [mappings, setMappings] = useState<TagMapping[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isSaving, setIsSaving] = useState(false);
-    const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-    // Add tag dropdown state
-    const [showAddDropdown, setShowAddDropdown] = useState(false);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [rowTagQueries, setRowTagQueries] = useState<Record<number, string>>({});
-    const [rowSuggestionIndex, setRowSuggestionIndex] = useState<Record<number, number>>({});
-    const dropdownRef = useRef<HTMLDivElement>(null);
-
-    // Close dropdown on outside click
-    useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-                setShowAddDropdown(false);
-                setSearchQuery('');
-            }
-        }
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const loadData = useCallback(async () => {
-        if (!currentAccount || !token) return;
-        setIsLoading(true);
-
+    const { token, user } = useAuth(); const { currentAccount } = useAccount(); const { hasPermission } = usePermissions();
+    if (!token || !currentAccount) return <p>Select an account and sign in.</p>;
+    if (!hasPermission('manage_order_tag_mappings')) return <p>Tag mapping management permission required.</p>;
+    return <ScopedSettings key={JSON.stringify([user?.id, token, currentAccount.id])} accountId={currentAccount.id} token={token} />;
+}
+function ScopedSettings({ accountId, token }: { accountId: string; token: string }) {
+    const read = useScopedRequest(`/api/accounts/${encodeURIComponent(accountId)}/tag-mappings`, accountId, token, snapshot);
+    const tags = useScopedRequest(`/api/accounts/${encodeURIComponent(accountId)}/product-tags`, accountId, token, catalog);
+    return <section className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 text-slate-900 dark:text-slate-100 space-y-4"><h2 className="text-lg font-semibold">Order Tag Mappings</h2><p>One product tag can produce multiple order tags. Saving changes configuration only; it does not run order sync or remove manual tags.</p>
+        {tags.loading ? <p role="status">Loading catalog tag suggestions…</p> : tags.error ? <p role="alert">Catalog suggestions unavailable. Existing mappings are retained. <button type="button" onClick={tags.retry}>Retry catalog</button></p> : !tags.data?.complete && <p role="status">Catalog suggestions are partial (first 5,000 products). Existing and manually entered product tags remain valid.</p>}
+        {read.loading ? <p role="status">Loading mappings…</p> : read.error || !read.data ? <p role="alert">Mappings unavailable. <button type="button" onClick={read.retry}>Retry mappings</button></p> : <MappingEditor key={read.data.version} initial={read.data} token={token} accountId={accountId} suggestions={tags.data?.tags || []} onSaved={read.retry} />}
+    </section>;
+}
+function MappingEditor({ initial, token, accountId, suggestions, onSaved }: { initial: { mappings: Mapping[]; version: string }; token: string; accountId: string; suggestions: string[]; onSaved: () => void }) {
+    const [rows, setRows] = useState(() => initial.mappings.map(row => ({ ...row, rowId: crypto.randomUUID(), tagDraft: row.productTags.join('\n') })));
+    const [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [blocked, setBlocked] = useState(false);
+    const attempt = useRecoveryAttempt(); const { hasPermission } = usePermissions();
+    useEffect(() => { if (!dirty) return; const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; }; window.addEventListener('beforeunload', guard); return () => window.removeEventListener('beforeunload', guard); }, [dirty]);
+    const change = (rowId: string, data: Partial<typeof rows[number]>) => { setDirty(true); setRows(current => current.map(row => row.rowId === rowId ? { ...row, ...data } : row)); };
+    async function save() {
+        if (blocked || !hasPermission('manage_order_tag_mappings')) return;
+        const mappings = rows.map(({ tagDraft, orderTag, enabled, color }) => ({ productTags: tagDraft.split(/\r?\n/).map(value => value.trim()).filter(Boolean), orderTag: orderTag.trim(), enabled, color }));
+        if (mappings.some(row => !text(row.orderTag) || !row.productTags.length || row.productTags.length > 100 || !row.productTags.every(text))) { setError('Each mapping needs a bounded order tag and at least one product tag. Put each product tag on its own line.'); return; }
+        const active = attempt.begin(); if (!active) return; setBusy(true); setError(''); const timer = setTimeout(() => active.abort(), 30000);
         try {
-            const [tagsRes, mappingsRes] = await Promise.all([
-                fetch(`/api/accounts/${currentAccount.id}/product-tags`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                }),
-                fetch(`/api/accounts/${currentAccount.id}/tag-mappings`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                })
-            ]);
-
-            const tagsData = await tagsRes.json();
-            const mappingsData = await mappingsRes.json();
-
-            setProductTags(tagsData.tags || []);
-            setMappings(mappingsData.mappings || []);
-        } catch (error) {
-            Logger.error('Failed to load tag settings', { error: error });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [currentAccount, token]);
-
-    useEffect(() => {
-        if (!currentAccount || !token) return;
-        loadData();
-    }, [currentAccount, token, loadData]);
-
-    /** Product tags not yet added as mappings */
-    function getAvailableTags(): string[] {
-        const mappedTags = new Set(
-            mappings
-                .flatMap((mapping) => getMappingProductTags(mapping))
-                .map((tag) => tag.toLowerCase())
-        );
-        return productTags.filter(tag => !mappedTags.has(tag.toLowerCase()));
+            const response = await fetch(`/api/accounts/${encodeURIComponent(accountId)}/tag-mappings`, { method: 'PUT', signal: active.signal, headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId, 'Content-Type': 'application/json' }, body: JSON.stringify({ mappings, version: initial.version }) });
+            const result = await response.json(); if (!response.ok || !isRecord(result) || result.success !== true) throw new Error('Unacknowledged'); snapshot(result);
+            if (attempt.current(active)) { setDirty(false); onSaved(); }
+        } catch { if (attempt.current(active, true)) { setError('Save unacknowledged or configuration changed. Local edits remain; reload and reconcile before further writes.'); setBlocked(true); } }
+        finally { clearTimeout(timer); attempt.finish(); if (attempt.current(active, true)) setBusy(false); }
     }
-
-    /** Filtered available tags based on search */
-    function getFilteredAvailableTags(): string[] {
-        const available = getAvailableTags();
-        if (!searchQuery.trim()) return available;
-        return available.filter(tag =>
-            tag.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-    }
-
-    function addTagMapping(productTag: string) {
-        setMappings(prev => [
-            ...prev,
-            { productTags: [productTag], orderTag: productTag, enabled: true, color: '#3B82F6' }
-        ]);
-        setShowAddDropdown(false);
-        setSearchQuery('');
-    }
-
-    function removeTagMapping(index: number) {
-        setMappings(prev => prev.filter((_, i) => i !== index));
-    }
-
-    function updateMapping(index: number, updates: Partial<TagMapping>) {
-        setMappings(prev => prev.map((mapping, i) =>
-            i === index ? { ...mapping, ...updates } : mapping
-        ));
-    }
-
-    function getAvailableTagsForMapping(index: number): string[] {
-        const usedByOthers = new Set(
-            mappings
-                .filter((_, i) => i !== index)
-                .flatMap((mapping) => getMappingProductTags(mapping))
-                .map((tag) => tag.toLowerCase())
-        );
-
-        return productTags.filter((tag) => !usedByOthers.has(tag.toLowerCase()));
-    }
-
-    function addProductTagToMapping(index: number, tag: string) {
-        const trimmedTag = tag.trim();
-        if (!trimmedTag) return;
-
-        setMappings((prev) => prev.map((mapping, i) => {
-            if (i !== index) return mapping;
-
-            const existing = getMappingProductTags(mapping);
-            const exists = existing.some((existingTag) => existingTag.toLowerCase() === trimmedTag.toLowerCase());
-            if (exists) return mapping;
-
-            return {
-                ...mapping,
-                productTags: [...existing, trimmedTag],
-                productTag: undefined
-            };
-        }));
-
-        setRowTagQueries((prev) => ({ ...prev, [index]: '' }));
-        setRowSuggestionIndex((prev) => ({ ...prev, [index]: 0 }));
-    }
-
-    function removeProductTagFromMapping(index: number, tagToRemove: string) {
-        setMappings((prev) => prev.map((mapping, i) => {
-            if (i !== index) return mapping;
-
-            const remainingTags = getMappingProductTags(mapping)
-                .filter((tag) => tag.toLowerCase() !== tagToRemove.toLowerCase());
-
-            return {
-                ...mapping,
-                productTags: remainingTags,
-                productTag: undefined
-            };
-        }));
-    }
-
-    function setRowTagQuery(index: number, value: string) {
-        setRowTagQueries((prev) => ({ ...prev, [index]: value }));
-        setRowSuggestionIndex((prev) => ({ ...prev, [index]: 0 }));
-    }
-
-    function handleRowSearchKeyDown(index: number, event: KeyboardEvent<HTMLInputElement>, candidates: string[]) {
-        if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            if (candidates.length === 0) return;
-            const currentIndex = rowSuggestionIndex[index] ?? 0;
-            const nextIndex = (currentIndex + 1) % candidates.length;
-            setRowSuggestionIndex((prev) => ({ ...prev, [index]: nextIndex }));
-            return;
-        }
-
-        if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            if (candidates.length === 0) return;
-            const currentIndex = rowSuggestionIndex[index] ?? 0;
-            const nextIndex = (currentIndex - 1 + candidates.length) % candidates.length;
-            setRowSuggestionIndex((prev) => ({ ...prev, [index]: nextIndex }));
-            return;
-        }
-
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            setRowTagQuery(index, '');
-            return;
-        }
-
-        if (event.key === 'Enter') {
-            event.preventDefault();
-            if (candidates.length === 0) return;
-            const selectedIndex = rowSuggestionIndex[index] ?? 0;
-            const selectedTag = candidates[selectedIndex] || candidates[0];
-            if (selectedTag) {
-                addProductTagToMapping(index, selectedTag);
-            }
-        }
-    }
-
-    async function handleSave() {
-        if (!currentAccount || !token) return;
-        setIsSaving(true);
-        setMessage(null);
-
-        try {
-            const res = await fetch(`/api/accounts/${currentAccount.id}/tag-mappings`, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ mappings })
-            });
-
-            if (res.ok) {
-                setMessage({ type: 'success', text: 'Tag mappings saved! Re-sync orders to apply changes.' });
-            } else {
-                throw new Error('Save failed');
-            }
-        } catch (error) {
-            setMessage({ type: 'error', text: 'Failed to save tag mappings' });
-        } finally {
-            setIsSaving(false);
-        }
-    }
-
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center p-8">
-                <Loader2 className="animate-spin text-blue-600" size={24} />
-            </div>
-        );
-    }
-
-    const availableTags = getFilteredAvailableTags();
-    const hasUnmappedTags = getAvailableTags().length > 0;
-
-    return (
-        <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
-            <div className="p-6 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <Tag className="text-blue-600" size={20} />
-                        <div>
-                            <h2 className="text-lg font-medium text-gray-900">Order Tag Mappings</h2>
-                            <p className="text-sm text-gray-500 mt-1">
-                                Configure which product tags should be applied to orders.
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Add Tag Button with Dropdown */}
-                    {hasUnmappedTags && (
-                        <div className="relative" ref={dropdownRef}>
-                            <button
-                                onClick={() => setShowAddDropdown(!showAddDropdown)}
-                                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm"
-                            >
-                                <Plus size={16} />
-                                Add Tag
-                                <ChevronDown size={14} className={`transition-transform ${showAddDropdown ? 'rotate-180' : ''}`} />
-                            </button>
-
-                            {showAddDropdown && (
-                                <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                                    {/* Search input */}
-                                    <div className="p-2 border-b border-gray-100">
-                                        <div className="relative">
-                                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                            <input
-                                                type="text"
-                                                placeholder="Search tags..."
-                                                value={searchQuery}
-                                                onChange={(e) => setSearchQuery(e.target.value)}
-                                                className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                autoFocus
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Tag list */}
-                                    <div className="max-h-60 overflow-y-auto py-1">
-                                        {availableTags.length === 0 ? (
-                                            <div className="px-4 py-3 text-sm text-gray-500 text-center">
-                                                {searchQuery ? 'No matching tags' : 'All tags have been added'}
-                                            </div>
-                                        ) : (
-                                            availableTags.map(tag => (
-                                                <button
-                                                    key={tag}
-                                                    onClick={() => addTagMapping(tag)}
-                                                    className="w-full text-left px-4 py-2 text-sm hover:bg-blue-50 flex items-center gap-2 transition-colors"
-                                                >
-                                                    <Tag size={14} className="text-gray-400" />
-                                                    <span className="truncate">{tag}</span>
-                                                </button>
-                                            ))
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            <div className="p-6">
-                {mappings.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                        <Tag size={32} className="mx-auto mb-2 opacity-50" />
-                        <p className="font-medium">No tag mappings configured</p>
-                        <p className="text-sm mt-1">
-                            {productTags.length > 0
-                                ? 'Click "Add Tag" to map product tags to order tags.'
-                                : 'Sync your products to see available tags.'}
-                        </p>
-                    </div>
-                ) : (
-                    <div className="space-y-3">
-                        {/* Header */}
-                        <div className="grid grid-cols-12 gap-4 text-xs font-semibold text-gray-500 uppercase px-2">
-                            <div className="col-span-1">Active</div>
-                            <div className="col-span-3">Product Tag</div>
-                            <div className="col-span-1 text-center">→</div>
-                            <div className="col-span-4">Order Tag Name</div>
-                            <div className="col-span-2">Color</div>
-                            <div className="col-span-1"></div>
-                        </div>
-
-                        {/* Mapping rows */}
-                        {mappings.map((mapping, index) => {
-                            const mappingProductTags = getMappingProductTags(mapping);
-                            const availableForMapping = getAvailableTagsForMapping(index)
-                                .filter((tag) => !mappingProductTags.some((existingTag) => existingTag.toLowerCase() === tag.toLowerCase()));
-                            const rowQuery = rowTagQueries[index] || '';
-                            const filteredAvailableForMapping = rowQuery.trim()
-                                ? availableForMapping.filter((tag) => tag.toLowerCase().includes(rowQuery.toLowerCase()))
-                                : availableForMapping;
-                            const activeSuggestionIndex = Math.min(
-                                rowSuggestionIndex[index] ?? 0,
-                                Math.max(filteredAvailableForMapping.length - 1, 0)
-                            );
-                            const productTagLabel = mappingProductTags.length > 0 ? mappingProductTags.join(', ') : '-';
-                            return (
-                            <div
-                                key={`${mapping.orderTag}-${index}`}
-                                className={`grid grid-cols-12 gap-4 items-center p-3 rounded-lg border transition-colors ${mapping.enabled ? 'border-blue-200 bg-blue-50/50' : 'border-gray-200 bg-gray-50/50'
-                                    }`}
-                            >
-                                <div className="col-span-1">
-                                    <input
-                                        type="checkbox"
-                                        checked={mapping.enabled}
-                                        onChange={(e) => updateMapping(index, { enabled: e.target.checked })}
-                                        className="rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500"
-                                    />
-                                </div>
-                                <div className="col-span-3">
-                                    <div className="space-y-2">
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {mappingProductTags.length > 0 ? mappingProductTags.map((productTag) => (
-                                                <span
-                                                    key={`${mapping.orderTag}-${productTag}`}
-                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700"
-                                                    title={productTagLabel}
-                                                >
-                                                    {productTag}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removeProductTagFromMapping(index, productTag)}
-                                                        className="text-gray-400 hover:text-red-600"
-                                                        title="Remove product tag"
-                                                    >
-                                                        <X size={12} />
-                                                    </button>
-                                                </span>
-                                            )) : (
-                                                <span className="text-xs text-gray-400">No product tags</span>
-                                            )}
-                                        </div>
-                                        {availableForMapping.length > 0 && (
-                                            <div className="space-y-1">
-                                                <div className="relative">
-                                                    <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
-                                                    <input
-                                                        type="text"
-                                                        value={rowQuery}
-                                                        onChange={(e) => setRowTagQuery(index, e.target.value)}
-                                                        onKeyDown={(e) => handleRowSearchKeyDown(index, e, filteredAvailableForMapping)}
-                                                        placeholder="Search product tags and press Enter"
-                                                        className="w-full pl-6 pr-2 py-1.5 text-xs border rounded-md bg-white border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                    />
-                                                </div>
-                                                {filteredAvailableForMapping.length > 0 && (
-                                                    <p className="text-[11px] text-blue-700">
-                                                        Selected: + {filteredAvailableForMapping[activeSuggestionIndex]}
-                                                    </p>
-                                                )}
-                                                {rowQuery.trim() && filteredAvailableForMapping.length === 0 && (
-                                                    <p className="text-[11px] text-gray-500">No matching product tags</p>
-                                                )}
-                                                {!rowQuery.trim() && filteredAvailableForMapping.length > 0 && (
-                                                    <p className="text-[11px] text-gray-500">
-                                                        Showing {filteredAvailableForMapping.length} tags. Type to narrow.
-                                                    </p>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="col-span-1 text-center text-gray-400">→</div>
-                                <div className="col-span-4">
-                                    <input
-                                        type="text"
-                                        value={mapping.orderTag}
-                                        onChange={(e) => updateMapping(index, { orderTag: e.target.value })}
-                                        placeholder="Order tag name"
-                                        className="w-full px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white border-gray-300"
-                                    />
-                                </div>
-                                <div className="col-span-2 flex items-center gap-2">
-                                    <input
-                                        type="color"
-                                        value={mapping.color || '#6B7280'}
-                                        onChange={(e) => updateMapping(index, { color: e.target.value })}
-                                        className="w-8 h-8 rounded-sm cursor-pointer border border-gray-300"
-                                        title="Tag color"
-                                    />
-                                    <span
-                                        className="inline-flex items-center px-2 py-0.5 rounded-sm text-xs text-white"
-                                        style={{ backgroundColor: mapping.color || '#6B7280' }}
-                                    >
-                                        {mapping.orderTag || 'Preview'}
-                                    </span>
-                                </div>
-                                <div className="col-span-1 flex justify-end">
-                                    <button
-                                        onClick={() => removeTagMapping(index)}
-                                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                                        title="Remove mapping"
-                                    >
-                                        <X size={16} />
-                                    </button>
-                                </div>
-                            </div>
-                            );
-                        })}
-                    </div>
-                )}
-
-                {message && (
-                    <div className={`mt-4 p-3 rounded-lg text-sm ${message.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-                        }`}>
-                        {message.text}
-                    </div>
-                )}
-
-                <div className="mt-6 flex justify-end">
-                    <button
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                    >
-                        {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                        Save Mappings
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
+    return <div className="space-y-3">{error && <p role="alert">{error}</p>}{blocked && <button type="button" onClick={() => { if (window.confirm('Discard local edits and reload mappings?')) onSaved(); }}>Discard edits and reload mappings</button>}
+        <fieldset disabled={busy || blocked || !hasPermission('manage_order_tag_mappings')} className="space-y-3"><legend className="sr-only">Mapping rules</legend>{rows.map(row => <div className="grid gap-3 rounded border p-3 sm:grid-cols-2" key={row.rowId}>
+            <label>Product tags (one per line)<textarea className="block w-full rounded border bg-white dark:bg-slate-950 p-2" value={row.tagDraft} maxLength={10100} onChange={event => change(row.rowId, { tagDraft: event.target.value })} /></label>
+            <label>Order tag name<input className="block w-full rounded border bg-white dark:bg-slate-950 p-2" value={row.orderTag} maxLength={100} onChange={event => change(row.rowId, { orderTag: event.target.value })} /></label>
+            <label><input type="checkbox" checked={row.enabled} onChange={event => change(row.rowId, { enabled: event.target.checked })} /> Active mapping</label>
+            <label>Tag color<input type="color" value={row.color || '#6B7280'} onChange={event => change(row.rowId, { color: event.target.value })} /></label>
+            <button type="button" onClick={() => { if (window.confirm('Remove this mapping from the local draft?')) { setRows(current => current.filter(value => value.rowId !== row.rowId)); setDirty(true); } }}>Remove mapping</button>
+        </div>)}<button type="button" disabled={rows.length >= 500} onClick={() => { setRows(current => [...current, { rowId: crypto.randomUUID(), tagDraft: '', productTags: [], orderTag: '', enabled: true, color: '#6B7280' }]); setDirty(true); }}>Add mapping</button>
+        <button type="button" onClick={() => void save()} disabled={!dirty}>{busy ? 'Saving…' : 'Save Mappings'}</button></fieldset>
+        <details><summary>Catalog suggestions ({suggestions.length})</summary><p className="break-words">{suggestions.slice(0, 100).join(', ') || 'No suggestions in this sample.'}{suggestions.length > 100 && ' · Showing first 100 suggestions.'}</p></details>
+    </div>;
 }

@@ -424,19 +424,18 @@ export class MarketingKnowledgeBase {
                         id: `learning_${learning.id}`,
                         text: learning.recommendation,
                         explanation: learning.explanation || `Custom rule: ${learning.condition}`,
-                        confidence: learning.successRate > 60 ? 'high' : learning.successRate > 30 ? 'medium' : 'low',
+                        confidence: 'low', // Uncalibrated text match, not learned effectiveness.
                         priority: 2, // Default to important
                         category: learning.category,
                         platform: learning.platform,
                         dataPoints: [
-                            `Applied: ${learning.appliedCount} times`,
-                            `Success Rate: ${learning.successRate}%`
+                            'Account-authored/reviewed rule; text match only',
+                            'Effectiveness unavailable; historical counters are not causal evidence'
                         ],
                         tags: ['custom', learning.source]
                     });
 
-                    // Record that this learning was applied
-                    await LearningService.recordApplication(learning.id);
+                    // Displaying a matched rule is not an admitted application event.
                 }
             }
 

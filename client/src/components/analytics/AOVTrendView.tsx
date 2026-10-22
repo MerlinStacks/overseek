@@ -1,176 +1,50 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useId } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { api } from '../../services/api';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
-import { Logger } from '../../utils/logger';
-import { TrendingUp, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
+import { record, rows, label, metric, count, money, validDays } from './analyticsRead';
 
-interface AOVPoint {
-    date: string;
-    aov: number;
-    orders: number;
+function decodeTrend(value: unknown) {
+    const points = rows(value).map(row => {
+        const date = label(row.date);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) throw new Error('Invalid trend date');
+        return { date, aov: metric(row.aov), orders: count(row.orders) };
+    }).sort((a, b) => a.date.localeCompare(b.date));
+    if (new Set(points.map(point => point.date)).size !== points.length) throw new Error('Duplicate trend dates');
+    return points;
 }
-
-interface AOVComparison {
-    current: number;
-    previous: number;
-    change: number;
-    changePercent: number;
+function decodeComparison(value: unknown) { const data = record(value); return { current: metric(data.current), previous: metric(data.previous) }; }
+export function AOVTrendView({ days }: { days: number }) {
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p>Select an account and sign in to view AOV.</p>;
+    if (!validDays(days)) return <p role="alert">Invalid AOV range.</p>;
+    return <AOVContent key={`${currentAccount.id}:${token}:${days}:${currentAccount.currency}`} days={days} accountId={currentAccount.id} token={token} currency={currentAccount.currency} />;
 }
-
-export const AOVTrendView: React.FC<{ days: number }> = ({ days }) => {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const [trend, setTrend] = useState<AOVPoint[]>([]);
-    const [comparison, setComparison] = useState<AOVComparison | null>(null);
-    const [loading, setLoading] = useState(false);
-
-    const fetchData = useCallback(async () => {
-        if (!token || !currentAccount?.id) return;
-        setLoading(true);
-        try {
-            const [trendRes, compRes] = await Promise.all([
-                api.get<AOVPoint[]>(`/api/analytics/aov-trend?days=${days}`, token, currentAccount.id),
-                api.get<AOVComparison>(`/api/analytics/aov-trend/comparison?days=${days}`, token, currentAccount.id),
-            ]);
-            setTrend(trendRes || []);
-            setComparison(compRes);
-        } catch (e) {
-            Logger.error('Failed to fetch AOV trend:', { error: e });
-        } finally {
-            setLoading(false);
-        }
-    }, [days, token, currentAccount?.id]);
-
-    useEffect(() => { fetchData(); }, [fetchData]);
-
-    const chartData = useMemo(() => {
-        if (trend.length === 0) return { points: [], max: 0, min: 0 };
-        const values = trend.map(t => t.aov);
-        const max = Math.max(...values);
-        const min = Math.min(...values);
-        const range = max - min || 1;
-        const width = 100;
-        const height = 40;
-        const padding = 2;
-        const points = trend.map((t, i) => ({
-            x: (i / (trend.length - 1 || 1)) * (width - padding * 2) + padding,
-            y: height - padding - ((t.aov - min) / range) * (height - padding * 2),
-            value: t.aov,
-            date: t.date,
-        }));
-        return { points, max, min };
-    }, [trend]);
-
-    const svgPath = chartData.points.length > 1
-        ? chartData.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
-        : '';
-
-    return (
-        <Card className="border-0 shadow-xs">
-            <CardHeader>
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4 text-indigo-500" />
-                    AOV Trend
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                {loading ? (
-                    <div className="flex justify-center py-8">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
-                    </div>
-                ) : trend.length === 0 ? (
-                    <p className="text-sm text-gray-500 dark:text-slate-400 italic">No AOV trend data yet</p>
-                ) : (
-                    <div className="space-y-4">
-                        {/* Comparison badges */}
-                        {comparison && (
-                            <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-sm text-gray-500 dark:text-slate-400">Current:</span>
-                                    <span className="text-lg font-bold text-gray-900 dark:text-slate-100">${comparison.current.toFixed(2)}</span>
-                                </div>
-                                <div className={`flex items-center gap-1 text-sm font-medium ${comparison.changePercent >= 0
-                                    ? 'text-green-600 dark:text-green-400'
-                                    : 'text-red-600 dark:text-red-400'
-                                    }`}>
-                                    {comparison.changePercent >= 0
-                                        ? <ArrowUpRight className="w-4 h-4" />
-                                        : <ArrowDownRight className="w-4 h-4" />
-                                    }
-                                    {Math.abs(comparison.changePercent).toFixed(1)}%
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-sm text-gray-500 dark:text-slate-400">Previous:</span>
-                                    <span className="text-sm text-gray-400 dark:text-slate-500">${comparison.previous.toFixed(2)}</span>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* SVG Line Chart */}
-                        <div className="bg-gray-50 dark:bg-slate-800/50 rounded-xl p-4">
-                            <svg viewBox={`0 0 100 44`} className="w-full h-24" preserveAspectRatio="none">
-                                <defs>
-                                    <linearGradient id="aovGradient" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
-                                        <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
-                                    </linearGradient>
-                                </defs>
-                                {chartData.points.length > 1 && (
-                                    <>
-                                        <path
-                                            d={`${svgPath} L 100 ${44 - 2} L ${chartData.points[0].x} ${44 - 2} Z`}
-                                            fill="url(#aovGradient)"
-                                        />
-                                        <path
-                                            d={svgPath}
-                                            fill="none"
-                                            stroke="#6366f1"
-                                            strokeWidth="0.8"
-                                            vectorEffect="non-scaling-stroke"
-                                        />
-                                        {chartData.points.map((p, i) => (
-                                            <circle
-                                                key={i}
-                                                cx={p.x}
-                                                cy={p.y}
-                                                r="1"
-                                                fill="#6366f1"
-                                                className="opacity-0 hover:opacity-100 transition-opacity"
-                                            >
-                                                <title>{`${p.date}: $${p.value.toFixed(2)}`}</title>
-                                            </circle>
-                                        ))}
-                                    </>
-                                )}
-                            </svg>
-                            <div className="flex justify-between mt-2 text-[10px] text-gray-400 dark:text-slate-500">
-                                <span>{trend[0]?.date || ''}</span>
-                                <span>{trend[trend.length - 1]?.date || ''}</span>
-                            </div>
-                        </div>
-
-                        {/* Stats row */}
-                        <div className="grid grid-cols-3 gap-4 text-center">
-                            <div>
-                                <p className="text-xs text-gray-500 dark:text-slate-400">Highest AOV</p>
-                                <p className="text-sm font-bold text-green-600 dark:text-green-400">${chartData.max.toFixed(2)}</p>
-                            </div>
-                            <div>
-                                <p className="text-xs text-gray-500 dark:text-slate-400">Average</p>
-                                <p className="text-sm font-bold text-gray-900 dark:text-slate-100">
-                                    ${(trend.reduce((s, t) => s + t.aov, 0) / trend.length).toFixed(2)}
-                                </p>
-                            </div>
-                            <div>
-                                <p className="text-xs text-gray-500 dark:text-slate-400">Lowest AOV</p>
-                                <p className="text-sm font-bold text-red-600 dark:text-red-400">${chartData.min.toFixed(2)}</p>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </CardContent>
-        </Card>
-    );
-};
+function AOVContent({ days, accountId, token, currency }: { days: number; accountId: string; token: string; currency: string }) {
+    const trend = useScopedRequest(`/api/analytics/aov-trend?days=${days}`, accountId, token, decodeTrend);
+    const comparison = useScopedRequest(`/api/analytics/aov-trend/comparison?days=${days}`, accountId, token, decodeComparison);
+    const id = useId();
+    const points = trend.data?.filter(point => point.orders > 0) || [];
+    const totalOrders = points.reduce((sum, point) => sum + point.orders, 0);
+    const average = totalOrders ? points.reduce((sum, point) => sum + point.aov * point.orders, 0) / totalOrders : null;
+    const max = points.length ? Math.max(...points.map(point => point.aov)) : 0;
+    const min = points.length ? Math.min(...points.map(point => point.aov)) : 0;
+    const first = trend.data?.[0] ? Date.parse(trend.data[0].date) : 0;
+    const last = trend.data?.length ? Date.parse(trend.data[trend.data.length - 1].date) : first;
+    const plotted = points.map((point, index) => { const date = Date.parse(point.date); return { ...point, x: 4 + (date - first) / (last - first || 1) * 92, y: 36 - (point.aov - min) / (max - min || 1) * 30, connected: index > 0 && date - Date.parse(points[index - 1].date) === 86400000 }; });
+    const path = plotted.map((point, index) => `${index && point.connected ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ');
+    const change = comparison.data && comparison.data.previous > 0 ? (comparison.data.current - comparison.data.previous) / comparison.data.previous * 100 : null;
+    return <Card><CardHeader><CardTitle>AOV Trend</CardTitle></CardHeader><CardContent className="space-y-4">
+        {comparison.loading ? <p role="status">Loading AOV comparison…</p> : comparison.error || !comparison.data ? <div role="alert">AOV comparison unavailable. <button onClick={comparison.retry}>Retry comparison</button></div> :
+            <p>Current: {money(comparison.data.current, currency)} · Previous: {money(comparison.data.previous, currency)} · Change: {change == null ? 'Unavailable (zero baseline)' : `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`}</p>}
+        {trend.loading ? <p role="status">Loading AOV trend…</p> : trend.error ? <div role="alert">AOV trend unavailable. <button onClick={trend.retry}>Retry trend</button></div> : !points.length ? <p>No AOV observations with orders in this range.</p> : <>
+            <svg role="img" aria-labelledby={id} viewBox="0 0 100 44" className="w-full h-28"><title id={id}>Daily average order value; gaps have no order observations. {points.length} observations.</title>
+                <path d={path} fill="none" stroke="currentColor" strokeWidth="1" className="text-indigo-500" />
+                {plotted.map(point => <circle key={point.date} cx={point.x} cy={point.y} r="1.5" fill="currentColor" className="text-indigo-500"><title>{point.date}: {money(point.aov, currency)} ({point.orders} orders)</title></circle>)}
+            </svg>
+            <p>{points[0].date} – {points[points.length - 1].date}</p>
+            <div className="grid grid-cols-3 gap-4 text-sm"><p>Highest AOV: {money(max, currency)}</p><p>Order-weighted average: {money(average!, currency)}</p><p>Lowest AOV: {money(min, currency)}</p></div>
+        </>}
+    </CardContent></Card>;
+}

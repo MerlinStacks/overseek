@@ -39,7 +39,7 @@ export class InventoryForecastService {
 
             const salesData = await getHistoricalSales(
                 accountId,
-                simpleProducts.map(p => p.wooId),
+                simpleProducts.filter(p => p.wooId > 0).map(p => p.wooId),
                 variations.map(v => v.wooId),
                 365
             );

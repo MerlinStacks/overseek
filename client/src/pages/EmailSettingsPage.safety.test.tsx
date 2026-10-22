@@ -1,0 +1,16 @@
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, afterEach, expect, it, vi } from 'vitest';
+const m = vi.hoisted(() => ({ account: { id: 'a', name: 'Store' }, allowed: true, fetch: vi.fn(), toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock('../context/AuthContext', () => ({ useAuth: () => ({ token: 't', user: { id: 'u' } }) }));
+vi.mock('../context/AccountContext', () => ({ useAccount: () => ({ currentAccount: m.account, refreshAccounts: vi.fn() }) }));
+vi.mock('../context/ToastContext', () => ({ useToast: () => m.toast }));
+vi.mock('../hooks/usePermissions', () => ({ usePermissions: () => ({ hasPermission: () => m.allowed }) }));
+vi.mock('../components/common/RichTextEditor', () => ({ RichTextEditor: () => <div>Footer editor</div> }));
+import { EmailSettingsPage } from './EmailSettingsPage';
+const settings = { bounceTrackingEnabled: false, maxSendPerSecond: 1, maxSendPerDay: 6000, version: '2026-10-01T00:00:00.000Z' };
+const response = (value: unknown) => ({ ok: true, json: async () => value });
+beforeEach(() => { vi.clearAllMocks(); m.account = { id: 'a', name: 'Store' }; m.allowed = true; vi.stubGlobal('fetch', m.fetch); m.fetch.mockImplementation(async (url: string) => response(url.endsWith('/lists') ? [] : settings)); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+it('serializes saves with the server version and blocks unacknowledged writes', async () => { render(<EmailSettingsPage />); const button = await screen.findByRole('button', { name: 'Save' }); let resolve!: (value: unknown) => void; m.fetch.mockReturnValueOnce(new Promise(r => { resolve = r; })); fireEvent.click(button); fireEvent.click(button); const writes = m.fetch.mock.calls.filter(([, options]) => options.method === 'POST'); expect(writes).toHaveLength(1); expect(JSON.parse(writes[0][1].body).version).toBe(settings.version); await act(async () => resolve({ ok: false, json: async () => ({}) })); expect(screen.getByRole('alert')).toHaveTextContent('reconcile'); expect(m.toast.success).not.toHaveBeenCalled(); });
+it('does not expose editable default limits after a failed read', async () => { m.fetch.mockResolvedValue({ ok: false, json: async () => ({}) }); render(<EmailSettingsPage />); expect(await screen.findByRole('alert')).toHaveTextContent('Settings unavailable'); expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument(); });
+it('aborts an old account save without toasting or installing its response', async () => { const view = render(<EmailSettingsPage />); await screen.findByRole('button', { name: 'Save' }); let resolve!: (value: unknown) => void; m.fetch.mockReturnValueOnce(new Promise(r => { resolve = r; })); fireEvent.click(screen.getByRole('button', { name: 'Save' })); m.account = { id: 'b', name: 'Other store' }; view.rerender(<EmailSettingsPage />); await act(async () => resolve(response({ success: true, settings: { ...settings, maxSendPerDay: 99 } }))); expect(m.toast.success).not.toHaveBeenCalled(); expect(screen.queryByDisplayValue(99)).not.toBeInTheDocument(); });

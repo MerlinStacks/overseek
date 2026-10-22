@@ -9,6 +9,9 @@ import nodemailer from 'nodemailer';
 import { ImapFlow } from 'imapflow';
 import { simpleParser, ParsedMail } from 'mailparser';
 import { prisma } from '../utils/prisma';
+import { marketingPressureConfig } from '../utils/marketingExperiment';
+import { MarketingAudienceService } from './MarketingAudienceService';
+import { prepareEmail, readPreparedEmail, type PreparedEmail } from './EmailPreparation';
 import { EventBus, EVENTS } from './events';
 import { Logger } from '../utils/logger';
 import { decrypt } from '../utils/encryption';
@@ -16,7 +19,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import { storeIncomingAttachments } from './incomingAttachments';
 import { ensureEmailDocument, emailPlainText } from '../utils/emailContent';
-import { classifySendFailure, EmailDeferredError, reserveEmailSend } from './emailSendLifecycle';
+import { classifySendFailure, EmailDeferredError, MarketingContactCapError, reserveEmailSend } from './emailSendLifecycle';
 
 interface EmailSendOptions {
     source?: string;
@@ -30,6 +33,7 @@ interface EmailSendOptions {
     replyToEmail?: string;
     listId?: string;
     idempotencyKey?: string;
+    campaignVariant?: 'A' | 'B';
 }
 
 async function safeRelayJson(response: Response, endpoint: string): Promise<any> {
@@ -67,7 +71,7 @@ export class EmailService {
         return new Date(Date.now() + this.getSentBodyRetentionDays() * 24 * 60 * 60 * 1000);
     }
 
-    private buildStoredSentBodyPayload(html: string, options?: EmailSendOptions, canonicalHtml?: string, attachments?: any[]): Prisma.InputJsonValue {
+    private buildStoredSentBodyPayload(html: string, options?: EmailSendOptions, canonicalHtml?: string, attachments?: any[], prepared?: PreparedEmail): Prisma.InputJsonValue {
         const maxChars = this.getSentBodyMaxChars();
         const truncated = html.length > maxChars;
         return {
@@ -82,6 +86,7 @@ export class EmailService {
             originalLength: html.length,
             storedAt: new Date().toISOString(),
             category: options?.category || 'MARKETING'
+            ,...(prepared ? { prepared: JSON.parse(JSON.stringify(prepared)) } : {})
         };
     }
 
@@ -106,12 +111,7 @@ export class EmailService {
     }
 
     private getMarketingPressureCapConfig() {
-        const maxPerWindow = Number.parseInt(process.env.MARKETING_PRESSURE_MAX_SENDS || '3', 10);
-        const windowHours = Number.parseInt(process.env.MARKETING_PRESSURE_WINDOW_HOURS || '24', 10);
-        return {
-            maxPerWindow: Number.isFinite(maxPerWindow) && maxPerWindow > 0 ? maxPerWindow : 3,
-            windowHours: Number.isFinite(windowHours) && windowHours > 0 ? windowHours : 24
-        };
+        return marketingPressureConfig();
     }
 
     private async enforceMarketingPressureCap(accountId: string, to: string, source?: string): Promise<{ allowed: boolean; reason?: string }> {
@@ -130,6 +130,7 @@ export class EmailService {
                 to: { equals: to, mode: 'insensitive' },
                 status: { in: ['SUCCESS', 'RETRIED'] },
                 source: { in: ['AUTOMATION', 'CAMPAIGN'] },
+                emailPayload: { path: ['category'], equals: 'MARKETING' },
                 lastAttemptAt: { gte: windowStart }
             }
         });
@@ -257,6 +258,7 @@ export class EmailService {
         const existing = !retryLogId && options?.idempotencyKey
             ? await prisma.emailLog.findUnique({ where: { accountId_idempotencyKey: { accountId, idempotencyKey: options.idempotencyKey } } })
             : null;
+        const original = existing || (retryLogId ? await prisma.emailLog.findFirstOrThrow({ where: { id: retryLogId, accountId } }) : null);
         if (existing && existing.status !== 'QUEUED') {
             if (['SUCCESS', 'RETRIED', 'BOUNCED', 'COMPLAINED'].includes(existing.status)) {
                 return { messageId: existing.messageId || undefined, deduplicated: true };
@@ -265,18 +267,18 @@ export class EmailService {
             throw new Error(`Email already attempted (${existing.status}); use the email log retry action if available`);
         }
         // Queued sends retain the original content even if a campaign is edited later.
-        if (existing) {
-            const stored = existing.emailPayload as any;
-            html = stored.canonicalHtml;
+        if (original) {
+            const stored = original.emailPayload as any;
+            html = typeof stored.canonicalHtml === 'string' ? stored.canonicalHtml : html;
             attachments = this.restoreAttachments(stored.attachments);
-            options = stored.options;
-            subject = existing.subject;
-            emailAccountId = existing.emailAccountId;
-            to = existing.to;
+            options = stored.options || options;
+            subject = original.subject;
+            emailAccountId = original.emailAccountId;
+            to = original.to;
         }
         const writeSkipped = (data: any) => retryLogId || existing
             ? prisma.emailLog.updateMany({ where: { id: retryLogId || existing!.id, status: { in: ['QUEUED', 'PENDING_RETRY'] } }, data })
-            : prisma.emailLog.create({ data: { ...data, idempotencyKey: options?.idempotencyKey } });
+            : prisma.emailLog.create({ data: { ...data, idempotencyKey: options?.idempotencyKey, campaignVariant: options?.campaignVariant } });
         const emailAccount = await prisma.emailAccount.findFirst({
             where: { id: emailAccountId, accountId }
         });
@@ -286,6 +288,16 @@ export class EmailService {
         }
 
         const emailCategory = options?.category || 'MARKETING';
+
+        // Queued/retried broadcasts must re-read consent and list membership at
+        // the delivery boundary, not trust an earlier audience preview/batch.
+        if (emailCategory === 'MARKETING' && options?.source === 'CAMPAIGN') {
+            const exclusion = await new MarketingAudienceService().deliveryExclusion(accountId, to, options.listId);
+            if (exclusion) {
+                await writeSkipped({ accountId, emailAccountId, to, subject, status: 'SKIPPED', source: options.source, sourceId: options.sourceId, canRetry: false, errorMessage: `Audience exclusion: ${exclusion}` });
+                return { skipped: true, reason: exclusion };
+            }
+        }
 
         if (emailCategory === 'MARKETING') {
             const pressureCheck = await this.enforceMarketingPressureCap(accountId, to, options?.source);
@@ -340,44 +352,12 @@ export class EmailService {
         }
 
         // Generate tracking ID for read receipts
-        const trackingId = crypto.randomUUID();
-        const trackingPixelUrl = `${this.buildApiBaseUrl()}/api/email/track/${trackingId}.png`;
-        // Editors may URL-encode braces or prepend a protocol to link placeholders.
-        // Canonicalize before click tracking so these links remain untracked.
-        const normalizedHtml = ensureEmailDocument(html).replace(
-            /(?:https?:\/\/)?(?:\{\{|%7B%7B)\s*(unsubscribe_url|unsubscribe_list_url|preferences_url)\s*(?:\}\}|%7D%7D)\/?/gi,
-            (_match, tag) => `{{${tag.toLowerCase()}}}`
-        );
-        const htmlWithClickTracking = this.injectClickTracking(normalizedHtml, trackingId);
-
-        // Inject tracking pixel
-        const htmlWithTracking = htmlWithClickTracking.includes('</body>')
-            ? htmlWithClickTracking.replace('</body>', `<img src="${trackingPixelUrl}" width="1" height="1" style="display:none" alt="" /></body>`)
-            : `${htmlWithClickTracking}<img src="${trackingPixelUrl}" width="1" height="1" style="display:none" alt="" />`;
-
-        // Shared footers also appear in transactional mail. Resolve their links,
-        // while reserving automatic one-click unsubscribe headers for marketing.
-        const unsubscribeUrl = this.buildUnsubscribeHeaderUrl(trackingId);
-        const preferencesUrl = this.buildPreferencesUrl(trackingId);
-        const listUnsubscribeUrl = options?.listId
-            ? this.buildListUnsubscribeUrl(trackingId, options.listId)
-            : null;
-
-        let htmlWithMergeTagUrls = htmlWithTracking;
-        if (unsubscribeUrl) {
-            htmlWithMergeTagUrls = htmlWithMergeTagUrls.replace(/https?:\/\/\{\{unsubscribe_url\}\}\/?/gi, unsubscribeUrl);
-            htmlWithMergeTagUrls = htmlWithMergeTagUrls.replace(/\{\{unsubscribe_url\}\}/g, unsubscribeUrl);
-        }
-        if (preferencesUrl) {
-            htmlWithMergeTagUrls = htmlWithMergeTagUrls.replace(/\{\{preferences_url\}\}/g, preferencesUrl);
-        }
-        if (listUnsubscribeUrl) {
-            htmlWithMergeTagUrls = htmlWithMergeTagUrls.replace(/https?:\/\/\{\{unsubscribe_list_url\}\}\/?/gi, listUnsubscribeUrl);
-            htmlWithMergeTagUrls = htmlWithMergeTagUrls.replace(/\{\{unsubscribe_list_url\}\}/g, listUnsubscribeUrl);
-        } else if (preferencesUrl) {
-            htmlWithMergeTagUrls = htmlWithMergeTagUrls.replace(/https?:\/\/\{\{unsubscribe_list_url\}\}\/?/gi, preferencesUrl);
-            htmlWithMergeTagUrls = htmlWithMergeTagUrls.replace(/\{\{unsubscribe_list_url\}\}/g, preferencesUrl);
-        }
+        const trackingId = original?.trackingId || crypto.randomUUID();
+        const frozen = readPreparedEmail((original?.emailPayload as any)?.prepared);
+        const prepared = frozen || prepareEmail({ html, subject, trackingId, apiUrl: this.buildApiBaseUrl(), listId: options?.listId, category: emailCategory });
+        if (frozen && !original?.trackingId) throw new Error('Prepared email is missing its original tracking identity');
+        const htmlWithMergeTagUrls = prepared.html;
+        const unsubscribeUrl = prepared.headers['List-Unsubscribe']?.replace(/^<|>$/g, '');
 
         const overrideFromEmail = options?.fromEmail?.trim();
         const overrideFromName = options?.fromName?.trim();
@@ -397,22 +377,24 @@ export class EmailService {
             throw new Error("Neither HTTP relay nor SMTP is configured for this account");
         }
 
-        const payload = this.buildStoredSentBodyPayload(htmlWithMergeTagUrls, options, html, attachments);
+        const payload = this.buildStoredSentBodyPayload(htmlWithMergeTagUrls, { ...options, fromName: senderName, fromEmail: senderEmail, replyToEmail }, html, attachments, prepared);
         // Persist before any transport side effect. A stale SENDING row is intentionally
         // not automatically retried: delivery may have happened before the worker died.
-        const log = retryLogId
-            ? await prisma.emailLog.findFirstOrThrow({ where: { id: retryLogId, accountId } })
-            : existing ||
+        const log = original ||
             await prisma.emailLog.create({ data: {
                 accountId, emailAccountId, to, subject, trackingId,
                 status: 'QUEUED', canRetry: false,
-                source: options?.source, sourceId: options?.sourceId,
+                source: options?.source, sourceId: options?.sourceId, campaignVariant: options?.campaignVariant,
                 idempotencyKey: options?.idempotencyKey,
                 emailPayload: payload, emailBodyExpiresAt: this.getSentBodyExpiresAt()
             } });
         let retryAt: Date | null = null;
         for (let cycle = 0; cycle < 20; cycle++) {
-            retryAt = await reserveEmailSend(accountId, log.id, emailCategory === 'MARKETING');
+            try { retryAt = await reserveEmailSend(accountId, log.id, emailCategory === 'MARKETING'); }
+            catch (error) {
+                if (error instanceof MarketingContactCapError) return { skipped: true, reason: 'contact_pressure_cap_reached' };
+                throw error;
+            }
             if (!retryAt) break;
             if (retryAt.getTime() - Date.now() > 2000) break;
             await this.wait(100);
@@ -438,6 +420,7 @@ export class EmailService {
             if (useRelay) {
                 const result = await this.sendViaHttpRelay(emailAccount, accountId, to, subject, htmlWithMergeTagUrls, attachments, {
                     ...options, unsubscribeUrl: emailCategory === 'MARKETING' ? unsubscribeUrl : undefined,
+                    text: prepared.text,
                     idempotencyKey: log.id
                 });
                 info = { messageId: result.message_id };
@@ -445,16 +428,11 @@ export class EmailService {
                 transporter = await this.createTransporter(emailAccount);
                 info = await transporter.sendMail({
                     from: { name: senderName, address: senderEmail },
-                    to, subject, html: htmlWithMergeTagUrls, text: emailPlainText(htmlWithMergeTagUrls), attachments,
+                    to, subject: prepared.subject, html: htmlWithMergeTagUrls, text: prepared.text, attachments,
                     inReplyTo: options?.inReplyTo,
                     references: options?.references,
                     replyTo: replyToEmail,
-                    headers: emailCategory === 'MARKETING'
-                        ? {
-                            'List-Unsubscribe': `<${unsubscribeUrl}>`,
-                            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
-                        }
-                        : undefined
+                    headers: Object.keys(prepared.headers).length ? prepared.headers : undefined
                 });
             }
         } catch (error: any) {
@@ -660,6 +638,7 @@ export class EmailService {
             fromEmail?: string;
             replyToEmail?: string;
             idempotencyKey?: string;
+            text?: string;
         }
     ): Promise<{ success: boolean; message_id: string }> {
         if (!emailAccount.relayEndpoint || !emailAccount.relayApiKey) {
@@ -715,7 +694,7 @@ export class EmailService {
             to,
             subject,
             html,
-            text: emailPlainText(html),
+            text: options?.text ?? emailPlainText(html),
             from_name: options?.fromName?.trim() || emailAccount.name,
             from_email: options?.fromEmail?.trim() || emailAccount.email,
             reply_to: options?.replyToEmail?.trim() || undefined,

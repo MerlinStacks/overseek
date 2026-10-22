@@ -11,10 +11,12 @@ describe('emailDesignerV2', () => {
     it('compiles mobile reverse stacking without reversing desktop column order', () => {
         const design = createDefaultEmailDesignV2();
         design.document.sections[0].stackMode = 'reverse';
+        design.document.sections[0].columns = [{ id: 'left', width: 50, blocks: [{ id: 'first', type: 'text', props: { html: '<p>First column</p>' } }] }, { id: 'right', width: 50, blocks: [{ id: 'second', type: 'text', props: { html: '<p>Second column</p>' } }] }];
         const html = compileEmailDesignV2(design);
-        expect(html).toContain('<tr class="os-mobile-stack-reverse">');
-        expect(html).toContain('flex-direction: column-reverse !important');
-        expect(html).not.toContain('display: table-header-group');
+        expect(html).toContain('<table dir="rtl"');
+        expect(html).toContain('<td dir="ltr" class="os-mobile-block"');
+        expect(html.indexOf('Second column')).toBeLessThan(html.indexOf('First column'));
+        expect(html).not.toContain('flex-direction');
     });
     it('uses the current flow subject instead of a stale embedded design title', () => {
         const design = createDefaultEmailDesignV2({

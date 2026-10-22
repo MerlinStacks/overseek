@@ -17,15 +17,17 @@ const ranges = [
 
 export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({ value, onChange }) => {
     return (
-        <div className="flex items-center gap-1 bg-gray-100/80 rounded-lg p-1">
-            <Calendar className="w-4 h-4 text-gray-400 ml-2" />
+        <div role="group" aria-label="Reporting date range" className="flex flex-wrap items-center gap-1 bg-gray-100/80 dark:bg-slate-800 rounded-lg p-1">
+            <Calendar aria-hidden="true" className="w-4 h-4 text-gray-400 ml-2" />
             {ranges.map(range => (
                 <button
                     key={range.value}
+                    type="button"
+                    aria-pressed={value === range.value}
                     onClick={() => onChange(range.value)}
                     className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${value === range.value
-                        ? 'bg-white text-gray-900 shadow-xs'
-                        : 'text-gray-500 hover:text-gray-700'
+                        ? 'bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-xs'
+                        : 'text-gray-500 dark:text-slate-300 hover:text-gray-700 dark:hover:text-white'
                         }`}
                 >
                     {range.label}

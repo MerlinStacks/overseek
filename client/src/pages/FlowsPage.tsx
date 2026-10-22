@@ -16,6 +16,7 @@ import { Toast, ToastType } from '../components/ui/Toast';
 import { useAccount } from '../context/AccountContext';
 import { useAuth } from '../context/AuthContext';
 import { Logger } from '../utils/logger';
+import { ContactFlowHistory } from '../components/marketing/flow/ContactFlowHistory';
 
 interface EditingItem {
     id: string;
@@ -33,6 +34,8 @@ interface FlowRecord {
     triggerType?: string;
     triggerConfig?: Record<string, unknown>;
     isActive?: boolean;
+    draftRevision?: number;
+    hasUnpublishedChanges?: boolean;
     flowDefinition?: FlowDefinition | null;
     [key: string]: unknown;
 }
@@ -392,6 +395,8 @@ export function FlowsPage() {
     const [toastType, setToastType] = useState<ToastType>('error');
     const [recoveryPrompt, setRecoveryPrompt] = useState<{ flowId: string; flowName: string; draftSavedAt?: string } | null>(null);
     const [saveState, setSaveState] = useState<SaveIndicatorState>('saved');
+    const draftRevisionRef = useRef(0);
+    const [isPublishing, setIsPublishing] = useState(false);
     const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
     const [isDirty, setIsDirty] = useState(false);
     const [pendingClose, setPendingClose] = useState(false);
@@ -538,7 +543,7 @@ export function FlowsPage() {
         setEditingItem({ id, name: requestedName || 'Loading flow...' });
 
         try {
-            const res = await fetch(`/api/marketing/automations/${id}`, {
+            const res = await fetch(`/api/marketing/automations/${id}/workspace`, {
                 signal: controller.signal,
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -555,6 +560,7 @@ export function FlowsPage() {
 
             const data: FlowRecord = await res.json();
             if (controller.signal.aborted || activeEditorRequestRef.current !== requestKey) return;
+            draftRevisionRef.current = data.draftRevision || 0;
             const resolvedName = requestedName || data.name || 'Untitled flow';
 
             const draftKey = getDraftKey(id);
@@ -699,32 +705,14 @@ export function FlowsPage() {
 
         try {
             const normalizedFlow = sanitizeFlowDefinition(flow);
-            const triggerNode = normalizedFlow.nodes.find((node) => String(node.type).toLowerCase() === 'trigger');
-            const triggerConfig =
-                (triggerNode?.data as Record<string, unknown> | undefined)?.config as Record<string, unknown> | undefined;
-            const triggerType =
-                typeof triggerConfig?.triggerType === 'string'
-                    ? triggerConfig.triggerType
-                    : (editingFlowData?.triggerType || 'NONE');
-
-            const payload = {
-                ...(editingFlowData || {}),
-                id: editingItem.id,
-                name: editingItem.name,
-                flowDefinition: normalizedFlow,
-                triggerType,
-                triggerConfig: triggerConfig || editingFlowData?.triggerConfig || {},
-                isActive: editingFlowData?.isActive ?? true
-            };
-
-            const res = await fetch('/api/marketing/automations', {
-                method: 'POST',
+            const res = await fetch(`/api/marketing/automations/${editingItem.id}/draft`, {
+                method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`,
                     'x-account-id': currentAccount.id
                 },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({ name: editingItem.name, flowDefinition: normalizedFlow, revision: draftRevisionRef.current })
             });
 
             if (!res.ok) {
@@ -734,6 +722,7 @@ export function FlowsPage() {
 
             const updated: FlowRecord = await res.json();
             if (activeEditorScopeRef.current !== saveScope) return false;
+            draftRevisionRef.current = updated.draftRevision ?? draftRevisionRef.current;
             autosaveRetryDelayRef.current = AUTOSAVE_DEFAULT_RETRY_MS;
             autosaveCooldownUntilRef.current = 0;
             setEditingFlowData((previous) => previous ? {
@@ -863,32 +852,20 @@ export function FlowsPage() {
         const flow = latestFlowRef.current || editingFlowData.flowDefinition || { nodes: [], edges: [] };
         const normalizedFlow = sanitizeFlowDefinition(flow);
         const serializedAtStart = serializeFlow(normalizedFlow);
-        const triggerNode = normalizedFlow.nodes.find((node) => String(node.type).toLowerCase() === 'trigger');
-        const triggerConfig =
-            (triggerNode?.data as Record<string, unknown> | undefined)?.config as Record<string, unknown> | undefined;
-        const triggerType =
-            typeof triggerConfig?.triggerType === 'string'
-                ? triggerConfig.triggerType
-                : (editingFlowData?.triggerType || 'NONE');
-
         setIsSavingRename(true);
 
         try {
-            const res = await fetch('/api/marketing/automations', {
-                method: 'POST',
+            const res = await fetch(`/api/marketing/automations/${editingItem.id}/draft`, {
+                method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`,
                     'x-account-id': currentAccount.id
                 },
                 body: JSON.stringify({
-                    ...(editingFlowData || {}),
-                    id: editingItem.id,
                     name: nextName,
+                    revision: draftRevisionRef.current,
                     flowDefinition: normalizedFlow,
-                    triggerType,
-                    triggerConfig: triggerConfig || editingFlowData?.triggerConfig || {},
-                    isActive: editingFlowData?.isActive ?? true
                 })
             });
 
@@ -898,6 +875,7 @@ export function FlowsPage() {
             }
 
             const updated: FlowRecord = await res.json();
+            draftRevisionRef.current = updated.draftRevision ?? draftRevisionRef.current;
             setEditingItem({ id: editingItem.id, name: updated.name || nextName });
             setEditingFlowData((previous) => previous ? {
                 ...previous,
@@ -1277,6 +1255,12 @@ export function FlowsPage() {
 
         const nextIsActive = !editingFlowData.isActive;
 
+        if (nextIsActive && (editingFlowData.hasUnpublishedChanges || isDirty)) {
+            showToast('Publish your draft before enabling the flow.');
+            return;
+        }
+        if (nextIsActive && !window.confirm('Enable the published flow? Eligible contacts may now enter it and receive messages.')) return;
+
         if (nextIsActive) {
             const currentFlow = latestFlowRef.current || editingFlowData.flowDefinition || { nodes: [], edges: [] };
             const blockingIssues = validateFlow(currentFlow.nodes || [], currentFlow.edges || []).filter((issue) => issue.severity === 'blocking');
@@ -1331,6 +1315,39 @@ export function FlowsPage() {
         }
     };
 
+    const handlePublishDraft = async () => {
+        if (!editingItem || !currentAccount || isPublishing) return;
+        const flow = latestFlowRef.current;
+        if (!flow) return;
+        const issues = validateFlow(flow.nodes, flow.edges);
+        const blockers = issues.filter(issue => issue.severity === 'blocking');
+        if (blockers.length) {
+            setInvalidNodeIds(getInvalidNodeIds(flow));
+            showToast(blockers[0].message, 'error');
+            return;
+        }
+        if (!window.confirm(`Publish this draft${editingFlowData?.isActive ? ' to the LIVE flow' : ''}?\n${flow.nodes.length} steps; ${issues.length} advisory checks.\n${editingFlowData?.isActive ? 'Future steps of active enrollments will use this definition.' : 'The flow stays disabled until you enable it.'}`)) return;
+        const scope = activeEditorScopeRef.current;
+        setIsPublishing(true);
+        try {
+            if (!await persistLatestFlow(true)) throw new Error('Save the latest draft before publishing.');
+            if (latestSerializedFlowRef.current !== baselineFlowRef.current) throw new Error('Draft changed during save. Review and publish again.');
+            const response = await fetch(`/api/marketing/automations/${editingItem.id}/publish`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'x-account-id': currentAccount.id },
+                body: JSON.stringify({ revision: draftRevisionRef.current }),
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Failed to publish');
+            if (activeEditorScopeRef.current !== scope) return;
+            draftRevisionRef.current = result.draftRevision;
+            setEditingFlowData(previous => previous ? { ...previous, ...result } : previous);
+            showToast('Draft published. Flow status unchanged.', 'success');
+        } catch (error) {
+            if (activeEditorScopeRef.current === scope) showToast((error as Error).message, 'error');
+        } finally { setIsPublishing(false); }
+    };
+
     if (isEditing) {
         return (
             <div className="relative z-50 h-[calc(100vh-64px)] bg-white -mx-4 -my-4 md:-mx-6 md:-my-6 lg:-mx-8 lg:-my-8">
@@ -1383,12 +1400,16 @@ export function FlowsPage() {
                                                 ? `Autosave failed${saveErrorMessage ? `: ${saveErrorMessage}` : ', draft kept'}`
                                                 : isDirty
                                                     ? 'Autosave pending'
-                                                    : 'All changes saved'}
+                                                    : 'Draft saved'}
                                     </span>
+                                    <span className="text-gray-500">{editingFlowData?.isActive ? 'Published flow is live' : 'Flow is disabled'} · {editingFlowData?.hasUnpublishedChanges || isDirty ? 'Unpublished changes' : 'Published version'}</span>
                                 </div>
                             </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button type="button" onClick={() => void handlePublishDraft()} disabled={isPublishing || saveState === 'saving'} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+                                {isPublishing ? 'Publishing...' : 'Review & publish draft'}
+                            </button>
                             <button
                                 type="button"
                                 onClick={() => undoRedoHandlersRef.current?.undo()}
@@ -1454,7 +1475,7 @@ export function FlowsPage() {
                         <div className="flex-1 overflow-hidden">
                             <ErrorBoundary>
                                 <FlowBuilder
-                                    key={`${editingItem?.id || 'flow'}:${flowBuilderRevision}`}
+                                    key={`${currentAccount?.id}:${editingItem?.id || 'flow'}:${flowBuilderRevision}`}
                                     initialFlow={editingFlowData?.flowDefinition}
                                     onFlowChange={handleFlowChange}
                                     onUndoRedoStateChange={setUndoRedoState}
@@ -1469,6 +1490,7 @@ export function FlowsPage() {
                         </div>
                     ) : (
                         <div className="flex-1 overflow-y-auto bg-white">
+                            {editingItem && <div className="p-4"><ContactFlowHistory key={`${currentAccount?.id}:${token}`} flowId={editingItem.id} /></div>}
                             {analytics && (
                                 <div className="grid grid-cols-2 gap-3 px-4 py-3 md:grid-cols-4">
                                     <div className="rounded-xl border border-gray-200 p-3">

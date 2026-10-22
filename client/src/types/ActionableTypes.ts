@@ -1,6 +1,7 @@
 /**
  * Actionable Recommendation Types (Client Side)
  */
+import { isRecord } from '../utils/responseValidation';
 
 type SuggestionCategory = 'stock' | 'performance' | 'budget' | 'creative' | 'seasonal' | 'info' | 'optimization' | 'structure' | 'audience';
 
@@ -158,14 +159,28 @@ export interface ActionableRecommendation {
 }
 
 
-export function isBudgetAction(action: RecommendationAction): action is BudgetAction {
-    return 'currentBudget' in action && 'suggestedBudget' in action;
+const text = (value: unknown): value is string => typeof value === 'string' && !!value.trim() && value.length <= 10000;
+const number = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER;
+const nonnegative = (value: unknown): value is number => number(value) && value >= 0;
+const optional = (action: Record<string, unknown>, keys: string[], check: (value: unknown) => boolean) => keys.every(key => action[key] === undefined || check(action[key]));
+export function isBudgetAction(action: unknown): action is BudgetAction {
+    return isRecord(action) && ['budget_increase', 'budget_decrease', 'pause', 'enable'].includes(action.actionType as string) &&
+        text(action.campaignId) && text(action.campaignName) && ['google', 'meta'].includes(action.platform as string) &&
+        nonnegative(action.currentBudget) && nonnegative(action.suggestedBudget) && number(action.changeAmount) && number(action.changePercent) && text(action.reason) &&
+        (action.actionType !== 'budget_increase' || action.suggestedBudget > action.currentBudget) &&
+        (action.actionType !== 'budget_decrease' || action.suggestedBudget < action.currentBudget);
 }
 
-export function isKeywordAction(action: RecommendationAction): action is KeywordAction {
-    return 'keyword' in action && 'suggestedCpc' in action;
+export function isKeywordAction(action: unknown): action is KeywordAction {
+    return isRecord(action) && ['add_keyword', 'add_negative', 'adjust_bid', 'pause_keyword'].includes(action.actionType as string) && action.productId === undefined &&
+        text(action.keyword) && ['exact', 'phrase', 'broad'].includes(action.matchType as string) && nonnegative(action.suggestedCpc) && nonnegative(action.estimatedRoas) &&
+        optional(action, ['currentCpc', 'estimatedClicks'], nonnegative) && optional(action, ['campaignId', 'campaignName', 'adGroupId'], text) &&
+        (action.platform === undefined || ['google', 'meta'].includes(action.platform as string));
 }
 
-export function isProductAction(action: RecommendationAction): action is ProductAction {
-    return 'productId' in action && 'productName' in action;
+export function isProductAction(action: unknown): action is ProductAction {
+    return isRecord(action) && ['create_campaign', 'increase_visibility', 'exclude_product', 'adjust_bid'].includes(action.actionType as string) && action.keyword === undefined &&
+        text(action.productId) && text(action.productName) && typeof action.sku === 'string' && action.sku.length <= 10000 &&
+        ['high_velocity', 'trending', 'high_margin', 'low_roas', 'no_coverage', 'underperforming'].includes(action.reason as string) &&
+        optional(action, ['salesVelocity', 'currentAdSpend', 'suggestedBudget'], nonnegative) && optional(action, ['margin'], number);
 }

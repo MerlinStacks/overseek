@@ -190,7 +190,7 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
             const artifact = await canonicalInvoiceService.getOrQueue(accountId, orderId, {
                 forceRegenerate: forceRegenerate === true,
             });
-            const settled: any = await canonicalInvoiceService.waitForReady(artifact.id, 15000, 300);
+            const settled = await canonicalInvoiceService.waitForReady(artifact, 15000, 300);
             const diagnosticReason = computeRelayDiagnostic(settled, forceRegenerate === true);
 
             if (canonicalInvoiceService.isReadableReady(settled)) {
@@ -206,50 +206,16 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
                 };
             }
 
-            if (settled?.status === 'failed') {
+            if (settled?.status === 'failed' || settled?.status === 'uncertain') {
                 return reply.code(409).send({
                     success: false,
-                    status: 'failed',
+                    status: settled.status,
                     invoice_ref: settled.id,
-                    error: settled.errorMessage || 'Invoice generation failed',
+                    error: 'Invoice generation requires reconciliation before retrying',
                     renderer_used: settled.renderer,
                     diagnostic_reason: diagnosticReason,
                     generated_at: settled.generatedAt,
                 });
-            }
-
-            if ((settled?.status === 'pending' || !settled) && settled?.id) {
-                try {
-                    await canonicalInvoiceService.processGenerationJob({
-                        artifactId: settled.id,
-                        accountId,
-                        orderId,
-                        templateId: artifact.templateId,
-                    });
-
-                    const refreshed: any = await canonicalInvoiceService.getArtifactById(settled.id);
-                    const refreshedReason = computeRelayDiagnostic(refreshed, forceRegenerate === true);
-
-                    if (canonicalInvoiceService.isReadableReady(refreshed)) {
-                        const artifactDownloadUrl = buildArtifactDownloadUrl(request, refreshed.id);
-                        return {
-                            success: true,
-                            invoice_ref: refreshed.id,
-                            artifact_download_url: artifactDownloadUrl,
-                            filename: refreshed.storagePath.split('/').pop() || 'invoice.pdf',
-                            renderer_used: refreshed.renderer,
-                            diagnostic_reason: refreshedReason,
-                            generated_at: refreshed.generatedAt,
-                        };
-                    }
-                } catch (syncError) {
-                    Logger.warn('Synchronous invoice generation fallback failed', {
-                        accountId,
-                        orderId,
-                        artifactId: settled.id,
-                        error: syncError instanceof Error ? syncError.message : String(syncError),
-                    });
-                }
             }
 
             return reply.code(202).send({
@@ -261,6 +227,7 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
                 generated_at: settled?.generatedAt ?? null,
             });
         } catch (error) {
+            if ((error as { statusCode?: number }).statusCode === 409) return reply.code(409).send({ success: false, status: 'reconciliation_required', error: 'Existing invoice requires reconciliation; automatic regeneration is disabled' });
             if (error instanceof MissingInvoiceTemplateError) {
                 Logger.warn('Relay invoice generation skipped: missing invoice template', { accountId, orderId });
                 return reply.code(409).send({

@@ -571,7 +571,7 @@ export class WooService {
         return wpApi;
     }
 
-    private async requestWpWithRetry(method: 'get' | 'post' | 'put', endpoint: string, params: any = {}, version: 'wp/v2' | 'overseek/v1' = 'wp/v2'): Promise<any> {
+    private async requestWpWithRetry(method: 'get' | 'post' | 'put', endpoint: string, params: any = {}, version: 'wp/v2' | 'overseek/v1' = 'wp/v2', singleAttempt = false): Promise<any> {
         try {
             return await retryWithBackoff(
                 async () => {
@@ -583,7 +583,7 @@ export class WooService {
                     };
                 },
                 {
-                    maxRetries: this.maxRetries,
+                    maxRetries: singleAttempt ? 0 : this.maxRetries,
                     baseDelayMs: 1000,
                     context: `WordPress:${method}:${version}:${endpoint}`
                 }
@@ -648,7 +648,7 @@ export class WooService {
             return { id, ...data };
         }
 
-        const response = await this.requestWpWithRetry('put', `pages/${id}`, data);
+        const response = await this.requestWpWithRetry('put', `pages/${id}`, data, 'wp/v2', true);
 
         if (this.accountId) {
             const { AuditService } = await import('./AuditService');
@@ -664,7 +664,7 @@ export class WooService {
             return { id, ...data };
         }
 
-        const response = await this.requestWpWithRetry('put', `posts/${id}`, data);
+        const response = await this.requestWpWithRetry('put', `posts/${id}`, data, 'wp/v2', true);
 
         if (this.accountId) {
             const { AuditService } = await import('./AuditService');
@@ -688,7 +688,7 @@ export class WooService {
             };
         }
 
-        const response = await this.requestWpWithRetry('post', 'pages', data);
+        const response = await this.requestWpWithRetry('post', 'pages', data, 'wp/v2', true);
 
         if (this.accountId) {
             const { AuditService } = await import('./AuditService');
@@ -712,7 +712,7 @@ export class WooService {
             };
         }
 
-        const response = await this.requestWpWithRetry('post', 'posts', data);
+        const response = await this.requestWpWithRetry('post', 'posts', data, 'wp/v2', true);
 
         if (this.accountId) {
             const { AuditService } = await import('./AuditService');

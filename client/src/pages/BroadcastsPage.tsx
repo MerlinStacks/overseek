@@ -1,9 +1,14 @@
 import { CampaignsList } from '../components/marketing/CampaignsList';
 import { MarketingEmailDesigner } from '../components/marketing/MarketingEmailDesigner';
 import { useCampaignEmailEditor } from '../components/marketing/useCampaignEmailEditor';
+import { useSearchParams } from 'react-router-dom';
+import { CampaignReviewModal } from '../components/marketing/CampaignReviewModal';
 
 export function BroadcastsPage() {
     const editor = useCampaignEmailEditor();
+    const [params, setParams] = useSearchParams();
+    const campaignId = params.get('campaignId');
+    const closeEditor = () => { editor.close(); const next = new URLSearchParams(params); next.delete('campaignId'); setParams(next, { replace: true }); };
     if (editor.isOpen) {
         return (
             <>
@@ -11,7 +16,7 @@ export function BroadcastsPage() {
                     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-white dark:bg-slate-950 dark:text-white">
                         <p role={editor.error ? 'alert' : 'status'}>{editor.error || 'Loading saved broadcast design...'}</p>
                         {editor.error && <button onClick={() => editor.item && void editor.open(editor.item.id, editor.item.name, editor.item.subject)}>Retry</button>}
-                        <button onClick={editor.close}>Back to broadcasts</button>
+                        <button onClick={closeEditor}>Back to broadcasts</button>
                     </div>
                 ) : (
                 <MarketingEmailDesigner
@@ -22,7 +27,7 @@ export function BroadcastsPage() {
                     initialDesign={editor.item?.designJson}
                     initialSubject={editor.item?.subject}
                     onSave={editor.save}
-                    onCancel={editor.close}
+                    onCancel={closeEditor}
                 />
                 )}
             </>
@@ -31,6 +36,7 @@ export function BroadcastsPage() {
 
     return (
         <div className="space-y-6">
+            {campaignId && <CampaignReviewModal key={campaignId} campaignId={campaignId} onClose={closeEditor} onChanged={() => {}} />}
             <div className="flex flex-col gap-2">
                 <h1 className="text-2xl font-bold text-gray-900">Broadcasts</h1>
                 <p className="text-gray-500">Manage and send email broadcasts to your customers.</p>

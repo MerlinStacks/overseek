@@ -1,0 +1,15 @@
+import Fastify from 'fastify';
+import { beforeEach, afterEach, expect, it, vi } from 'vitest';
+const m = vi.hoisted(() => ({ allowed: true, scope: true, read: vi.fn(), create: vi.fn(), update: vi.fn(), audit: vi.fn() }));
+vi.mock('../../middleware/auth', () => ({ requireAuthFastify: async (req: any) => { req.user = { id: 'u' }; req.accountId = m.scope ? 'a' : undefined; } }));
+vi.mock('../../services/PermissionService', () => ({ PermissionService: { hasPermission: async () => m.allowed } }));
+vi.mock('../../services/AuditService', () => ({ AuditActions: { EMAIL_SETTINGS_UPDATED: 'update' }, AuditService: { log: m.audit } }));
+vi.mock('../../utils/prisma', () => { const tx = { emailSettings: { findUnique: m.read, findUniqueOrThrow: m.read, create: m.create, updateMany: m.update } }; return { prisma: { ...tx, $transaction: async (run: (db: unknown) => unknown) => run(tx) } }; });
+import routes from './settings';
+let app: ReturnType<typeof Fastify>;
+beforeEach(async () => { vi.clearAllMocks(); m.allowed = m.scope = true; m.read.mockResolvedValue(null); m.update.mockResolvedValue({ count: 0 }); app = Fastify(); await app.register(routes); });
+afterEach(async () => { await app.close(); });
+it('reads defaults without persistence', async () => { expect((await app.inject('/settings')).json()).toMatchObject({ version: 'default', maxSendPerSecond: 1, maxSendPerDay: 6000 }); expect(m.create).not.toHaveBeenCalled(); });
+it('requires scope and granular authority before reads', async () => { m.scope = false; expect((await app.inject('/settings')).statusCode).toBe(400); m.scope = true; m.allowed = false; expect((await app.inject('/settings')).statusCode).toBe(403); expect(m.read).not.toHaveBeenCalled(); });
+it('requires strict numeric limits and a version, rejecting stale writes', async () => { const body = { bounceTrackingEnabled: false, maxSendPerSecond: 2, maxSendPerDay: 10 }; expect((await app.inject({ method: 'POST', url: '/settings', payload: body })).statusCode).toBe(400); expect((await app.inject({ method: 'POST', url: '/settings', payload: { ...body, version: '2026-10-01T00:00:00.000Z' } })).statusCode).toBe(409); expect(m.update.mock.calls[0][0].where).toMatchObject({ accountId: 'a', updatedAt: new Date('2026-10-01') }); expect(m.audit).not.toHaveBeenCalled(); });
+it('treats racing default creation as conflict without an overwrite', async () => { m.create.mockRejectedValue({ code: 'P2002' }); expect((await app.inject({ method: 'POST', url: '/settings', payload: { bounceTrackingEnabled: true, maxSendPerSecond: 1, maxSendPerDay: 10, version: 'default' } })).statusCode).toBe(409); expect(m.update).not.toHaveBeenCalled(); });

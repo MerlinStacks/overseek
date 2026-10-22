@@ -31,7 +31,7 @@ function ConversationItemSkeleton() {
  */
 function SidebarSkeleton() {
     return (
-        <div className="w-80 border-r border-gray-200 bg-white flex flex-col">
+        <div className="w-full md:w-80 shrink-0 border-r border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex flex-col">
             {/* Header */}
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
                 <Skeleton className="h-6 w-24" />
@@ -68,7 +68,7 @@ function SidebarSkeleton() {
  */
 function ChatAreaSkeleton() {
     return (
-        <div className="flex-1 flex flex-col bg-white">
+        <div className="min-w-0 flex-1 hidden md:flex flex-col bg-white dark:bg-slate-900">
             {/* Header */}
             <div className="h-16 border-b border-gray-200 px-4 flex items-center gap-3">
                 <SkeletonAvatar size="md" />
@@ -122,7 +122,7 @@ function ChatAreaSkeleton() {
  */
 function ContactPanelSkeleton() {
     return (
-        <div className="w-80 border-l border-gray-200 bg-white hidden lg:flex flex-col">
+        <div className="w-72 xl:w-80 shrink-0 border-l border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 hidden lg:flex flex-col">
             {/* Header */}
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                 <Skeleton className="h-4 w-20" />
@@ -164,7 +164,7 @@ function ContactPanelSkeleton() {
  */
 export function InboxSkeleton() {
     return (
-        <div className="-m-4 md:-m-6 lg:-m-8 h-[calc(100vh-64px)] flex bg-gray-100 overflow-hidden">
+        <div role="status" aria-label="Loading inbox" aria-busy="true" className="-m-4 md:-m-6 lg:-m-8 min-w-0 h-[calc(100dvh-64px)] flex bg-gray-100 dark:bg-slate-950 overflow-hidden">
             <SidebarSkeleton />
             <ChatAreaSkeleton />
             <ContactPanelSkeleton />

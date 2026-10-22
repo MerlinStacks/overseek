@@ -27,6 +27,7 @@ import analyticsInventoryRoutes from './analyticsInventory';
 import cohortRoutes from './cohorts';
 import { AnomalyDetection } from '../services/analytics/AnomalyDetection';
 import { PermissionService } from '../services/PermissionService';
+import { z } from 'zod';
 import { cacheAside, CacheNamespace, CacheTTL } from '../utils/cache';
 
 const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
@@ -168,12 +169,9 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
     // Product Rankings (enhanced)
     fastify.get('/products/ranking', async (request, reply) => {
         try {
-            const query = request.query as { period?: string; sortBy?: string; limit?: string };
-            const period = (query.period || '30d') as '7d' | '30d' | '90d' | 'ytd';
-            const sortBy = (query.sortBy || 'revenue') as 'revenue' | 'units' | 'orders' | 'margin';
-            const limit = Math.min(parsePositiveInt(query.limit, 10), 100);
+            const { period, sortBy, limit } = z.object({ period: z.enum(['7d', '30d', '90d', 'ytd']).default('30d'), sortBy: z.enum(['revenue', 'units', 'orders']).default('revenue'), limit: z.string().regex(/^[1-9]\d*$/).transform(Number).refine(value => value <= 100).default(10) }).strict().parse(request.query);
             return await ProductRankingService.getProductRankings(request.accountId!, period, sortBy, limit);
-        } catch (e) { Logger.error('Product Ranking Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
+        } catch (e) { if (e instanceof z.ZodError) return reply.code(400).send({ error: 'Invalid ranking options; historical margin ranking is unavailable' }); if ((e as { statusCode?: number }).statusCode === 409) return reply.code(409).send({ error: 'Complete comparable single-currency rankings unavailable' }); Logger.error('Product Ranking Error', { error: e }); return reply.code(503).send({ error: 'Rankings unavailable' }); }
     });
 
     fastify.get('/customer-growth', async (request, reply) => {
@@ -408,7 +406,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
             const query = request.query as { days?: string };
             const days = query.days === '-1' ? -1 : Math.min(parsePositiveInt(query.days, 30), 365);
             const timezone = (request.headers['x-timezone'] as string) || 'Australia/Sydney';
-            return await aovService.getAOVTrend(accountId, days, timezone);
+            return await aovService.getAOVTrend(accountId, days, timezone, { throwOnError: true });
         } catch (e: any) {
             Logger.error('AOV Trend Error', { error: e });
             return reply.code(500).send({ error: e.message });
@@ -421,7 +419,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
             const query = request.query as { days?: string };
             const days = query.days === '-1' ? -1 : Math.min(parsePositiveInt(query.days, 30), 365);
             const timezone = (request.headers['x-timezone'] as string) || 'Australia/Sydney';
-            return await aovService.getAOVComparison(accountId, days, timezone);
+            return await aovService.getAOVComparison(accountId, days, timezone, { throwOnError: true });
         } catch (e: any) {
             Logger.error('AOV Comparison Error', { error: e });
             return reply.code(500).send({ error: e.message });
@@ -433,7 +431,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const query = request.query as { startDate?: string; endDate?: string };
-            const data = await CROAnalytics.getConversionByDevice(accountId, query.startDate, query.endDate);
+            const data = await CROAnalytics.getConversionByDevice(accountId, query.startDate, query.endDate, { throwOnError: true });
             return data.map((d: any) => ({
                 device: d.deviceType,
                 sessions: d.sessions,
@@ -450,7 +448,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const query = request.query as { startDate?: string; endDate?: string };
-            const data = await CROAnalytics.getConversionBySource(accountId, query.startDate, query.endDate);
+            const data = await CROAnalytics.getConversionBySource(accountId, query.startDate, query.endDate, { throwOnError: true });
             return data.map((d: any) => ({
                 source: d.source,
                 sessions: d.sessions,
@@ -467,8 +465,8 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const query = request.query as { startDate?: string; endDate?: string };
-            const data = await CROAnalytics.getBounceRate(accountId, query.startDate, query.endDate);
-            return { overallBounceRate: data.bounceRate };
+            const data = await CROAnalytics.getBounceRate(accountId, query.startDate, query.endDate, { throwOnError: true });
+            return { overallBounceRate: data.bounceRate, totalSessions: data.totalSessions };
         } catch (e: any) {
             Logger.error('CRO Bounce Rate Error', { error: e });
             return reply.code(500).send({ error: e.message });

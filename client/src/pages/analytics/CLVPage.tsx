@@ -1,251 +1,50 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Logger } from '../../utils/logger';
-import { useAccount } from '../../context/AccountContext';
+import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { api } from '../../services/api';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
-import { DateRangeFilter } from '../../components/analytics/DateRangeFilter';
-import { Heart, Users, Repeat, TrendingUp, DollarSign } from 'lucide-react';
-
-interface CLVData {
-    averageCLV: number;
-    medianCLV: number;
-    distribution: { label: string; count: number; percentage: number }[];
-    newVsReturning: {
-        newCustomers: number;
-        returningCustomers: number;
-        ratio: number;
+import { useAccount } from '../../context/AccountContext';
+import { useScopedRequest } from '../../hooks/useScopedRequest';
+import { record, rows, label, metric, count, money } from '../../components/analytics/analyticsRead';
+function decode(value: unknown) {
+    const data = record(value); const observation = record(data.observation); const returning = record(data.newVsReturning);
+    if (observation.basis !== 'observed-window-spend' || typeof observation.start !== 'string' || typeof observation.end !== 'string' ||
+        !Number.isFinite(Date.parse(observation.start)) || !Number.isFinite(Date.parse(observation.end)) || Date.parse(observation.end) < Date.parse(observation.start) ||
+        typeof observation.ordersTruncated !== 'boolean' || typeof observation.sessionsTruncated !== 'boolean') throw new Error('Missing spend methodology');
+    const newCustomers = count(returning.newCustomers), returningCustomers = count(returning.returningCustomers);
+    return { observation: { start: observation.start, end: observation.end, currency: typeof observation.currency === 'string' && /^[A-Z]{3}$/.test(observation.currency) ? observation.currency : null,
+        incomplete: observation.ordersTruncated || observation.sessionsTruncated, excludedOrders: count(observation.excludedOrders) },
+        average: metric(data.averageCLV), median: metric(data.medianCLV), newCustomers, returningCustomers,
+        distribution: rows(data.distribution).map(row => ({ label: label(row.label), count: count(row.count) })),
+        sources: rows(data.clvBySource).map(row => ({ source: label(row.source), average: metric(row.avgCLV), customers: count(row.customerCount) })),
+        trend: rows(data.monthlyTrend).map(row => { const month = label(row.month); if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Invalid cohort month'); return { month, average: metric(row.avgCLV), customers: count(row.customerCount) }; }).sort((a, b) => a.month.localeCompare(b.month)),
     };
-    tenureDistribution: { tenureDays: string; count: number; avgCLV: number }[];
-    clvBySource: { source: string; customerCount: number; avgCLV: number; totalRevenue: number }[];
-    monthlyTrend: { month: string; avgCLV: number; customerCount: number }[];
 }
-
-export const CLVPage: React.FC = () => {
-    const [days, setDays] = useState(30);
-    const { currentAccount } = useAccount();
-    const { token } = useAuth();
-    const [data, setData] = useState<CLVData | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    const monthsBack = useMemo(() => {
-        if (days <= 0) return 1;
-        return Math.max(1, Math.ceil(days / 30));
-    }, [days]);
-
-    useEffect(() => {
-        const fetchData = async () => {
-            if (!currentAccount || !token) return;
-            setLoading(true);
-            setError(null);
-            try {
-                const result = await api.get<CLVData>(`/api/analytics/clv?monthsBack=${monthsBack}`, token, currentAccount.id);
-                setData(result);
-            } catch (error) {
-                const msg = error instanceof Error ? error.message : String(error);
-                Logger.error('Failed to fetch CLV data:', { error });
-                setError(msg);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchData();
-    }, [currentAccount, token, monthsBack]);
-
-    const maxCLV = useMemo(() => {
-        if (!data?.monthlyTrend.length) return 0;
-        return Math.max(...data.monthlyTrend.map(m => m.avgCLV), 1);
-    }, [data]);
-
-    if (loading) {
-        return (
-            <div className="p-6 flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-            </div>
-        );
-    }
-
-    if (error) {
-        return (
-            <div className="p-6">
-                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-6 text-center">
-                    <p className="text-red-600 dark:text-red-400 font-medium">Failed to load CLV data</p>
-                    <p className="text-red-500 dark:text-red-500 text-sm mt-1">{error}</p>
-                    <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 transition-colors">Retry</button>
-                </div>
-            </div>
-        );
-    }
-
-    if (!data) {
-        return <div className="p-6 text-gray-500 dark:text-slate-400">No CLV data available</div>;
-    }
-
-    return (
-        <div className="p-6 space-y-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Customer Lifetime Value</h1>
-                <DateRangeFilter value={days} onChange={setDays} />
-            </div>
-
-            {/* KPI Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card className="border-0 shadow-xs">
-                    <CardContent className="p-5">
-                        <div className="flex items-center gap-3">
-                            <div className="p-3 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl">
-                                <Heart className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                            </div>
-                            <div>
-                                <p className="text-xs text-gray-500 dark:text-slate-400">Average CLV</p>
-                                <p className="text-xl font-bold text-gray-900 dark:text-slate-100">${data.averageCLV.toFixed(2)}</p>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="border-0 shadow-xs">
-                    <CardContent className="p-5">
-                        <div className="flex items-center gap-3">
-                            <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-xl">
-                                <DollarSign className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                            </div>
-                            <div>
-                                <p className="text-xs text-gray-500 dark:text-slate-400">Median CLV</p>
-                                <p className="text-xl font-bold text-gray-900 dark:text-slate-100">${data.medianCLV.toFixed(2)}</p>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="border-0 shadow-xs">
-                    <CardContent className="p-5">
-                        <div className="flex items-center gap-3">
-                            <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-xl">
-                                <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                            </div>
-                            <div>
-                                <p className="text-xs text-gray-500 dark:text-slate-400">Total Customers</p>
-                                <p className="text-xl font-bold text-gray-900 dark:text-slate-100">{(data.newVsReturning.newCustomers + data.newVsReturning.returningCustomers).toLocaleString()}</p>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="border-0 shadow-xs">
-                    <CardContent className="p-5">
-                        <div className="flex items-center gap-3">
-                            <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-xl">
-                                <Repeat className="w-5 h-5 text-green-600 dark:text-green-400" />
-                            </div>
-                            <div>
-                                <p className="text-xs text-gray-500 dark:text-slate-400">Repeat Rate</p>
-                                <p className="text-xl font-bold text-gray-900 dark:text-slate-100">{data.newVsReturning.ratio.toFixed(1)}%</p>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* CLV Distribution + Monthly Trend */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card className="border-0 shadow-xs">
-                    <CardHeader>
-                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                            <TrendingUp className="w-4 h-4 text-indigo-500" />
-                            CLV Distribution
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {data.distribution.length === 0 ? (
-                            <p className="text-sm text-gray-500 dark:text-slate-400 italic">No distribution data yet</p>
-                        ) : (
-                            <div className="space-y-3">
-                                {data.distribution.map((bucket, i) => {
-                                    const maxCount = Math.max(...data.distribution.map(b => b.count), 1);
-                                    const pct = (bucket.count / maxCount) * 100;
-                                    return (
-                                        <div key={i}>
-                                            <div className="flex justify-between text-sm mb-1">
-                                                <span className="text-gray-600 dark:text-slate-300">{bucket.label}</span>
-                                                <span className="text-gray-400 dark:text-slate-500">{bucket.count} customers</span>
-                                            </div>
-                                            <div className="w-full bg-gray-100 dark:bg-slate-700 rounded-full h-2">
-                                                <div
-                                                    className="bg-indigo-500 h-2 rounded-full transition-all"
-                                                    style={{ width: `${pct}%` }}
-                                                />
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                <Card className="border-0 shadow-xs">
-                    <CardHeader>
-                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                            <TrendingUp className="w-4 h-4 text-green-500" />
-                            Monthly CLV Trend
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {data.monthlyTrend.length === 0 ? (
-                            <p className="text-sm text-gray-500 dark:text-slate-400 italic">No trend data yet</p>
-                        ) : (
-                            <div className="space-y-3">
-                                <div className="flex items-end gap-1 h-24">
-                                    {data.monthlyTrend.map((m, i) => (
-                                        <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                                            <div
-                                                className="w-full rounded-t-md bg-gradient-to-t from-indigo-500 to-indigo-400 transition-all"
-                                                style={{ height: `${Math.max((m.avgCLV / maxCLV) * 100, 4)}%` }}
-                                                title={`${m.month}: $${m.avgCLV.toFixed(2)}`}
-                                            />
-                                            <span className="text-[10px] text-gray-400 dark:text-slate-500 truncate w-full text-center">{m.month.slice(0, 3)}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* CLV by Source */}
-            <Card className="border-0 shadow-xs">
-                <CardHeader>
-                    <CardTitle className="text-sm font-semibold">CLV by Acquisition Source</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    {data.clvBySource.length === 0 ? (
-                        <p className="text-sm text-gray-500 dark:text-slate-400 italic">No source data yet</p>
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="border-b border-gray-100 dark:border-slate-700">
-                                        <th className="text-left py-2 px-3 text-gray-500 dark:text-slate-400 font-medium">Source</th>
-                                        <th className="text-right py-2 px-3 text-gray-500 dark:text-slate-400 font-medium">Avg CLV</th>
-                                        <th className="text-right py-2 px-3 text-gray-500 dark:text-slate-400 font-medium">Customers</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {data.clvBySource.map(item => (
-                                        <tr key={item.source} className="border-b border-gray-50 dark:border-slate-800 last:border-0">
-                                            <td className="py-2.5 px-3 capitalize text-gray-700 dark:text-slate-300">{item.source}</td>
-                                            <td className="py-2.5 px-3 text-right font-medium text-gray-900 dark:text-slate-100">${item.avgCLV.toFixed(2)}</td>
-                                            <td className="py-2.5 px-3 text-right text-gray-500 dark:text-slate-400">{item.customerCount.toLocaleString()}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-        </div>
-    );
+export const CLVPage = () => {
+    const { token, user } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p>Sign in and select an account to view observed customer spend.</p>;
+    return <ScopedCLV key={JSON.stringify([user?.id, token, currentAccount.id])} accountId={currentAccount.id} token={token} />;
 };
-
+function ScopedCLV({ accountId, token }: { accountId: string; token: string }) {
+    const [months, setMonths] = useState(1);
+    return <div className="p-4 space-y-5 text-slate-900 dark:text-slate-100">
+        <header className="flex flex-wrap justify-between gap-3"><h1 className="text-2xl font-bold">Observed Customer Spend</h1>
+            <label>Window starts at first UTC day of <select value={months} onChange={event => setMonths(Number(event.target.value))} className="bg-white dark:bg-slate-800">{[1, 3, 6, 12].map(value => <option key={value} value={value}>{value} {value === 1 ? 'month' : 'months'} ago</option>)}</select></label></header>
+        <SpendContent key={months} accountId={accountId} token={token} months={months} />
+    </div>;
+}
+function SpendContent({ accountId, token, months }: { accountId: string; token: string; months: number }) {
+    const read = useScopedRequest(`/api/analytics/clv?monthsBack=${months}`, accountId, token, decode);
+    if (read.loading) return <p role="status">Loading observed customer spend…</p>;
+    if (read.error || !read.data) return <p role="alert">Customer spend unavailable. <button type="button" onClick={read.retry}>Retry customer spend</button></p>;
+    const data = read.data; const observation = data.observation; const total = data.newCustomers + data.returningCustomers;
+    const monetary = (value: number) => observation.currency ? money(value, observation.currency) : 'Unavailable (mixed or unknown currency)';
+    const maximum = data.trend.reduce((max, row) => Math.max(max, row.average), 0);
+    return <div className="space-y-5">
+        <p>Observed revenue per email-identified customer in {observation.start.slice(0, 10)} through {observation.end.slice(0, 10)} (UTC), not complete lifetime value or a forecast. Repeat means multiple orders within this window, not lifetime returning-customer status.</p>
+        {(observation.incomplete || observation.excludedOrders > 0) && <p role="alert">Coverage is partial: {observation.incomplete ? 'a source row limit was reached; ' : ''}{observation.excludedOrders} orders without customer email excluded. Attribution uses the earliest returned in-window session, not proven lifetime acquisition.</p>}
+        {!observation.currency && <p role="status">Monetary summaries are withheld because the returned orders do not establish one known currency.</p>}
+        <dl className="grid grid-cols-2 md:grid-cols-4 gap-4"><div><dt>Average observed spend</dt><dd>{total ? monetary(data.average) : 'Unavailable (no customers)'}</dd></div><div><dt>Median observed spend</dt><dd>{total ? monetary(data.median) : 'Unavailable (no customers)'}</dd></div><div><dt>Observed customers</dt><dd>{total}</dd></div><div><dt>Multi-order share in window</dt><dd>{total ? `${(data.returningCustomers / total * 100).toFixed(1)}%` : 'Unavailable (no customers)'}</dd></div></dl>
+        {observation.currency && <section aria-label="Observed spend distribution"><h2>Spend distribution ({observation.currency})</h2><ul>{data.distribution.map((row, index) => <li key={index}>{row.label}: {row.count} customers</li>)}</ul></section>}
+        <section aria-label="Customer cohort spend"><h2>Spend by first observed order month in this window</h2><ul>{data.trend.map(row => <li key={row.month} className="mb-3"><p>{row.month}: {monetary(row.average)} · {row.customers} customers</p><div aria-hidden="true" className="h-2 bg-slate-100 dark:bg-slate-800"><div className="h-2 bg-indigo-500" style={{ width: `${observation.currency && maximum > 0 ? row.average / maximum * 100 : 0}%` }} /></div></li>)}</ul></section>
+        <section><h2>Spend by observed source</h2><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr><th className="text-left">Source</th><th>Average observed spend</th><th>Customers</th></tr></thead><tbody>{data.sources.map(row => <tr key={row.source}><td>{row.source}</td><td className="text-center">{monetary(row.average)}</td><td className="text-center">{row.customers}</td></tr>)}</tbody></table></div></section>
+    </div>;
+}
 export default CLVPage;

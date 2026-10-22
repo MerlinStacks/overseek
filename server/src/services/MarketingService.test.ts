@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MarketingService } from './MarketingService';
 import { EmailDeferredError } from './emailSendLifecycle';
+import { campaignSubjectVariant } from '../utils/marketingExperiment';
 
 // Define mocks using vi.hoisted to allow access inside vi.mock factory
 const mocks = vi.hoisted(() => ({
@@ -103,6 +104,10 @@ vi.mock('./EmailService', () => ({
 vi.mock('./CampaignTrackingService', () => ({
     campaignTrackingService: mocks.campaignTrackingService,
 }));
+// These tests isolate batching/rendering. Eligibility and readiness have their
+// own tests with actual rules and database-scoped fixtures.
+vi.mock('./MarketingAudienceService', () => ({ MarketingAudienceService: class { async exclusions(_accountId: string, rows: unknown[]) { return rows.map(() => null); } } }));
+vi.mock('../utils/marketingReadiness', () => ({ assertBroadcastReady: vi.fn() }));
 
 describe('MarketingService Optimization', () => {
     let marketingService: MarketingService;
@@ -116,6 +121,17 @@ describe('MarketingService Optimization', () => {
         mocks.prisma.account.findFirst.mockResolvedValue({ wooUrl: 'https://shop.test', domain: null, currency: 'GBP' });
         mocks.prisma.wooProduct.findMany.mockResolvedValue([]);
         mocks.emailService.sendEmail.mockReset().mockResolvedValue({ messageId: 'message' });
+    });
+
+    it('sends pinned A/B subjects and records their assignment with the logical email', async () => {
+        mocks.prisma.marketingCampaign.findFirst.mockResolvedValue({ id: 'campaign', subject: 'Subject A', subjectB: 'Subject B', content: '<p>Content</p>' });
+        const emails = Array.from({ length: 100 }, (_, index) => `customer${index}@example.com`);
+        const a = emails.find(email => campaignSubjectVariant('campaign', email) === 'A')!;
+        const b = emails.find(email => campaignSubjectVariant('campaign', email) === 'B')!;
+        mocks.prisma.wooCustomer.count.mockResolvedValue(2);
+        mocks.prisma.wooCustomer.findMany.mockResolvedValue([{ id: 'a', email: a }, { id: 'b', email: b }]);
+        await marketingService.sendCampaign('campaign', 'account');
+        expect(mocks.emailService.sendEmail.mock.calls.map(call => [call[3], call[6].campaignVariant])).toEqual([['Subject A', 'A'], ['Subject B', 'B']]);
     });
 
     it('should fetch customers in batches using pagination (Optimized)', async () => {

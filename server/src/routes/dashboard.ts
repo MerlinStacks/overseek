@@ -7,10 +7,19 @@ import { requireAuthFastify } from '../middleware/auth';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { AdsTools } from '../services/tools/AdsTools';
-import { cacheAside, cacheDelete, CacheTTL } from '../utils/cache';
+import { cacheAside, CacheTTL } from '../utils/cache';
+import { PermissionService } from '../services/PermissionService';
+import { readDashboardLayout, saveDashboardLayout, layoutSchema, LayoutConflict } from '../services/DashboardLayouts';
+import { z } from 'zod';
 
 const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
+    fastify.addHook('preHandler', async (request, reply) => {
+        if (!request.accountId || !request.user?.id) return reply.code(400).send({ error: 'Select an account' });
+        const path = request.url.split('?')[0];
+        const permission = path.endsWith('/inbox-count') ? 'view_inbox' : path.includes('/ad-suggestions') ? request.method === 'GET' ? 'view_marketing' : 'manage_marketing' : null;
+        if (permission && !await PermissionService.hasPermission(request.user.id, request.accountId, permission)) return reply.code(403).send({ error: 'Feature permission required' });
+    });
 
     // GET /api/dashboard/inbox-count
     // Cached for 30 seconds to reduce database load from frequent UI polls
@@ -89,11 +98,11 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
         if (!accountId) return reply.code(400).send({ error: 'No account' });
 
         try {
-            const { context } = request.body;
-
-            if (typeof context !== 'string') {
+            const parsed = z.object({ context: z.string().max(8000) }).strict().safeParse(request.body);
+            if (!parsed.success) {
                 return reply.code(400).send({ error: 'Context must be a string' });
             }
+            const { context } = parsed.data;
 
             // Upsert the context
             const saved = await prisma.adSuggestionContext.upsert({
@@ -132,11 +141,12 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
         if (!accountId) return reply.code(400).send({ error: 'No account' });
 
         try {
-            const { recommendationId, action, dismissReason, userFeedback, recommendation } = request.body;
-
-            if (!recommendationId) {
+            const parsed = z.object({ recommendationId: z.string().trim().min(1).max(200), action: z.enum(['dismiss', 'feedback']), dismissReason: z.string().max(1000).optional(), userFeedback: z.string().max(4000).optional(),
+                recommendation: z.object({ headline: z.string().max(500).optional(), category: z.string().max(80).optional(), platform: z.string().max(30).optional(), source: z.string().max(100).optional(), tags: z.array(z.string().max(80)).max(20).optional() }).strict().optional() }).strict().safeParse(request.body);
+            if (!parsed.success) {
                 return reply.code(400).send({ error: 'recommendationId is required' });
             }
+            const { recommendationId, action, dismissReason, userFeedback, recommendation } = parsed.data;
 
             // Create a log entry for this feedback
             await prisma.recommendationLog.create({
@@ -161,7 +171,6 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
                 accountId,
                 recommendationId,
                 action,
-                dismissReason,
                 hasFeedback: !!userFeedback
             });
 
@@ -172,87 +181,13 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    /** Why namespace: dashboard layout is per-user and only changes on explicit save */
-    const LAYOUT_NAMESPACE = 'dash-layout';
-
-    // GET Layout
-    fastify.get('/', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account' });
-        const userId = request.user?.id ?? '';
-
-        return cacheAside(
-            `${userId}:${accountId}`,
-            async () => {
-                let layout = await prisma.dashboardLayout.findFirst({
-                    where: { accountId, userId },
-                    include: { widgets: { orderBy: { sortOrder: 'asc' } } }
-                });
-
-                if (!layout) {
-                    layout = await prisma.dashboardLayout.create({
-                        data: {
-                            accountId,
-                            userId,
-                            name: 'Main Dashboard',
-                            isDefault: true,
-                            widgets: {
-                                create: [
-                                    { widgetKey: 'total-sales', position: { x: 0, y: 0, w: 4, h: 4 }, sortOrder: 0 },
-                                    { widgetKey: 'recent-orders', position: { x: 4, y: 0, w: 4, h: 4 }, sortOrder: 1 },
-                                    { widgetKey: 'marketing-roas', position: { x: 8, y: 0, w: 4, h: 4 }, sortOrder: 2 },
-                                    { widgetKey: 'sales-chart', position: { x: 0, y: 4, w: 8, h: 6 }, sortOrder: 3 },
-                                    { widgetKey: 'top-products', position: { x: 8, y: 4, w: 4, h: 6 }, sortOrder: 4 },
-                                    { widgetKey: 'customer-growth', position: { x: 0, y: 10, w: 6, h: 6 }, sortOrder: 5 }
-                                ]
-                            }
-                        },
-                        include: { widgets: { orderBy: { sortOrder: 'asc' } } }
-                    });
-                }
-
-                return layout;
-            },
-            { ttl: CacheTTL.MEDIUM, namespace: LAYOUT_NAMESPACE }
-        );
-    });
-
-    // SAVE Layout (Widgets Update)
-    fastify.post<{ Body: { widgets: Array<{ widgetKey: string; position: any; settings?: any }> } }>('/', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account' });
-
-        const layout = await prisma.dashboardLayout.findFirst({
-            where: { accountId, userId: request.user?.id }
-        });
-
-        if (!layout) return reply.code(404).send({ error: 'Dashboard not found' });
-
-        const { widgets } = request.body;
-
-        await prisma.$transaction([
-            prisma.dashboardWidget.deleteMany({ where: { dashboardId: layout.id } }),
-            prisma.dashboardWidget.createMany({
-                data: widgets.map((w, index) => ({
-                    dashboardId: layout.id,
-                    widgetKey: w.widgetKey,
-                    position: w.position,
-                    settings: w.settings || {},
-                    sortOrder: index
-                }))
-            })
-        ]);
-
-        /** Bust the layout cache so next GET picks up the new widgets */
-        const userId = request.user?.id ?? '';
-        await cacheDelete(`${userId}:${accountId}`, { namespace: LAYOUT_NAMESPACE });
-
-        const updated = await prisma.dashboardLayout.findUnique({
-            where: { id: layout.id },
-            include: { widgets: { orderBy: { sortOrder: 'asc' } } }
-        });
-
-        return updated;
+    // Uncached version-bearing reads; advisory locks serialize first-load initialization.
+    fastify.get('/', async request => readDashboardLayout(request.user!.id, request.accountId!));
+    fastify.post('/', async (request, reply) => {
+        const parsed = layoutSchema.safeParse(request.body);
+        if (!parsed.success) return reply.code(400).send({ error: 'A valid version and bounded widget layout are required' });
+        try { return await saveDashboardLayout(request.user!.id, request.accountId!, parsed.data); }
+        catch (error) { return reply.code(error instanceof LayoutConflict ? 409 : 500).send({ error: error instanceof LayoutConflict ? 'Dashboard changed; reload before saving' : 'Could not save dashboard' }); }
     });
 };
 

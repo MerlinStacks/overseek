@@ -59,6 +59,7 @@ vi.mock('../utils/prisma', () => ({
 vi.mock('../utils/accountFeatures', () => ({
     isAccountFeatureEnabled: vi.fn().mockResolvedValue(true),
 }));
+vi.mock('../services/PermissionService', () => ({ PermissionService: { hasPermission: vi.fn().mockResolvedValue(true) } }));
 
 import marketingRoutes from './marketing';
 
@@ -157,12 +158,28 @@ describe('marketing automation status route', () => {
         expect(preview.json()).toMatchObject({ subject: 'Hello Emily', orderId: 'cart-order' });
         expect(preview.json().html).toContain('Custom mug');
         expect(preview.json().html).toContain('75.00');
-        expect(preview.json().html).toContain('https://shop.test/checkout/?recover_cart=preview');
+        expect(preview.json().canonicalHtml).toContain('https://shop.test/checkout/?recover_cart=preview');
+        expect(preview.json().html).toContain(encodeURIComponent('https://shop.test/checkout/?recover_cart=preview'));
         expect(preview.json().html).not.toContain('{{');
         expect(sendEmail).not.toHaveBeenCalled();
         const test = await app.inject({ method: 'POST', url: '/api/marketing/test-email', payload: { to: 'test@example.com', subject: 'Hello {{customer.firstName}}', content, orderId: preview.json().orderId } });
         expect(test.statusCode).toBe(200);
-        expect(sendEmail.mock.calls[0][4]).toBe(preview.json().html);
+        expect(sendEmail.mock.calls[0][4]).toBe(preview.json().canonicalHtml);
+    });
+
+    it('previews configured sender and UTM values before tracking and sends the same canonical content', async () => {
+        vi.mocked(prisma.account.findFirst).mockResolvedValue({ wooUrl: 'https://shop.test' } as any);
+        const deliveryOptions = { appendUtm: true, campaignName: 'Spring gifts', overrideFrom: true, fromName: 'Shop {{customer.firstName}}', fromEmail: 'sales@shop.test', replyToEmail: 'help@shop.test' };
+        const preview = await app.inject({ method: 'POST', url: '/api/marketing/preview-email', payload: { subject: 'Test', content: '<a href="https://shop.test/gifts?a=1&amp;b=2">Shop</a>', orderId: null, deliveryOptions } });
+        expect(preview.statusCode).toBe(200);
+        const artifact = preview.json();
+        expect(artifact.sender).toMatchObject({ fromName: 'Shop Test', fromEmail: 'sales@shop.test', replyToEmail: 'help@shop.test' });
+        expect(artifact.canonicalHtml).toContain('utm_campaign=Spring+gifts');
+        expect(artifact.html).toContain('utm_campaign%3DSpring%2Bgifts');
+        const test = await app.inject({ method: 'POST', url: '/api/marketing/test-email', payload: { to: 'qa@example.com', subject: artifact.subject, content: artifact.canonicalHtml, orderId: null, deliveryOptions: { overrideFrom: true, ...artifact.sender, appendUtm: false } } });
+        expect(test.statusCode).toBe(200);
+        expect(sendEmail.mock.calls[0][4]).toBe(artifact.canonicalHtml);
+        expect(sendEmail.mock.calls[0][6]).toMatchObject(artifact.sender);
     });
 
     it('uses sample cart items when no order exists, without sending a preview', async () => {

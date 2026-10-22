@@ -7,6 +7,7 @@ import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { evaluateEmailPreflight, groupPreflightIssues, type PreflightIssue } from '../../utils/emailPreflight';
 import {
     compileEmailDesignV2,
+    EMAIL_RENDERER_VERSION,
     createEmailDesignV2FromUnknown,
     createEmailDesignId,
     getEmailDesignV2BlockLabel,
@@ -23,7 +24,7 @@ import {
 import { createAccountFooterHtml, createBlock, createPaletteBlock, paletteItems, type PaletteKey } from './emailDesignerV2/blockFactory';
 import { EmailDropCanvas } from './emailDesignerV2/EmailDropCanvas';
 import { PreviewOrderContext } from './emailDesignerV2/PreviewOrderContext';
-import { getPreviewTestOrderId, loadEmailPreviewData, useScopedEmailPreview, type PreviewOrderSelection } from './emailDesignerV2/previewData';
+import { loadEmailPreviewData, useScopedEmailPreview, type PreviewOrderSelection } from './emailDesignerV2/previewData';
 import { resolveDeliveryEstimateEmailTokens } from '@overseek/core';
 import { PaletteGrid } from './emailDesignerV2/PaletteGrid';
 import { ProductPicker } from './emailDesignerV2/ProductPicker';
@@ -31,8 +32,13 @@ import { productToBlockProps } from './emailDesignerV2/productBlockProps';
 import { getEmailDesignWarnings, sanitizeEmailHtml, sanitizeEmailLayoutHtml } from '../../utils/emailHtml';
 import { useEmailAutosave } from './emailDesignerV2/useEmailAutosave';
 import { useDesignHistory } from './emailDesignerV2/useDesignHistory';
+import { DeliveryPreview, type DeliveryArtifact } from './emailDesignerV2/DeliveryPreview';
+import { SharedSections } from './emailDesignerV2/SharedSections';
+import type { EmailDeliveryPreviewOptions } from '@overseek/core';
+import { copyEmailBlockStyles, moveEmailBlock } from './emailDesignerV2/designerOperations';
 
 interface Props {
+    deliveryOptions?: EmailDeliveryPreviewOptions;
     storageScope?: string;
     emailCategory?: 'MARKETING' | 'TRANSACTIONAL';
     onTestSent?: (html: string, design: unknown, meta: { subject: string; previewText: string }) => void;
@@ -535,7 +541,7 @@ function isEmailSafeImageUrl(value: string): boolean {
     return /^(https?:|data:|cid:)/i.test(candidate);
 }
 
-export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPreviewText, storageScope, emailCategory = 'MARKETING', previewOrderMode = 'latest', onSave, onCancel, onTestSent }: Props) {
+export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPreviewText, storageScope, deliveryOptions, emailCategory = 'MARKETING', previewOrderMode = 'latest', onSave, onCancel, onTestSent }: Props) {
     const { token, user } = useAuth();
     const { currentAccount, refreshAccounts } = useAccount();
     const { design, setDesign, undo, redo, canUndo, canRedo } = useDesignHistory(() => {
@@ -554,6 +560,8 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
     const [blockSearch, setBlockSearch] = useState('');
     const [previewDeviceId, setPreviewDeviceId] = useState<PreviewDeviceId>('desktop');
     const [previewSurface, setPreviewSurface] = useState<'canvas' | 'html'>('canvas');
+    const [deliveryArtifact, setDeliveryArtifact] = useState<DeliveryArtifact | null>(null);
+    const [styleClipboard, setStyleClipboard] = useState<Record<string, unknown> | null>(null);
     const [closing, setClosing] = useState(false);
     const [issues, setIssues] = useState<PreflightIssue[]>([]);
     const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
@@ -566,7 +574,8 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
     const [invoiceLogoUrl, setInvoiceLogoUrl] = useState('');
     const [previewMergeContext, setPreviewMergeContext] = useScopedEmailPreview<PreviewMergeContext>(currentAccount?.id, previewOrderMode, token);
 
-    const html = useMemo(() => compileEmailDesignV2(design), [design]);
+    const compilation = useMemo(() => { try { return { html: compileEmailDesignV2(design), error: '' }; } catch (error) { return { html: '', error: (error as Error).message }; } }, [design]);
+    const html = compilation.html;
     const storageSuffix = `${encodeURIComponent(currentAccount?.id || 'no-account')}:${encodeURIComponent(storageScope || 'session')}`;
     // Unidentified editors keep history in memory only rather than mixing unrelated emails.
     const historyStorageKey = storageScope ? `${HISTORY_STORAGE_KEY}:${storageSuffix}` : null;
@@ -580,17 +589,11 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
             return next;
         });
     }, [historyStorageKey]);
-    const { flush: persistLatestDesign, saving, saveError, hasUnsavedChanges, lastSavedAt } = useEmailAutosave(design, html, onSave, saveSnapshot);
-    const mergedPreviewHtml = useMemo(() => (
-        previewMergeContext ? applyPreviewMergeTags(html, previewMergeContext) : resolveDeliveryEstimateEmailTokens(html, null)
-    ), [html, previewMergeContext]);
-    const iframePreviewHtml = useMemo(() => {
-        const baseHref = typeof window !== 'undefined' ? window.location.origin : '';
-        if (!baseHref) return mergedPreviewHtml;
-        return mergedPreviewHtml.includes('<head>')
-            ? mergedPreviewHtml.replace('<head>', `<head><base href="${baseHref}/">`)
-            : mergedPreviewHtml;
-    }, [mergedPreviewHtml]);
+    const saveValidatedDesign = useCallback((nextHtml: string, nextDesign: EmailDesignV2Envelope, meta: { subject: string; previewText: string; autosave: boolean }) => {
+        if (compileEmailDesignV2(nextDesign) !== nextHtml) throw new Error('Email compilation is incomplete');
+        return onSave(nextHtml, nextDesign, meta);
+    }, [onSave]);
+    const { flush: persistLatestDesign, saving, saveError, hasUnsavedChanges, lastSavedAt } = useEmailAutosave(design, html, saveValidatedDesign, saveSnapshot);
     const selectedSection = design.document.sections.find((section) => section.id === selectedSectionId) || design.document.sections[0];
     const selectedBlock = selectedSection?.columns.flatMap((column) => column.blocks).find((block) => block.id === selectedBlockId) || null;
     const groupedIssues = groupPreflightIssues(issues);
@@ -746,6 +749,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
         setDesign((current) => {
             const next = cloneDesign(current);
             updater(next);
+            next.rendererVersion = EMAIL_RENDERER_VERSION;
             return next;
         });
     }, [setDesign]);
@@ -930,6 +934,15 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
             setSelectedBlockId(null);
         });
     };
+    const insertBrandSection = (section: EmailSection) => insertSavedSectionPreset({ id: section.preset?.id || section.id, name: section.name || 'Brand section', section });
+    const linkBrandSection = (preset: NonNullable<EmailSection['preset']>) => updateSelectedSection(section => { section.preset = preset; });
+    const refreshBrandSection = (source: EmailSection) => {
+        if (!selectedSection) return;
+        setDirtyDesign(draft => {
+            const index = draft.document.sections.findIndex(section => section.id === selectedSection.id);
+            if (index >= 0) { const next = cloneSectionWithFreshIds(source); draft.document.sections[index] = next; setSelectedSectionId(next.id); setSelectedBlockId(null); }
+        });
+    };
 
     const removeSectionColumn = (columnId: string) => {
         updateSelectedSection((section) => {
@@ -1007,6 +1020,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
             }
         });
     };
+    const stepBlock = (blockId: string, direction: -1 | 1) => setDirtyDesign(draft => { moveEmailBlock(draft, blockId, direction); });
 
     const deleteBlockById = (blockId: string) => {
         setDirtyDesign((draft) => {
@@ -1128,16 +1142,24 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
     const runChecklist = () => {
         setIssues([
             ...evaluateEmailPreflight({ html, subject: design.document.meta.title, emailCategory }),
-            ...designWarnings.map((warning) => ({ id: warning.id, severity: 'warning' as const, message: warning.message })),
+            ...designWarnings,
         ]);
         setLeftSidebarMode('checklist');
     };
 
+    const testScope = JSON.stringify([currentAccount?.id, token, design, deliveryOptions, emailCategory]);
+    const currentTestScope = useRef(testScope); currentTestScope.current = testScope;
+    useEffect(() => () => { currentTestScope.current = ''; }, []);
     const sendTestEmail = async () => {
+        if (sendingTest) return;
+        const requestScope = testScope;
         const recipient = testEmail.trim();
         if (!recipient || !recipient.includes('@') || !currentAccount) {
             setTestStatus('Enter a valid recipient first.');
             return;
+        }
+        if (!deliveryArtifact || deliveryArtifact.accountId !== currentAccount.id || deliveryArtifact.category !== emailCategory || deliveryArtifact.designKey !== JSON.stringify(design) || deliveryArtifact.deliveryOptionsKey !== JSON.stringify(deliveryOptions || {})) {
+            setPreviewSurface('html'); setTestStatus('Wait for Delivery preview to prepare the current design, then send your test.'); return;
         }
         setSendingTest(true);
         setTestStatus(null);
@@ -1153,16 +1175,17 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                 body: JSON.stringify({
                     to: recipient,
                     category: emailCategory,
-                    previewText: design.document.meta.previewText || '',
-                    orderId: getPreviewTestOrderId(previewOrderMode, previewMergeContext),
-                    subject: previewOrderMode === 'none'
-                        ? resolveDeliveryEstimateEmailTokens(design.document.meta.title || 'Email Builder Test', null)
-                        : design.document.meta.title || 'Email Builder Test',
-                    content: previewOrderMode === 'none' ? resolveDeliveryEstimateEmailTokens(html, null) : html,
+                    previewText: deliveryArtifact.previewText,
+                    orderId: null,
+                    subject: deliveryArtifact.subject,
+                    content: deliveryArtifact.canonicalHtml,
+                    deliveryOptions: { overrideFrom: true, ...deliveryArtifact.sender, appendUtm: false },
                 }),
             });
+            if (currentTestScope.current !== requestScope) return;
             if (!response.ok) {
                 const payload = await response.json();
+                if (currentTestScope.current !== requestScope) return;
                 const message = payload?.error || payload?.message || 'Failed to send test email.';
                 const isMissingEmailAccount = message.includes('No email account configured') || message.includes('No sending-capable email account');
                 setMissingEmailAccount(isMissingEmailAccount);
@@ -1175,7 +1198,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
             setTestStatus(`Test email sent to ${recipient}.`);
             onTestSent?.(html, design, { subject: design.document.meta.title, previewText: design.document.meta.previewText || '' });
         } catch {
-            setTestStatus('Failed to send test email.');
+            if (currentTestScope.current === requestScope) setTestStatus('Failed to send test email.');
         } finally {
             setSendingTest(false);
         }
@@ -1253,7 +1276,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
     }, [currentAccount, token]);
 
     useEffect(() => {
-        if (!brandLogoUrl) return;
+        if (!brandLogoUrl || initialDesign) return;
         setDesign((current) => {
             const next = cloneDesign(current);
             let changed = false;
@@ -1269,10 +1292,10 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
             }
             return changed ? next : current;
         });
-    }, [brandLogoUrl, setDesign]);
+    }, [brandLogoUrl, setDesign, initialDesign]);
 
     useEffect(() => {
-        if (!accountFooterHtml) return;
+        if (!accountFooterHtml || initialDesign) return;
         setDesign((current) => {
             const next = cloneDesign(current);
             let changed = false;
@@ -1288,7 +1311,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
             }
             return changed ? next : current;
         });
-    }, [accountFooterHtml, setDesign]);
+    }, [accountFooterHtml, setDesign, initialDesign]);
 
     useEffect(() => {
         const handler = (event: BeforeUnloadEvent) => {
@@ -1305,6 +1328,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
             const target = event.target as HTMLElement | null;
             // Preserve native text-editor undo; shortcuts outside fields control the design.
             if (closing || target?.closest('input, textarea, [contenteditable="true"]')) return;
+            if (selectedBlockId && previewSurface === 'canvas' && event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) { event.preventDefault(); setDirtyDesign(draft => { moveEmailBlock(draft, selectedBlockId, event.key === 'ArrowUp' ? -1 : 1); }); return; }
             if (!(event.ctrlKey || event.metaKey)) return;
             if (event.key.toLowerCase() === 'z') {
                 event.preventDefault();
@@ -1316,7 +1340,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [undo, redo, closing]);
+    }, [undo, redo, closing, selectedBlockId, previewSurface, setDirtyDesign]);
 
     return (
         <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/55 backdrop-blur-sm">
@@ -1345,8 +1369,8 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                     </div>
                     <div className="flex items-center justify-center gap-2">
                         <div className="flex rounded-lg border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
-                            <button onClick={() => setPreviewSurface('canvas')} className={`rounded-md px-2.5 py-2 text-xs font-semibold ${previewSurface === 'canvas' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`} title="Live canvas preview" aria-label="Live canvas preview">Canvas</button>
-                            <button onClick={() => setPreviewSurface('html')} className={`rounded-md px-2.5 py-2 text-xs font-semibold ${previewSurface === 'html' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`} title="Real email HTML preview" aria-label="Real email HTML preview">Real Email</button>
+                            <button onClick={() => setPreviewSurface('canvas')} className={`rounded-md px-2.5 py-2 text-xs font-semibold ${previewSurface === 'canvas' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`} title="Edit layout" aria-label="Edit layout">Edit layout</button>
+                            <button onClick={() => setPreviewSurface('html')} className={`rounded-md px-2.5 py-2 text-xs font-semibold ${previewSurface === 'html' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`} title="Delivery preview" aria-label="Delivery preview">Delivery preview</button>
                         </div>
                         <div className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
                             <button onClick={() => setPreviewDeviceId('desktop')} className={`rounded-md p-2 ${previewDeviceId === 'desktop' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`} title="Desktop preview" aria-label="Desktop preview"><Monitor size={16} /></button>
@@ -1381,10 +1405,11 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                     <button onClick={() => void persistLatestDesign()} className="rounded border px-3 py-1">Retry save</button>
                     <button onClick={() => { if (window.confirm('Discard all unsaved email changes?')) onCancel(); }} className="rounded border px-3 py-1">Discard unsaved changes</button>
                 </div>}
-                <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[324px_1fr]">
+                {compilation.error && <p role="alert" className="bg-red-50 px-4 py-3 text-sm text-red-700">{compilation.error}. Correct the value before saving or sending; your edits remain open.</p>}
+                <div className={`grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] ${previewSurface === 'canvas' && selectedBlock ? 'xl:grid-cols-[280px_minmax(0,1fr)_320px]' : ''}`}>
                     <aside className="flex min-h-0 flex-col overflow-hidden border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-                        {leftSidebarMode === 'builder' && (
-                            <>
+                        {(leftSidebarMode === 'builder' || leftSidebarMode === 'blockSettings' && previewSurface === 'canvas') && (
+                            <div className={leftSidebarMode === 'builder' ? 'contents' : 'hidden xl:contents'}>
                                 <div className="m-3 grid grid-cols-3 rounded-lg bg-slate-100 p-1 text-sm dark:bg-slate-800">
                                     {(['structure', 'blocks', 'layouts'] as BuilderTab[]).map((tab) => (
                                         <button key={tab} onClick={() => setBuilderTab(tab)} className={`rounded-md px-3 py-2 capitalize transition ${builderTab === tab ? 'bg-white text-slate-950 shadow-md dark:bg-slate-950 dark:text-white' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'}`}>{tab}</button>
@@ -1430,6 +1455,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                                     ))}
                                 </div>
                                 <p className="mb-2 mt-6 text-sm font-medium text-slate-950 dark:text-white">Reusable sections</p>
+                                <SharedSections section={selectedSection} onInsert={insertBrandSection} onLink={linkBrandSection} onRefresh={refreshBrandSection} />
                                 <div className="space-y-2">
                                     {savedSections.length === 0 && <p className="rounded-lg border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-500 dark:border-slate-700">Save a structure from Structure settings to reuse it here.</p>}
                                     {savedSections.map((preset) => (
@@ -1508,6 +1534,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                         {builderTab === 'global' && (
                             <div className="min-h-0 flex-1 overflow-auto px-3 pb-4 space-y-3">
                                 <p className="text-sm font-semibold text-slate-900 dark:text-white">Global styles</p>
+                                <button type="button" onClick={() => { if (window.confirm('Replace this draft’s existing logo and footer with current account defaults? Other emails will not change.')) setDirtyDesign(draft => { for (const section of draft.document.sections) for (const column of section.columns) for (const block of column.blocks) { if (block.type === 'siteLogo') block.props.src = brandLogoUrl; if (block.type === 'footer') block.props.html = accountFooterHtml; } }); }} className="rounded border px-3 py-2 text-xs">Refresh brand defaults in this draft</button>
                                 <Field label="Email background" value={design.document.theme.backgroundColor} onChange={(value) => updateTheme('backgroundColor', value)} />
                                 <Field label="Content background" value={design.document.theme.contentBackgroundColor} onChange={(value) => updateTheme('contentBackgroundColor', value)} />
                                 <Field label="Text color" value={design.document.theme.textColor} onChange={(value) => updateTheme('textColor', value)} />
@@ -1521,11 +1548,11 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                                     <button onClick={() => setBuilderTab('layouts')} className="flex flex-1 items-center justify-center gap-1 px-3 py-3 hover:bg-slate-50 dark:hover:bg-slate-800"><Settings size={14} />Layout Settings</button>
                                     <button onClick={() => setBuilderTab('global')} className="flex flex-1 items-center justify-center gap-1 px-3 py-3 hover:bg-slate-50 dark:hover:bg-slate-800"><Globe2 size={14} />Global Settings</button>
                                 </div>
-                            </>
+                            </div>
                         )}
 
                         {leftSidebarMode === 'blockSettings' && (
-                            <div className="min-h-0 flex-1 overflow-auto p-4">
+                            <div className={`min-h-0 flex-1 overflow-auto p-4 ${previewSurface === 'canvas' ? 'xl:hidden' : ''}`}>
                                 <div className="mb-3 flex items-center justify-between">
                                     <p className="text-sm font-semibold text-slate-900 dark:text-white">Block settings</p>
                                     <button type="button" onClick={() => setLeftSidebarMode('builder')} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100" aria-label="Close block settings"><X size={16} /></button>
@@ -1573,6 +1600,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                                     ))}
                                 </div>
                                 <button type="button" onClick={saveSelectedSectionPreset} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-200"><Layers size={14} />Save as reusable section</button>
+                                <SharedSections section={selectedSection} onInsert={insertBrandSection} onLink={linkBrandSection} onRefresh={refreshBrandSection} />
                             </div>
                         )}
 
@@ -1587,7 +1615,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
 
                     <main className="min-h-0 overflow-auto bg-slate-200/70 p-4 dark:bg-slate-950">
                         <div className="mx-auto mb-3 flex max-w-4xl items-center justify-between gap-3">
-                            <p className="text-sm text-slate-600 dark:text-slate-300">{previewSurface === 'canvas' ? 'Live email canvas. Drag blocks into place and edit content directly.' : 'Real email preview from compiled HTML. This is the exact markup that gets saved and sent.'}</p>
+                            <p className="text-sm text-slate-600 dark:text-slate-300">{previewSurface === 'canvas' ? 'Edit your layout here. Use Delivery preview to inspect server-prepared output.' : 'Prepared by the shared compiler and server merge/delivery pipeline. Inbox clients may render it differently.'}</p>
                             <p className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 shadow-sm dark:bg-slate-900 dark:text-slate-300">{previewDevice.label} · {previewWidth}px</p>
                         </div>
                         {designWarnings.length > 0 && (
@@ -1596,7 +1624,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                                     <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                                     <div>
                                         <p className="font-semibold">Designer warnings</p>
-                                        {designWarnings.slice(0, 3).map((warning) => <p key={warning.id}>{warning.message}</p>)}
+                                        {designWarnings.slice(0, 3).map((warning) => <button key={warning.id} className="block text-left underline underline-offset-2" onClick={() => { setPreviewSurface('canvas'); if (warning.sectionId) setSelectedSectionId(warning.sectionId); if (warning.blockId) { setSelectedBlockId(warning.blockId); setLeftSidebarMode('blockSettings'); } else setLeftSidebarMode('sectionSettings'); }}>{warning.message}</button>)}
                                         {designWarnings.length > 3 && <p>{designWarnings.length - 3} more warnings in the checklist.</p>}
                                     </div>
                                 </div>
@@ -1610,22 +1638,19 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                                 }}
                             >
                                 <PreviewOrderContext.Provider value={previewMergeContext?.order ?? null}>
-                                    <EmailDropCanvas theme={design.document.theme} previewWidth={previewWidth} isMobilePreview={isMobilePreview} sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelectSection={(id) => { setSelectedSectionId(id); setSelectedBlockId(null); }} onSelectBlock={setSelectedBlockId} onUpdateBlock={updateBlockById} onDuplicateBlock={duplicateBlock} onDeleteBlock={deleteBlockById} onDeleteSection={deleteSectionById} onOpenSettings={() => setLeftSidebarMode('blockSettings')} onOpenSectionSettings={() => setLeftSidebarMode('sectionSettings')} onDropOnSection={handleDropOnSection} onDropStructure={handleDropStructure} />
+                                    <EmailDropCanvas theme={design.document.theme} previewWidth={previewWidth} isMobilePreview={isMobilePreview} sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelectSection={(id) => { setSelectedSectionId(id); setSelectedBlockId(null); }} onSelectBlock={setSelectedBlockId} onUpdateBlock={updateBlockById} onDuplicateBlock={duplicateBlock} onMoveBlock={stepBlock} warnings={designWarnings} onDeleteBlock={deleteBlockById} onDeleteSection={deleteSectionById} onOpenSettings={() => setLeftSidebarMode('blockSettings')} onOpenSectionSettings={() => setLeftSidebarMode('sectionSettings')} onDropOnSection={handleDropOnSection} onDropStructure={handleDropStructure} />
                                 </PreviewOrderContext.Provider>
                             </ErrorBoundary>
                         ) : (
-                            <div className="mx-auto w-full rounded-3xl border border-slate-300 bg-white p-4 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
-                                <div className="mx-auto overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700" style={{ width: previewWidth }}>
-                                    <iframe
-                                        title="Compiled email HTML preview"
-                                        srcDoc={iframePreviewHtml}
-                                        className="h-[78vh] w-full bg-white"
-                                        sandbox="allow-popups allow-popups-to-escape-sandbox"
-                                    />
-                                </div>
-                            </div>
+                            <DeliveryPreview design={design} width={previewWidth} category={emailCategory} deliveryOptions={deliveryOptions} onPrepared={setDeliveryArtifact} />
                         )}
                     </main>
+                    {previewSurface === 'canvas' && selectedBlock && <aside aria-label="Contextual block inspector" className="hidden min-h-0 overflow-auto border-l border-slate-200 bg-white p-4 xl:block dark:border-slate-700 dark:bg-slate-900">
+                        <PanelHeader title="Selected block" onClose={() => { setSelectedBlockId(null); setLeftSidebarMode('builder'); }} />
+                        <div className="mb-3 flex flex-wrap gap-2"><button onClick={() => setStyleClipboard(copyEmailBlockStyles(selectedBlock))} className="rounded border px-2 py-1 text-xs">Copy styles</button><button disabled={!styleClipboard} onClick={() => updateBlock(block => { Object.assign(block.props, styleClipboard); })} className="rounded border px-2 py-1 text-xs disabled:opacity-40">Paste styles</button><button onClick={() => duplicateBlock(selectedBlock.id)} className="rounded border px-2 py-1 text-xs">Duplicate</button></div>
+                        <p className="mb-3 text-xs text-slate-500">Alt + ↑/↓ moves the selected block outside text fields.</p>
+                        <BlockEditor block={selectedBlock} onUpdate={updateBlock} onDelete={deleteSelectedBlock} canDelete={selectedBlock.type !== 'footer'} sections={design.document.sections} selectedSectionId={selectedSectionId} onSelectBlock={setSelectedBlockId} onDropOnSection={handleDropOnSection} onSaveSocialDefaults={saveSocialLinksAsDefaults} token={token || undefined} accountId={currentAccount?.id} />
+                    </aside>}
 
                 </div>
             </div>
@@ -1826,9 +1851,9 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
             return;
         }
 
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/svg+xml', 'image/webp'];
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
         if (!allowedTypes.includes(file.type)) {
-            setUploadError('Invalid file type. Use PNG, JPG, GIF, SVG, or WebP.');
+            setUploadError('Invalid file type. Use PNG, JPG, GIF, or WebP. SVG is not reliable in email.');
             return;
         }
         if (file.size > 5 * 1024 * 1024) {
@@ -1843,7 +1868,7 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
             const formData = new FormData();
             formData.append('file', file);
 
-            const response = await fetch('/api/invoices/templates/upload-image', {
+            const response = await fetch('/api/marketing/designer/assets', {
                 method: 'POST',
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -1892,7 +1917,7 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
                 <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/png,image/jpeg,image/gif,image/svg+xml,image/webp"
+                    accept="image/png,image/jpeg,image/gif,image/webp"
                     className="hidden"
                     onChange={(event) => {
                         const file = event.target.files?.[0];

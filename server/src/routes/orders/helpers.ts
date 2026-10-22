@@ -1,13 +1,8 @@
-import { z } from 'zod';
+import { orderIdParamSchema } from './schemas';
+export { orderIdParamSchema } from './schemas';
 import { prisma } from '../../utils/prisma';
 import { parseFirstIssueOrReply } from '../routeHelpers';
 
-export const orderIdParamSchema = z.object({
-    id: z.union([
-        z.string().uuid(),
-        z.string().regex(/^\d+$/, 'ID must be a UUID or a numeric string')
-    ])
-});
 
 export function getOrderAccountIdOrReply(request: any, reply: any): string | null {
     const accountId = request.user?.accountId;
@@ -46,6 +41,7 @@ export function parseOrderIdParamOrReply(request: any, reply: any): string | nul
 }
 
 export async function findOrderByAnyId(accountId: string, id: string) {
+    if (!accountId || !orderIdParamSchema.safeParse({ id }).success) return null;
     const byInternalId = await prisma.wooOrder.findFirst({ where: { id, accountId } });
     if (byInternalId) return byInternalId;
 

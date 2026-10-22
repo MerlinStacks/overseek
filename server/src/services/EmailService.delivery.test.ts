@@ -146,6 +146,9 @@ describe('durable email delivery', () => {
         const results = await Promise.all([service.retryFailedEmail('log-0', 'account'), service.retryFailedEmail('log-0', 'account')]);
         expect(results.filter(result => result.success)).toHaveLength(1);
         expect(sendMail).toHaveBeenCalledTimes(2);
+        expect(sendMail.mock.calls[1][0].html).toBe(sendMail.mock.calls[0][0].html);
+        expect(sendMail.mock.calls[1][0].text).toBe(sendMail.mock.calls[0][0].text);
+        expect(sendMail.mock.calls[1][0].headers).toEqual(sendMail.mock.calls[0][0].headers);
         expect(mocks.rows.size).toBe(1);
         expect(mocks.rows.get('log-0')).toMatchObject({ status: 'SUCCESS', retryCount: 1, canRetry: false });
     });
@@ -178,10 +181,24 @@ describe('durable email delivery', () => {
         mocks.reserve.mockResolvedValueOnce(new Date(Date.now() + 86_400_000));
         await expect(send({ idempotencyKey: 'campaign:one:customer' })).rejects.toBeInstanceOf(EmailDeferredError);
         expect(mocks.rows.get('log-0').status).toBe('QUEUED');
+        const frozen = structuredClone(mocks.rows.get('log-0').emailPayload.prepared);
+        const trackingId = mocks.rows.get('log-0').trackingId;
         expect(sendMail).not.toHaveBeenCalled();
+        mocks.account.mockResolvedValue({ id: 'sender', email: 'new@example.com', name: 'Changed default', smtpEnabled: true });
         await send({ idempotencyKey: 'campaign:one:customer' });
         expect(mocks.rows.size).toBe(1);
         expect(sendMail).toHaveBeenCalledTimes(1);
+        expect(sendMail.mock.calls[0][0]).toMatchObject({ html: frozen.html, text: frozen.text, subject: frozen.subject, from: { address: 'support@example.com', name: 'Support' } });
+        expect(mocks.rows.get('log-0').emailPayload.prepared.hash).toBe(frozen.hash);
+        expect(mocks.rows.get('log-0').trackingId).toBe(trackingId);
+    });
+
+    it('rejects a tampered queued artifact before contacting transport', async () => {
+        mocks.reserve.mockResolvedValueOnce(new Date(Date.now() + 86_400_000));
+        await expect(send({ idempotencyKey: 'tampered' })).rejects.toBeInstanceOf(EmailDeferredError);
+        mocks.rows.get('log-0').emailPayload.prepared.html = '<p>Unexpected changed content</p>';
+        await expect(send({ idempotencyKey: 'tampered' })).rejects.toThrow('integrity');
+        expect(sendMail).not.toHaveBeenCalled();
     });
 
     it('resends canonical content, attachments and headers with fresh tracking', async () => {

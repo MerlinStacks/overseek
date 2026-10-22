@@ -17,7 +17,7 @@ interface AOVComparison {
 }
 
 export class AOVService {
-    async getAOVTrend(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney'): Promise<AOVPoint[]> {
+    async getAOVTrend(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney', options: { throwOnError?: boolean } = {}): Promise<AOVPoint[]> {
         try {
             const settings = await getRevenueSettings(accountId, timezone);
             timezone = settings.timezone;
@@ -59,11 +59,12 @@ export class AOVService {
                 }));
         } catch (error) {
             Logger.error('[AOVService] AOV trend error', { error, accountId });
+            if (options.throwOnError) throw error;
             return [];
         }
     }
 
-    async getAOVComparison(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney'): Promise<AOVComparison> {
+    async getAOVComparison(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney', options: { throwOnError?: boolean } = {}): Promise<AOVComparison> {
         try {
             const settings = await getRevenueSettings(accountId, timezone);
             timezone = settings.timezone;
@@ -106,6 +107,7 @@ export class AOVService {
             return { current, previous, change, changePercent };
         } catch (error) {
             Logger.error('[AOVService] AOV comparison error', { error, accountId });
+            if (options.throwOnError) throw error;
             return { current: 0, previous: 0, change: 0, changePercent: 0 };
         }
     }

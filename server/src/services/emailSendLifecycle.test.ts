@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-    lock: vi.fn(), findFirst: vi.fn(), update: vi.fn(), count: vi.fn(), create: vi.fn(), settings: vi.fn()
+    lock: vi.fn(), findFirst: vi.fn(), update: vi.fn(), count: vi.fn(), create: vi.fn(), settings: vi.fn(), contactCount: vi.fn()
 }));
 vi.mock('../utils/prisma', () => ({ prisma: {
     $transaction: (run: any) => run({
         $executeRaw: mocks.lock,
-        emailLog: { findFirst: mocks.findFirst, update: mocks.update },
+        emailLog: { findFirst: mocks.findFirst, update: mocks.update, count: mocks.contactCount },
         emailSendAttempt: { count: mocks.count, create: mocks.create },
         emailSettings: { upsert: mocks.settings }
     })
@@ -56,6 +56,15 @@ describe('email capacity reservation', () => {
         await expect(reserveEmailSend('a', 'mail', false)).resolves.toBeNull();
         expect(mocks.count).not.toHaveBeenCalled();
         expect(mocks.create).toHaveBeenCalledOnce();
+    });
+    it('serializes contact caps and skips only that contact without reserving a transport attempt', async () => {
+        mocks.findFirst.mockResolvedValue({ status: 'QUEUED', source: 'CAMPAIGN', to: 'alex@example.com' });
+        mocks.contactCount.mockResolvedValue(3);
+        await expect(reserveEmailSend('a', 'mail', true)).rejects.toThrow('Contact marketing pressure cap');
+        expect(mocks.lock.mock.invocationCallOrder[0]).toBeLessThan(mocks.contactCount.mock.invocationCallOrder[0]);
+        expect(mocks.contactCount.mock.calls[0][0].where).toMatchObject({ accountId: 'a', id: { not: 'mail' }, to: { equals: 'alex@example.com', mode: 'insensitive' }, emailPayload: { path: ['category'], equals: 'MARKETING' } });
+        expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'mail' }, data: expect.objectContaining({ status: 'SKIPPED', canRetry: false }) });
+        expect(mocks.create).not.toHaveBeenCalled();
     });
 });
 

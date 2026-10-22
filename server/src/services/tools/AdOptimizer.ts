@@ -201,7 +201,7 @@ export class AdOptimizer {
             }
 
             // Knowledge-base recommendations (AI Marketing Intelligence Phase 4)
-            const trends = multiPeriodAnalysis.hasData ? {
+            const trends = multiPeriodAnalysis.hasData && multiPeriodAnalysis.trends.performance_trajectory !== null ? {
                 roas: multiPeriodAnalysis.trends.performance_trajectory === 'improving' ? 'improving' as const :
                     multiPeriodAnalysis.trends.performance_trajectory === 'declining' ? 'declining' as const : 'stable' as const,
                 ctr: 'stable' as const

@@ -10,6 +10,7 @@ import { prisma } from '../../utils/prisma';
 import { requireAuthFastify } from '../../middleware/auth';
 import { Logger } from '../../utils/logger';
 import { lockDeliveryAccount } from '../../services/deliveryEstimates/intents';
+import { createSupplier } from '../../services/SupplierCreation';
 
 const parseOptionalInt = (value: unknown): number | null => {
     if (value === undefined || value === null || value === '') return null;
@@ -53,23 +54,12 @@ export const supplierRoutes: FastifyPluginAsync = async (fastify) => {
         if (!accountId) return reply.code(400).send({ error: 'No account' });
 
         try {
-            const { name, contactName, email, phone, currency, leadTimeDefault, leadTimeMin, leadTimeMax, paymentTerms } = request.body as any;
-            const supplier = await prisma.supplier.create({
-                data: {
-                    accountId,
-                    name,
-                    contactName,
-                    email,
-                    phone,
-                    currency: currency || 'USD',
-                    leadTimeDefault: parseLeadDays(leadTimeDefault),
-                    leadTimeMin: parseLeadDays(leadTimeMin),
-                    leadTimeMax: parseLeadDays(leadTimeMax),
-                    paymentTerms
-                }
-            });
-            return supplier;
+            if (!request.user?.id) return reply.code(401).send({ error: 'Authentication required' });
+            return await createSupplier(accountId, request.user.id, request.body);
         } catch (error) {
+            if ((error as { name?: string }).name === 'ZodError') return reply.code(400).send({ error: 'Valid supplier fields, explicit currency, ordered lead times and stable UUID required' });
+            const status = (error as { statusCode?: number }).statusCode;
+            if (status === 403 || status === 409 || (error as { code?: string }).code === 'P2002') return reply.code(status === 403 ? 403 : 409).send({ error: 'Supplier identity conflict or permission unavailable; reconcile before retrying' });
             if (error instanceof InvalidSupplierLead) return reply.code(400).send({ error: 'Supplier lead days must be integers from 0 to 3650.' });
             return reply.code(500).send({ error: 'Failed to create supplier' });
         }

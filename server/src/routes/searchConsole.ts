@@ -174,16 +174,19 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
             if (!accountId) return;
 
             const siteUrl = parseSiteUrl(request);
-            const [lowHanging, gaps, aiRecs] = await Promise.all([
+            const [lowHanging, gaps, aiRecs] = await Promise.allSettled([
                 KeywordRecommendationService.getLowHangingFruit(accountId, siteUrl),
                 KeywordRecommendationService.getKeywordGaps(accountId, siteUrl),
                 KeywordRecommendationService.getAIRecommendations(accountId, siteUrl)
             ]);
 
             return {
-                lowHangingFruit: lowHanging,
-                keywordGaps: gaps,
-                aiRecommendations: aiRecs
+                lowHangingFruit: lowHanging.status === 'fulfilled' ? lowHanging.value : [],
+                keywordGaps: gaps.status === 'fulfilled' ? gaps.value : [],
+                aiRecommendations: aiRecs.status === 'fulfilled' ? aiRecs.value : [],
+                coverage: { basis: 'returned-query-sample', queryLimit: 1000, catalogLimit: 500, note: 'Candidate opportunities, not proof of missing organic visibility or guaranteed upside.' },
+                availability: { lowHangingFruit: lowHanging.status === 'fulfilled', keywordGaps: gaps.status === 'fulfilled', aiRecommendations: aiRecs.status === 'fulfilled' },
+                provenance: { lowHangingFruit: 'heuristic-15-percent-ctr-benchmark', keywordGaps: 'catalog-candidates-absent-from-returned-sample', aiRecommendations: aiRecs.status === 'fulfilled' ? 'validated-ai' : 'unavailable' }
             };
         } catch (error: any) {
             Logger.error('Failed to fetch keyword recommendations', { error });

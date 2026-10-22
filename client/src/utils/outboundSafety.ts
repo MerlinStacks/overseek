@@ -28,17 +28,23 @@ function uppercaseRatio(input: string): number {
  */
 export function lintOutboundMessage(content: string): OutboundSafetyIssue[] {
     const issues: OutboundSafetyIssue[] = [];
-    const normalized = content.toLowerCase();
+    // Advisory browser lint, not an authoritative PII/security enforcement boundary.
+    const text = typeof content === 'string' ? content.normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '') : '';
+    const normalized = text.toLowerCase().replace(/\s+/g, ' ').trim();
+    const phrasePresent = (phrase: string) => new RegExp(`(^|[^\\p{L}\\p{N}_])${phrase.replace(/ /g, '\\s+')}($|[^\\p{L}\\p{N}_])`, 'u').test(normalized);
 
     // Basic sensitive data patterns
-    if (/\b\d{3}-\d{2}-\d{4}\b/.test(content)) {
+    if (/(^|[^\d])\d{3}-\d{2}-\d{4}(?!\d)/.test(text)) {
         issues.push({
             code: 'pii_ssn',
             severity: 'block',
             message: 'Potential SSN detected. Remove sensitive personal data before sending.'
         });
     }
-    if (/\b(?:\d[ -]*?){13,16}\b/.test(content)) {
+    // Consume the whole digit/separator run, never a 13–19 digit fragment of a longer number.
+    // Deliberately flag plausible candidates even when Luhn fails: mistyped card details are sensitive too.
+    const candidates = text.match(/\d(?:[\d \t\r\n-]*\d)?/g) ?? [];
+    if (candidates.some(candidate => { const count = candidate.replace(/\D/g, '').length; return count >= 13 && count <= 19; })) {
         issues.push({
             code: 'pii_card',
             severity: 'block',
@@ -47,7 +53,7 @@ export function lintOutboundMessage(content: string): OutboundSafetyIssue[] {
     }
 
     for (const phrase of FORBIDDEN_PHRASES) {
-        if (normalized.includes(phrase)) {
+        if (phrasePresent(phrase)) {
             issues.push({
                 code: `forbidden_${phrase.replace(/\s+/g, '_')}`,
                 severity: 'block',
@@ -57,7 +63,7 @@ export function lintOutboundMessage(content: string): OutboundSafetyIssue[] {
     }
 
     for (const word of TOXIC_WORDS) {
-        if (normalized.includes(word)) {
+        if (phrasePresent(word)) {
             issues.push({
                 code: `tone_${word.replace(/\s+/g, '_')}`,
                 severity: 'warning',
@@ -66,7 +72,7 @@ export function lintOutboundMessage(content: string): OutboundSafetyIssue[] {
         }
     }
 
-    if (uppercaseRatio(content) > 0.6 && content.length > 24) {
+    if (uppercaseRatio(text) > 0.6 && text.length > 24) {
         issues.push({
             code: 'tone_all_caps',
             severity: 'warning',

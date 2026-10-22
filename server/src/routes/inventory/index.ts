@@ -1,5 +1,4 @@
 import { FastifyPluginAsync } from 'fastify';
-import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { requireAuthFastify } from '../../middleware/auth';
 import { InventoryService } from '../../services/InventoryService';
@@ -12,6 +11,8 @@ import picklistRoutes from './picklist';
 import maintenanceRoutes from './maintenance';
 import { stockMovementRoutes } from './stock-movements';
 import { stockWriteOffRoutes } from './write-offs';
+import { PermissionService } from '../../services/PermissionService';
+import { readInventoryAlertSettings, saveInventoryAlertSettings } from '../../services/InventoryAlertSettings';
 
 const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -32,9 +33,10 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
     // Settings
     fastify.get('/settings', async (request, reply) => {
         const accountId = request.accountId;
+        if (!accountId || !request.user?.id) return reply.code(400).send({ error: 'Selected account required' });
+        if (!await PermissionService.hasPermission(request.user.id, accountId, 'view_inventory')) return reply.code(403).send({ error: 'Inventory read access required' });
         try {
-            const settings = await prisma.inventorySettings.findUnique({ where: { accountId } });
-            return settings || {};
+            return await readInventoryAlertSettings(accountId);
         } catch (error: any) {
             return reply.code(500).send({ error: 'Failed to fetch settings' });
         }
@@ -42,15 +44,12 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.post('/settings', async (request, reply) => {
         const accountId = request.accountId!;
-        const { isEnabled, lowStockThresholdDays, alertEmails } = request.body as any;
+        if (!accountId || !request.user?.id) return reply.code(400).send({ error: 'Selected account required' });
+        if (!await PermissionService.hasPermission(request.user.id, accountId, 'manage_inventory')) return reply.code(403).send({ error: 'Inventory management required' });
         try {
-            return await prisma.inventorySettings.upsert({
-                where: { accountId },
-                create: { accountId, isEnabled, lowStockThresholdDays, alertEmails },
-                update: { isEnabled, lowStockThresholdDays, alertEmails }
-            });
+            return await saveInventoryAlertSettings(accountId, request.user.id, request.body);
         } catch (error: any) {
-            return reply.code(500).send({ error: 'Failed to save settings' });
+            return reply.code(error?.statusCode === 409 ? 409 : error?.name === 'ZodError' ? 400 : 503).send({ error: 'Save not acknowledged. Preserve the draft and reconcile before retrying.' });
         }
     });
 

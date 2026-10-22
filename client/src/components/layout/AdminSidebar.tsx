@@ -54,11 +54,12 @@ export function AdminSidebar() {
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto py-2 px-3 space-y-1 no-scrollbar">
+            <nav aria-label="Administration" className="flex-1 overflow-y-auto py-2 px-3 space-y-1 no-scrollbar">
                 {navItems.map((item) => (
                     <NavLink
                         key={item.path}
                         to={item.path}
+                        aria-label={item.label}
                         end={item.path === '/admin'} // Exact match for root
                         className={({ isActive }) => cn(
                             "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative",
@@ -71,7 +72,7 @@ export function AdminSidebar() {
                         {!collapsed && <span>{item.label}</span>}
 
                         {collapsed && (
-                            <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none border border-slate-700">
+                            <div aria-hidden="true" className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 whitespace-nowrap z-50 pointer-events-none border border-slate-700">
                                 {item.label}
                             </div>
                         )}
@@ -82,6 +83,7 @@ export function AdminSidebar() {
 
                 <a
                     href={queueMonitorUrl}
+                    aria-label="Queue Monitor (opens new tab)"
                     target="_blank"
                     rel="noopener noreferrer"
                     className={cn(
@@ -91,16 +93,17 @@ export function AdminSidebar() {
                     <Server size={22} strokeWidth={1.5} />
                     {!collapsed && <span>Queue Monitor</span>}
                     {collapsed && (
-                        <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none border border-slate-700">
+                        <div aria-hidden="true" className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 whitespace-nowrap z-50 pointer-events-none border border-slate-700">
                             Queue Monitor (Ext)
                         </div>
                     )}
                 </a>
-            </div>
+            </nav>
 
             <div className="p-4 border-t border-slate-800">
                 <Link
                     to="/dashboard"
+                    aria-label="Back to App"
                     className="flex items-center gap-3 w-full p-2 text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg transition-colors mb-2"
                 >
                     <LogOut size={20} />
@@ -108,6 +111,9 @@ export function AdminSidebar() {
                 </Link>
 
                 <button
+                    type="button"
+                    aria-label={collapsed ? 'Expand administration navigation' : 'Collapse administration navigation'}
+                    aria-expanded={!collapsed}
                     onClick={() => setCollapsed(!collapsed)}
                     className="w-full flex items-center justify-center p-2 text-slate-500 hover:bg-slate-800 hover:text-white rounded-lg transition-colors"
                 >

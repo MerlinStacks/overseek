@@ -7,6 +7,7 @@ import { useAccount } from '../../context/AccountContext';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../ui/Modal';
 import { LTR_TEXT_STYLE, sanitizeBidiText } from './textInputBidi';
+import { CampaignReviewModal } from './CampaignReviewModal';
 
 interface MarketingCampaign {
     id: string;
@@ -121,6 +122,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
     const [lists, setLists] = useState<EmailListItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [reviewCampaignId, setReviewCampaignId] = useState<string | null>(null);
 
     const [activeTab, setActiveTab] = useState<'all' | 'scheduled' | 'ongoing' | 'completed' | 'paused' | 'cancelled'>('all');
     const [query, setQuery] = useState('');
@@ -587,6 +589,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
 
     return (
         <div className="space-y-5">
+            {reviewCampaignId && <CampaignReviewModal key={`${currentAccount?.id}:${token}:${reviewCampaignId}`} campaignId={reviewCampaignId} onClose={() => setReviewCampaignId(null)} onChanged={() => void fetchCampaigns()} />}
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                     <h2 className="text-2xl font-semibold text-gray-900">Email Broadcasts</h2>
@@ -667,7 +670,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                                     <td className="px-4 py-3">
                                         <button
                                             className="font-medium text-sky-700 hover:text-sky-800"
-                                            onClick={() => onEdit(campaign.id, campaign.name, campaign.subject)}
+                                            onClick={() => campaign.status === 'DRAFT' ? onEdit(campaign.id, campaign.name, campaign.subject) : setReviewCampaignId(campaign.id)}
                                         >
                                             {campaign.name}
                                         </button>
@@ -687,6 +690,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                                         </span>
                                     </td>
                                     <td className="px-4 py-3 text-right">
+                                        <button onClick={() => setReviewCampaignId(campaign.id)} className="mr-2 rounded-lg border border-indigo-200 px-2.5 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Review & send</button>
                                         <button
                                             onClick={() => setDeletingId(campaign.id)}
                                             className="rounded p-1.5 text-rose-600 hover:bg-rose-50"

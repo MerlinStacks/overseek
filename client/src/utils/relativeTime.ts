@@ -1,51 +1,20 @@
-/**
- * Converts an ISO timestamp to a human-friendly relative string.
- *
- * Why: Raw ISO strings are unreadable for users. Relative timestamps
- * ("3 min ago") provide instant context about data freshness without
- * requiring the user to compute the difference mentally.
- */
-export function formatRelativeTime(isoString: string | null | undefined): string {
-    if (!isoString) return 'Never';
-
-    const date = new Date(isoString);
-    if (!Number.isFinite(date.getTime())) return 'Never';
-    const now = Date.now();
-    const diffMs = now - date.getTime();
-
-    if (diffMs < 0) return 'Just now';
-
-    const seconds = Math.floor(diffMs / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    if (seconds < 60) return 'Just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    if (days === 1) return 'Yesterday';
-    if (days < 7) return `${days}d ago`;
-
-    return date.toLocaleDateString();
+import { z } from 'zod';
+const timestamp = z.string().max(100).datetime({ offset: true });
+export type ObservationAge = { state: 'never' | 'unknown' | 'future'; milliseconds: null } | { state: 'observed'; milliseconds: number };
+/** One minute is tolerated for clock skew, not arbitrary future freshness. */
+export function observationAge(value: unknown, now = Date.now()): ObservationAge {
+    if (value === null || value === undefined) return { state: 'never', milliseconds: null };
+    if (!timestamp.safeParse(value).success || typeof value !== 'string' || !Number.isFinite(Date.parse(value)) || !Number.isFinite(now)) return { state: 'unknown', milliseconds: null };
+    const age = now - Date.parse(value);
+    return age < -60000 ? { state: 'future', milliseconds: null } : { state: 'observed', milliseconds: Math.max(0, age) };
 }
-
-/**
- * Returns a staleness level based on how old a timestamp is.
- *
- * Why: Different UI treatments (green/amber/red dots) depend on how
- * fresh the data is. Centralising the threshold logic prevents
- * inconsistencies between components.
- */
-export function getStalenessLevel(isoString: string | null | undefined): 'fresh' | 'stale' | 'critical' | 'never' {
-    if (!isoString) return 'never';
-
-    const date = new Date(isoString);
-    if (!Number.isFinite(date.getTime())) return 'never';
-
-    const diffMs = Date.now() - date.getTime();
-    const hours = diffMs / (1000 * 60 * 60);
-
-    if (hours < 1) return 'fresh';
-    if (hours < 6) return 'stale';
-    return 'critical';
+export function formatRelativeTime(value: string | null | undefined, now = Date.now()): string {
+    const age = observationAge(value, now);
+    if (age.state !== 'observed') return age.state === 'never' ? 'Never' : age.state === 'future' ? 'Future timestamp (clock unknown)' : 'Time unavailable';
+    const minutes = Math.floor(age.milliseconds / 60000), hours = Math.floor(minutes / 60), days = Math.floor(hours / 24);
+    return minutes < 1 ? 'Just now' : minutes < 60 ? `${minutes}m ago` : hours < 24 ? `${hours}h ago` : days === 1 ? 'Yesterday' : days < 7 ? `${days}d ago` : new Date(value!).toLocaleDateString();
+}
+export function getStalenessLevel(value: string | null | undefined, now = Date.now()): 'fresh' | 'stale' | 'critical' | 'never' | 'unknown' | 'future' {
+    const age = observationAge(value, now);
+    return age.state !== 'observed' ? age.state : age.milliseconds < 3600000 ? 'fresh' : age.milliseconds < 21600000 ? 'stale' : 'critical';
 }

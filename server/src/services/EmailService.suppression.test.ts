@@ -5,6 +5,8 @@ const mockEmailSettingsUpsert = vi.fn();
 const mockEmailLogCount = vi.fn();
 const mockEmailLogCreate = vi.fn();
 const mockEmailUnsubscribeFindFirst = vi.fn();
+const mockAudienceExclusion = vi.hoisted(() => vi.fn());
+vi.mock('./MarketingAudienceService', () => ({ MarketingAudienceService: class { deliveryExclusion = mockAudienceExclusion; } }));
 
 vi.mock('../utils/prisma', () => ({
     prisma: {
@@ -45,6 +47,7 @@ describe('EmailService unsubscribe suppression', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mockAudienceExclusion.mockResolvedValue(null);
         mockEmailAccountFindFirst.mockResolvedValue({
             id: 'email-account-1',
             accountId: 'account-1',
@@ -80,6 +83,14 @@ describe('EmailService unsubscribe suppression', () => {
         expect(mockEmailLogCreate).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({ source: 'TEST' })
         }));
+    });
+    it('rechecks a queued broadcast recipient at the delivery boundary and does not transport an excluded contact', async () => {
+        mockAudienceExclusion.mockResolvedValueOnce('unsubscribed');
+        const service = new EmailService(); const transporter = vi.spyOn(service, 'createTransporter');
+        const result = await service.sendEmail('account-1', 'email-account-1', 'customer@example.com', 'Offer', '<p>Offer</p>', undefined, { source: 'CAMPAIGN', listId: 'list', category: 'MARKETING' });
+        expect(mockAudienceExclusion).toHaveBeenCalledWith('account-1', 'customer@example.com', 'list');
+        expect(result).toEqual({ skipped: true, reason: 'unsubscribed' }); expect(transporter).not.toHaveBeenCalled();
+        expect(mockEmailLogCreate).toHaveBeenCalledWith({ data: expect.objectContaining({ status: 'SKIPPED', canRetry: false }) });
     });
 
     it.each([

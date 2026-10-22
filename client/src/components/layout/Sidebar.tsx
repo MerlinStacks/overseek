@@ -84,8 +84,7 @@ const navItems = [
             { icon: Megaphone, label: 'Broadcasts', path: '/broadcasts' },
             { icon: UsersRound, label: 'Audiences', path: '/emails/audiences' },
             { icon: Settings, label: 'Settings', path: '/emails/settings' },
-            { icon: Mail, label: 'Logs', path: '/emails/logs' },
-            { icon: MessageSquare, label: 'SMS Logs', path: '/sms/logs' },
+            { icon: Mail, label: 'Message Logs', path: '/emails/logs' },
         ]
     },
     {

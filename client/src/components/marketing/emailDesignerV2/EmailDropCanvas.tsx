@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type DragEvent } from 'react';
-import { Copy, GripVertical, Settings, Trash2 } from 'lucide-react';
+import { Copy, GripVertical, Settings, Trash2, ArrowUp, ArrowDown, AlertTriangle } from 'lucide-react';
 import type { EmailBlock, EmailDesignTheme, EmailSection } from '../../../lib/emailDesignerV2';
 import { LiveBlock } from './LiveBlock';
 
@@ -14,6 +14,8 @@ interface Props {
     onSelectBlock: (id: string) => void;
     onUpdateBlock: (id: string, updater: (block: EmailBlock) => void) => void;
     onDuplicateBlock: (id: string) => void;
+    onMoveBlock?: (id: string, direction: -1 | 1) => void;
+    warnings?: Array<{ blockId?: string; message: string; severity: string }>;
     onDeleteBlock: (id: string) => void;
     onDeleteSection: (id: string) => void;
     onOpenSettings: () => void;
@@ -22,7 +24,7 @@ interface Props {
     onDropStructure: (event: DragEvent, insertIndex: number) => void;
 }
 
-export function EmailDropCanvas({ theme, previewWidth, isMobilePreview, sections, selectedSectionId, selectedBlockId, onSelectSection, onSelectBlock, onUpdateBlock, onDuplicateBlock, onDeleteBlock, onDeleteSection, onOpenSettings, onOpenSectionSettings, onDropOnSection, onDropStructure }: Props) {
+export function EmailDropCanvas({ theme, previewWidth, isMobilePreview, sections, selectedSectionId, selectedBlockId, onSelectSection, onSelectBlock, onUpdateBlock, onDuplicateBlock, onMoveBlock, warnings = [], onDeleteBlock, onDeleteSection, onOpenSettings, onOpenSectionSettings, onDropOnSection, onDropStructure }: Props) {
     const [dropTarget, setDropTarget] = useState<string | null>(null);
     const [sectionDropIndex, setSectionDropIndex] = useState<number | null>(null);
     const canvasStyle: CSSProperties = { background: theme.backgroundColor, fontFamily: theme.fontFamily, color: theme.textColor };
@@ -120,6 +122,11 @@ export function EmailDropCanvas({ theme, previewWidth, isMobilePreview, sections
                                                             <button type="button" title="Duplicate" onClick={(event) => { event.stopPropagation(); onDuplicateBlock(block.id); }} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-indigo-600"><Copy size={14} /></button>
                                                             <button type="button" title="Settings" onClick={(event) => { event.stopPropagation(); onSelectBlock(block.id); onOpenSettings(); }} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-indigo-600"><Settings size={14} /></button>
                                                             <button type="button" title="Delete" onClick={(event) => { event.stopPropagation(); onDeleteBlock(block.id); }} className="rounded-md p-1 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>
+                                                        </div>
+                                                        <div className="flex flex-wrap items-center gap-1 py-1" aria-label="Block actions">
+                                                            <button type="button" aria-label={`Move ${block.type} up`} onClick={(event) => { event.stopPropagation(); onMoveBlock?.(block.id, -1); }} className="rounded p-1 text-slate-500 hover:bg-indigo-50"><ArrowUp size={14} /></button>
+                                                            <button type="button" aria-label={`Move ${block.type} down`} onClick={(event) => { event.stopPropagation(); onMoveBlock?.(block.id, 1); }} className="rounded p-1 text-slate-500 hover:bg-indigo-50"><ArrowDown size={14} /></button>
+                                                            {warnings.filter(warning => warning.blockId === block.id).map(warning => <button key={warning.message} type="button" title={warning.message} onClick={(event) => { event.stopPropagation(); onSelectBlock(block.id); onOpenSettings(); }} className={`inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] ${warning.severity === 'blocking' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-800'}`}><AlertTriangle size={12} />{warning.severity === 'blocking' ? 'Fix required' : 'Review'}</button>)}
                                                         </div>
                                                         <LiveBlock block={block} theme={theme} onUpdate={(updater) => onUpdateBlock(block.id, updater)} />
                                                     </div>

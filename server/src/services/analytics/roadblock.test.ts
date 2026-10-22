@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
 
-vi.mock('../../utils/prisma', () => ({ prisma: { $queryRaw: vi.fn() } }));
+vi.mock('../../utils/prisma', () => ({ prisma: { $queryRaw: vi.fn(), analyticsEvent: { groupBy: vi.fn() } } }));
 vi.mock('../../utils/logger', () => ({ Logger: { error: vi.fn() } }));
 
 import { prisma } from '../../utils/prisma';
@@ -40,4 +40,6 @@ describe('roadblock pages', () => {
         expect(rows).toHaveLength(50);
         expect(rows[0]).toMatchObject({ url: '/page/59', pageTitle: '/page/59', exitRate: 40 });
     });
+    it('propagates failed reads rather than inventing no roadblocks', async () => { vi.mocked(prisma.$queryRaw).mockRejectedValueOnce(new Error('offline')); await expect(RoadblockAnalytics.getRoadblockPages('a')).rejects.toThrow('offline'); });
+    it('uses event time and does not turn independent events into conversion rates', async () => { (prisma.analyticsEvent.groupBy as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ type: 'pageview', _count: { id: 2 } }, { type: 'purchase', _count: { id: 8 } }]); const result = await RoadblockAnalytics.getDropOffFunnel('a', '2026-10-01T00:00:00Z', '2026-10-02T00:00:00Z'); expect(result.overallConversionRate).toBeNull(); expect(result.funnel.every(row => row.dropOff === null)).toBe(true); expect(prisma.analyticsEvent.groupBy).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ session: { accountId: 'a' }, createdAt: { gte: expect.any(Date), lt: expect.any(Date) } }) })); });
 });

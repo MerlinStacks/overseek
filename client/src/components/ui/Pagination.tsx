@@ -1,167 +1,30 @@
-import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { useId, useRef, useState } from 'react';
 import { cn } from '../../utils/cn';
-
-interface PaginationProps {
-    currentPage: number;
-    totalPages: number;
-    onPageChange: (page: number) => void;
-    itemsPerPage?: number;
-    onItemsPerPageChange?: (limit: number) => void;
-    allowItemsPerPage?: boolean;
-    className?: string;
+interface PaginationProps { currentPage: number; totalPages: number; onPageChange: (page: number) => void; itemsPerPage?: number; onItemsPerPageChange?: (limit: number) => void; allowItemsPerPage?: boolean; className?: string }
+const integer = (value: number) => Number.isSafeInteger(value) && value >= 0;
+export function Pagination(props: PaginationProps) {
+    return <ScopedPagination key={`${props.currentPage}:${props.totalPages}`} {...props} />;
 }
-
-interface NavButtonProps {
-    onClick: () => void;
-    disabled: boolean;
-    children: React.ReactNode;
-    title: string;
-}
-
-function NavButton({ onClick, disabled, children, title }: NavButtonProps) {
-    return (
-        <button
-            onClick={onClick}
-            disabled={disabled}
-            title={title}
-            className={cn(
-                "p-2 border border-slate-200 rounded-lg text-slate-600 bg-white hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
-                "focus:outline-hidden focus:ring-2 focus:ring-blue-500/20"
-            )}
-        >
-            {children}
-        </button>
-    );
-}
-
-export function Pagination({
-    currentPage,
-    totalPages,
-    onPageChange,
-    itemsPerPage,
-    onItemsPerPageChange,
-    allowItemsPerPage = false,
-    className
-}: PaginationProps) {
-    const isFirstPage = currentPage <= 1;
-    const isLastPage = currentPage >= totalPages;
-    const [pageInput, setPageInput] = useState(String(currentPage));
-
-    useEffect(() => {
-        setPageInput(String(currentPage));
-    }, [currentPage]);
-
-    const commitPageInput = () => {
-        const parsed = Number(pageInput);
-        const safeTotalPages = Math.max(1, totalPages);
-        if (!Number.isFinite(parsed)) {
-            setPageInput(String(currentPage));
-            return;
-        }
-
-        const clampedPage = Math.min(Math.max(1, Math.trunc(parsed)), safeTotalPages);
-        if (clampedPage !== currentPage) {
-            onPageChange(clampedPage);
-        } else {
-            setPageInput(String(currentPage));
-        }
-    };
-
-    const handlePageInputChange = (value: string) => {
-        setPageInput(value);
-        if (!value.trim()) return;
-
-        const parsed = Number(value);
-        if (!Number.isFinite(parsed)) return;
-
-        const safeTotalPages = Math.max(1, totalPages);
-        const clampedPage = Math.min(Math.max(1, Math.trunc(parsed)), safeTotalPages);
-        if (clampedPage !== currentPage) {
-            onPageChange(clampedPage);
-        }
-    };
-
-    return (
-        <div className={cn("flex flex-wrap items-center justify-between gap-4 p-4 pr-24 bg-slate-50 border-t border-slate-100", className)}>
-            {/* Items Per Page Selector */}
-            <div className="flex items-center gap-2 text-sm text-slate-600">
-                {allowItemsPerPage && itemsPerPage && onItemsPerPageChange && (
-                    <>
-                        <span className="text-xs text-slate-500 font-medium uppercase tracking-wide">Rows:</span>
-                        <select
-                            value={itemsPerPage}
-                            onChange={(e) => onItemsPerPageChange(Number(e.target.value))}
-                            className="bg-white border border-slate-200 text-slate-700 text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 block p-1.5 outline-hidden"
-                        >
-                            {[15, 25, 50, 100].map((pageSize) => (
-                                <option key={pageSize} value={pageSize}>
-                                    {pageSize}
-                                </option>
-                            ))}
-                        </select>
-                    </>
-                )}
-            </div>
-
-            {/* Pagination Controls */}
-            <div className="flex items-center gap-2">
-                <NavButton
-                    onClick={() => onPageChange(1)}
-                    disabled={isFirstPage}
-                    title="First Page"
-                >
-                    <ChevronsLeft size={16} />
-                </NavButton>
-
-                <NavButton
-                    onClick={() => onPageChange(currentPage - 1)}
-                    disabled={isFirstPage}
-                    title="Previous Page"
-                >
-                    <ChevronLeft size={16} />
-                </NavButton>
-
-                <span className="text-sm font-medium text-slate-600 min-w-[100px] text-center">
-                    Page <span className="text-slate-900">{currentPage}</span> of <span className="text-slate-900">{Math.max(1, totalPages)}</span>
-                </span>
-
-                <div className="flex items-center gap-2">
-                    <label htmlFor="pagination-page-input" className="text-xs text-slate-500 font-medium uppercase tracking-wide">Go to</label>
-                    <input
-                        id="pagination-page-input"
-                        type="number"
-                        min={1}
-                        max={Math.max(1, totalPages)}
-                        value={pageInput}
-                        onChange={(e) => handlePageInputChange(e.target.value)}
-                        onBlur={commitPageInput}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                e.preventDefault();
-                                commitPageInput();
-                            }
-                        }}
-                        className="w-20 bg-white border border-slate-200 text-slate-700 text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 p-1.5 outline-hidden"
-                    />
-                </div>
-
-                <NavButton
-                    onClick={() => onPageChange(currentPage + 1)}
-                    disabled={isLastPage}
-                    title="Next Page"
-                >
-                    <ChevronRight size={16} />
-                </NavButton>
-
-                <NavButton
-                    onClick={() => onPageChange(totalPages)}
-                    disabled={isLastPage}
-                    title="Last Page"
-                >
-                    <ChevronsRight size={16} />
-                </NavButton>
-            </div>
-        </div>
-    );
+function ScopedPagination({ currentPage, totalPages, onPageChange, itemsPerPage, onItemsPerPageChange, allowItemsPerPage = false, className }: PaginationProps) {
+    const id = useId(), [draft, setDraft] = useState(integer(currentPage) ? String(currentPage) : '');
+    const submitted = useRef<number | null>(null);
+    const valid = integer(totalPages) && totalPages > 0 && integer(currentPage) && currentPage >= 1 && currentPage <= totalPages;
+    function navigate(page: number) {
+        if (!valid || !integer(page) || page < 1 || page > totalPages || page === currentPage || submitted.current === page) return;
+        submitted.current = page; onPageChange(page);
+    }
+    function commit() {
+        if (!valid || !/^[1-9]\d*$/.test(draft) || !Number.isSafeInteger(Number(draft)) || Number(draft) > totalPages) { setDraft(String(currentPage)); return; }
+        navigate(Number(draft));
+    }
+    const button = 'rounded border border-slate-200 dark:border-slate-700 px-3 py-2 disabled:opacity-50';
+    return <nav aria-label="Pagination" className={cn('flex flex-wrap items-center gap-3 p-4 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200', className)}>
+        {allowItemsPerPage && onItemsPerPageChange && <label>Rows per page <select className="rounded border bg-white dark:bg-slate-950 p-2" value={[15, 25, 50, 100].includes(itemsPerPage ?? 0) ? itemsPerPage : ''} onChange={event => { const value = Number(event.target.value); if ([15, 25, 50, 100].includes(value) && value !== itemsPerPage) onItemsPerPageChange(value); }}><option value="" disabled>Select</option>{[15, 25, 50, 100].map(value => <option key={value} value={value}>{value}</option>)}</select></label>}
+        <button type="button" className={button} disabled={!valid || currentPage === 1} onClick={() => navigate(1)} aria-label="First Page" title="First Page">First</button>
+        <button type="button" className={button} disabled={!valid || currentPage === 1} onClick={() => navigate(currentPage - 1)} aria-label="Previous Page" title="Previous Page">Previous</button>
+        <span role="status">{totalPages === 0 ? 'No pages' : valid ? `Page ${currentPage} of ${totalPages}` : 'Pagination unavailable'}</span>
+        <label htmlFor={id}>Go to</label><input id={id} type="number" inputMode="numeric" min={1} max={valid ? totalPages : undefined} step={1} value={draft} disabled={!valid} onChange={event => { submitted.current = null; setDraft(event.target.value); }} onBlur={commit} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); commit(); } if (event.key === 'Escape') setDraft(String(currentPage)); }} className="w-20 rounded border bg-white dark:bg-slate-950 p-2" />
+        <button type="button" className={button} disabled={!valid || currentPage === totalPages} onClick={() => navigate(currentPage + 1)} aria-label="Next Page" title="Next Page">Next</button>
+        <button type="button" className={button} disabled={!valid || currentPage === totalPages} onClick={() => navigate(totalPages)} aria-label="Last Page" title="Last Page">Last</button>
+    </nav>;
 }
