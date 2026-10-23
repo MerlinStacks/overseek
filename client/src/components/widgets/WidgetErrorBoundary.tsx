@@ -57,7 +57,7 @@ export class WidgetErrorBoundary extends Component<Props, State> {
                     <button
                         type="button"
                         onClick={isChunkError ? () => window.location.reload() : this.handleRetry}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--brand-subtle)] text-[var(--brand-text)] border border-[var(--brand-border)] hover:underline focus-visible:outline-[var(--focus-color)] transition-colors"
                     >
                         <RefreshCw aria-hidden="true" className="w-3 h-3" />
                         {isChunkError ? 'Reload page' : 'Retry'}

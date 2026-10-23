@@ -1,7 +1,8 @@
 export function parseWooOrderId(value: unknown): number | null {
-    if (typeof value === 'number' && Number.isInteger(value)) return value;
-    if (typeof value === 'string' && /^\d+$/.test(value.trim())) return Number(value.trim());
-    return null;
+    if (typeof value !== 'number' && (typeof value !== 'string' || !/^\d+$/.test(value.trim()))) return null;
+    const orderId = Number(value);
+    // WooCommerce IDs are positive; local wooId/orderId columns are Prisma Ints.
+    return Number.isInteger(orderId) && orderId > 0 && orderId <= 2147483647 ? orderId : null;
 }
 
 export function getPayloadWooOrderId(payload: unknown): number | null {

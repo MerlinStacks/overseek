@@ -26,7 +26,7 @@ it('restores table hierarchy, meaningful status badges and compact unnumbered re
     expect(screen.getAllByRole('columnheader')).toHaveLength(8);
     expect(screen.getByText('Ordered', { selector: 'span' })).toHaveClass('rounded-full', 'bg-blue-50');
     expect(screen.getByText('Received', { selector: 'span' })).toHaveClass('bg-emerald-50');
-    expect(screen.getByRole('link', { name: 'New Purchase Order' })).toHaveClass('bg-indigo-600');
+    expect(screen.getByRole('link', { name: 'New Purchase Order' })).toHaveClass('bg-[var(--primary-color)]', 'text-[var(--primary-foreground)]');
     expect(screen.getByRole('table').parentElement).toHaveClass('overflow-x-auto');
     screen.getAllByRole('button').forEach(button => expect(button).toHaveAttribute('type', 'button'));
 });
@@ -34,10 +34,10 @@ it('restores table hierarchy, meaningful status badges and compact unnumbered re
 it('labels page counts honestly and does not invent currency, receipt dates or order numbers', async () => {
     mount();
     await screen.findByText('PO-2026-12');
-    expect(screen.getByText('Matching orders').nextElementSibling).toHaveTextContent('90');
-    expect(screen.getByText('Ordered on this page').nextElementSibling).toHaveTextContent('1');
-    expect(screen.getByText('Received on this page').nextElementSibling).toHaveTextContent('1');
-    expect(screen.getByText('Drafts on this page').nextElementSibling).toHaveTextContent('0');
+    expect(screen.getByText('Matching orders').closest('dt')?.nextElementSibling).toHaveTextContent('90');
+    expect(screen.getByText('Ordered on this page').closest('dt')?.nextElementSibling).toHaveTextContent('1');
+    expect(screen.getByText('Received on this page').closest('dt')?.nextElementSibling).toHaveTextContent('1');
+    expect(screen.getByText('Drafts on this page').closest('dt')?.nextElementSibling).toHaveTextContent('0');
     const row = screen.getByRole('link', { name: 'PO-2026-12' }).closest('tr')!;
     expect(within(row).getByText('0')).toBeInTheDocument();
     expect(within(row).getByText('Unavailable')).toBeInTheDocument();
@@ -53,10 +53,12 @@ it('groups compact summaries with the status filter and create action in a wrapp
     expect(toolbar).toHaveClass('flex', 'flex-wrap');
     expect(toolbar).toContainElement(screen.getByText('Matching orders'));
     expect(toolbar).toContainElement(screen.getByRole('link', { name: 'New Purchase Order' }));
-    const count = screen.getByText('Matching orders').nextElementSibling!;
-    expect(count).toHaveClass('text-base');
+    const count = screen.getByText('Matching orders').closest('dt')!.nextElementSibling!;
+    expect(count.querySelector('span')).toHaveClass('text-xl');
     expect(count).not.toHaveClass('text-2xl');
-    expect(count.closest('dl')).toHaveClass('grid-cols-2', 'sm:grid-cols-4', 'xl:flex-1');
+    expect(count.closest('dl')).toHaveClass('metric-strip', 'xl:flex-1');
+    expect(count.parentElement).toHaveClass('metric-strip-item');
+    expect(count.parentElement).not.toHaveClass('border', 'rounded-lg', 'bg-white');
 });
 
 it('requests server pages and resets to the first page when the status changes', async () => {

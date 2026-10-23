@@ -408,18 +408,20 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
         }
     };
 
-    const logoUrl = currentAccount?.appearance?.logoUrl;
-    const appName = currentAccount?.appearance?.appName || 'OverSeek';
-    const primaryColor = currentAccount?.appearance?.primaryColor || '#2563eb';
+    const appName = currentAccount?.appearance?.appName?.trim() || currentAccount?.name?.trim() || 'OverSeek';
+    const logoUrl = currentAccount?.appearance?.logoUrl?.trim();
+    const logoKey = `${currentAccount?.id}:${logoUrl}`;
+    const [failedLogo, setFailedLogo] = useState<string | null>(null);
+    const showLogo = !!logoUrl && failedLogo !== logoKey;
 
     // Shared sidebar content - extracted to avoid duplication
     const sidebarContent = (
         <>
             <div className="flex-col px-3 pt-4 pb-2">
                 {/* Whitelabel Logo */}
-                {logoUrl && (
+                {isCollapsedView && showLogo && (
                     <div className={cn("mb-4 flex justify-center", isCollapsedView ? "px-0" : "px-2")}>
-                        <img src={logoUrl} alt={appName} className="max-h-8 object-contain" />
+                        <img key={logoKey} src={logoUrl} alt={appName} onError={() => setFailedLogo(logoKey)} className="max-h-8 object-contain" />
                     </div>
                 )}
 
@@ -428,10 +430,9 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                     <AccountSwitcher />
                 ) : (
                     // Only show default 'O' if no logo is provided
-                    !logoUrl && (
+                    !showLogo && (
                         <div
-                            className="h-10 w-10 rounded-sm flex items-center justify-center text-white font-bold mx-auto mb-4"
-                            style={{ backgroundColor: primaryColor }}
+                            className="h-10 w-10 rounded-lg flex items-center justify-center bg-[var(--primary-color)] text-[var(--primary-foreground)] font-semibold mx-auto mb-4"
                         >
                             {appName.charAt(0)}
                         </div>
@@ -454,7 +455,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                                 className={({ isActive }) => cn(
                                     "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative",
                                     isActive
-                                        ? "bg-gradient-to-r from-blue-500/10 to-violet-500/10 text-blue-600 font-medium shadow-sm dark:from-blue-500/20 dark:to-violet-500/20"
+                                        ? "bg-[var(--brand-subtle)] text-[var(--brand-text)] font-medium"
                                         : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-200"
                                 )}
                             >
@@ -491,11 +492,11 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                                 className={cn(
                                     "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative",
                                     isActiveGroup && !isExpanded
-                                        ? "bg-gradient-to-r from-blue-500/10 to-violet-500/10 text-blue-600 dark:from-blue-500/20 dark:to-violet-500/20"
+                                        ? "bg-[var(--brand-subtle)] text-[var(--brand-text)]"
                                         : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-200"
                                 )}
                             >
-                                <item.icon size={22} strokeWidth={1.5} className={cn(isActiveGroup ? "text-blue-600" : "")} />
+                                <item.icon size={22} strokeWidth={1.5} className={cn(isActiveGroup ? "text-[var(--brand-text)]" : "")} />
                                 {!isCollapsedView && (
                                     <>
                                         <span className="flex-1 text-left font-medium text-sm">{item.label}</span>
@@ -508,7 +509,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
 
                                 {/* Collapsed Tooltip/Popover preview */}
                                 {isCollapsedView && (
-                                    <div className="absolute left-full ml-2 top-0 bg-white border border-gray-200 shadow-lg rounded-lg p-2 min-w-[160px] opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none group-hover:pointer-events-auto">
+                                    <div className="absolute left-full ml-2 top-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-lg rounded-lg p-2 min-w-[160px] opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none group-hover:pointer-events-auto">
                                         <div className="font-semibold text-xs text-gray-400 mb-2 px-2 uppercase">{item.label}</div>
                                         {item.children?.map(child => (
                                             <NavLink
@@ -520,8 +521,8 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                                                 className={({ isActive }) => cn(
                                                     "flex items-center gap-2 px-2 py-1.5 text-sm rounded-md",
                                                     isActive
-                                                        ? "bg-blue-500/10 text-blue-600 font-medium"
-                                                        : "text-gray-600 hover:bg-slate-100/80 hover:text-slate-800"
+                                                        ? "bg-[var(--brand-subtle)] text-[var(--brand-text)] font-medium"
+                                                        : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200"
                                                 )}
                                             >
                                                 <child.icon size={16} />
@@ -545,7 +546,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                                             className={({ isActive }) => cn(
                                                 "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-sm",
                                                 isActive
-                                                    ? "bg-blue-500/10 text-blue-600 font-medium dark:bg-blue-500/20"
+                                                    ? "bg-[var(--brand-subtle)] text-[var(--brand-text)] font-medium"
                                                     : "text-slate-500 hover:bg-slate-100/80 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-300"
                                             )}
                                         >
@@ -570,7 +571,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                     className={({ isActive }) => cn(
                         "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative mb-2",
                         isActive
-                            ? "bg-gradient-to-r from-blue-500/10 to-violet-500/10 text-blue-600 font-medium dark:from-blue-500/20 dark:to-violet-500/20"
+                            ? "bg-[var(--brand-subtle)] text-[var(--brand-text)] font-medium"
                             : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-200"
                     )}
                 >
@@ -610,7 +611,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                     tabIndex={-1}
                     className={cn(
                         "fixed inset-y-0 left-0 w-72 flex flex-col z-50 transition-transform duration-300 ease-out",
-                        "bg-gradient-to-b from-white to-slate-50 dark:from-slate-900 dark:to-slate-950",
+                        "bg-white dark:bg-slate-900",
                         "border-r border-slate-200/80 dark:border-slate-700/50",
                         "shadow-2xl shadow-slate-900/10 dark:shadow-slate-900/50",
                         isOpen ? "translate-x-0" : "-translate-x-full"
@@ -645,7 +646,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
             }}
             className={cn(
                 "h-screen sticky top-0 transition-all duration-300 flex-col z-50",
-                "bg-gradient-to-b from-white via-white to-slate-50/80 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950",
+                "bg-white dark:bg-slate-900",
                 "border-r border-slate-200/80 dark:border-slate-700/50",
                 "hidden lg:flex", // Critical: CSS-hide on mobile
                 isCollapsedView ? "w-20" : "w-64"

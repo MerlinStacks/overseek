@@ -123,8 +123,8 @@ export class ErrorBoundary extends Component<Props, State> {
             const canSoftReset = allowSoftReset && softResetCount < maxSoftResets;
 
             return (
-                <div role="alert" className="p-6 rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800/50 text-red-900 dark:text-red-200 flex flex-col items-center justify-center text-center space-y-4 shadow-sm">
-                    <div className="p-3 bg-red-100 dark:bg-red-800/30 rounded-full">
+                <div role="alert" className="p-6 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800 text-red-900 dark:text-red-200 flex flex-col items-center justify-center text-center space-y-4">
+                    <div className="p-3 bg-red-100 dark:bg-red-900 rounded-lg">
                         <AlertCircle className="w-8 h-8 text-red-600 dark:text-red-400" />
                     </div>
                     <div>

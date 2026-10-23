@@ -18,11 +18,11 @@ function HealthRead({ token, accountId }: { token: string; accountId: string }) 
     if (error || !data) return <p role="alert" className="mt-3">Delivery observations unavailable. <button type="button" onClick={retry} className="underline">Retry</button></p>;
     return <div className="mt-4 space-y-3 text-sm">
         <p><strong>Default sender:</strong> {data.sender ? `${data.sender.name} <${data.sender.email}>` : 'Not configured. Add a sending account before sending.'}</p>
-        <div className="rounded-lg bg-indigo-50 p-3 text-indigo-900"><strong>Shared marketing cap:</strong> {data.pressureCap.maxPerWindow} emails per contact per {data.pressureCap.windowHours} hours across flows and broadcasts. Transactional emails and explicit test sends are excluded. Managed through the deployment’s MARKETING_PRESSURE settings.</div>
+        <div className="rounded-lg bg-[var(--brand-subtle)] p-3 text-[var(--brand-text)]"><strong>Shared marketing cap:</strong> {data.pressureCap.maxPerWindow} emails per contact per {data.pressureCap.windowHours} hours across flows and broadcasts. Transactional emails and explicit test sends are excluded. Managed through the deployment’s MARKETING_PRESSURE settings.</div>
         <p className="text-xs text-slate-500">{new Date(data.start).toLocaleString()} – {new Date(data.end).toLocaleString()}</p>
         <div className="flex flex-wrap gap-2">{data.statuses.length ? data.statuses.map(row => <span key={row.status} className="rounded-lg border px-3 py-2">{row.status.replace(/_/g, ' ')}: <strong>{row.count}</strong></span>) : <p>No flow/broadcast email logs in this window.</p>}</div>
         <p>Suppression records: {data.suppressions}</p>
         <p className="text-xs text-slate-500">{data.note}</p>
-        <Link to="/emails/logs?status=FAILED" className="inline-block text-indigo-600 underline">Investigate failures in Message Logs</Link>
+        <Link to="/emails/logs?status=FAILED" className="inline-block text-[var(--brand-text)] underline">Investigate failures in Message Logs</Link>
     </div>;
 }

@@ -310,7 +310,7 @@ function CredentialField({
             <div className="relative">
                 <input
                     type={field.sensitive && !isRevealed ? 'password' : 'text'}
-                    className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow placeholder:text-slate-400 ${borderClass}`}
+                        className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-[var(--brand-border)] focus:border-[var(--primary-color)] transition-shadow placeholder:text-slate-400 ${borderClass}`}
                     placeholder={configured ? '••••••••' : field.placeholder}
                     value={value}
                     onChange={e => onChange(e.target.value)}
@@ -348,7 +348,7 @@ function CopyableUrl({ label, url, onCopied }: { label: string; url: string; onC
             </div>
             <button
                 onClick={() => { navigator.clipboard.writeText(url); onCopied(); }}
-                className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                            className="p-2 rounded-lg text-slate-400 hover:text-[var(--brand-text)] hover:bg-[var(--brand-subtle)] transition-colors"
                 title="Copy to clipboard"
             >
                 <Copy size={14} />
@@ -488,7 +488,7 @@ export function AdminCredentialsPage() {
                                 className={`
                                     w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition-all
                                     ${isActive
-                                        ? 'bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200'
+                                    ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)] ring-1 ring-[var(--brand-border)]'
                                         : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'
                                     }
                                 `}
@@ -538,7 +538,7 @@ export function AdminCredentialsPage() {
                                         href={currentPlatform.docsUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors shrink-0"
+                                        className="flex items-center gap-1.5 text-xs font-medium text-[var(--brand-text)] bg-[var(--brand-subtle)] hover:opacity-90 px-3 py-1.5 rounded-lg transition-colors shrink-0"
                                     >
                                         <ExternalLink size={12} />
                                         {currentPlatform.docsLabel || 'Developer Console'}
@@ -607,7 +607,7 @@ export function AdminCredentialsPage() {
                                 <label className="text-sm font-medium text-slate-500 mb-1.5 block">Notes</label>
                                 <input
                                     type="text"
-                                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow placeholder:text-slate-400 bg-slate-50 focus:bg-white"
+                                        className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[var(--brand-border)] focus:border-[var(--primary-color)] transition-shadow placeholder:text-slate-400 bg-slate-50 focus:bg-white"
                                     placeholder="e.g., Production credentials from Google Cloud Console"
                                     value={notes[currentPlatform.id] || ''}
                                     onChange={e => setNotes(prev => ({ ...prev, [currentPlatform.id]: e.target.value }))}
@@ -652,7 +652,7 @@ export function AdminCredentialsPage() {
                                 <button
                                     onClick={() => handleSave(currentPlatform.id)}
                                     disabled={saving === currentPlatform.id}
-                                    className="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 transition-colors font-medium shadow-sm"
+                                className="px-5 py-2 text-sm bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] disabled:opacity-50 flex items-center gap-2 transition-colors font-medium"
                                 >
                                     {saving === currentPlatform.id ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
                                     Save Credentials

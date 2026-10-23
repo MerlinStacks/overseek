@@ -613,11 +613,11 @@ export function InvoiceDesigner() {
 
     if (isLoading) {
         return (
-            <div className="h-[calc(100vh-64px)] flex items-center justify-center bg-linear-to-br from-slate-50 to-slate-100">
+            <div className="h-[calc(100vh-64px)] flex items-center justify-center bg-slate-50 dark:bg-slate-900">
                 <div className="flex flex-col items-center gap-4">
                     <div className="relative">
-                        <div className="w-16 h-16 rounded-2xl bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg animate-pulse">
-                            <FileText className="text-white" size={28} />
+                        <div className="w-16 h-16 rounded-xl bg-[var(--primary-color)] flex items-center justify-center shadow-lg animate-pulse">
+                            <FileText className="text-[var(--primary-foreground)]" size={28} />
                         </div>
                     </div>
                     <div className="flex items-center gap-2 text-slate-600">
@@ -630,12 +630,13 @@ export function InvoiceDesigner() {
     }
 
     return (
-        <div className="h-[calc(100vh-64px)] flex flex-col bg-linear-to-br from-slate-50 via-slate-100 to-slate-50">
-            {/* Premium Header */}
-            <div className="bg-white/80 backdrop-blur-xl border-b border-slate-200/60 px-6 py-3 flex justify-between items-center shadow-xs">
+        <div className="h-[calc(100vh-64px)] flex flex-col bg-slate-50 dark:bg-slate-900">
+            {/* Workspace header */}
+            <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 sm:px-6 py-3 flex flex-wrap gap-3 justify-between items-center shadow-xs">
                 <div className="flex items-center gap-4">
                     <button
                         type="button"
+                        aria-label="Back from invoice designer"
                         onClick={handleBack}
                         className="p-2 rounded-xl text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all"
                     >
@@ -643,23 +644,23 @@ export function InvoiceDesigner() {
                     </button>
 
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md">
-                            <FileText className="text-white" size={18} />
+                        <div className="w-10 h-10 rounded-xl bg-[var(--primary-color)] flex items-center justify-center shadow-md">
+                            <FileText className="text-[var(--primary-foreground)]" size={18} />
                         </div>
                         <div>
-                            <h1 className="font-bold text-slate-800 text-lg leading-tight">Invoice Designer</h1>
+                            <h1 className="font-semibold tracking-tight text-slate-800 dark:text-slate-100 text-xl leading-tight">Invoice Designer</h1>
                             <p className="text-xs text-slate-500">Customize your invoice template</p>
                         </div>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2">
                     {/* Preview Toggle */}
                     <button
                         type="button"
                         onClick={() => setShowPreview(!showPreview)}
                         className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all ${showPreview
-                            ? 'bg-indigo-100 text-indigo-700 shadow-inner'
+                            ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)] shadow-inner'
                             : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                             }`}
                     >
@@ -681,7 +682,7 @@ export function InvoiceDesigner() {
                         type="button"
                         onClick={saveTemplate}
                         disabled={isSaving}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-semibold text-sm shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-indigo-500/30 hover:scale-[1.02] transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
+                        className="flex items-center gap-2 px-5 py-2.5 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg font-semibold text-sm hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                         {isSaving ? (
                             <>
@@ -700,7 +701,7 @@ export function InvoiceDesigner() {
 
             {/* Toast Notification */}
             {saveMessage && (
-                <div className={`fixed top-20 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl backdrop-blur-xl transition-all animate-in slide-in-from-right ${saveMessage.type === 'success'
+                <div className={`fixed top-20 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-xl shadow-lg transition-all animate-in slide-in-from-right ${saveMessage.type === 'success'
                     ? 'bg-emerald-50/90 border border-emerald-200 text-emerald-800'
                     : 'bg-red-50/90 border border-red-200 text-red-800'
                     }`}>
@@ -716,6 +717,7 @@ export function InvoiceDesigner() {
                     <span className="text-sm font-semibold">{saveMessage.text}</span>
                     <button
                         type="button"
+                        aria-label="Dismiss save notification"
                         onClick={() => setSaveMessage(null)}
                         className="ml-2 p-1 rounded-full hover:bg-black/5 transition-colors"
                     >
@@ -725,12 +727,12 @@ export function InvoiceDesigner() {
             )}
 
             {showSettingsModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <div className="relative bg-white rounded-2xl shadow-2xl max-h-[90vh] w-[880px] max-w-[95vw] overflow-hidden flex flex-col">
-                        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white/95 backdrop-blur-md border-b border-slate-200">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 ">
+                    <div className="relative bg-white rounded-xl shadow-lg max-h-[90vh] w-[880px] max-w-[95vw] overflow-hidden flex flex-col">
+                        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white border-b border-slate-200">
                             <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-                                    <Settings2 className="text-white" size={14} />
+                                <div className="w-8 h-8 rounded-lg bg-[var(--primary-color)] flex items-center justify-center">
+                                    <Settings2 className="text-[var(--primary-foreground)]" size={14} />
                                 </div>
                                 <h2 className="font-bold text-slate-800">Invoice Settings & Versions</h2>
                             </div>
@@ -743,7 +745,7 @@ export function InvoiceDesigner() {
                             </button>
                         </div>
 
-                        <div className="flex-1 overflow-auto p-6 bg-linear-to-br from-slate-100 via-slate-50 to-slate-100">
+                        <div className="flex-1 overflow-auto p-6 bg-slate-50 dark:bg-slate-900">
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                 <div className="space-y-4 p-4 rounded-xl border border-slate-200 bg-white">
                                     <h3 className="font-semibold text-slate-800">Numbering & Locale</h3>
@@ -861,7 +863,7 @@ export function InvoiceDesigner() {
                                                     type="button"
                                                     disabled={isRollingBack === version.id}
                                                     onClick={() => rollbackVersion(version.id)}
-                                                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm disabled:opacity-60"
+                                                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--brand-subtle)] hover:bg-[var(--brand-subtle)] text-[var(--brand-text)] text-sm disabled:opacity-60"
                                                 >
                                                     {isRollingBack === version.id ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
                                                     Rollback
@@ -878,13 +880,13 @@ export function InvoiceDesigner() {
 
             {/* Preview Modal */}
             {showPreview && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <div className="relative bg-white rounded-2xl shadow-2xl max-h-[90vh] w-[900px] max-w-[95vw] overflow-hidden flex flex-col">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 ">
+                    <div className="relative bg-white rounded-xl shadow-lg max-h-[90vh] w-[900px] max-w-[95vw] overflow-hidden flex flex-col">
                         {/* Modal Header */}
-                        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white/95 backdrop-blur-md border-b border-slate-200">
+                        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white border-b border-slate-200">
                             <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-                                    <Eye className="text-white" size={14} />
+                                <div className="w-8 h-8 rounded-lg bg-[var(--primary-color)] flex items-center justify-center">
+                                    <Eye className="text-[var(--primary-foreground)]" size={14} />
                                 </div>
                                 <h2 className="font-bold text-slate-800">Invoice Preview</h2>
                             </div>
@@ -897,7 +899,7 @@ export function InvoiceDesigner() {
                                         value={selectedOrderId || ''}
                                         onChange={(e) => setSelectedOrderId(e.target.value || null)}
                                         disabled={loadingOrders}
-                                        className="appearance-none px-4 py-2 pr-10 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 cursor-pointer hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all min-w-[200px]"
+                                        className="appearance-none px-4 py-2 pr-10 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 cursor-pointer hover:border-[var(--brand-border)] focus:outline-none focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] transition-all min-w-[200px]"
                                     >
                                         <option value="">Demo Data</option>
                                         {recentOrders.map((order) => (
@@ -915,7 +917,7 @@ export function InvoiceDesigner() {
                                         type="button"
                                         onClick={() => setPageMode('single')}
                                         className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${pageMode === 'single'
-                                            ? 'bg-white text-indigo-600 shadow-sm'
+                                            ? 'bg-white text-[var(--brand-text)] shadow-sm'
                                             : 'text-slate-500 hover:text-slate-700'
                                             }`}
                                     >
@@ -926,7 +928,7 @@ export function InvoiceDesigner() {
                                         type="button"
                                         onClick={() => setPageMode('multi')}
                                         className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${pageMode === 'multi'
-                                            ? 'bg-white text-indigo-600 shadow-sm'
+                                            ? 'bg-white text-[var(--brand-text)] shadow-sm'
                                             : 'text-slate-500 hover:text-slate-700'
                                             }`}
                                     >
@@ -950,7 +952,7 @@ export function InvoiceDesigner() {
                                     type="button"
                                     onClick={handleDownloadPdf}
                                     disabled={isDownloadingPdf}
-                                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 text-sm font-medium transition-all disabled:opacity-60"
+                                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] text-sm font-medium transition-all disabled:opacity-60"
                                     title="Download as PDF"
                                 >
                                     {isDownloadingPdf ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
@@ -968,10 +970,10 @@ export function InvoiceDesigner() {
                         </div>
 
                         {/* Modal Content */}
-                        <div className="flex-1 overflow-auto p-8 bg-linear-to-br from-slate-100 via-slate-50 to-slate-100">
+                        <div className="flex-1 overflow-auto p-8 bg-slate-100 dark:bg-slate-900">
                             {loadingOrder ? (
                                 <div className="flex items-center justify-center py-16">
-                                    <Loader2 size={24} className="animate-spin text-indigo-500" />
+                                    <Loader2 size={24} className="animate-spin text-[var(--brand-text)]" />
                                     <span className="ml-3 text-slate-600">Loading order data...</span>
                                 </div>
                             ) : (
@@ -987,10 +989,10 @@ export function InvoiceDesigner() {
 
                         {/* Order Info Bar */}
                         {previewOrder && (
-                            <div className="px-6 py-3 bg-indigo-50 border-t border-indigo-100 flex items-center justify-between text-sm">
+                            <div className="px-6 py-3 bg-[var(--brand-subtle)] border-t border-[var(--brand-border)] flex items-center justify-between text-sm">
                                 <div className="flex items-center gap-4">
-                                    <span className="font-medium text-indigo-700">Order #{previewOrder.number}</span>
-                                    <span className="text-indigo-600">
+                                    <span className="font-medium text-[var(--brand-text)]">Order #{previewOrder.number}</span>
+                                    <span className="text-[var(--brand-text)]">
                                         {new Date(previewOrder.date_created || new Date().toISOString()).toLocaleDateString()}
                                     </span>
                                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${previewOrder.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
@@ -1001,7 +1003,7 @@ export function InvoiceDesigner() {
                                         {previewOrder.status}
                                     </span>
                                 </div>
-                                <div className="text-indigo-600">
+                                <div className="text-[var(--brand-text)]">
                                     {previewOrder.line_items?.length || 0} items • ${previewOrder.total}
                                 </div>
                             </div>

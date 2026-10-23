@@ -32,16 +32,16 @@ export function RevenueAnomalyBanner({ anomaly }: RevenueAnomalyBannerProps) {
             type="button"
             onClick={() => navigate('/m/analytics')}
             className={`w-full p-4 rounded-xl flex items-center gap-3 text-left transition-transform active:scale-[0.98] motion-reduce:transition-none motion-reduce:transform-none ${isPositive
-                    ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white'
-                    : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white'
+                    ? 'bg-emerald-900 text-emerald-100 border border-emerald-700'
+                    : 'bg-amber-950 text-amber-100 border border-amber-700'
                 }`}
             aria-label={`Revenue anomaly alert: ${anomaly.message}`}
         >
             <div aria-hidden="true" className="p-2 rounded-lg bg-white/20">
                 {isPositive ? (
-                    <Rocket size={24} className="text-white" />
+                    <Rocket size={24} className="text-emerald-200" />
                 ) : (
-                    <AlertTriangle size={24} className="text-white" />
+                    <AlertTriangle size={24} className="text-amber-200" />
                 )}
             </div>
             <div className="flex-1 min-w-0">

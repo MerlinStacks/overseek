@@ -241,7 +241,7 @@ export function SettingsPage() {
                                 className={`
                                     flex items-center gap-2 px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap transition-colors
                                     ${isActive
-                                        ? 'border-blue-600 dark:border-blue-400 text-blue-600 dark:text-blue-400'
+                                        ? 'border-[var(--brand-text)] text-[var(--brand-text)]'
                                         : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                                     }
                                 `}
@@ -278,14 +278,14 @@ export function SettingsPage() {
                                                     className={`
                                                         w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm transition-all duration-200 group
                                                         ${isActive
-                                                            ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 font-semibold shadow-sm shadow-blue-500/5'
+                                                            ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)] font-semibold'
                                                             : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
                                                         }
                                                     `}
                                                 >
-                                                    <Icon size={18} className={`transition-colors ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'}`} />
+                                                    <Icon size={18} className={`transition-colors ${isActive ? 'text-[var(--brand-text)]' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'}`} />
                                                     {tab.label}
-                                                    {isActive && <ChevronRight size={14} className="ml-auto text-blue-400 dark:text-blue-500" />}
+                                                    {isActive && <ChevronRight size={14} className="ml-auto text-[var(--brand-text)]" />}
                                                 </button>
                                             );
                                         })}
@@ -313,12 +313,12 @@ export function SettingsPage() {
  */
 function SettingsCard({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
     return (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden text-slate-900 dark:text-slate-100 transition-all duration-300">
-            <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/50 backdrop-blur-sm">
+        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden text-slate-900 dark:text-slate-100">
+            <div className="px-4 sm:px-6 py-5 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
                 <h2 className="text-lg font-semibold text-slate-800 dark:text-white">{title}</h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{description}</p>
             </div>
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
                 {children}
             </div>
         </div>

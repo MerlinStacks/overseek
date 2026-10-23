@@ -30,10 +30,10 @@ export function SupplyChainPage() {
     }, [activeTab, searchParams, setSearchParams]);
 
     return (
-        <div className="min-w-0 space-y-6">
+        <div className="min-w-0 space-y-4">
             <div className="flex flex-col gap-4 border-b border-slate-200 pb-4 lg:flex-row lg:items-end lg:justify-between dark:border-slate-700">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Stock & Suppliers</h1>
+                    <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">Stock & Suppliers</h1>
                     <p className="text-sm text-slate-500 dark:text-slate-400">Manage suppliers, materials, and purchase orders</p>
                 </div>
 
@@ -42,7 +42,7 @@ export function SupplyChainPage() {
                         type="button"
                         aria-pressed={activeTab === 'purchasing'}
                         onClick={() => setActiveTab('purchasing')}
-                        className={`flex shrink-0 items-center gap-2 px-2 py-2 font-medium transition-colors border-b-2 ${activeTab === 'purchasing' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                        className={`flex shrink-0 items-center gap-2 px-2 py-2 font-medium transition-colors border-b-2 ${activeTab === 'purchasing' ? 'border-[var(--primary-color)] text-[var(--brand-text)]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                     >
                         <Calculator size={18} /> Purchase Orders
                     </button>
@@ -50,7 +50,7 @@ export function SupplyChainPage() {
                         type="button"
                         aria-pressed={activeTab === 'suppliers'}
                         onClick={() => setActiveTab('suppliers')}
-                        className={`flex shrink-0 items-center gap-2 px-2 py-2 font-medium transition-colors border-b-2 ${activeTab === 'suppliers' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                        className={`flex shrink-0 items-center gap-2 px-2 py-2 font-medium transition-colors border-b-2 ${activeTab === 'suppliers' ? 'border-[var(--primary-color)] text-[var(--brand-text)]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                     >
                         <Truck size={18} /> Suppliers & Materials
                     </button>
@@ -58,7 +58,7 @@ export function SupplyChainPage() {
                         type="button"
                         aria-pressed={activeTab === 'movements'}
                         onClick={() => setActiveTab('movements')}
-                        className={`flex shrink-0 items-center gap-2 px-2 py-2 font-medium transition-colors border-b-2 ${activeTab === 'movements' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                        className={`flex shrink-0 items-center gap-2 px-2 py-2 font-medium transition-colors border-b-2 ${activeTab === 'movements' ? 'border-[var(--primary-color)] text-[var(--brand-text)]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                     >
                         <History size={18} /> Stock Movements
                     </button>

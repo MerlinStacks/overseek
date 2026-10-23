@@ -102,8 +102,8 @@ function ConversationNotes({ token, userId, accountId, conversationId }: { token
                 onChange={event => setNewNote(event.target.value)} onKeyDown={event => {
                     if (event.key !== 'Enter' || event.repeat || event.nativeEvent.isComposing) return;
                     event.preventDefault(); void mutate('POST');
-                }} className="min-w-0 flex-1 px-2 py-1.5 text-sm border border-gray-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
-            <button type="button" aria-label="Add note" onClick={() => void mutate('POST')} disabled={!newNote.trim() || saving || loading} className="p-1.5 bg-blue-600 text-white rounded-lg disabled:opacity-50"><Send size={14} aria-hidden="true" /></button>
+        }} className="min-w-0 flex-1 px-2 py-1.5 text-sm border border-gray-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--focus-color)]" />
+            <button type="button" aria-label="Add note" onClick={() => void mutate('POST')} disabled={!newNote.trim() || saving || loading} className="p-1.5 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg disabled:opacity-50"><Send size={14} aria-hidden="true" /></button>
         </div>
         {loading ? <p role="status">Loading notes...</p> : notes.length === 0 ? !loadError && <p className="text-sm text-gray-500 dark:text-slate-400 italic">No notes yet.</p> :
             <div className="space-y-2">{notes.map(note => <div key={note.id} className="bg-yellow-50 dark:bg-amber-950/30 border border-yellow-100 dark:border-amber-900 rounded-lg p-2">

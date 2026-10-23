@@ -42,9 +42,9 @@ function LiveContent({ accountId, token, className }: { accountId: string; token
         <div className="flex items-start justify-between gap-3 mb-4 shrink-0">
             <div>
                 <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400">Recent Active Sessions</h3>
-                {data && <p aria-label="Returned session count" className="mt-1 text-3xl font-bold tabular-nums">{data.visitors.length}</p>}
+                {data && <p aria-label="Returned session count" className="mt-1 text-xl font-semibold tabular-nums">{data.visitors.length}</p>}
             </div>
-            <div className="rounded-lg bg-gradient-to-br from-blue-400 to-indigo-600 p-2 text-white shadow-md shadow-blue-500/20">
+            <div className="rounded-lg bg-[var(--brand-subtle)] p-2 text-[var(--brand-text)]">
                 <Activity className="h-5 w-5" aria-hidden="true" />
             </div>
         </div>
@@ -52,15 +52,15 @@ function LiveContent({ accountId, token, className }: { accountId: string; token
             {read.error || stale && data ? <p role="alert" className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">{read.error || 'Observations are stale; current activity is unverified.'}</p> : null}
             {!data ? <p role="status" className="text-sm text-slate-500 dark:text-slate-400">{read.error ? 'Live observations unavailable.' : 'Loading live observations…'}</p> : <>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Returned session sample, not unique people. {data.visitors.length >= 50 ? 'The 50-session limit may truncate results.' : ''}</p>
-                <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-700/50">
+                <div className="metric-strip" role="group" aria-label="Observed cart summary">
+                    <div className="metric-strip-item">
                         <h4 className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400"><ShoppingCart className="h-4 w-4 shrink-0 text-orange-500" aria-hidden="true" />Observed carts</h4>
-                        <p className="mt-1 text-lg font-bold tabular-nums">{data.visitors.filter(visitor => visitor.cartValue != null && visitor.cartValue > 0).length}</p>
+                        <p className="mt-1 text-xl font-semibold tabular-nums">{data.visitors.filter(visitor => visitor.cartValue != null && visitor.cartValue > 0).length}</p>
                         <p className="text-xs text-slate-500 dark:text-slate-400">With positive value</p>
                     </div>
-                    <div className="min-w-0 rounded-lg bg-slate-50 p-3 dark:bg-slate-700/50">
+                    <div className="metric-strip-item">
                         <h4 className="text-xs font-medium text-slate-600 dark:text-slate-400">Observed cart value, not forecast revenue</h4>
-                        {[...carts].map(([currency, value]) => <p className="mt-1 break-words text-lg font-bold tabular-nums" key={currency}>{Number.isFinite(value) ? money(value, currency) : 'Cart total unavailable'}</p>)}
+                        {[...carts].map(([currency, value]) => <p className="mt-1 break-words text-xl font-semibold tabular-nums" key={currency}>{Number.isFinite(value) ? money(value, currency) : 'Cart total unavailable'}</p>)}
                         {!carts.size && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">No known-currency cart totals available.</p>}
                     </div>
                 </div>
@@ -72,8 +72,8 @@ function LiveContent({ accountId, token, className }: { accountId: string; token
             </>}
         </div>
         <div className="mt-4 flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 dark:border-slate-700/50">
-            <button className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-indigo-500 disabled:cursor-wait disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200" type="button" disabled={read.busy} onClick={() => void read.refresh()}><RefreshCw className={`h-3.5 w-3.5 ${read.busy ? 'animate-spin' : ''}`} aria-hidden="true" />Refresh observations</button>
-            <button className="inline-flex items-center gap-1 rounded-md py-1 text-sm font-medium text-blue-600 transition-colors hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-indigo-500 dark:text-blue-400 dark:hover:text-blue-300" type="button" onClick={() => navigate('/live')}>View Real-time Report<ArrowRight className="h-4 w-4" aria-hidden="true" /></button>
+            <button className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-[var(--brand-text)] transition-colors hover:bg-[var(--brand-subtle)] focus-visible:outline-2 focus-visible:outline-[var(--focus-color)] disabled:cursor-wait disabled:opacity-50" type="button" disabled={read.busy} onClick={() => void read.refresh()}><RefreshCw className={`h-3.5 w-3.5 ${read.busy ? 'animate-spin' : ''}`} aria-hidden="true" />Refresh observations</button>
+            <button className="inline-flex items-center gap-1 rounded-md py-1 text-sm font-medium text-[var(--brand-text)] hover:underline focus-visible:outline-2 focus-visible:outline-[var(--focus-color)]" type="button" onClick={() => navigate('/live')}>View Real-time Report<ArrowRight className="h-4 w-4" aria-hidden="true" /></button>
         </div>
     </section>;
 }

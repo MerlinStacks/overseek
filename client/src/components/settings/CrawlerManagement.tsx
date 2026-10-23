@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { Metric, MetricStrip } from '../ui/MetricStrip';
 import { Logger } from '../../utils/logger';
 import {
     Loader2, ShieldOff, ShieldCheck, ExternalLink,
@@ -226,12 +227,12 @@ export function CrawlerManagement() {
             <div className="p-6 space-y-6">
                 {/* Stats Bar */}
                 {data && (
-                    <div className="grid grid-cols-4 gap-4">
+                    <MetricStrip label="Crawler observations">
                         <StatCard icon={<BarChart3 size={18} />} label="Observed hits (today UTC)" value={data.totalHitsToday?.toLocaleString() ?? 'Unavailable'} color="blue" />
                         <StatCard icon={<ShieldOff size={18} />} label="Rule-matched (today UTC)" value={data.totalRuleMatchedHitsToday?.toLocaleString() ?? 'Unavailable'} color="red" />
                         <StatCard icon={<Bot size={18} />} label="Unique Crawlers" value={(data.uniqueCrawlers ?? 0).toString()} color="purple" />
                         <StatCard icon={<ShieldOff size={18} />} label="Rules Active" value={(data.blockedCount ?? 0).toString()} color="red" />
-                    </div>
+                    </MetricStrip>
                 )}
 
                 {shieldMetrics && (
@@ -254,7 +255,7 @@ export function CrawlerManagement() {
                             onClick={() => setCategoryFilter(f.key)}
                             className={`px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
                                 categoryFilter === f.key
-                                    ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300'
+                                    ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)]'
                                     : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400 hover:bg-gray-200 dark:hover:bg-slate-600'
                             }`}
                         >
@@ -330,13 +331,7 @@ function StatCard({ icon, label, value, color }: {
     };
 
     return (
-        <div className={`rounded-xl p-4 ${colors[color]}`}>
-            <div className="flex items-center gap-2 mb-1">
-                {icon}
-                <span className="text-xs font-medium opacity-80">{label}</span>
-            </div>
-            <p className="text-2xl font-bold">{value}</p>
-        </div>
+        <Metric label={<span className="flex items-center gap-2"><span className={colors[color]}>{icon}</span>{label}</span>} value={value} />
     );
 }
 
@@ -426,7 +421,7 @@ function BlockConfirmDialog({ crawler, onConfirm, onCancel }: {
 }) {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg max-w-md w-full mx-4 overflow-hidden">
                 <div className="p-6">
                     <div className="flex items-center gap-3 mb-4">
                         <div className="p-2 bg-amber-100 dark:bg-amber-500/20 rounded-full">

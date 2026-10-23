@@ -76,10 +76,10 @@ export function HistoryTimeline({ resource, resourceId }: HistoryTimelineProps) 
     if (loading) {
         return (
             <div className="space-y-6">
-                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Activity History</h3>
-                <div className="space-y-4 rounded-xl border border-white/50 bg-white/70 p-6 backdrop-blur-md">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Activity history</h3>
+                <div role="status" aria-label="Loading activity history" className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800">
                     {[1, 2, 3].map(item => (
-                        <div key={item} className="h-20 animate-pulse rounded-lg bg-gray-100" />
+                        <div key={item} className="h-20 animate-pulse rounded-lg bg-gray-100 dark:bg-slate-700" />
                     ))}
                 </div>
             </div>
@@ -88,9 +88,9 @@ export function HistoryTimeline({ resource, resourceId }: HistoryTimelineProps) 
 
     if (logs.length === 0) {
         return (
-            <div className="rounded-xl border border-white/50 bg-white/70 p-8 text-center text-gray-400 backdrop-blur-md">
+            <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
                 <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p className="font-medium text-gray-700">No activity yet</p>
+                <p className="font-medium text-gray-700 dark:text-slate-200">No activity yet</p>
                 <p className="mt-1 text-sm">Edits, sync actions, and automated stock changes will appear here once they happen.</p>
             </div>
         );
@@ -126,14 +126,14 @@ export function HistoryTimeline({ resource, resourceId }: HistoryTimelineProps) 
     /** Get timeline dot color based on source */
     const getDotColor = (log: AuditLog) => {
         if (log.source === 'SYSTEM_BOM') return 'bg-orange-100 border-orange-500';
-        if (log.source === 'SYSTEM_SYNC') return 'bg-purple-100 border-purple-500';
-        return 'bg-blue-100 border-blue-500';
+        if (log.source === 'SYSTEM_SYNC') return 'bg-slate-100 border-slate-500';
+        return 'bg-[var(--brand-subtle)] border-[var(--primary-color)]';
     };
 
     return (
         <div className="space-y-6">
-            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Activity History</h3>
-            <div className="relative border-l border-gray-200 ml-3 space-y-8">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Activity history</h3>
+            <div className="relative border-l border-gray-200 dark:border-slate-700 ml-3 space-y-8">
                 {logs.map((log) => {
                     const actor = getActorDisplay(log);
                     const ActorIcon = actor.icon;
@@ -143,19 +143,19 @@ export function HistoryTimeline({ resource, resourceId }: HistoryTimelineProps) 
                             {/* Timeline Dot */}
                             <div className={`absolute -left-1.5 top-1.5 w-3 h-3 rounded-full border-2 ${getDotColor(log)}`}></div>
 
-                            <div className="bg-white p-4 rounded-lg border border-gray-100 shadow-xs">
+                            <div className="bg-white p-4 rounded-lg border border-slate-200 dark:bg-slate-800 dark:border-slate-700">
                                 <div className="flex flex-wrap justify-between items-start gap-2 mb-2">
                                     <div className="flex flex-wrap items-center gap-2">
                                         <div className={`w-6 h-6 rounded-full flex items-center justify-center ${actor.isSystem ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'}`}>
                                             <ActorIcon size={14} />
                                         </div>
-                                        <span className="font-medium text-gray-900 text-sm">
+                                        <span className="font-medium text-gray-900 dark:text-slate-100 text-sm">
                                             {actor.name}
                                         </span>
                                         <span className="text-gray-400 text-xs">•</span>
-                                        <span className="text-xs text-gray-500">{getActionDescription(log)}</span>
+                                        <span className="text-xs text-gray-500 dark:text-slate-400">{getActionDescription(log)}</span>
                                     </div>
-                                    <span className="text-xs text-gray-400 font-mono">
+                                    <span className="text-xs text-gray-500 dark:text-slate-400 font-mono">
                                         {format(new Date(log.createdAt), 'MMM d, h:mm a')}
                                     </span>
                                 </div>

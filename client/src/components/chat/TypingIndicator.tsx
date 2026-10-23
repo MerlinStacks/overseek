@@ -34,9 +34,9 @@ export function TypingIndicator({ name, isAgent = false }: TypingIndicatorProps)
             {/* Typing Bubble */}
             <div
                 className={cn(
-                    "rounded-2xl px-4 py-3 shadow-xs",
+                    "rounded-xl px-4 py-3 shadow-xs",
                     isAgent
-                        ? "bg-blue-600 rounded-br-md"
+                        ? "bg-[var(--primary-color)] rounded-br-md"
                         : "bg-white dark:bg-slate-800 rounded-bl-md border border-gray-100 dark:border-slate-700"
                 )}
             >
@@ -44,21 +44,21 @@ export function TypingIndicator({ name, isAgent = false }: TypingIndicatorProps)
                     <span
                         className={cn(
                             "w-2 h-2 rounded-full animate-bounce motion-reduce:animate-none",
-                            isAgent ? "bg-blue-300" : "bg-gray-400"
+                            isAgent ? "bg-[var(--primary-foreground)]" : "bg-gray-400"
                         )}
                         style={{ animationDelay: '0ms' }}
                     />
                     <span
                         className={cn(
                             "w-2 h-2 rounded-full animate-bounce motion-reduce:animate-none",
-                            isAgent ? "bg-blue-300" : "bg-gray-400"
+                            isAgent ? "bg-[var(--primary-foreground)]" : "bg-gray-400"
                         )}
                         style={{ animationDelay: '150ms' }}
                     />
                     <span
                         className={cn(
                             "w-2 h-2 rounded-full animate-bounce motion-reduce:animate-none",
-                            isAgent ? "bg-blue-300" : "bg-gray-400"
+                            isAgent ? "bg-[var(--primary-foreground)]" : "bg-gray-400"
                         )}
                         style={{ animationDelay: '300ms' }}
                     />
@@ -67,7 +67,7 @@ export function TypingIndicator({ name, isAgent = false }: TypingIndicatorProps)
 
             {/* Agent Avatar */}
             {isAgent && (
-                <div aria-hidden="true" className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium shrink-0">
+                <div aria-hidden="true" className="w-7 h-7 rounded-full bg-[var(--primary-color)] flex items-center justify-center text-[var(--primary-foreground)] text-xs font-medium shrink-0">
                     {name?.trim().charAt(0).toUpperCase() || 'A'}
                 </div>
             )}

@@ -50,10 +50,11 @@ export function PWAUpdateModal({ isOpen, onClose, onUpdate, updateInfo }: PWAUpd
             />
 
             {/* Modal */}
-            <div className="relative bg-slate-800 border border-white/10 rounded-3xl p-6 max-w-sm w-full shadow-2xl animate-scale-in">
+            <div className="relative bg-slate-800 border border-white/10 rounded-xl p-6 max-w-sm w-full shadow-lg animate-scale-in">
                 {/* Close button (not for critical updates) */}
                 {!isCritical && (
                     <button
+                        aria-label="Close update notification"
                         onClick={onClose}
                         className="absolute top-4 right-4 p-2 rounded-xl hover:bg-white/10 transition-colors"
                     >
@@ -118,12 +119,12 @@ export function PWAUpdateModal({ isOpen, onClose, onUpdate, updateInfo }: PWAUpd
                     <button
                         onClick={onUpdate}
                         className={`
-                            w-full py-3 px-4 rounded-xl font-semibold text-white
+                            w-full py-3 px-4 rounded-lg font-semibold
                             flex items-center justify-center gap-2
                             active:scale-[0.98] transition-all
                             ${isCritical
-                                ? 'bg-gradient-to-r from-rose-500 to-pink-600 shadow-lg shadow-rose-500/30'
-                                : 'bg-gradient-to-r from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/30'
+                                ? 'bg-rose-600 text-white'
+                                : 'mobile-brand-solid'
                             }
                         `}
                     >
@@ -281,11 +282,11 @@ export function PWAUpdateBanner({
         <button
             onClick={onTap}
             className={`
-                w-full bg-gradient-to-r from-indigo-500 to-purple-600 
-                text-white text-center py-3 px-4 
+                w-full mobile-brand-solid
+                text-center py-3 px-4
                 flex items-center justify-center gap-2 
                 text-sm font-medium 
-                hover:from-indigo-600 hover:to-purple-700 
+                hover:bg-[var(--primary-hover)]
                 active:scale-[0.99] transition-all
                 ${className}
             `}

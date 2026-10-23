@@ -293,18 +293,18 @@ export const MessageBubble = memo(function MessageBubble({
 
                     {/* Bubble */}
                     <div className={cn(
-                        "rounded-2xl px-4 py-2.5 relative shadow-sm select-text",
+                        "rounded-xl px-4 py-2.5 relative shadow-sm select-text",
                         isMe
-                            ? "bg-blue-600 text-white rounded-br-md"
+                            ? "bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-br-md"
                             : "bg-white text-gray-900 rounded-bl-md border border-gray-200",
                         message.isInternal && "bg-amber-50 border border-amber-200 text-gray-900 shadow-none",
-                        isPendingUndo && "bg-blue-600/85 border-2 border-dashed border-blue-400"
+                        isPendingUndo && "bg-[var(--primary-color)] border-2 border-dashed border-[var(--primary-color)]"
                     )}>
                         {/* Subject line (if present) */}
                         {subject && (
                             <div className={cn(
                                 "text-xs font-semibold mb-1.5 pb-1.5 border-b select-text",
-                                isMe ? "border-blue-500/30" : "border-gray-200"
+                                isMe ? "border-[var(--primary-foreground)]/30" : "border-gray-200"
                             )}>
                                 {subject}
                             </div>
@@ -319,8 +319,8 @@ export const MessageBubble = memo(function MessageBubble({
                                     "[&_table]:max-w-full [&_img]:max-w-full [&_img]:h-auto [&_img]:cursor-pointer",
                                     "[&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:opacity-80",
                                     isMe
-                                        ? "[&_a]:text-blue-100 [&_a]:underline [&_blockquote]:border-blue-400"
-                                        : "[&_a]:text-blue-600 [&_a]:underline [&_blockquote]:border-gray-400"
+                                        ? "[&_a]:text-[var(--primary-foreground)] [&_a]:underline [&_blockquote]:border-[var(--primary-foreground)]/50"
+                                        : "[&_a]:text-[var(--brand-text)] [&_a]:underline [&_blockquote]:border-gray-400"
                                 )
                             )}
                             onClick={handleContentClick}
@@ -329,7 +329,7 @@ export const MessageBubble = memo(function MessageBubble({
                         {renderedMainContent.isTruncated && (
                             <div className={cn(
                                 "mt-2 rounded-md px-2 py-1 text-xs",
-                                isMe ? "bg-blue-500/30 text-blue-50" : "bg-gray-100 text-gray-600"
+                                isMe ? "bg-[var(--brand-subtle)] text-[var(--brand-text)]" : "bg-gray-100 text-gray-600"
                             )}>
                                 Message body trimmed for performance. Reply history and attachments remain below when available.
                             </div>
@@ -339,14 +339,14 @@ export const MessageBubble = memo(function MessageBubble({
                         {quotedContent && (
                             <div className={cn(
                                 "mt-3 pt-2 border-t",
-                                isMe ? "border-blue-500/30" : "border-gray-200"
+                                isMe ? "border-[var(--primary-foreground)]/30" : "border-gray-200"
                             )}>
                                 <button
                                     onClick={() => setShowQuoted(!showQuoted)}
                                     className={cn(
                                         "flex flex-col items-start gap-1 text-xs w-full text-left px-2 py-1.5 rounded transition-colors",
                                         isMe
-                                            ? "text-blue-200 hover:text-white hover:bg-blue-500/30"
+                                            ? "text-[var(--primary-foreground)] hover:bg-[var(--primary-foreground)]/10"
                                             : "text-gray-500 hover:text-gray-700 hover:bg-gray-200/50"
                                     )}
                                 >
@@ -361,7 +361,7 @@ export const MessageBubble = memo(function MessageBubble({
                                     {!showQuoted && quotedPreview && (
                                         <div className={cn(
                                             "text-[11px] pl-5 opacity-60 italic truncate max-w-full",
-                                            isMe ? "text-blue-100" : "text-gray-600"
+                                            isMe ? "text-[var(--primary-foreground)]" : "text-gray-600"
                                         )}>
                                             "{quotedPreview}"
                                         </div>
@@ -371,7 +371,7 @@ export const MessageBubble = memo(function MessageBubble({
                                     <div
                                         className={cn(
                                             "mt-2 pl-3 border-l-2 text-xs opacity-80 max-h-96 overflow-y-auto select-text",
-                                            isMe ? "border-blue-400" : "border-gray-300"
+                                            isMe ? "border-[var(--primary-foreground)]/50" : "border-gray-300"
                                         )}
                                         dangerouslySetInnerHTML={{ __html: sanitizedQuotedContent }}
                                     />
@@ -392,13 +392,13 @@ export const MessageBubble = memo(function MessageBubble({
 
                         {isPendingUndo && (
                             <>
-                                <span className="text-blue-600 font-medium">
+                                <span className="text-[var(--brand-text)] font-medium">
                                     Sending in {message.remainingSeconds ?? 0}s...
                                 </span>
                                 {onUndoPending && (
                                     <button
                                         onClick={onUndoPending}
-                                        className="px-2 py-0.5 rounded-full bg-blue-100 hover:bg-blue-200 text-blue-700 transition-colors font-semibold"
+                                        className="px-2 py-0.5 rounded-full bg-[var(--brand-subtle)] hover:bg-[var(--brand-subtle)] text-[var(--brand-text)] transition-colors font-semibold"
                                     >
                                         Undo
                                     </button>
@@ -449,7 +449,7 @@ export const MessageBubble = memo(function MessageBubble({
                                     className={cn(
                                         "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs transition-colors border",
                                         users.some(u => u.userId === user?.id)
-                                            ? "bg-blue-50 border-blue-200 text-blue-700"
+                                            ? "bg-[var(--brand-subtle)] border-[var(--brand-border)] text-[var(--brand-text)]"
                                             : "bg-white border-gray-200 hover:bg-gray-50"
                                     )}
                                     title={users.map(u => u.userName || 'Unknown').join(', ')}

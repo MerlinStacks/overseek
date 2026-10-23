@@ -98,7 +98,7 @@ export function EmailMediaPlugin({ images, social }: { images: boolean; social: 
                     <button type="button" onClick={() => setLinks([...links, { label: '', href: '' }])}>+ Add link</button>
                 </>}
                 {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-                <div className="flex justify-end gap-3"><button type="button" onClick={close}>Cancel</button><button type="button" disabled={uploading} onClick={insert} className="rounded bg-indigo-600 px-4 py-2 text-white disabled:opacity-50">Insert</button></div>
+                <div className="flex justify-end gap-3"><button type="button" onClick={close}>Cancel</button><button type="button" disabled={uploading} onClick={insert} className="rounded-lg bg-[var(--primary-color)] px-4 py-2 text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] disabled:opacity-50">Insert</button></div>
             </div>
         </div>}
     </>;

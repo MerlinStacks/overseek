@@ -25,6 +25,7 @@ describe('companion shell identity', () => {
         const { container, rerender } = render(<MemoryRouter><MobileLayout><p>Workspace</p></MobileLayout></MemoryRouter>);
         expect(screen.getByRole('button', { name: 'Store settings for CustomKings' })).toBeInTheDocument();
         expect(container.querySelector('.mobile-companion')).toHaveStyle('--mobile-brand: #daae32');
+        expect(container.querySelector('.mobile-companion')).toHaveClass('dark');
         fireEvent.error(container.querySelector('img')!);
         expect(container.querySelector('header img')).not.toBeInTheDocument();
         expect(screen.getByText('C')).toBeInTheDocument();
@@ -32,7 +33,7 @@ describe('companion shell identity', () => {
         state.account = { name: 'Another store', appearance: { appName: '', logoUrl: '', primaryColor: '' } };
         rerender(<MemoryRouter><MobileLayout><p>Workspace</p></MobileLayout></MemoryRouter>);
         expect(screen.getByRole('button', { name: 'Store settings for Another store' })).toBeInTheDocument();
-        expect(container.querySelector('.mobile-companion')).toHaveStyle('--mobile-brand: #4f46e5');
+        expect(container.querySelector('.mobile-companion')).toHaveStyle('--mobile-brand: #2563eb');
         expect(screen.queryByText('CustomKings')).not.toBeInTheDocument();
     });
 });

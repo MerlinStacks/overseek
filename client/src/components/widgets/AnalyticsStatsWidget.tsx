@@ -3,7 +3,8 @@ import { Logger } from '../../utils/logger';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
-import { Globe, Monitor, Smartphone, Tablet, Clock } from 'lucide-react';
+import { Globe, Monitor, Smartphone, Tablet } from 'lucide-react';
+import { Metric, MetricStrip } from '../ui/MetricStrip';
 import { WidgetProps } from './WidgetRegistry';
 
 interface StatsData {
@@ -63,18 +64,10 @@ export const AnalyticsStatsWidget = ({ className, dateRange }: WidgetProps) => {
     return (
         <div className={`p-4 space-y-4 ${className}`}>
             {/* Summary Stats */}
-            <div className="grid grid-cols-2 gap-4">
-                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
-                    <div className="text-xs text-blue-600 dark:text-blue-400 font-medium">Total Sessions</div>
-                    <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">{stats.totalSessions.toLocaleString()}</div>
-                </div>
-                <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3">
-                    <div className="text-xs text-purple-600 dark:text-purple-400 font-medium flex items-center gap-1">
-                        <Clock className="w-3 h-3" /> Avg Duration
-                    </div>
-                    <div className="text-2xl font-bold text-purple-700 dark:text-purple-300">{formatDuration(stats.avgSessionDuration)}</div>
-                </div>
-            </div>
+            <MetricStrip label="Session summary">
+                <Metric label="Total Sessions" value={stats.totalSessions.toLocaleString()} />
+                <Metric label="Avg Duration" value={formatDuration(stats.avgSessionDuration)} />
+            </MetricStrip>
 
             {/* Top Countries */}
             <div>

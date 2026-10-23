@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { Metric, MetricStrip } from '../components/ui/MetricStrip';
 import { Link } from 'react-router-dom';
-import { Activity, AlertTriangle, CheckCircle, Clock, Settings, Loader2 } from 'lucide-react';
+import { Activity, Settings, Loader2 } from 'lucide-react';
 import ReactEChartsCore from 'echarts-for-react/esm/core';
 import { echarts, type EChartsOption } from '../utils/echarts';
 import { useApi } from '../hooks/useApi';
@@ -52,7 +53,7 @@ interface TrendTooltipParam {
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const PLATFORM_COLORS: Record<string, string> = {
-    META: 'bg-blue-500',
+    META: 'bg-[var(--primary-color)]',
     TIKTOK: 'bg-gray-900 dark:bg-gray-100',
     GOOGLE: 'bg-green-500',
     PINTEREST: 'bg-red-500',
@@ -195,7 +196,7 @@ export function CAPIHealthPage() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div className="flex items-center gap-3">
-                    <Activity className="w-6 h-6 text-indigo-600" />
+                    <Activity className="w-6 h-6 text-[var(--brand-text)]" />
                     <div>
                         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">CAPI Delivery Health</h1>
                         <p className="text-sm text-slate-500 dark:text-slate-400">Server-side conversion delivery for the selected account.</p>
@@ -209,7 +210,7 @@ export function CAPIHealthPage() {
                                 onClick={() => setRange(r)}
                                 className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                                     range === r
-                                        ? 'bg-indigo-600 text-white'
+                                        ? 'bg-[var(--primary-color)] text-[var(--primary-foreground)]'
                                         : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                                 }`}
                             >
@@ -229,43 +230,35 @@ export function CAPIHealthPage() {
 
             {loading && !data ? (
                 <div className="flex justify-center py-20">
-                    <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+                    <Loader2 className="w-8 h-8 animate-spin text-[var(--brand-text)]" />
                 </div>
             ) : !data || platforms.length === 0 ? (
-                <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-lg rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-lg p-12 text-center">
+                <div className="bg-white/80 dark:bg-slate-800/80 rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-sm p-12 text-center">
                     <Activity className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
                     <p className="text-slate-500 dark:text-slate-400">No delivery data yet. Configure your CAPI platforms and send some events first.</p>
-                    <Link to="/settings?tab=conversions" className="inline-block mt-4 text-indigo-600 hover:text-indigo-700 text-sm font-medium">
+                    <Link to="/settings?tab=conversions" className="inline-block mt-4 text-[var(--brand-text)] hover:text-[var(--brand-text)] text-sm font-medium">
                         Go to CAPI Settings
                     </Link>
                 </div>
             ) : (
                 <>
                     {/* Platform Health Cards */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <MetricStrip label="Platform delivery health">
                         {platforms.map(p => (
-                            <div key={p.platform} className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-lg rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-lg p-5">
-                                <div className="flex items-center justify-between mb-3">
-                                    <div className="flex items-center gap-2">
+                            <Metric key={p.platform} label={
+                                    <span className="flex flex-wrap items-center gap-2">
                                         <span className={`w-2.5 h-2.5 rounded-full ${PLATFORM_COLORS[p.platform] || 'bg-slate-400'}`} />
                                         <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{p.platform}</span>
-                                    </div>
+                                    </span>
+                                } value={<span className={scoreColor(p.score)}>{p.score >= 0 ? `${p.score}%` : '—'}</span>} hint={<>
                                     <span className={`text-xs font-medium ${scoreColor(p.score)}`}>{scoreLabel(p.score)}</span>
-                                </div>
-                                <div className={`text-3xl font-bold mb-1 ${scoreColor(p.score)}`}>
-                                    {p.score >= 0 ? `${p.score}%` : '—'}
-                                </div>
-                                <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
-                                    <span className="flex items-center gap-1"><CheckCircle className="w-3 h-3 text-emerald-500" />{p.sent.toLocaleString()}</span>
-                                    <span className="flex items-center gap-1"><AlertTriangle className="w-3 h-3 text-red-500" />{p.failed.toLocaleString()}</span>
-                                    {p.pending > 0 && <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-amber-500" />{p.pending.toLocaleString()}</span>}
-                                </div>
-                            </div>
+                                    <span className="ml-2">{p.sent.toLocaleString()} sent · {p.failed.toLocaleString()} failed{p.pending > 0 && ` · ${p.pending.toLocaleString()} pending`}</span>
+                                </>} />
                         ))}
-                    </div>
+                    </MetricStrip>
 
                     {/* Failure Trend */}
-                    <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-lg rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-lg p-5">
+                    <div className="bg-white/80 dark:bg-slate-800/80 rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-sm p-5">
                         <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">Failure Trend (30 days)</h2>
                         {(data?.failureTrend?.length ?? 0) > 0 ? (
                             <ReactEChartsCore
@@ -280,7 +273,7 @@ export function CAPIHealthPage() {
                     </div>
 
                     {/* Event Type Breakdown */}
-                    <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-lg rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-lg p-5">
+                    <div className="bg-white/80 dark:bg-slate-800/80 rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-sm p-5">
                         <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">Event Breakdown by Platform</h2>
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
@@ -325,7 +318,7 @@ export function CAPIHealthPage() {
 
                     {/* Recent Failures */}
                     {(data?.recentFailures?.length ?? 0) > 0 && (
-                        <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-lg rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-lg p-5">
+                        <div className="bg-white/80 dark:bg-slate-800/80 rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-sm p-5">
                             <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">Recent Failures</h2>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">

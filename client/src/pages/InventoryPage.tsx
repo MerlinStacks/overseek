@@ -437,35 +437,38 @@ export function InventoryPage() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-4">
             <div className="flex flex-wrap gap-4 justify-between items-end border-b pb-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Inventory</h1>
+                    <h1 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-slate-100">Inventory</h1>
                     <p className="text-sm text-gray-500">Manage products and inventory components</p>
                 </div>
 
                 <div className="flex flex-wrap gap-4">
                     <button
                         onClick={() => setShowCreateModal(true)}
-                        className="flex items-center gap-2 pb-2 -mb-4 px-2 font-medium text-blue-600 hover:text-blue-800 transition-colors"
+                        className="flex items-center gap-2 rounded-lg bg-[var(--primary-color)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] transition-colors"
                     >
                         <Plus size={18} />
                         New Product
                     </button>
                     <button
                         onClick={() => setActiveTab('catalog')}
-                        className={`flex items-center gap-2 pb-2 -mb-4 px-2 font-medium transition-colors border-b-2 ${activeTab === 'catalog' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                        aria-pressed={activeTab === 'catalog'}
+                        className={`flex items-center gap-2 py-2 px-2 font-medium transition-colors border-b-2 ${activeTab === 'catalog' ? 'border-[var(--primary-color)] text-[var(--brand-text)]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                     >
                         <Layers size={18} /> Product Catalog
                     </button>
                     <button
                         onClick={() => setActiveTab('components')}
-                        className={`flex items-center gap-2 pb-2 -mb-4 px-2 font-medium transition-colors border-b-2 ${activeTab === 'components' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                        aria-pressed={activeTab === 'components'}
+                        className={`flex items-center gap-2 py-2 px-2 font-medium transition-colors border-b-2 ${activeTab === 'components' ? 'border-[var(--primary-color)] text-[var(--brand-text)]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                     >
                         <Box size={18} /> Components
                     </button>
                     {canWriteOff && <button onClick={() => setActiveTab('write-offs')}
-                        className={`flex items-center gap-2 pb-2 -mb-4 px-2 font-medium transition-colors border-b-2 ${activeTab === 'write-offs' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-slate-400'}`}>
+                        aria-pressed={activeTab === 'write-offs'}
+                        className={`flex items-center gap-2 py-2 px-2 font-medium transition-colors border-b-2 ${activeTab === 'write-offs' ? 'border-[var(--primary-color)] text-[var(--brand-text)] ' : 'border-transparent text-gray-500 dark:text-slate-400'}`}>
                         <Package size={18} /> Stock Write-offs
                     </button>}
 
@@ -483,7 +486,7 @@ export function InventoryPage() {
                             <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
                                 Status
                                 <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
-                                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-800 focus:ring-2 focus:ring-blue-500">
+                                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-800 focus:ring-2 focus:ring-[var(--focus-color)]">
                                     <option value="">All statuses</option>
                                     <option value="publish">Published</option>
                                     <option value="private">Private</option>
@@ -495,7 +498,7 @@ export function InventoryPage() {
                             <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
                                 Stock status
                                 <select value={stockStatusFilter} onChange={e => { setStockStatusFilter(e.target.value); setPage(1); }}
-                                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-800 focus:ring-2 focus:ring-blue-500">
+                                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-800 focus:ring-2 focus:ring-[var(--focus-color)]">
                                     <option value="">All stock statuses</option>
                                     <option value="instock">In stock</option>
                                     <option value="outofstock">Out of stock</option>
@@ -509,7 +512,7 @@ export function InventoryPage() {
                                     {filter.label}
                                     <select value={filter.value} disabled={termsLoading || termsError}
                                         onChange={e => { filter.setValue(e.target.value); setPage(1); }}
-                                        className="max-w-full sm:max-w-72 rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-800 disabled:opacity-60 focus:ring-2 focus:ring-blue-500">
+                                        className="max-w-full sm:max-w-72 rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-800 disabled:opacity-60 focus:ring-2 focus:ring-[var(--focus-color)]">
                                         <option value="">{termsLoading ? 'Loading…' : filter.all}</option>
                                         {filter.value && !filter.items.some(item => String(item.id) === filter.value) && (
                                             <option value={filter.value}>{filter.label} #{filter.value}</option>
@@ -519,7 +522,7 @@ export function InventoryPage() {
                                 </label>
                             ))}
                             <details className="relative text-sm text-gray-700 dark:text-slate-300">
-                                <summary className="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500">
+                                <summary className="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-800 focus-visible:ring-2 focus-visible:ring-[var(--focus-color)]">
                                     Tags ({tagFilter.length} selected){termsLoading ? ' — Loading…' : ''}
                                 </summary>
                                 <fieldset disabled={termsLoading || termsError || !token || !currentAccount?.id}
@@ -527,7 +530,7 @@ export function InventoryPage() {
                                     <legend className="sr-only">Filter by tags</legend>
                                     <input type="search" aria-label="Search tags" placeholder="Search tags..."
                                         value={tagSearch} onChange={e => setTagSearch(e.target.value)}
-                                        className="mb-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-800 focus:ring-2 focus:ring-blue-500" />
+                                        className="mb-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-800 focus:ring-2 focus:ring-[var(--focus-color)]" />
                                     <div className="max-h-64 overflow-y-auto">
                                         {visibleFilterTags.map(tag => (
                                             <label key={tag.id} className="flex items-center gap-2 py-1">
@@ -542,11 +545,11 @@ export function InventoryPage() {
                                     <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">Products must match any selected tag and all other selected filters.</p>
                                 </fieldset>
                             </details>
-                            {hasFilters && <button onClick={clearFilters} className="px-2 py-2 text-sm text-blue-600 dark:text-blue-400 hover:underline">Clear filters</button>}
+                            {hasFilters && <button onClick={clearFilters} className="px-2 py-2 text-sm text-[var(--brand-text)] hover:underline">Clear filters</button>}
                             {sortField && (
                                 <div className="flex items-center gap-2 py-2 text-sm text-gray-500 dark:text-slate-400">
                                     <span>Sorted by <span className="font-medium text-gray-700 dark:text-slate-300">{sortField === 'name' ? 'Name' : 'Price'}</span></span>
-                                    <button onClick={() => setSortField(null)} className="text-xs text-blue-600 hover:text-blue-800 underline dark:text-blue-400">Clear</button>
+                                    <button onClick={() => setSortField(null)} className="text-xs text-[var(--brand-text)] hover:text-[var(--brand-text)] underline ">Clear</button>
                                 </div>
                             )}
                             <div className="relative w-full sm:ml-auto sm:w-64">
@@ -555,7 +558,7 @@ export function InventoryPage() {
                                     type="text"
                                     aria-label="Search products"
                                     placeholder="Search name, SKU or Woo ID..."
-                                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg bg-white dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 outline-hidden focus:ring-2 focus:ring-blue-500"
+                                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg bg-white dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 outline-hidden focus:ring-2 focus:ring-[var(--focus-color)]"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
@@ -565,7 +568,7 @@ export function InventoryPage() {
                                     const name = tags.find(tag => String(tag.id) === id)?.name || `Tag #${id}`;
                                     return <button key={id} type="button" aria-label={`Remove tag ${name}`}
                                         onClick={() => toggleTagFilter(id)}
-                                        className="rounded-full bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:bg-slate-700 dark:text-blue-300">
+                                        className="rounded-full bg-[var(--brand-subtle)] px-3 py-2 text-sm text-[var(--brand-text)] dark:bg-slate-700 ">
                                         {name} ×
                                     </button>;
                                 })}
@@ -575,8 +578,8 @@ export function InventoryPage() {
                             </p>}
                         </div>
 
-                        <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
-                            <table className="w-full text-left border-collapse">
+                        <div className="max-w-full bg-white rounded-xl shadow-xs border border-gray-200 overflow-x-auto">
+                            <table className="w-full min-w-[900px] text-left border-collapse">
                                 <thead>
                                     <tr className="bg-gray-50 border-b border-gray-200 text-xs uppercase text-gray-500 font-semibold">
                                         <th className="px-6 py-4 w-16">Image</th>
@@ -594,7 +597,7 @@ export function InventoryPage() {
                                             >
                                                 Product Name
                                                 {sortField === 'name' ? (
-                                                    sortDirection === 'asc' ? <ArrowUp size={14} className="text-blue-600" /> : <ArrowDown size={14} className="text-blue-600" />
+                                                    sortDirection === 'asc' ? <ArrowUp size={14} className="text-[var(--brand-text)]" /> : <ArrowDown size={14} className="text-[var(--brand-text)]" />
                                                 ) : (
                                                     <ArrowUpDown size={14} className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                                                 )}
@@ -616,7 +619,7 @@ export function InventoryPage() {
                                             >
                                                 Price
                                                 {sortField === 'price' ? (
-                                                    sortDirection === 'asc' ? <ArrowUp size={14} className="text-blue-600" /> : <ArrowDown size={14} className="text-blue-600" />
+                                                    sortDirection === 'asc' ? <ArrowUp size={14} className="text-[var(--brand-text)]" /> : <ArrowDown size={14} className="text-[var(--brand-text)]" />
                                                 ) : (
                                                     <ArrowUpDown size={14} className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                                                 )}
@@ -628,7 +631,7 @@ export function InventoryPage() {
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
                                     {isLoading ? (
-                                        <tr><td colSpan={7} className="p-12 text-center"><Loader2 className="animate-spin inline text-blue-600" /></td></tr>
+                                        <tr><td colSpan={7} className="p-12 text-center"><Loader2 className="animate-spin inline text-[var(--brand-text)]" /></td></tr>
                                     ) : products.length === 0 ? (
                                         <tr><td colSpan={7}>
                                             <EmptyState
@@ -651,7 +654,7 @@ export function InventoryPage() {
                                                         </div>
                                                     </td>
                                                     <td className="px-6 py-4 font-medium text-gray-900">
-                                                        <Link to={`/inventory/product/${product.wooId || product.id}`} className="hover:text-blue-600 transition-colors">
+                                                        <Link to={`/inventory/product/${product.wooId || product.id}`} className="hover:text-[var(--brand-text)] transition-colors">
                                                             {product.name}
                                                         </Link>
                                                     </td>
@@ -674,7 +677,7 @@ export function InventoryPage() {
                                                                             <span className="text-xs text-gray-500 font-mono cursor-default border-b border-dotted border-gray-300 w-fit">
                                                                                 ({breakdown})
                                                                             </span>
-                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-50 text-purple-700 mt-1 w-fit">
+                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-[var(--brand-subtle)] text-[var(--brand-text)] mt-1 w-fit">
                                                                                 Variable
                                                                             </span>
                                                                         </div>
@@ -720,7 +723,7 @@ export function InventoryPage() {
                                                             />
                                                             <span
                                                                 className={`text-[10px] font-medium px-2 py-0.5 rounded-full border cursor-help ${(product.merchantCenterScore || 0) === 100
-                                                                    ? 'bg-blue-50 text-blue-700 border-blue-100'
+                                                                    ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)] border-[var(--brand-border)]'
                                                                     : 'bg-orange-50 text-orange-700 border-orange-100'
                                                                     }`}
                                                                 title={product.merchantCenterIssues?.length
@@ -783,7 +786,7 @@ export function InventoryPage() {
                             value={newProductName}
                             onChange={(e) => setNewProductName(e.target.value)}
                             placeholder="Enter product name..."
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] dark:bg-slate-700 dark:text-white"
                             autoFocus
                             required
                         />
@@ -794,7 +797,7 @@ export function InventoryPage() {
                             <select
                                 value={newProductType}
                                 onChange={(e) => setNewProductType(e.target.value as 'simple' | 'variable' | 'grouped' | 'external')}
-                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] dark:bg-slate-700 dark:text-white"
                             >
                                 <option value="simple">Simple</option>
                                 <option value="variable">Variable</option>
@@ -809,7 +812,7 @@ export function InventoryPage() {
                                 value={newProductPrice}
                                 onChange={(e) => setNewProductPrice(e.target.value)}
                                 placeholder="e.g. 49.99"
-                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] dark:bg-slate-700 dark:text-white"
                             />
                         </div>
                     </div>
@@ -821,7 +824,7 @@ export function InventoryPage() {
                                 value={newProductSlug}
                                 onChange={(e) => setNewProductSlug(e.target.value)}
                                 placeholder="my-product-slug"
-                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] dark:bg-slate-700 dark:text-white"
                             />
                         </div>
                         <div>
@@ -829,7 +832,7 @@ export function InventoryPage() {
                             <select
                                 value={newProductStatus}
                                 onChange={(e) => setNewProductStatus(e.target.value as 'draft' | 'publish')}
-                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] dark:bg-slate-700 dark:text-white"
                             >
                                 <option value="draft">Save as Draft</option>
                                 <option value="publish">Publish Immediately</option>
@@ -843,7 +846,7 @@ export function InventoryPage() {
                             value={newProductImageUrl}
                             onChange={(e) => setNewProductImageUrl(e.target.value)}
                             placeholder="https://example.com/product-image.jpg"
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] dark:bg-slate-700 dark:text-white"
                         />
                     </div>
                     <div>
@@ -853,7 +856,7 @@ export function InventoryPage() {
                             onChange={(e) => setNewProductGalleryUrls(e.target.value)}
                             placeholder={'https://example.com/image-2.jpg\nhttps://example.com/image-3.jpg'}
                             rows={3}
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] dark:bg-slate-700 dark:text-white"
                         />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -866,7 +869,7 @@ export function InventoryPage() {
                                     const values = Array.from(e.target.selectedOptions).map((option) => Number(option.value));
                                     setSelectedCategoryIds(values);
                                 }}
-                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white min-h-[120px]"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] dark:bg-slate-700 dark:text-white min-h-[120px]"
                             >
                                 {categories.map((category) => (
                                     <option key={category.id} value={category.id}>{category.name}</option>
@@ -882,7 +885,7 @@ export function InventoryPage() {
                                     const values = Array.from(e.target.selectedOptions).map((option) => Number(option.value));
                                     setSelectedTagIds(values);
                                 }}
-                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white min-h-[120px]"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] dark:bg-slate-700 dark:text-white min-h-[120px]"
                             >
                                 {tags.map((tag) => (
                                     <option key={tag.id} value={tag.id}>{tag.name}</option>
@@ -897,7 +900,7 @@ export function InventoryPage() {
                             onChange={(e) => setNewProductShortDescription(e.target.value)}
                             placeholder="Quick summary shown in product snippets"
                             rows={3}
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] dark:bg-slate-700 dark:text-white"
                         />
                     </div>
                     <div>
@@ -907,7 +910,7 @@ export function InventoryPage() {
                             onChange={(e) => setNewProductDescription(e.target.value)}
                             placeholder="Full product description"
                             rows={5}
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] dark:bg-slate-700 dark:text-white"
                         />
                     </div>
                     <div className="flex justify-end gap-3">
@@ -921,7 +924,7 @@ export function InventoryPage() {
                         <button
                             type="submit"
                             disabled={isCreating || !newProductName.trim()}
-                            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                            className="px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] bg-[var(--primary-color)] hover:bg-[var(--primary-hover)] rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
                         >
                             {isCreating && <Loader2 size={14} className="animate-spin" />}
                             Create Product

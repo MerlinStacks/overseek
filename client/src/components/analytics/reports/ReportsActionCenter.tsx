@@ -139,10 +139,10 @@ function ReportModule({ icon, title, status, description, children }: {
             : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
 
     return (
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs dark:border-slate-700 dark:bg-slate-800/70">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
             <div className="flex items-start justify-between gap-4">
                 <div className="flex min-w-0 gap-3">
-                    <div className="rounded-xl bg-blue-50 p-2.5 text-blue-600 dark:bg-blue-900/30">{icon}</div>
+                <div className="rounded-lg bg-[var(--brand-subtle)] p-2.5 text-[var(--brand-text)]">{icon}</div>
                     <div className="min-w-0">
                         <h3 className="font-bold text-gray-950 dark:text-white">{title}</h3>
                         <p className="mt-1 text-sm leading-5 text-gray-500 dark:text-slate-400">{description}</p>
@@ -150,7 +150,7 @@ function ReportModule({ icon, title, status, description, children }: {
                 </div>
                 <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${statusClass}`}>{status}</span>
             </div>
-            <div className="mt-5">{children}</div>
+            <div className="mt-3">{children}</div>
         </div>
     );
 }
@@ -158,9 +158,9 @@ function ReportModule({ icon, title, status, description, children }: {
 function MiniMetric({ label, value, tone = 'default' }: { label: string; value: string; tone?: 'default' | 'good' | 'risk' }) {
     const toneClass = tone === 'good' ? 'text-green-600' : tone === 'risk' ? 'text-red-600' : 'text-gray-950 dark:text-white';
     return (
-        <div className="rounded-xl bg-gray-50 p-3 dark:bg-slate-900/60">
+        <div className="metric-strip-item">
             <p className="text-xs font-medium text-gray-500 dark:text-slate-400">{label}</p>
-            <p className={`mt-1 text-lg font-bold ${toneClass}`}>{value}</p>
+            <p className={`mt-1 break-words text-xl font-semibold leading-tight tabular-nums ${toneClass}`}>{value}</p>
         </div>
     );
 }
@@ -292,10 +292,10 @@ export function ReportsActionCenter({
 
     return (
         <div className="space-y-6">
-            <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-xs dark:border-slate-700 dark:bg-slate-900/80">
+        <div className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
-                        <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-200">
+                    <div className="mb-3 inline-flex items-center gap-2 rounded-md bg-[var(--brand-subtle)] px-2.5 py-1 text-xs font-medium text-[var(--brand-text)]">
                             <Sparkles size={14} />
                             Action Center
                         </div>
@@ -309,7 +309,7 @@ export function ReportsActionCenter({
                             Open Library
                             <ArrowRight size={16} />
                         </button>
-                        <button onClick={onOpenCustomBuilder} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700">
+                <button onClick={onOpenCustomBuilder} className="inline-flex items-center gap-2 rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] transition-colors hover:bg-[var(--primary-hover)] focus-visible:outline-[var(--focus-color)]">
                             Build Custom Report
                             <ArrowRight size={16} />
                         </button>
@@ -317,26 +317,26 @@ export function ReportsActionCenter({
                 </div>
 
                 {isLoading ? (
-                    <div className="mt-6 flex items-center justify-center rounded-2xl border border-dashed border-gray-200 py-12 text-gray-400 dark:border-slate-700">
+                <div className="mt-6 flex items-center justify-center rounded-xl border border-dashed border-gray-200 py-12 text-gray-400 dark:border-slate-700">
                         <Loader2 className="mr-2 animate-spin" size={18} />
                         Loading report intelligence...
                     </div>
                 ) : error ? (
-                    <div className="mt-6 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+                <div className="mt-6 rounded-lg border border-red-100 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
                         {error}
                     </div>
                 ) : (
                     <>
-                        <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                             {insightCards.map((insight) => (
-                                <div key={insight.title} className="rounded-2xl bg-gray-50 p-4 dark:bg-slate-800/80">
+                        <div key={insight.title} className="rounded-lg bg-gray-50 p-4 dark:bg-slate-800">
                                     <p className={`font-bold ${insight.tone === 'risk' ? 'text-red-600' : insight.tone === 'good' ? 'text-green-600' : 'text-gray-950 dark:text-white'}`}>{insight.title}</p>
                                     <p className="mt-2 text-sm text-gray-500 dark:text-slate-400">{insight.body}</p>
                                 </div>
                             ))}
                         </div>
 
-                        <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        <div className="metric-strip mt-4" role="group" aria-label="Action center summary">
                             <MiniMetric label="Revenue" value={formatCurrency(totalRevenue, currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} />
                             <MiniMetric label="Orders" value={formatNumber(totalOrders)} />
                             <MiniMetric label="New Customers" value={formatNumber(newCustomers)} />
@@ -354,7 +354,7 @@ export function ReportsActionCenter({
                         status="live"
                         description="Low-margin and negative-profit sold items that deserve pricing, COGS, or discount review."
                     >
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="metric-strip" role="group" aria-label="Profit leak summary">
                             <MiniMetric label="Gross Profit" value={formatCurrency(safeNumber(data.profitability?.summary?.profit), currency)} tone={safeNumber(data.profitability?.summary?.profit) >= 0 ? 'good' : 'risk'} />
                             <MiniMetric label="Margin" value={`${margin.toFixed(1)}%`} tone={margin >= 20 ? 'good' : 'risk'} />
                             <MiniMetric label="Leak Items" value={formatNumber(lowMarginItems.length)} tone={lowMarginItems.length > 0 ? 'risk' : 'good'} />
@@ -378,7 +378,7 @@ export function ReportsActionCenter({
                         status="live"
                         description="Stockout risk, dead stock, and reorder signals from stock velocity."
                     >
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="metric-strip" role="group" aria-label="Inventory action summary">
                             <MiniMetric label="Tracked" value={formatNumber(inventoryRisks.tracked)} />
                             <MiniMetric label="Critical" value={formatNumber(inventoryRisks.critical)} tone={inventoryRisks.critical > 0 ? 'risk' : 'good'} />
                             <MiniMetric label="Dead Stock" value={formatNumber(inventoryRisks.deadStock)} tone={inventoryRisks.deadStock > 0 ? 'risk' : 'good'} />
@@ -404,7 +404,7 @@ export function ReportsActionCenter({
                             ? `LTV covers identified buyers in ${data.ltv.currency || currency}; unidentified purchases are excluded and other currencies are reported separately.`
                             : 'Repeat behaviour, LTV, and cohort health from tracked purchase and session events.'}
                     >
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="metric-strip" role="group" aria-label="Retention summary">
                             <MiniMetric label={data.ltv?.identifiedOnly ? 'Identified-buyer LTV' : 'Avg LTV'} value={formatCurrency(safeNumber(data.ltv?.avgLTV), data.ltv?.currency || currency)} />
                             <MiniMetric label="Repeat Rate" value={`${repeatRate.toFixed(1)}%`} tone={repeatRate >= 20 ? 'good' : 'default'} />
                             <MiniMetric label="Cohorts" value={formatNumber(data.cohorts?.cohorts?.length || 0)} />
@@ -417,7 +417,7 @@ export function ReportsActionCenter({
                         status="partial"
                         description="On-site search demand, top queries, and gaps that should become products or content."
                     >
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="metric-strip" role="group" aria-label="Search demand summary">
                             <MiniMetric label="Searches" value={formatNumber(data.searches?.totalSearches || 0)} />
                             <MiniMetric label="Top Query" value={topSearch ? topSearch.query : 'None yet'} />
                         </div>
@@ -430,7 +430,7 @@ export function ReportsActionCenter({
                         status="partial"
                         description="First-touch and last-touch sources from tracking sessions."
                     >
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="metric-strip" role="group" aria-label="Attribution summary">
                             <MiniMetric label="Sessions" value={formatCompact(data.attribution?.totalSessions || 0)} />
                             <MiniMetric label="Top Last Touch" value={topSource ? topSource.source : 'Direct'} />
                         </div>
@@ -461,7 +461,7 @@ export function ReportsActionCenter({
                         status="partial"
                         description="Winners, declining products, dead stock, and products needing pricing or marketing support."
                     >
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="metric-strip" role="group" aria-label="Product lifecycle summary">
                             <MiniMetric label="Dead Stock" value={formatNumber(inventoryRisks.deadStock)} tone={inventoryRisks.deadStock > 0 ? 'risk' : 'good'} />
                             <MiniMetric label="Watchlist" value={formatNumber(inventoryRisks.watch)} />
                             <MiniMetric label="Critical" value={formatNumber(inventoryRisks.critical)} tone={inventoryRisks.critical > 0 ? 'risk' : 'good'} />
@@ -474,7 +474,7 @@ export function ReportsActionCenter({
                         status="live"
                         description="Weekly and monthly report delivery for owners, finance, marketing, and inventory roles."
                     >
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="metric-strip" role="group" aria-label="Scheduled report summary">
                             <MiniMetric label="Active Schedules" value={formatNumber(activeSchedules)} />
                             <MiniMetric label="Active Digests" value={formatNumber(activeDigests)} />
                             <MiniMetric label="Total" value={formatNumber(data.schedules.length + data.digests.length)} />
@@ -502,7 +502,7 @@ export function ReportsActionCenter({
                         status="partial"
                         description="Templates already save custom reports. Compare mode needs previous-period calculations across modules."
                     >
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="metric-strip" role="group" aria-label="Saved view summary">
                             <MiniMetric label="Saved Templates" value={formatNumber(templateCount)} />
                             <MiniMetric label="Compare Mode" value="Planned" />
                         </div>
@@ -514,7 +514,7 @@ export function ReportsActionCenter({
                         status="partial"
                         description="Flags missing COGS, tracking gaps, stock sync coverage, and schedule health."
                     >
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="metric-strip" role="group" aria-label="Report health summary">
                             <MiniMetric label="COGS Coverage" value={margin > 0 ? 'Available' : 'Review'} tone={margin > 0 ? 'good' : 'risk'} />
                             <MiniMetric label="Tracking" value={(data.attribution?.totalSessions || 0) > 0 ? 'Active' : 'Quiet'} />
                             <MiniMetric label="Inventory" value={inventoryRisks.tracked > 0 ? 'Active' : 'Missing'} tone={inventoryRisks.tracked > 0 ? 'good' : 'risk'} />

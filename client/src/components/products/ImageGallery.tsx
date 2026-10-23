@@ -82,20 +82,20 @@ export function ImageGallery({ images, onChange, productId }: ImageGalleryProps)
                             />
                         )}
                         {idx === 0 ? (
-                            <span className="absolute left-2 top-2 rounded-full bg-blue-600 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white shadow-xs">
+                            <span className="absolute left-2 top-2 rounded-full bg-[var(--primary-color)] px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--primary-foreground)] shadow-xs">
                                 Primary
                             </span>
                         ) : (
                             <button
                                 onClick={() => handleMakePrimary(idx)}
-                                className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-700 opacity-0 shadow-xs transition-all group-hover:opacity-100"
+                                className="absolute left-2 top-2 rounded-full bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-700 opacity-0 shadow-xs transition-all group-hover:opacity-100"
                             >
                                 Set Primary
                             </button>
                         )}
                         <button
                             onClick={() => handleRemove(idx)}
-                            className="absolute top-2 right-2 p-1 bg-white/90 text-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-xs"
+                            className="absolute top-2 right-2 p-1 bg-white text-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-xs"
                         >
                             <X size={14} />
                         </button>
@@ -114,7 +114,7 @@ export function ImageGallery({ images, onChange, productId }: ImageGalleryProps)
                         onChange={e => setNewUrl(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && handleAdd()}
                     />
-                    <button onClick={handleAdd} className="text-blue-600 hover:text-blue-700">
+                    <button onClick={handleAdd} className="text-[var(--brand-text)] hover:text-[var(--brand-text)]">
                         <Plus size={24} />
                     </button>
                     <span className="text-xs text-gray-400 mt-1">Add URL</span>

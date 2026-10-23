@@ -9,6 +9,9 @@ import { MobileReplyEditor } from '../../components/chat/MobileReplyEditor';
 import { MobileSavedRepliesSheet } from '../../components/chat/MobileSavedRepliesSheet';
 import { MobileAttachmentPreview } from '../../components/chat/MobileAttachmentPreview';
 import { MobileCustomerSheet } from '../../components/chat/MobileCustomerSheet';
+import { useAccount } from '../../context/AccountContext';
+import { getMobileBranding } from '../../components/mobile/mobileBranding';
+import '../../components/mobile/MobileCompanion.css';
 
 const CHANNEL_CONFIG: Record<string, { icon: typeof Mail; color: string; bg: string; ring: string; label: string }> = {
     chat: { icon: MessageSquare, color: 'text-emerald-100', bg: 'bg-emerald-400/15', ring: 'ring-emerald-300/20', label: 'Live Chat' },
@@ -71,6 +74,8 @@ function groupMessagesByDate(msgs: MobileChatMessage[]) {
 export function MobileChat() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const { currentAccount } = useAccount();
+    const branding = getMobileBranding(currentAccount?.appearance, currentAccount?.name);
     const viewport = useVisualViewport();
     const [expanded, setExpanded] = useState(false);
     const [showCustomer, setShowCustomer] = useState(false);
@@ -143,10 +148,10 @@ export function MobileChat() {
 
     return (
         <div
-            className="fixed inset-0 z-[60] flex flex-col bg-slate-950"
-            style={{ ...viewport, paddingTop: 'env(safe-area-inset-top)' }}
+            className="mobile-companion dark fixed inset-0 z-[60] flex flex-col bg-slate-950"
+            style={{ ...branding.style, ...viewport, paddingTop: 'env(safe-area-inset-top)' }}
         >
-            <header className={`relative z-10 flex flex-shrink-0 items-center gap-3 border-b border-white/10 bg-slate-950/95 px-4 shadow-xl shadow-black/20 backdrop-blur-xl ${expanded ? 'py-2' : 'py-3'}`}>
+            <header className={`relative z-10 flex flex-shrink-0 items-center gap-3 border-b border-white/10 bg-slate-950 px-4 ${expanded ? 'py-2' : 'py-3'}`}>
                 <button
                     onClick={() => expanded ? toggleExpanded() : navigate('/m/inbox')}
                     className="-ml-1 rounded-2xl bg-white/10 p-3 text-white active:scale-95"
@@ -155,7 +160,7 @@ export function MobileChat() {
                     <ArrowLeft size={20} />
                 </button>
                 <div className="min-w-0 flex-1">
-                    <p className="mb-1 text-[11px] font-bold text-violet-200">{expanded ? 'Writing reply' : 'Conversation'}</p>
+                    <p className="mb-1 text-[11px] font-medium text-slate-400">{expanded ? 'Writing reply' : 'Conversation'}</p>
                     <h1 className="truncate text-lg font-black text-white">{conversation?.customerName}</h1>
                     <div className={`${expanded ? 'hidden' : 'inline-flex'} mt-1 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${channelConfig.bg} ${channelConfig.color} ring-1 ${channelConfig.ring}`}>
                         <ChannelIcon size={12} />
@@ -182,7 +187,7 @@ export function MobileChat() {
                                 className="fixed inset-0 z-[65]"
                                 onClick={() => setShowMenu(false)}
                             />
-                            <div className="absolute right-0 top-full z-[70] mt-2 w-56 rounded-2xl border border-white/10 bg-slate-950 py-1 shadow-2xl shadow-black/40 animate-in fade-in slide-in-from-top-2 duration-150">
+                            <div className="absolute right-0 top-full z-[70] mt-2 w-56 rounded-lg border border-white/10 bg-slate-950 py-1 shadow-lg animate-in fade-in slide-in-from-top-2 duration-150">
                                 <button
                                     onClick={async () => {
                                         const ok = await handleResolve();
@@ -231,10 +236,10 @@ export function MobileChat() {
                                     className={`flex mb-2 ${msg.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}
                                 >
                                     <div
-                                        className={`max-w-[82%] rounded-3xl px-4 py-3 shadow-lg shadow-black/10 ${msg.deliveryStatus === 'FAILED'
+                                        className={`max-w-[82%] rounded-xl px-4 py-3 ${msg.deliveryStatus === 'FAILED'
                                             ? 'rounded-br-lg border border-rose-400/40 bg-rose-500/20 text-rose-50'
                                             : msg.direction === 'outbound'
-                                            ? 'border border-blue-500 bg-blue-600 text-white rounded-br-lg'
+                                            ? 'mobile-brand-solid border border-transparent rounded-br-lg'
                                             : 'rounded-bl-lg border border-slate-200 bg-white text-slate-900'
                                             }`}
                                     >
@@ -251,7 +256,7 @@ export function MobileChat() {
                                         ) : (
                                             <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.body}</p>
                                         )}
-                                        <p className={`mt-2 text-[11px] font-medium ${msg.deliveryStatus === 'FAILED' ? 'text-rose-100' : msg.direction === 'outbound' ? 'text-blue-50' : 'text-slate-600'}`}>
+                                        <p className={`mt-2 text-[11px] font-medium ${msg.deliveryStatus === 'FAILED' ? 'text-rose-100' : msg.direction === 'outbound' ? 'text-current' : 'text-slate-600'}`}>
                                             {formatTime(msg.createdAt)}
                                         </p>
                                         {msg.deliveryStatus === 'FAILED' && (
@@ -270,7 +275,7 @@ export function MobileChat() {
 
             {/* Message Composer */}
             <div
-                className={`mobile-chat-composer flex flex-col overflow-y-auto overscroll-contain border-t border-white/10 bg-slate-950/95 shadow-2xl shadow-black/40 backdrop-blur-xl ${expanded ? 'is-expanded min-h-0 flex-1' : 'max-h-[65%] flex-shrink-0'}`}
+                className={`mobile-chat-composer flex flex-col overflow-y-auto overscroll-contain border-t border-white/10 bg-slate-950 ${expanded ? 'is-expanded min-h-0 flex-1' : 'max-h-[65%] flex-shrink-0'}`}
                 style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
             >
                 <input
@@ -300,7 +305,7 @@ export function MobileChat() {
                     <button
                         onClick={handleGenerateAIDraft}
                         disabled={isGeneratingDraft || messages.length === 0}
-                        className="rounded-2xl bg-violet-400/15 p-2.5 text-violet-100 ring-1 ring-violet-300/20 transition-colors disabled:opacity-40 active:scale-95"
+                        className="rounded-lg mobile-brand-soft p-2.5 transition-colors disabled:opacity-40 active:scale-95"
                         title="Generate AI Draft"
                         aria-label="Generate AI draft"
                     >
@@ -312,7 +317,7 @@ export function MobileChat() {
                     </button>
                     <button
                         onClick={handleToggleCanned}
-                        className="rounded-2xl bg-amber-400/15 p-2.5 text-amber-100 ring-1 ring-amber-300/20 transition-colors active:scale-95"
+                        className="rounded-lg mobile-icon p-2.5 transition-colors active:scale-95"
                         title="Canned Responses"
                         aria-label="Saved replies"
                         aria-expanded={showCanned}

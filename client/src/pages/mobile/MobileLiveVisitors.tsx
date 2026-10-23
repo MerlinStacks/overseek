@@ -165,7 +165,7 @@ export function MobileLiveVisitors() {
                         >
                             <div className="flex items-start justify-between mb-2">
                                 <div className="flex items-center gap-2">
-                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm">
+                                    <div className="w-10 h-10 rounded-full mobile-brand-soft flex items-center justify-center font-semibold text-sm">
                                         {getVisitorName(visitor).charAt(0).toUpperCase()}
                                     </div>
                                     <div>

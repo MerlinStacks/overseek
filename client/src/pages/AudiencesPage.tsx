@@ -42,7 +42,7 @@ export function AudiencesPage() {
                     aria-selected={activeTab === 'segments'}
                     onClick={() => setActiveTab('segments')}
                     className={`flex shrink-0 items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${activeTab === 'segments'
-                        ? 'border-blue-600 text-blue-600'
+                        ? 'border-[var(--primary-color)] text-[var(--brand-text)]'
                         : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'}`}
                 >
                     <Filter size={18} />
@@ -53,7 +53,7 @@ export function AudiencesPage() {
                     aria-selected={activeTab === 'lists'}
                     onClick={() => setActiveTab('lists')}
                     className={`flex shrink-0 items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${activeTab === 'lists'
-                        ? 'border-blue-600 text-blue-600'
+                        ? 'border-[var(--primary-color)] text-[var(--brand-text)]'
                         : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'}`}
                 >
                     <List size={18} />

@@ -276,7 +276,7 @@ function ScopedEmailSettings() {
                         <button
                             onClick={handleSaveFooter}
                             disabled={isSavingFooter}
-                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                            className="flex items-center gap-2 px-4 py-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-50"
                         >
                             {isSavingFooter ? 'Saving...' : 'Save Footer'}
                         </button>
@@ -295,7 +295,7 @@ function ScopedEmailSettings() {
                         <button
                             onClick={handleSyncNow}
                             disabled={isSyncing}
-                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                            className="flex items-center gap-2 px-4 py-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-50"
                         >
                             <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
                             {isSyncing ? 'Syncing...' : 'Sync Now'}

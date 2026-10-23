@@ -32,7 +32,7 @@ export function ComponentStockEditor({ name, quantity, onSave }: ComponentStockE
         }
     }
 
-    const buttonClass = 'p-1.5 rounded-md text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-blue-500';
+    const buttonClass = 'p-1.5 rounded-md text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-[var(--focus-color)]';
 
     return (
         <div className="space-y-1">
@@ -50,7 +50,7 @@ export function ComponentStockEditor({ name, quantity, onSave }: ComponentStockE
                         if (event.key === 'Enter') { event.preventDefault(); void save(); }
                         if (event.key === 'Escape' && !isSaving) { event.preventDefault(); setDraft(null); }
                     }}
-                    className={`w-20 rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 text-center font-semibold focus:ring-2 focus:ring-blue-500 disabled:opacity-50 ${stock === 0 ? 'text-red-600 dark:text-red-400' : stock < 10 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-900 dark:text-gray-100'}`}
+                    className={`w-20 rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 text-center font-semibold focus:ring-2 focus:ring-[var(--focus-color)] disabled:opacity-50 ${stock === 0 ? 'text-red-600 dark:text-red-400' : stock < 10 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-900 dark:text-gray-100'}`}
                 />
                 <button type="button" aria-label={`Increase stock for ${name}`} className={buttonClass}
                     disabled={isSaving || !isValid || stock === 2147483647} onClick={() => setDraft(String(stock + 1))}>
@@ -59,7 +59,7 @@ export function ComponentStockEditor({ name, quantity, onSave }: ComponentStockE
                 {(isChanged || isSaving) && (
                     <button type="button" aria-label={`Save stock for ${name}`} disabled={isSaving || !isValid}
                         onClick={() => void save()}
-                        className="ml-1 rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+                        className="ml-1 rounded-md bg-[var(--primary-color)] px-2 py-1 text-xs font-medium text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] disabled:opacity-50">
                         {isSaving ? <Loader2 size={16} className="animate-spin" aria-label="Saving stock" /> : 'Save'}
                     </button>
                 )}

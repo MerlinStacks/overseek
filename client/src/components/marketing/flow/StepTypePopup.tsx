@@ -45,7 +45,7 @@ export const StepTypePopup: React.FC<StepTypePopupProps> = ({
 
             {/* Popup */}
             <div
-                className="fixed z-50 bg-white rounded-xl shadow-xl border border-gray-200 p-4 animate-in fade-in zoom-in-95 duration-150"
+                className="fixed z-50 bg-white rounded-xl shadow-sm border border-gray-200 p-4 animate-in fade-in zoom-in-95 duration-150"
                 style={{
                     left: position.x,
                     top: position.y,

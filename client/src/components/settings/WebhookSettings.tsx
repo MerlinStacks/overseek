@@ -168,7 +168,7 @@ export function WebhookSettings() {
                     <button
                         onClick={handleSaveSecret}
                         disabled={isSaving || !secretInput.trim()}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm font-medium"
+                        className="flex items-center gap-2 px-4 py-2.5 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] disabled:opacity-50 transition-colors text-sm font-medium"
                     >
                         {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                         Save

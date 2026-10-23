@@ -44,7 +44,7 @@ function AccountCache({ accountId, className = '' }: { accountId: string; classN
         {confirm && <p role="status">Clear this account’s local cache? Select confirm within 3 seconds.</p>}
         {error && <WidgetErrorState message={error} onRetry={() => void load()} />}
         {busy && <WidgetLoadingState message="Updating cache statistics..." />}
-        {stats && <dl className="grid gap-2 sm:grid-cols-3">{(['products', 'orders', 'customers'] as const).map(table => <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900/50" key={table}><dt className={`capitalize ${ui.muted}`}>{table}</dt><dd><span className="mt-1 block text-lg font-semibold tabular-nums">{stats[table].toLocaleString()} cached</span><span className={`mt-1 block ${ui.muted}`}>Last sync: {stats.lastSync[table] === null ? 'Never' : new Date(stats.lastSync[table]!).toLocaleString()}</span></dd></div>)}</dl>}
+        {stats && <dl className="metric-strip" aria-label="Cache summary">{(['products', 'orders', 'customers'] as const).map(table => <div className="metric-strip-item" key={table}><dt className={`capitalize ${ui.muted}`}>{table}</dt><dd><span className="mt-1 block text-xl font-semibold tabular-nums">{stats[table].toLocaleString()} cached</span><span className={`mt-1 block ${ui.muted}`}>Last sync: {stats.lastSync[table] === null ? 'Never' : new Date(stats.lastSync[table]!).toLocaleString()}</span></dd></div>)}</dl>}
     </section>;
 }
 export default HotCacheWidget;

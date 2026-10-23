@@ -97,9 +97,9 @@ function Diagnostics() {
                         </div>
 
                         {/* Services Grid */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="metric-strip" role="group" aria-label="Service health summary">
                             {Object.entries(systemHealth.services).map(([name, service]) => (
-                                <div key={name} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
+                                <div key={name} className="metric-strip-item flex items-center gap-2">
                                     <div className={cn(
                                         "w-2 h-2 rounded-full",
                                         service.status === 'healthy' ? "bg-green-500" :
@@ -121,11 +121,11 @@ function Diagnostics() {
                             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2 flex items-center gap-2">
                                 <Zap size={14} /> Job Queues
                             </h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div className="metric-strip" role="group" aria-label="Job queue summary">
                                 {Object.entries(systemHealth.queues).map(([name, stats]) => (
-                                    <div key={name} className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
+                                    <div key={name} className="metric-strip-item">
                                         <div className="text-xs font-medium text-slate-600 dark:text-slate-300 capitalize mb-1">{name}</div>
-                                        <div className="flex gap-2 text-xs">
+                                        <div className="flex flex-wrap gap-2 text-xs">
                                             <span className="text-amber-600">Waiting: {stats.waiting}</span>
                                             <span className="text-blue-600">Active: {stats.active}</span>
                                             <span className="text-red-600">Failed: {stats.failed}</span>
@@ -141,10 +141,10 @@ function Diagnostics() {
                                 <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2 flex items-center gap-2">
                                     <Database size={14} /> Sync Status
                                 </h3>
-                                <div className="flex flex-wrap gap-3">
+                                <div className="metric-strip" role="group" aria-label="Sync summary">
                                     {systemHealth.sync.entityTypes.map(entity => (
-                                        <div key={entity.type} className="text-center p-2 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
-                                            <div className="text-lg font-bold text-slate-700 dark:text-slate-200">{entity.accountsSynced}/{entity.accountsTracked}</div>
+                                        <div key={entity.type} className="metric-strip-item">
+                                            <div className="text-xl font-semibold tabular-nums text-slate-700 dark:text-slate-200">{entity.accountsSynced}/{entity.accountsTracked}</div>
                                             <div className="text-xs text-slate-500 dark:text-slate-400 capitalize">{entity.type}</div>
                                         </div>
                                     ))}
@@ -154,13 +154,13 @@ function Diagnostics() {
                                 <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2 flex items-center gap-2">
                                     <Webhook size={14} /> Webhooks (24h)
                                 </h3>
-                                <div className="flex gap-3 text-center">
-                                    <div className="p-2 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
-                                        <div className="text-lg font-bold text-green-600">{systemHealth.webhooks.processed24h}</div>
+                                <div className="metric-strip" role="group" aria-label="Webhook summary">
+                                    <div className="metric-strip-item">
+                                        <div className="text-xl font-semibold tabular-nums text-green-600">{systemHealth.webhooks.processed24h}</div>
                                         <div className="text-xs text-slate-500">Processed</div>
                                     </div>
-                                    <div className="p-2 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
-                                        <div className="text-lg font-bold text-red-600">{systemHealth.webhooks.failed24h}</div>
+                                    <div className="metric-strip-item">
+                                        <div className="text-xl font-semibold tabular-nums text-red-600">{systemHealth.webhooks.failed24h}</div>
                                         <div className="text-xs text-slate-500">Failed</div>
                                     </div>
                                 </div>
@@ -185,7 +185,7 @@ function Diagnostics() {
                             type="button"
                             onClick={fetchSubscriptions}
                             disabled={loading}
-                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50"
+                        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-[var(--brand-text)] bg-[var(--brand-subtle)] rounded-lg hover:opacity-90 transition-colors disabled:opacity-50"
                         >
                             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
                             Load Subscriptions
@@ -276,7 +276,7 @@ function Diagnostics() {
                             value={selectedAccountId}
                             onChange={(e) => setSelectedAccountId(e.target.value)}
                             onFocus={() => accounts.length === 0 && fetchAccounts()}
-                            className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--focus-color)]"
                         >
                             <option value="">-- Select Account --</option>
                             {accounts.map(acc => (
@@ -290,7 +290,7 @@ function Diagnostics() {
                             id="diagnostics-notification-type" disabled={loading}
                             value={testType}
                             onChange={(e) => setTestType(e.target.value as 'order' | 'message')}
-                            className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--focus-color)]"
                         >
                             <option value="order">New Order</option>
                             <option value="message">New Message</option>
@@ -300,7 +300,7 @@ function Diagnostics() {
                         type="button"
                         onClick={sendTestPush}
                         disabled={!selectedAccountId || loading}
-                        className="inline-flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="inline-flex items-center gap-2 px-6 py-2 text-sm font-medium text-[var(--primary-foreground)] bg-[var(--primary-color)] rounded-lg hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <Send size={16} />
                         Send Test
@@ -310,17 +310,17 @@ function Diagnostics() {
                 {testResult && (
                     <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg text-sm">
                         <div className="font-medium text-slate-700 dark:text-slate-200 mb-2">Test Result for {testResult.accountName}</div>
-                        <div className="grid grid-cols-3 gap-4 text-center">
-                            <div>
-                                <div className="text-2xl font-bold text-green-600">{testResult.sent}</div>
+                        <div className="metric-strip" role="group" aria-label="Push test results">
+                            <div className="metric-strip-item">
+                                <div className="text-xl font-semibold tabular-nums text-green-600">{testResult.sent}</div>
                                 <div className="text-xs text-slate-500">Sent</div>
                             </div>
-                            <div>
-                                <div className="text-2xl font-bold text-red-600">{testResult.failed}</div>
+                            <div className="metric-strip-item">
+                                <div className="text-xl font-semibold tabular-nums text-red-600">{testResult.failed}</div>
                                 <div className="text-xs text-slate-500">Failed</div>
                             </div>
-                            <div>
-                                <div className="text-2xl font-bold text-slate-600 dark:text-slate-300">{testResult.eligibleSubscriptions}</div>
+                            <div className="metric-strip-item">
+                                <div className="text-xl font-semibold tabular-nums text-slate-600 dark:text-slate-300">{testResult.eligibleSubscriptions}</div>
                                 <div className="text-xs text-slate-500">Eligible</div>
                             </div>
                         </div>

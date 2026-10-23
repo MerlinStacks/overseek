@@ -6,13 +6,14 @@
  */
 
 import { useState, useMemo, useId } from 'react';
+import { Metric, MetricStrip } from '../ui/MetricStrip';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useScopedMutation } from '../../hooks/useScopedMutation';
 import { isRecord } from '../../utils/responseValidation';
 import {
-    Plus, Trash2, RefreshCw, TrendingUp, TrendingDown,
-    Loader2, Search, ChevronRight, Minus, X, Sparkles,
+    Plus, Trash2, RefreshCw, TrendingUp,
+    Loader2, Search, ChevronRight, X, Sparkles,
     FolderOpen, Users, DollarSign, ShieldCheck, Mail, Upload
 } from 'lucide-react';
 import {
@@ -65,7 +66,7 @@ function ScopedTracker({ siteUrl }: { siteUrl?: string }) {
     if (hasAuthError) {
         return (
             <div className="flex flex-col items-center justify-center py-20 px-6">
-                <div className="w-20 h-20 bg-gradient-to-br from-amber-500/20 to-red-500/20 dark:from-amber-500/10 dark:to-red-500/10 rounded-3xl flex items-center justify-center mb-6">
+                <div className="w-20 h-20 bg-amber-500/20     rounded-xl flex items-center justify-center mb-6">
                     <Search className="w-10 h-10 text-amber-500 dark:text-amber-400" />
                 </div>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">Search Console Disconnected</h3>
@@ -79,8 +80,8 @@ function ScopedTracker({ siteUrl }: { siteUrl?: string }) {
     if (!isConnected) {
         return (
             <div className="flex flex-col items-center justify-center py-20 px-6">
-                <div className="w-20 h-20 bg-gradient-to-br from-blue-500/20 to-violet-500/20 dark:from-blue-500/10 dark:to-violet-500/10 rounded-3xl flex items-center justify-center mb-6 animate-float">
-                    <Search className="w-10 h-10 text-blue-500 dark:text-blue-400" />
+                <div className="w-20 h-20 bg-[var(--brand-subtle)] rounded-xl flex items-center justify-center mb-6 ">
+                    <Search className="w-10 h-10 text-[var(--brand-text)]" />
                 </div>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">Connect Search Console First</h3>
                 <p className="text-slate-500 dark:text-slate-400 text-center max-w-md">
@@ -147,7 +148,7 @@ function TrackerContent({ siteUrl }: { siteUrl?: string }) {
             {readError && <p role="alert">Tracked keywords unavailable. <button type="button" onClick={() => void refetch()}>Retry tracked keywords</button></p>}
             {/* Sub-Tab Navigation */}
             <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex bg-slate-100/80 dark:bg-slate-800/60 backdrop-blur-sm p-1 rounded-xl border border-slate-200/50 dark:border-slate-700/40 overflow-x-auto">
+                <div className="flex bg-slate-100/80 dark:bg-slate-800/60 p-1 rounded-xl border border-slate-200/50 dark:border-slate-700/40 overflow-x-auto">
                     {SUB_TABS.map(tab => {
                         const Icon = tab.icon;
                         const isActive = activeSubTab === tab.id;
@@ -158,7 +159,7 @@ function TrackerContent({ siteUrl }: { siteUrl?: string }) {
                                 key={tab.id}
                                 onClick={() => setActiveSubTab(tab.id)}
                                 className={`flex items-center gap-1.5 px-3 py-2 font-medium text-xs rounded-lg transition-all duration-200 whitespace-nowrap ${isActive
-                                        ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm'
+                                        ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)]'
                                         : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
                                     }`}
                             >
@@ -192,7 +193,7 @@ function TrackerContent({ siteUrl }: { siteUrl?: string }) {
                             type="button"
                             disabled={busy}
                             onClick={() => setShowAddForm(!showAddForm)}
-                            className="btn-gradient btn-shimmer flex items-center gap-1.5 px-4 py-2 text-sm rounded-xl font-semibold"
+                            className="bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] flex items-center gap-1.5 px-4 py-2 text-sm rounded-xl font-semibold"
                         >
                             <Plus className="w-4 h-4" />
                             Track
@@ -203,7 +204,7 @@ function TrackerContent({ siteUrl }: { siteUrl?: string }) {
 
             {/* Bulk Import Modal */}
             {showBulkImport && activeSubTab === 'keywords' && (
-                <div className="glass-panel rounded-xl p-4 space-y-3 animate-fade-slide-up">
+                <div className="border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 rounded-xl p-4 space-y-3 animate-fade-slide-up">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <Upload className="w-4 h-4 text-slate-400" />
@@ -221,7 +222,7 @@ function TrackerContent({ siteUrl }: { siteUrl?: string }) {
                         onChange={(e) => setBulkText(e.target.value)}
                         placeholder={"Enter keywords, one per line:\ngold necklace\nsilver bracelet\ndiamond ring"}
                         rows={5}
-                        className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-slate-100 resize-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 outline-none transition-all"
+                        className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-slate-100 resize-none focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] outline-none transition-all"
                     />
                     <div className="flex items-center justify-between">
                         <span className="text-xs text-slate-400">{bulkText.split('\n').filter(k => k.trim()).length} keywords</span>
@@ -229,7 +230,7 @@ function TrackerContent({ siteUrl }: { siteUrl?: string }) {
                             type="button"
                             onClick={handleBulkImport}
                             disabled={!bulkText.trim() || busy}
-                            className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
+                            className="px-4 py-1.5 text-sm bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] disabled:opacity-50 transition-colors font-medium"
                         >
                             {bulkImport.isPending ? 'Importing...' : 'Import All'}
                         </button>
@@ -244,7 +245,7 @@ function TrackerContent({ siteUrl }: { siteUrl?: string }) {
                         {/* Add Keyword Form */}
                         {showAddForm && (
                             <>
-                                <div className="glass-panel rounded-xl p-4 flex items-center gap-3 mb-4">
+                                <div className="border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 rounded-xl p-4 flex items-center gap-3 mb-4">
                                     <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0" />
                                     <input
                                         disabled={busy}
@@ -262,7 +263,7 @@ function TrackerContent({ siteUrl }: { siteUrl?: string }) {
                                         type="button"
                                         onClick={handleAdd}
                                         disabled={!newKeyword.trim() || busy}
-                                        className="px-4 py-1.5 text-sm bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-50 transition-colors font-medium"
+                                        className="px-4 py-1.5 text-sm bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] disabled:opacity-50 transition-colors font-medium"
                                     >
                                         {addKeyword.isPending ? 'Adding...' : 'Add'}
                                     </button>
@@ -289,14 +290,14 @@ function TrackerContent({ siteUrl }: { siteUrl?: string }) {
 
                         {/* Keyword List + History */}
                         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mt-6">
-                            <div className="xl:col-span-1 glass-panel rounded-2xl overflow-hidden">
+                            <div className="xl:col-span-1 border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 rounded-xl overflow-hidden">
                                 {isLoading ? (
                                     <div className="flex items-center justify-center py-12">
                                         <Loader2 className="w-6 h-6 text-slate-400 dark:text-slate-500 animate-spin" />
                                     </div>
                                 ) : readError ? <p role="alert" className="p-4">Keyword list unavailable.</p> : keywords.length === 0 ? (
                                     <div className="text-center py-14 px-6">
-                                        <Search className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-3 animate-float" />
+                                        <Search className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-3 " />
                                         <p className="text-sm text-slate-500 dark:text-slate-400">No keywords tracked yet.</p>
                                         <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Click "Track" to start monitoring positions.</p>
                                     </div>
@@ -324,9 +325,9 @@ function TrackerContent({ siteUrl }: { siteUrl?: string }) {
                                 {selectedKeywordId ? (
                                     <KeywordHistoryChart keywordId={selectedKeywordId} />
                                 ) : (
-                                    <div className="glass-panel rounded-2xl flex items-center justify-center py-24">
+                                    <div className="border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 rounded-xl flex items-center justify-center py-24">
                                         <div className="text-center">
-                                            <TrendingUp className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3 animate-float" />
+                                            <TrendingUp className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3 " />
                                             <p className="text-sm text-slate-500 dark:text-slate-400">Select a keyword to view position history</p>
                                         </div>
                                     </div>
@@ -360,7 +361,7 @@ function KeywordRow({ keyword, isSelected, onSelect, onDelete, disabled }: {
     return (
         <div
             className={`flex items-center justify-between px-4 py-3.5 cursor-pointer transition-all duration-200 border-l-2 ${isSelected
-                ? 'bg-blue-50/80 dark:bg-blue-900/20 border-blue-500 shadow-[inset_0_0_20px_rgba(59,130,246,0.05)]'
+                ? 'bg-[var(--brand-subtle)] border-[var(--primary-color)] '
                 : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 border-transparent'
                 }`}
         >
@@ -390,7 +391,7 @@ function KeywordRow({ keyword, isSelected, onSelect, onDelete, disabled }: {
                 >
                     <Trash2 className="w-3.5 h-3.5" />
                 </button>
-                <ChevronRight className={`w-4 h-4 transition-colors ${isSelected ? 'text-blue-500 dark:text-blue-400' : 'text-slate-300 dark:text-slate-600'}`} />
+                <ChevronRight className={`w-4 h-4 transition-colors ${isSelected ? 'text-[var(--brand-text)]' : 'text-slate-300 dark:text-slate-600'}`} />
             </div>
         </div>
     );
@@ -464,7 +465,7 @@ function KeywordHistoryChart({ keywordId }: { keywordId: string }) {
     };
 
     return (
-        <div className="glass-panel rounded-2xl p-6">
+        <div className="border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 rounded-xl p-6">
             {/* Header */}
             <div className="flex items-center justify-between mb-5">
                 <h4 className="font-semibold text-slate-900 dark:text-slate-100">Position History</h4>
@@ -476,7 +477,7 @@ function KeywordHistoryChart({ keywordId }: { keywordId: string }) {
                             key={d}
                             onClick={() => setDays(d)}
                             className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 ${days === d
-                                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm'
+                                ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)]'
                                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
                                 }`}
                         >
@@ -499,35 +500,12 @@ function KeywordHistoryChart({ keywordId }: { keywordId: string }) {
                 <>
                     {/* Trend Summary Stats */}
                     {trend && (
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                            <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-900/20 dark:to-blue-800/10 rounded-xl p-3.5 border border-blue-100 dark:border-blue-800/30">
-                                <p className="text-xs text-blue-600/70 dark:text-blue-400/70 font-medium">Current Position</p>
-                                <p className="text-2xl font-bold text-blue-700 dark:text-blue-300 mt-0.5">#{trend.currentPos}</p>
-                            </div>
-                            <div className={`rounded-xl p-3.5 border ${trend.direction === 'up'
-                                ? 'bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-900/20 dark:to-emerald-800/10 border-emerald-100 dark:border-emerald-800/30'
-                                : trend.direction === 'down'
-                                    ? 'bg-gradient-to-br from-rose-50 to-rose-100/50 dark:from-rose-900/20 dark:to-rose-800/10 border-rose-100 dark:border-rose-800/30'
-                                    : 'bg-gradient-to-br from-slate-50 to-slate-100/50 dark:from-slate-800/40 dark:to-slate-700/20 border-slate-200 dark:border-slate-700/40'
-                                }`}>
-                                <p className="text-xs font-medium opacity-70">Position Change</p>
-                                <div className={`flex items-center gap-1 text-2xl font-bold mt-0.5 ${trend.direction === 'up' ? 'text-emerald-600 dark:text-emerald-400' : trend.direction === 'down' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-300'
-                                    }`}>
-                                    {trend.direction === 'up' ? <TrendingUp className="w-5 h-5" /> :
-                                        trend.direction === 'down' ? <TrendingDown className="w-5 h-5" /> :
-                                            <Minus className="w-5 h-5" />}
-                                    {trend.direction === 'up' ? '+' : trend.direction === 'down' ? '-' : ''}{trend.amount}
-                                </div>
-                            </div>
-                            <div className="bg-gradient-to-br from-violet-50 to-violet-100/50 dark:from-violet-900/20 dark:to-violet-800/10 rounded-xl p-3.5 border border-violet-100 dark:border-violet-800/30">
-                                <p className="text-xs text-violet-600/70 dark:text-violet-400/70 font-medium">Total Clicks</p>
-                                <p className="text-2xl font-bold text-violet-700 dark:text-violet-300 mt-0.5">{trend.totalClicks.toLocaleString()}</p>
-                            </div>
-                            <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-900/20 dark:to-amber-800/10 rounded-xl p-3.5 border border-amber-100 dark:border-amber-800/30">
-                                <p className="text-xs text-amber-600/70 dark:text-amber-400/70 font-medium">Total Impressions</p>
-                                <p className="text-2xl font-bold text-amber-700 dark:text-amber-300 mt-0.5">{trend.totalImpressions.toLocaleString()}</p>
-                            </div>
-                        </div>
+                        <MetricStrip label="Keyword trend summary" className="mb-6">
+                            <Metric label="Current Position" value={`#${trend.currentPos}`} />
+                            <Metric label="Position Change" value={`${trend.direction === 'up' ? '+' : trend.direction === 'down' ? '-' : ''}${trend.amount}`} hint={trend.direction === 'up' ? 'Improved' : trend.direction === 'down' ? 'Declined' : 'Unchanged'} valueClassName={trend.direction === 'up' ? 'text-emerald-600 dark:text-emerald-400' : trend.direction === 'down' ? 'text-rose-600 dark:text-rose-400' : undefined} />
+                            <Metric label="Total Clicks" value={trend.totalClicks.toLocaleString()} />
+                            <Metric label="Total Impressions" value={trend.totalImpressions.toLocaleString()} />
+                        </MetricStrip>
                     )}
 
                     {/* SVG Chart */}
@@ -651,10 +629,10 @@ function SuggestedKeywords({ trackedKeywords, onTrack, isAdding, siteUrl }: {
     };
 
     return (
-        <div className="glass-panel rounded-xl p-4 animate-fade-slide-up">
+        <div className="border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 rounded-xl p-4 animate-fade-slide-up">
             <p className="text-xs text-slate-500">Candidate ideas from returned query samples, not proof of missing visibility. {data?.warnings?.join('; ')}</p>
             <div className="flex items-center gap-2 mb-3">
-                <Sparkles className="w-4 h-4 text-violet-500 dark:text-violet-400" />
+                <Sparkles className="w-4 h-4 text-[var(--brand-text)]" />
                 <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Suggested Keywords</span>
                 <span className="text-xs text-slate-400 dark:text-slate-500">— click to start tracking</span>
             </div>
@@ -666,10 +644,10 @@ function SuggestedKeywords({ trackedKeywords, onTrack, isAdding, siteUrl }: {
                         onClick={() => handleTrack(keyword)}
                         disabled={isAdding || trackingKw !== null}
                         className={`group inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all duration-200 disabled:opacity-50 ${trackingKw === keyword
-                            ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400'
+                            ? 'bg-[var(--brand-subtle)] border-[var(--brand-border)] text-[var(--brand-text)]'
                             : source === 'low-hanging'
                                 ? 'bg-amber-50/50 dark:bg-amber-900/10 border-amber-200/60 dark:border-amber-800/30 text-slate-700 dark:text-slate-300 hover:border-amber-300 dark:hover:border-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20'
-                                : 'bg-violet-50/50 dark:bg-violet-900/10 border-violet-200/60 dark:border-violet-800/30 text-slate-700 dark:text-slate-300 hover:border-violet-300 dark:hover:border-violet-700 hover:bg-violet-50 dark:hover:bg-violet-900/20'
+                                : 'bg-[var(--brand-subtle)] border-[var(--brand-border)] text-slate-700 dark:text-slate-300 hover:border-[var(--brand-border)] dark:hover:border-[var(--brand-border)] hover:bg-[var(--brand-subtle)] dark:hover:bg-[var(--brand-subtle)]'
                             }`}
                     >
                         {trackingKw === keyword ? (

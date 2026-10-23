@@ -30,6 +30,6 @@ function AccountGold({ accountId, token, className = '' }: { accountId: string; 
             {!read.data.lowestMarginItems.length && <p>No calculable margins in sample.</p>}
             <ul className="space-y-2">{read.data.lowestMarginItems.map((item, index) => <li key={index} className="flex items-start justify-between gap-3 rounded-lg bg-slate-50 p-3 dark:bg-slate-700/50"><span className="min-w-0 break-words text-xs font-medium">{item.name}</span><span className={`shrink-0 text-sm font-semibold tabular-nums ${item.margin < 20 ? 'text-red-600 dark:text-red-400' : item.margin < 40 ? 'text-amber-700 dark:text-amber-400' : 'text-green-700 dark:text-green-400'}`}>{item.margin.toFixed(1)}%</span></li>)}</ul>
         </>}
-        <Link to="/reports/gold-price-margin" className="text-indigo-600 dark:text-indigo-400">View Full Report</Link>
+        <Link to="/reports/gold-price-margin" className="text-[var(--brand-text)] hover:underline focus-visible:outline-[var(--focus-color)]">View Full Report</Link>
     </section>;
 }

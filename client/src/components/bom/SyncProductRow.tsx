@@ -32,7 +32,7 @@ export function SyncProductRow({ item, isExpanded, isSyncingThis, isSyncingAll, 
             <dl className="flex flex-wrap gap-4 text-sm"><div><dt>WooCommerce</dt><dd>{knownCurrent ? item.currentWooStock : 'Unavailable'}</dd></div><div><dt>Effective</dt><dd>{knownTarget ? item.effectiveStock : 'Unavailable'}</dd></div><div><dt>Difference</dt><dd>{difference == null ? 'Unavailable' : `${difference > 0 ? '+' : ''}${difference}`}</dd></div></dl>
             <p className="text-xs">{errorMsg ? 'Error' : !knownCurrent || !knownTarget || !complete ? 'Preview incomplete' : item.needsSync ? 'Needs sync' : 'In sync'}</p>
             <button type="button" disabled={!eligible || isSyncingThis || isSyncingAll} aria-label={`${errorMsg ? 'Retry sync' : 'Sync'} ${item.name}${item.variationId ? ` variant ${item.variationId}` : ''}`}
-                onClick={() => { if (eligible && !isSyncingThis && !isSyncingAll) onSync(); }} className="inline-flex items-center gap-2 px-3 py-2 text-blue-600 dark:text-blue-300 rounded-lg disabled:opacity-40">
+                onClick={() => { if (eligible && !isSyncingThis && !isSyncingAll) onSync(); }} className="inline-flex items-center gap-2 px-3 py-2 text-[var(--brand-text)] rounded-lg disabled:opacity-40">
                 {isSyncingThis ? <Loader2 aria-hidden="true" size={16} className="animate-spin motion-reduce:animate-none" /> : <RefreshCw aria-hidden="true" size={16} />}{errorMsg ? 'Retry' : 'Sync'}
             </button>
         </div>

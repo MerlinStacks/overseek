@@ -18,7 +18,7 @@ it('gives tag mapping actions a hierarchy and confirms local removal before chan
     m.fetch.mockImplementation(async (url: string) => response(url.endsWith('/product-tags') ? { tags: [], coverage: { complete: true } } : { version, mappings: [{ productTags: ['Blue'], orderTag: 'Color', enabled: true }] }));
     render(<OrderTagSettings />);
     await screen.findByLabelText('Order tag name');
-    expect(screen.getByRole('button', { name: 'Save Mappings' })).toHaveClass('bg-indigo-600');
+    expect(screen.getByRole('button', { name: 'Save Mappings' })).toHaveClass('bg-[var(--primary-color)]', 'text-[var(--primary-foreground)]');
     expect(screen.getByRole('button', { name: 'Save Mappings' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Add mapping' })).toHaveClass('border-slate-200');
     const remove = screen.getByRole('button', { name: 'Remove mapping' });

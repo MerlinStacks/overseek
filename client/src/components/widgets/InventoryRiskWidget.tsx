@@ -157,7 +157,7 @@ export function InventoryRiskWidget({ className }: WidgetProps) {
                 ))}
             </div>
 
-            <Link to={ROUTE_PATHS.inventoryForecasts} className="mt-4 flex items-center justify-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 pt-2 border-t border-slate-100 dark:border-slate-700">
+            <Link to={ROUTE_PATHS.inventoryForecasts} className="mt-4 flex items-center justify-center gap-1 text-xs font-medium text-[var(--brand-text)] hover:underline focus-visible:outline-[var(--focus-color)] pt-2 border-t border-slate-100 dark:border-slate-700">
                 View All Risks <ArrowRight size={12} />
             </Link>
         </div>

@@ -44,6 +44,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     const { currentAccount } = useAccount();
     const branding = getMobileBranding(currentAccount?.appearance, currentAccount?.name);
     const [failedLogo, setFailedLogo] = useState<string | null>(null);
+    const logoKey = `${currentAccount?.id}:${branding.logoUrl}`;
     const { triggerHaptic } = useHaptic();
     const shouldRefreshOnResume = useVisibilityRefreshThrottle(10_000);
 
@@ -273,7 +274,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
 
     return (
         <div
-            className="mobile-companion min-h-screen flex flex-col"
+            className="mobile-companion dark min-h-screen flex flex-col"
             style={{
                 ...branding.style,
                 paddingTop: 'env(safe-area-inset-top)',
@@ -282,8 +283,8 @@ export function MobileLayout({ children }: MobileLayoutProps) {
         >
             <header className="flex items-center justify-between gap-4 border-b border-white/5 px-5 py-4">
                 <button type="button" onClick={() => navigate('/m/settings')} aria-label={`Store settings for ${branding.name}`} className="flex min-w-0 items-center gap-3 text-left">
-                    {branding.logoUrl && failedLogo !== branding.logoUrl ? (
-                        <img key={branding.logoUrl} src={branding.logoUrl} alt="" onError={() => setFailedLogo(branding.logoUrl)} className="h-10 w-10 shrink-0 rounded-lg bg-white object-contain p-1" />
+                    {branding.logoUrl && failedLogo !== logoKey ? (
+                        <img key={logoKey} src={branding.logoUrl} alt="" onError={() => setFailedLogo(logoKey)} className="h-10 w-10 shrink-0 rounded-lg bg-white object-contain p-1" />
                     ) : (
                         <span className="mobile-brand-solid flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-lg font-semibold">{branding.name[0].toUpperCase()}</span>
                     )}
@@ -293,7 +294,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
             </header>
             {/* Offline Banner */}
             {!isOnline && (
-                <div className="bg-amber-500/90 backdrop-blur-sm text-white text-center py-2.5 px-4 flex items-center justify-center gap-2 text-sm font-medium animate-fade-slide-up">
+                <div className="bg-amber-400 text-slate-950 text-center py-2.5 px-4 flex items-center justify-center gap-2 text-sm font-medium animate-fade-slide-up">
                     <WifiOff size={16} />
                     You're offline - some features may be unavailable
                 </div>

@@ -230,7 +230,7 @@ export function AdminSettingsPage() {
             <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
                     <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-                        <UserPlus size={20} className="text-purple-600" />
+                        <UserPlus size={20} className="text-[var(--brand-text)]" />
                         Account Creation
                     </h2>
                     <p className="text-sm text-slate-500 mt-1">
@@ -289,7 +289,7 @@ export function AdminSettingsPage() {
                 <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
                     <div>
                         <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-                            <Globe size={20} className="text-blue-600" />
+                        <Globe size={20} className="text-[var(--brand-text)]" />
                             GeoIP Databases
                         </h2>
                         <p className="text-sm text-slate-500 mt-1">
@@ -383,7 +383,7 @@ export function AdminSettingsPage() {
                             onClick={() => fileInputRef.current?.click()}
                             className={`
                                 border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all
-                                ${dragOver ? 'border-blue-500 bg-blue-50' : 'border-slate-300 hover:border-slate-400 hover:bg-slate-50'}
+                                ${dragOver ? 'border-[var(--primary-color)] bg-[var(--brand-subtle)]' : 'border-slate-300 hover:border-slate-400 hover:bg-slate-50'}
                                 ${uploading ? 'pointer-events-none opacity-60' : ''}
                             `}
                         >
@@ -397,7 +397,7 @@ export function AdminSettingsPage() {
 
                             {uploading ? (
                                 <div className="space-y-2">
-                                    <Loader2 className="animate-spin mx-auto text-blue-600" size={24} />
+                                    <Loader2 className="animate-spin mx-auto text-[var(--brand-text)]" size={24} />
                                     <p className="text-sm text-slate-600">Uploading... {uploadProgress}%</p>
                                 </div>
                             ) : (

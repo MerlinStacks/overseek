@@ -61,7 +61,7 @@ function SnoozeModalContent({ isOpen, onClose, onSnooze }: SnoozeModalProps) {
             onClose={onClose}
             title={
                 <div className="flex items-center gap-2">
-                    <Clock size={18} className="text-blue-600" />
+                    <Clock size={18} className="text-[var(--brand-text)]" />
                     <span>Snooze Conversation</span>
                 </div>
             }
@@ -81,7 +81,7 @@ function SnoozeModalContent({ isOpen, onClose, onSnooze }: SnoozeModalProps) {
                             disabled={isSnoozing}
                             className={cn(
                                 "w-full flex items-center justify-between px-4 py-3 rounded-lg transition-colors",
-                                "hover:bg-blue-50 dark:hover:bg-slate-700 text-left",
+                                "hover:bg-[var(--brand-subtle)] dark:hover:bg-slate-700 text-left",
                                 isSnoozing && "opacity-50 cursor-not-allowed"
                             )}
                         >

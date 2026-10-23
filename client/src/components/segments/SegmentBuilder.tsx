@@ -125,7 +125,7 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
                     <span className="text-sm text-gray-500">Match</span>
                     <select
                         aria-label="Match conditions"
-                        className="rounded-lg border border-gray-300 bg-gray-50 px-2 py-1 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-900"
+                        className="rounded-lg border border-gray-300 bg-gray-50 px-2 py-1 text-sm focus:outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] dark:border-slate-600 dark:bg-slate-900"
                         value={criteria.type}
                         onChange={(e) => setCriteria({ ...criteria, type: e.target.value as 'AND' | 'OR' })}
                     >
@@ -139,10 +139,10 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
             <div className="space-y-3 border-b border-gray-100 pb-4 text-sm dark:border-slate-700">
                 <div className="flex flex-wrap items-center gap-2">
                     <span className="mr-1 text-xs font-medium text-gray-500">Quick start</span>
-                    {PRESETS.map(preset => <button key={preset.name} type="button" onClick={() => setCriteria({ type: 'AND', rules: preset.rules.map(rule => ({ ...rule })) })} className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-600 dark:text-slate-300 dark:hover:text-indigo-300">{preset.name}</button>)}
+                    {PRESETS.map(preset => <button key={preset.name} type="button" onClick={() => setCriteria({ type: 'AND', rules: preset.rules.map(rule => ({ ...rule })) })} className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-[var(--brand-border)] hover:text-[var(--brand-text)] dark:border-slate-600 dark:text-slate-300 dark:hover:text-[var(--brand-text)]">{preset.name}</button>)}
                 </div>
                 <details className="text-xs leading-5 text-gray-500 dark:text-slate-400">
-                <summary className="w-fit cursor-pointer font-medium hover:text-indigo-600">How audience rules work</summary>
+                <summary className="w-fit cursor-pointer font-medium hover:text-[var(--brand-text)]">How audience rules work</summary>
                 <p className="mt-3">Presets replace the current rules. Day windows roll forward automatically. Purchases include processing/completed orders. Abandoned carts require 30 minutes of inactivity and exclude later purchases.</p>
                 <p className="mt-2">Customer previews and email broadcasts include known customers. Advertising sync can optionally include subscribed list members without customer records. Anonymous visitors cannot be exported. Add an orders-count condition when excluding recent purchases to target past customers only.</p>
                 <p className="mt-2">Email rules use tracked opens/clicks, which may include privacy proxies and automated scanners. “No clicks/opens” also matches people with no tracked email history. Prefer clicks for engagement audiences.</p>
@@ -155,7 +155,7 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
                     <div key={index} className="grid gap-3 rounded-lg border border-gray-100 bg-gray-50 p-3 sm:grid-cols-[minmax(0,1fr)_10rem_minmax(0,1fr)_auto] sm:items-start dark:border-slate-700 dark:bg-slate-900/50">
                         <select
                             aria-label={`Condition ${index + 1} field`}
-                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800"
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] dark:border-slate-600 dark:bg-slate-800"
                             value={rule.field}
                             onChange={(e) => updateRule(index, { field: e.target.value })}
                         >
@@ -166,7 +166,7 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
 
                         <select
                             aria-label={`Condition ${index + 1} operator`}
-                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800"
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] dark:border-slate-600 dark:bg-slate-800"
                             value={rule.operator}
                             onChange={(e) => updateRule(index, { operator: e.target.value })}
                         >
@@ -179,7 +179,7 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
                             aria-label={`Condition ${index + 1} value`}
                             type={getSegmentFieldType(rule.field) === 'number' ? 'number' : 'text'}
                             inputMode={getSegmentFieldType(rule.field) === 'number' ? 'decimal' : 'text'}
-                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800"
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] dark:border-slate-600 dark:bg-slate-800"
                             placeholder="Value"
                             min={ROLLING_FIELDS.has(rule.field) ? 1 : 0}
                             max={ROLLING_FIELDS.has(rule.field) ? 3650 : undefined}
@@ -218,7 +218,7 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
                 <button
                     onClick={addRule}
                     type="button"
-                    className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-medium text-indigo-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                    className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-medium text-[var(--brand-text)] transition-colors hover:bg-[var(--brand-subtle)] hover:text-[var(--brand-text)]"
                 >
                     <Plus size={16} />
                     Add Condition
@@ -237,7 +237,7 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
                     type="button"
                     onClick={() => onSave(criteria)}
                     disabled={isSaving || !isValid}
-                    className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
+                    className="flex items-center gap-2 rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-colors hover:bg-[var(--primary-hover)] disabled:opacity-50"
                 >
                     {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                     Save Segment

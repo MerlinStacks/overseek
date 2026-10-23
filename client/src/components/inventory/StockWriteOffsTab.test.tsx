@@ -28,6 +28,16 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('stock write-off workflow', () => {
+    it('shows finalized totals and their filter scope without separate statistic cards', async () => {
+        render(<StockWriteOffsTab />);
+        const summary = await screen.findByLabelText('Finalized write-off summary');
+        expect(summary.tagName).toBe('DL');
+        expect(summary).toHaveClass('metric-strip');
+        expect(within(summary).getByText('Units written off').nextElementSibling).toHaveTextContent('2');
+        expect(within(summary).getByText('Finalized write-offs').nextElementSibling).toHaveTextContent('1');
+        expect(screen.getByText('Finalized totals across all pages matching the selected filters.')).toBeInTheDocument();
+        expect(summary.querySelectorAll('.metric-strip-item')).toHaveLength(3);
+    });
     it('requires both permissions and accepts the existing wildcard hook', async () => {
         context.permissions = { manage_inventory: true };
         const view = render(<StockWriteOffsTab />);

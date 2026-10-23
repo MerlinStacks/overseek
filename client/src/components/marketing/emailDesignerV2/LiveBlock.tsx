@@ -292,7 +292,7 @@ function EditableButtonBlock({ block, theme, onUpdate }: { block: Extract<EmailB
             </div>
 
             {isFocused && (
-                <div className="absolute left-0 top-full z-30 mt-2 flex w-fit flex-wrap items-center gap-1 rounded-lg border border-slate-600 bg-slate-900 px-2 py-1.5 text-white shadow-xl">
+                <div className="absolute left-0 top-full z-30 mt-2 flex w-fit flex-wrap items-center gap-1 rounded-lg border border-slate-600 bg-slate-900 px-2 py-1.5 text-white shadow-sm">
                     <select
                         className="rounded border border-slate-500 bg-slate-800 px-2 py-1 text-xs"
                         value={String(fontSize)}
@@ -398,8 +398,8 @@ function EditableButtonBlock({ block, theme, onUpdate }: { block: Extract<EmailB
             )}
 
             {showMergeTagModal && (
-                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-xs">
-                    <div className="w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl">
+                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 ">
+                    <div className="w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-sm">
                         <div className="flex items-center gap-4 border-b border-gray-200 px-5 py-4">
                             <h3 className="text-2xl font-medium text-gray-900">Merge Tags</h3>
                             <div className="ml-auto flex w-full max-w-xs items-center gap-2 rounded-lg border border-gray-300 px-3 py-2">
@@ -724,7 +724,7 @@ function EmailTextToolbar({ block, theme, onUpdate }: { block: Extract<EmailBloc
     };
 
     return (
-        <div className="absolute left-0 top-full z-30 mt-2 flex w-fit max-w-[95vw] flex-wrap items-center gap-1 rounded-lg border border-slate-600 bg-slate-900 px-2 py-1.5 text-white shadow-xl">
+        <div className="absolute left-0 top-full z-30 mt-2 flex w-fit max-w-[95vw] flex-wrap items-center gap-1 rounded-lg border border-slate-600 bg-slate-900 px-2 py-1.5 text-white shadow-sm">
             <div className="absolute -top-1.5 left-5 h-3 w-3 rotate-45 border-l border-t border-slate-600 bg-slate-900" />
             <div className="flex items-center rounded-md border border-slate-600 bg-slate-800/80 p-0.5">
                 {(['p', 'h1', 'h2', 'h3'] as const).map((value) => (
@@ -774,7 +774,7 @@ function EmailTextToolbar({ block, theme, onUpdate }: { block: Extract<EmailBloc
             <button type="button" className="rounded border border-slate-500 px-2 py-1 text-xs hover:bg-slate-700" onMouseDown={(event) => event.preventDefault()} onClick={() => setShowMergeTagPicker((current) => !current)}>Merge Tag</button>
             <button type="button" className="rounded border border-slate-500 px-2 py-1 text-xs hover:bg-slate-700" onMouseDown={(event) => event.preventDefault()} onClick={() => applyLink('{{link_trigger}}', 'Link trigger')}>Link Trigger</button>
             {showMergeTagPicker && (
-                <div className="absolute left-0 top-full z-40 mt-2 max-h-64 w-80 overflow-hidden rounded-lg border border-slate-600 bg-slate-950 shadow-2xl">
+                <div className="absolute left-0 top-full z-40 mt-2 max-h-64 w-80 overflow-hidden rounded-lg border border-slate-600 bg-slate-950 shadow-sm">
                     <div className="border-b border-slate-700 p-2"><input value={mergeTagSearch} onChange={(event) => setMergeTagSearch(sanitizeBidiText(event.target.value))} placeholder="Search merge tags" className="w-full rounded border border-slate-600 bg-slate-900 px-2 py-1 text-xs text-slate-100 outline-none" dir="ltr" style={LTR_TEXT_STYLE} /></div>
                     <div className="max-h-48 overflow-y-auto p-1">
                         {filteredMergeTags.map((tag) => <button key={tag.value} type="button" className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs hover:bg-slate-800" onMouseDown={(event) => event.preventDefault()} onClick={() => { insertText(tag.value); setShowMergeTagPicker(false); }}><span className="text-slate-200">{tag.label}</span><code className="text-[11px] text-slate-400">{tag.value}</code></button>)}

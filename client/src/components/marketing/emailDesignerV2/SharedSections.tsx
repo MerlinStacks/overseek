@@ -31,10 +31,10 @@ export function SharedSections({ section, onInsert, onLink, onRefresh }: { secti
         } catch (err) { if (mounted.current && activeScope.current === requestScope) setError((err as Error).message); } finally { if (mounted.current) setBusy(false); }
     };
     const linked = presets.find(preset => preset.id === section?.preset?.id);
-    return <section aria-label="Shared brand sections" className="space-y-2 rounded-lg border border-indigo-200 p-3 dark:border-indigo-900">
+    return <section aria-label="Shared brand sections" className="space-y-2 rounded-lg border border-[var(--brand-border)] p-3">
         <p className="text-sm font-semibold">Brand section library</p><p className="text-xs text-slate-500">Inserted sections are snapshots. Editing this instance never silently changes other emails.</p>
         {section && <div className="flex flex-wrap gap-2"><button disabled={busy} onClick={() => void save(false)} className="rounded border px-2 py-1 text-xs">Save new library copy</button>{section.preset && <><button disabled={busy} onClick={() => void save(true)} className="rounded border px-2 py-1 text-xs">Update library source v{section.preset.version}</button><button disabled={busy || !linked || linked.version === section.preset.version} onClick={() => { if (linked && window.confirm('Replace this instance with the latest library snapshot? You can undo this change.')) onRefresh({ ...linked.section, preset: { id: linked.id, version: linked.version, name: linked.name } }); }} className="rounded border px-2 py-1 text-xs disabled:opacity-40">Refresh this instance</button></>}</div>}
-        <button onClick={() => setReload(value => value + 1)} className="text-xs text-indigo-600 underline">Refresh library</button>
+        <button onClick={() => setReload(value => value + 1)} className="text-xs text-[var(--brand-text)] underline">Refresh library</button>
         <div className="max-h-52 space-y-1 overflow-auto">{presets.map(preset => <button key={preset.id} onClick={() => onInsert({ ...preset.section, preset: { id: preset.id, version: preset.version, name: preset.name } })} className="block w-full rounded border px-2 py-2 text-left text-xs">Insert {preset.name} · v{preset.version}</button>)}</div>
         {hasMore && <p className="text-xs text-amber-700">Showing the 100 most recently updated sections.</p>}{error && <p role="alert" className="text-xs text-red-700">{error}</p>}{notice && <p role="status" className="text-xs text-green-700">{notice}</p>}
     </section>;

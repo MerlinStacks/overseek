@@ -14,15 +14,15 @@ export function DataDeletionPage() {
                     </Link>
                 </div>
 
-                <div className="bg-white dark:bg-slate-900 shadow-xl rounded-2xl overflow-hidden">
-                    <div className="bg-red-600 px-8 py-10 text-white">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+                    <div className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-8 py-8 text-slate-900 dark:text-slate-100">
                         <div className="flex items-center gap-3 mb-4">
-                            <div className="p-2 bg-white/20 rounded-lg">
-                                <Trash2 className="w-8 h-8 text-white" />
+                            <div className="p-2 bg-[var(--brand-subtle)] text-[var(--brand-text)] rounded-lg">
+                                <Trash2 className="w-8 h-8" />
                             </div>
                             <h1 className="text-3xl font-bold">Data Deletion Instructions</h1>
                         </div>
-                        <p className="text-red-100 text-lg">
+                        <p className="text-slate-500 dark:text-slate-400 text-sm">
                             How to request deletion of your data
                         </p>
                     </div>

@@ -156,7 +156,7 @@ export default function RoleManager() {
                 <h2 className="text-xl font-bold flex items-center gap-2"><Shield className="w-5 h-5" /> Roles & Permissions</h2>
                 <button
                     onClick={() => { setCurrentRole({ permissions: {} }); setIsEditing(true); }}
-                    className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
+                    className="flex items-center gap-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] px-4 py-2 rounded-lg hover:bg-[var(--primary-hover)] transition-colors"
                 >
                     <Plus className="w-4 h-4" /> Create Role
                 </button>

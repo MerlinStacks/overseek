@@ -20,7 +20,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
     return (
         <CommandPaletteProvider>
-            <div className="h-dvh overflow-hidden bg-gray-50 flex font-sans text-gray-900">
+            <div className="h-dvh overflow-hidden bg-slate-50 dark:bg-slate-950 flex font-sans text-slate-900 dark:text-slate-100">
                 <ThemeInjector />
                 <CommandPalette />
                 <ChatNotifications />
@@ -44,7 +44,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                         showMenuButton={isMobile}
                     />
 
-                    <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 relative">
+                    <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-slate-50 dark:bg-slate-950 relative">
                         <AIChatWidget />
                         <div className="max-w-[1600px] mx-auto p-4 md:p-6 lg:p-8">
                             {children}

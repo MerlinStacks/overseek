@@ -218,7 +218,7 @@ function SetupWizardContent({ userId }: { userId: string }) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-50">
                 <div className="text-center">
-                    <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                    <div className="w-12 h-12 border-4 border-[var(--primary-color)] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
                     <p className="text-gray-500">Loading...</p>
                 </div>
             </div>
@@ -261,7 +261,7 @@ function SetupWizardContent({ userId }: { userId: string }) {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
             <div className="max-w-6xl mx-auto px-4 py-8">
                 {/* Header */}
                 <div className="text-center mb-8">
@@ -287,7 +287,7 @@ function SetupWizardContent({ userId }: { userId: string }) {
                 <div className="flex gap-8">
                     {/* Left Sidebar - Step Indicator */}
                     <div className="hidden md:block w-64 flex-shrink-0">
-                        <div className="sticky top-8 bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+                        <div className="sticky top-8 bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800">
                             <OnboardingStepIndicator
                                 currentStep={currentStep}
                                 completedSteps={draft.completedSteps}
@@ -300,7 +300,7 @@ function SetupWizardContent({ userId }: { userId: string }) {
 
                     {/* Right Content - Step Form */}
                     <div className="flex-1 min-w-0">
-                        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+                        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
                             <div className="p-6 md:p-8">
                                 {renderStep()}
                             </div>
@@ -318,7 +318,7 @@ function SetupWizardContent({ userId }: { userId: string }) {
                                         type="button"
                                         onClick={() => isClickable && goToStep(step.id)}
                                         className={`w-2.5 h-2.5 rounded-full transition-colors ${isClickable ? 'cursor-pointer' : 'cursor-default'} ${step.id === currentStep
-                                            ? 'bg-blue-600'
+                                            ? 'bg-[var(--primary-color)]'
                                             : draft.completedSteps.includes(step.id)
                                                 ? 'bg-green-500'
                                                 : draft.skippedSteps.includes(step.id)

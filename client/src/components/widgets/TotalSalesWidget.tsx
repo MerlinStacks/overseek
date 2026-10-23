@@ -114,7 +114,7 @@ export function TotalSalesWidget({ className, dateRange, comparison, comparisonL
     }
 
     return (
-        <div className={`${widgetCardClass} h-full w-full p-6 flex flex-col justify-between hover:-translate-y-0.5 ${hasRealtimeUpdate ? 'ring-2 ring-emerald-500/30 animate-pulse-glow' : ''} ${className || ''}`}>
+        <div className={`${widgetCardClass} h-full w-full p-4 flex flex-col justify-between hover:-translate-y-0.5 ${hasRealtimeUpdate ? 'ring-2 ring-emerald-500/30 animate-pulse-glow' : ''} ${className || ''}`}>
             <div className="flex justify-between items-start">
                 <div>
                     <h3 className={`${widgetSubtleTextClass} font-medium uppercase tracking-wider`}>
@@ -125,7 +125,7 @@ export function TotalSalesWidget({ className, dateRange, comparison, comparisonL
                     ) : (
                         <>
                             <p
-                                className="text-3xl font-bold text-slate-900 dark:text-white mt-3 tracking-tight cursor-default"
+                                className="text-xl font-semibold tabular-nums text-slate-900 dark:text-white mt-1 tracking-tight cursor-default"
                                 title={orderCount && orderCount > 0 ? `AOV: $${((sales || 0) / orderCount).toFixed(2)}` : undefined}
                             >
                                 {new Intl.NumberFormat('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(sales || 0)}
@@ -138,7 +138,7 @@ export function TotalSalesWidget({ className, dateRange, comparison, comparisonL
                         </>
                     )}
                 </div>
-                <div className="p-2.5 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-lg text-white shadow-lg shadow-emerald-500/25">
+                <div className="p-2.5 bg-[var(--brand-subtle)] rounded-lg text-[var(--brand-text)]">
                     <DollarSign size={20} />
                 </div>
             </div>

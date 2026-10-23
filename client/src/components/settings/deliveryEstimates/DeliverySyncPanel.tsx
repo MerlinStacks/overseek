@@ -64,7 +64,7 @@ export function DeliverySyncPanel({ accountId, token, canEdit, dirty = false, sa
         {dirty && <p role="note">Unsaved changes — save delivery settings first. Sync uses saved settings and production times only; unsaved drafts are not sent.</p>}
         {!canEdit && <p className="text-sm">Read only. Syncing requires manage_shipping_settings permission.</p>}
         <div className="flex flex-wrap gap-3">
-            {canEdit && <button type="button" disabled={busy || dirty || saving || backgroundPending} onClick={() => { if (!dirty && !saving && !backgroundPending) void queue(); }} className="rounded-md bg-indigo-600 px-3 py-2 text-white disabled:opacity-50">Sync saved settings and production times</button>}
+            {canEdit && <button type="button" disabled={busy || dirty || saving || backgroundPending} onClick={() => { if (!dirty && !saving && !backgroundPending) void queue(); }} className="rounded-md bg-[var(--primary-color)] px-3 py-2 text-[var(--primary-foreground)] disabled:opacity-50">Sync saved settings and production times</button>}
             <button type="button" disabled={busy} onClick={() => void refresh()} className="rounded-md border border-slate-300 dark:border-slate-600 px-3 py-2 disabled:opacity-50">Refresh sync status</button>
         </div>
         <details open={compact ? undefined : true}><summary className="cursor-pointer font-medium">Troubleshoot individual updates</summary>

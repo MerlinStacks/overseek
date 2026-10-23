@@ -25,13 +25,13 @@ export function HelpSearch() {
     return (
         <div className="relative w-full max-w-2xl mx-auto z-50">
             <div className="relative group">
-                <Search aria-hidden="true" className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+                <Search aria-hidden="true" className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-[var(--brand-text)] transition-colors" />
                 <input
                     type="text" role="combobox" aria-label="Search help articles" aria-autocomplete="list"
                     aria-expanded={open} aria-controls={open && results.length > 0 ? listId : undefined}
                     aria-activedescendant={open && active >= 0 && active < results.length ? `${listId}-${active}` : undefined}
                     autoComplete="off" placeholder="Search for help..."
-                    className="w-full pl-12 pr-4 py-4 bg-white/50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-gray-900 dark:text-slate-100 placeholder-gray-500 dark:placeholder-slate-400 backdrop-blur-xs transition-all shadow-xs hover:shadow-md"
+                    className="w-full pl-12 pr-4 py-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] text-gray-900 dark:text-slate-100 placeholder-gray-500 dark:placeholder-slate-400 transition-colors shadow-xs"
                     value={query}
                     onChange={event => { setQuery(event.target.value); setIsOpen(event.target.value.trim().length > 2); setActive(-1); }}
                     onFocus={() => setIsOpen(search.length > 2)}
@@ -56,13 +56,13 @@ export function HelpSearch() {
                     className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl shadow-2xl max-h-96 overflow-y-auto z-50">
                     {results.map((article, index) => (
                         <li id={`${listId}-${index}`} role="option" aria-selected={active === index} key={article.id}
-                            className={`p-4 cursor-pointer border-b border-gray-100 dark:border-slate-700 last:border-0 transition-colors text-left ${active === index ? 'bg-blue-50 dark:bg-slate-700' : 'hover:bg-gray-50 dark:hover:bg-slate-700'}`}
+                            className={`p-4 cursor-pointer border-b border-gray-100 dark:border-slate-700 last:border-0 transition-colors text-left ${active === index ? 'bg-[var(--brand-subtle)]' : 'hover:bg-gray-50 dark:hover:bg-slate-700'}`}
                             onPointerDown={event => event.preventDefault()}
                             onMouseDown={event => event.preventDefault()}
                             onClick={() => selectArticle(article.slug)}>
                             <h4 className="text-gray-900 dark:text-slate-100 font-medium text-sm mb-1">{article.title}</h4>
                             <p className="text-gray-500 dark:text-slate-400 text-xs line-clamp-1">{article.excerpt || article.content?.substring(0, 100)}</p>
-                            <span className="inline-block mt-2 text-[10px] uppercase tracking-wider text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-950 px-2 py-0.5 rounded-full font-semibold">{article.collection?.title}</span>
+                            <span className="inline-block mt-2 text-[10px] uppercase tracking-wider text-[var(--brand-text)] bg-[var(--brand-subtle)] px-2 py-0.5 rounded-full font-semibold">{article.collection?.title}</span>
                         </li>
                     ))}
                 </ul>

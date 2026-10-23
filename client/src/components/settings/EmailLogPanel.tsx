@@ -304,8 +304,8 @@ export function EmailLogPanel() {
 
     if (isLoading && logs.length === 0) {
         return (
-            <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-6">
-                <div className="flex items-center gap-2 text-gray-500">
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+                <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
                     <RefreshCw size={16} className="animate-spin" />
                     <span>Loading email logs...</span>
                 </div>
@@ -314,15 +314,15 @@ export function EmailLogPanel() {
     }
 
     return (
-        <div className="bg-white rounded-xl shadow-xs border border-gray-200">
+        <div className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl border border-slate-200 dark:border-slate-700">
             {/* Header */}
-            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-                <div className="flex items-center gap-2">
+            <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex flex-wrap gap-3 items-center justify-between">
+                <div className="flex flex-wrap items-center gap-2">
                     <Mail size={18} className="text-gray-500" />
-                    <h3 className="font-medium text-gray-900">Email Logs</h3>
-                    <span className="text-sm text-gray-500">({total} total)</span>
+                    <h3 className="font-medium text-slate-900 dark:text-slate-100">Email Logs</h3>
+                    <span className="text-sm text-slate-500 dark:text-slate-400">({total} total)</span>
                     {(statusFilter || sourceFilter || debouncedSearch) && (
-                        <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                        <span className="rounded-full bg-[var(--brand-subtle)] px-2 py-0.5 text-xs font-medium text-[var(--brand-text)]">
                             Filtered
                         </span>
                     )}
@@ -336,7 +336,7 @@ export function EmailLogPanel() {
                     {(statusFilter || sourceFilter || debouncedSearch) && (
                         <button
                             onClick={clearFilters}
-                            className="rounded-lg border border-gray-300 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-100"
+                            className="rounded-lg border border-slate-300 dark:border-slate-600 px-2.5 py-1 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
                         >
                             Clear filters
                         </button>
@@ -344,7 +344,7 @@ export function EmailLogPanel() {
                     <button
                         onClick={fetchLogs}
                         disabled={isLoading}
-                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
                         title="Refresh"
                     >
                         <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
@@ -352,9 +352,9 @@ export function EmailLogPanel() {
                 </div>
             </div>
 
-            <div className="flex flex-col gap-3 border-b border-gray-100 bg-gray-50/70 px-4 py-3 sm:flex-row sm:items-end">
+            <div className="flex flex-col gap-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-4 py-3 sm:flex-row sm:items-end">
                 <label className="flex w-full max-w-md flex-col gap-1 text-sm">
-                    <span className="font-medium text-gray-700">Search</span>
+                    <span className="font-medium text-slate-700 dark:text-slate-300">Search</span>
                     <div className="relative">
                         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input
@@ -363,7 +363,7 @@ export function EmailLogPanel() {
                             onChange={(event) => setSearchQuery(event.target.value)}
                             placeholder="Search recipient, subject, message ID, or error..."
                             aria-label="Search email logs"
-                            className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-9 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                            className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 pl-9 pr-9 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-2 focus:outline-offset-2 focus:outline-[var(--focus-color)]"
                         />
                         {searchQuery && (
                             <button
@@ -378,11 +378,11 @@ export function EmailLogPanel() {
                     </div>
                 </label>
                 <label className="flex w-full max-w-xs flex-col gap-1 text-sm">
-                    <span className="font-medium text-gray-700">Type</span>
+                    <span className="font-medium text-slate-700 dark:text-slate-300">Type</span>
                     <select
                         value={sourceFilter}
                         onChange={(event) => setTypeFilter(event.target.value)}
-                        className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                        className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-2 focus:outline-offset-2 focus:outline-[var(--focus-color)]"
                     >
                         {sourceOptions.map((option) => (
                             <option key={option.value || 'all'} value={option.value}>
@@ -395,7 +395,7 @@ export function EmailLogPanel() {
 
             {/* Logs Table */}
             {logs.length === 0 ? (
-                <div className="p-6 text-center text-gray-500">
+                <div className="p-6 text-center text-slate-500 dark:text-slate-400">
                     <Mail size={32} className="mx-auto mb-2 opacity-50" />
                     <p>{debouncedSearch || statusFilter || sourceFilter ? 'No matching email logs' : 'No email logs yet'}</p>
                     <p className="text-sm">
@@ -403,9 +403,9 @@ export function EmailLogPanel() {
                     </p>
                 </div>
             ) : (
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-slate-100 dark:divide-slate-700">
                     {logs.map((log) => (
-                        <div key={log.id} className="hover:bg-gray-50 transition-colors">
+                        <div key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
                             {/* Main Row */}
                             <div
                                 className="px-4 py-3 flex items-center gap-4 cursor-pointer"
@@ -417,7 +417,7 @@ export function EmailLogPanel() {
                                 {/* Content */}
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
-                                        <span className="font-medium text-gray-900 truncate">
+                                        <span className="font-medium text-slate-900 dark:text-slate-100 truncate">
                                             {log.to}
                                         </span>
                                         {log.source && (
@@ -431,7 +431,7 @@ export function EmailLogPanel() {
                                             </span>
                                         )}
                                     </div>
-                                    <p className="text-sm text-gray-500 truncate">{log.subject}</p>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400 truncate">{log.subject}</p>
                                 </div>
 
                                 {/* Timestamp */}
@@ -449,23 +449,23 @@ export function EmailLogPanel() {
 
                             {/* Expanded Details */}
                             {expandedId === log.id && (
-                                <div className="px-4 pb-4 pt-1 bg-gray-50 border-t border-gray-100">
+                                <div className="px-4 pb-4 pt-1 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-700">
                                     <div className="grid grid-cols-2 gap-4 text-sm">
                                         <div>
-                                            <span className="text-gray-500">From Account:</span>
+                                            <span className="text-slate-500 dark:text-slate-400">From Account:</span>
                                             <p className="font-medium">
                                                 {log.emailAccount?.name || 'Unknown'} ({log.emailAccount?.email || 'N/A'})
                                             </p>
                                         </div>
                                         <div>
-                                            <span className="text-gray-500">Status:</span>
+                                            <span className="text-slate-500 dark:text-slate-400">Status:</span>
                                             <p className={`font-medium ${log.status === 'SUCCESS' || log.status === 'RETRIED' ? 'text-green-600' : log.status === 'BOUNCED' ? 'text-amber-600' : log.status === 'COMPLAINED' ? 'text-orange-600' : log.status === 'PENDING_RETRY' ? 'text-blue-600' : 'text-red-600'}`}>
                                                 {getStatusLabel(log.status)}
                                             </p>
                                         </div>
                                         {log.trackingEvents && log.trackingEvents.length > 0 && (
                                             <div className="col-span-2">
-                                                <span className="text-gray-500">Deliverability Events:</span>
+                                                <span className="text-slate-500 dark:text-slate-400">Deliverability Events:</span>
                                                 <div className="mt-1 flex flex-wrap gap-2">
                                                     {log.trackingEvents.map((event) => (
                                                         <span
@@ -484,23 +484,23 @@ export function EmailLogPanel() {
                                         )}
                                         {log.messageId && (
                                             <div className="col-span-2">
-                                                <span className="text-gray-500">Message ID:</span>
+                                                <span className="text-slate-500 dark:text-slate-400">Message ID:</span>
                                                 <p className="font-mono text-xs break-all">{log.messageId}</p>
                                             </div>
                                         )}
                                         {log.hasStoredEmailBody && (
-                                            <div className="col-span-2 rounded-lg border border-gray-200 bg-white p-3">
+                                            <div className="col-span-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3">
                                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                                     <div>
-                                                        <span className="text-gray-500">Sent Email:</span>
-                                                        <p className="text-xs text-gray-500">
+                                                        <span className="text-slate-500 dark:text-slate-400">Sent Email:</span>
+                                                        <p className="text-xs text-slate-500 dark:text-slate-400">
                                                             Stored until {log.emailBodyExpiresAt ? formatDate(log.emailBodyExpiresAt) : 'retention cleanup'}
                                                         </p>
                                                     </div>
                                                     <button
                                                         onClick={() => fetchEmailContent(log.id)}
                                                         disabled={loadingContentId === log.id}
-                                                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                                                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
                                                     >
                                                         <Eye size={14} />
                                                         {loadingContentId === log.id ? 'Loading...' : contentByLogId[log.id] ? 'Email loaded' : 'View email'}
@@ -532,7 +532,7 @@ export function EmailLogPanel() {
                                         )}
                                         {log.errorMessage && (
                                             <div className="col-span-2">
-                                                <span className="text-gray-500">Error:</span>
+                                                <span className="text-slate-500 dark:text-slate-400">Error:</span>
                                                 <div className={`mt-1 p-2 rounded border ${log.status === 'PENDING_RETRY' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
                                                     {log.errorCode && (
                                                         <span className="font-mono text-xs mr-2">[{log.errorCode}]</span>
@@ -575,7 +575,7 @@ export function EmailLogPanel() {
                                                 <button
                                                     onClick={() => clearSuppressionForRecipient(log.to)}
                                                     disabled={busyLogId === `suppression:${log.to.trim().toLowerCase()}`}
-                                                    className="rounded-lg border border-indigo-300 px-3 py-1.5 text-sm text-indigo-700 transition-colors hover:bg-indigo-50 disabled:opacity-50"
+                                                    className="rounded-lg border border-[var(--brand-border)] px-3 py-1.5 text-sm text-[var(--brand-text)] transition-colors hover:bg-[var(--brand-subtle)] disabled:opacity-50"
                                                 >
                                                     Re-subscribe recipient
                                                 </button>
@@ -591,22 +591,22 @@ export function EmailLogPanel() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-                <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
-                    <span className="text-sm text-gray-500">
+                <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex flex-wrap gap-3 items-center justify-between">
+                    <span className="text-sm text-slate-500 dark:text-slate-400">
                         Page {currentPage} of {totalPages}
                     </span>
                     <div className="flex gap-2">
                         <button
                             onClick={() => setOffset(Math.max(0, offset - limit))}
                             disabled={offset === 0}
-                            className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-3 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Previous
                         </button>
                         <button
                             onClick={() => setOffset(offset + limit)}
                             disabled={offset + limit >= total}
-                            className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-3 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Next
                         </button>

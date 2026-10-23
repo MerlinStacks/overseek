@@ -8,6 +8,7 @@ import {
     ArrowUpRight, Info
 } from 'lucide-react';
 import { ForecastChart } from '../components/ForecastChart';
+import { Metric, MetricStrip } from '../components/ui/MetricStrip';
 import { api } from '../services/api';
 import { forecastErrorMessage } from '../utils/forecastErrorMessage';
 
@@ -239,7 +240,7 @@ export function InventoryForecastPage() {
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-96">
-                <Loader2 className="animate-spin text-blue-600" size={32} />
+                <Loader2 className="animate-spin text-[var(--brand-text)]" size={32} />
             </div>
         );
     }
@@ -251,7 +252,7 @@ export function InventoryForecastPage() {
                 <p className="text-gray-600">{error}</p>
                 <button
                     onClick={fetchData}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    className="flex items-center gap-2 px-4 py-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)]"
                 >
                     <RefreshCw size={16} /> Retry
                 </button>
@@ -260,11 +261,11 @@ export function InventoryForecastPage() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
             {/* Header */}
-            <div className="flex justify-between items-end border-b pb-4">
+            <div className="flex flex-wrap gap-4 justify-between items-end border-b pb-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Inventory Forecasts</h1>
+                        <h1 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-slate-100">Inventory Forecasts</h1>
                     <p className="text-sm text-gray-500">Demand prediction & stockout alerts from synced sales and active BOM recipes</p>
                 </div>
                 <button
@@ -311,8 +312,7 @@ export function InventoryForecastPage() {
                 </div>
             )}
 
-            {/* Stats Cards */}
-            <div className="grid grid-cols-4 gap-4">
+            <MetricStrip label="Inventory forecast summary">
                 <StatCard
                     label="Total Products"
                     value={forecasts.length}
@@ -337,7 +337,7 @@ export function InventoryForecastPage() {
                     suffix="%"
                     color="purple"
                 />
-            </div>
+            </MetricStrip>
 
             {/* Revenue Forecast Section */}
             <div className="space-y-4">
@@ -351,15 +351,15 @@ export function InventoryForecastPage() {
             </div>
 
             {/* Filter Bar */}
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-4">
                 <span className="text-sm text-gray-600">Filter by risk:</span>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                     {(['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const).map(risk => (
                         <button
                             key={risk}
                             onClick={() => setRiskFilter(risk)}
                             className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${riskFilter === risk
-                                ? 'bg-blue-600 text-white border-blue-600'
+                                ? 'bg-[var(--primary-color)] text-[var(--primary-foreground)] border-[var(--primary-color)]'
                                 : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
                                 }`}
                         >
@@ -374,8 +374,8 @@ export function InventoryForecastPage() {
             </div>
 
             {/* Forecast Table */}
-            <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
-                <table className="w-full text-left border-collapse">
+            <div className="max-w-full bg-white rounded-xl shadow-xs border border-gray-200 overflow-x-auto">
+                <table className="w-full min-w-[1000px] text-left border-collapse">
                     <thead>
                         <tr className="bg-gray-50 border-b border-gray-200 text-xs uppercase text-gray-500 font-semibold">
                             <th className="px-4 py-3 w-12">Image</th>
@@ -425,7 +425,7 @@ export function InventoryForecastPage() {
                                         {forecast.wooId > 0 ? (
                                             <Link
                                                 to={`/inventory/product/${forecast.parentWooId || forecast.wooId}`}
-                                                className="font-medium text-gray-900 hover:text-blue-600 transition-colors"
+                                                className="font-medium text-gray-900 hover:text-[var(--brand-text)] transition-colors"
                                             >
                                                 {forecast.name}
                                             </Link>
@@ -452,7 +452,7 @@ export function InventoryForecastPage() {
                                         >
                                             {forecast.currentStock}
                                             {forecast.inboundStock > 0 && (
-                                                <span className="ml-1 text-blue-600">({forecast.inboundStock})</span>
+                                                <span className="ml-1 text-[var(--brand-text)]">({forecast.inboundStock})</span>
                                             )}
                                         </span>
                                     </td>
@@ -511,7 +511,7 @@ export function InventoryForecastPage() {
 
                                     {/* Reorder Qty */}
                                     <td className="px-4 py-3">
-                                        <span className="text-sm font-medium text-blue-600">
+                                        <span className="text-sm font-medium text-[var(--brand-text)]">
                                             {forecast.recommendedReorderQty > 0 ? forecast.recommendedReorderQty : '-'}
                                         </span>
                                     </td>
@@ -525,7 +525,7 @@ export function InventoryForecastPage() {
     );
 }
 
-// Stat card component
+// Summary values retain risk tones without separate cards.
 function StatCard({ label, value, suffix = '', color }: {
     label: string;
     value: number;
@@ -533,16 +533,13 @@ function StatCard({ label, value, suffix = '', color }: {
     color: 'blue' | 'red' | 'orange' | 'purple';
 }) {
     const colorClasses = {
-        blue: 'bg-blue-50 text-blue-700 border-blue-200',
-        red: 'bg-red-50 text-red-700 border-red-200',
-        orange: 'bg-orange-50 text-orange-700 border-orange-200',
-        purple: 'bg-purple-50 text-purple-700 border-purple-200'
+        blue: 'text-[var(--brand-text)]',
+        red: 'text-red-700 dark:text-red-300',
+        orange: 'text-orange-700 dark:text-orange-300',
+        purple: 'text-[var(--brand-text)]'
     };
 
     return (
-        <div className={`p-4 rounded-xl border ${colorClasses[color]}`}>
-            <p className="text-xs font-medium opacity-75">{label}</p>
-            <p className="text-2xl font-bold mt-1">{value}{suffix}</p>
-        </div>
+        <Metric label={label} value={`${value}${suffix}`} valueClassName={colorClasses[color]} />
     );
 }

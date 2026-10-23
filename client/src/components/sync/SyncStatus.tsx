@@ -191,7 +191,7 @@ export function SyncStatus() {
                 <div className="flex items-center gap-2">
                     <button
                         onClick={handleSelectToggle}
-                        className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
+                        className="text-xs text-[var(--brand-text)] hover:underline font-medium transition-colors"
                     >
                         {allSelected ? 'Deselect All' : 'Select All Full Sync'}
                     </button>
@@ -219,6 +219,7 @@ export function SyncStatus() {
                     {/* Refresh */}
                     <button
                         onClick={refreshStatus}
+                        aria-label="Refresh sync status"
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600/50 transition-colors"
                         title="Refresh status"
                     >
@@ -230,10 +231,10 @@ export function SyncStatus() {
                         onClick={handleSync}
                         disabled={syncTriggered}
                         className={`
-                            flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300
+                            flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors
                             ${syncTriggered
-                                ? 'bg-blue-500/20 dark:bg-blue-500/30 text-blue-600 dark:text-blue-400 ring-2 ring-blue-500/30 dark:ring-blue-400/20'
-                                : 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600 shadow-sm shadow-blue-500/20'
+                                ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)]'
+                                : 'bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]'
                             }
                             disabled:opacity-50 disabled:cursor-not-allowed
                         `}
@@ -246,7 +247,7 @@ export function SyncStatus() {
 
             {/* ── Entity Cards ───────────────────────────── */}
             <div>
-                <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-3">
+                <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
                     Data Sources
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -292,7 +293,7 @@ export function SyncStatus() {
             {/* ── Sync Log ───────────────────────────────── */}
             <div className="border-t border-slate-200 dark:border-slate-700 pt-5">
                 <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
                         <Clock size={14} />
                         Recent Activity
                     </h3>
@@ -319,7 +320,7 @@ export function SyncStatus() {
 
             {/* ── Utilities ──────────────────────────────── */}
             <div className="border-t border-slate-200 dark:border-slate-700 pt-5">
-                <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
                     <Database size={14} />
                     Utilities
                 </h3>
@@ -545,14 +546,14 @@ function EntityCard({
         <div className={`
             relative overflow-hidden rounded-xl border p-4 transition-all duration-300
             ${isActive
-                ? 'border-blue-300 dark:border-blue-500/40 bg-blue-50/50 dark:bg-blue-500/5 ring-1 ring-blue-200 dark:ring-blue-500/20'
-                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 hover:border-slate-300 dark:hover:border-slate-600'
+                ? 'border-[var(--brand-border)] bg-[var(--brand-subtle)]'
+                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
             }
         `}>
             {/* Active job progress background fill */}
             {isActive && (
                 <div
-                    className="absolute inset-y-0 left-0 bg-blue-100/60 dark:bg-blue-500/10 transition-all duration-500"
+                    className="absolute inset-y-0 left-0 bg-[var(--brand-subtle)] transition-all duration-500"
                     style={{ width: `${activeJob.progress}%` }}
                 />
             )}
@@ -562,10 +563,10 @@ function EntityCard({
                     <div className="flex items-center gap-2.5">
                         <div className={`
                             w-9 h-9 rounded-lg flex items-center justify-center
-                            ${isActive ? 'bg-blue-100 dark:bg-blue-500/20' : 'bg-slate-100 dark:bg-slate-700/60'}
+                            ${isActive ? 'bg-[var(--brand-subtle)]' : 'bg-slate-100 dark:bg-slate-700'}
                         `}>
                             {isActive
-                                ? <Loader2 size={18} className="animate-spin text-blue-600 dark:text-blue-400" />
+                                ? <Loader2 size={18} className="animate-spin text-[var(--brand-text)]" />
                                 : <Icon size={18} className="text-slate-600 dark:text-slate-400" />
                             }
                         </div>
@@ -611,7 +612,7 @@ function EntityCard({
                             {onSyncFull && (
                                 <button
                                     onClick={onSyncFull}
-                                    className="text-[11px] font-medium px-2.5 py-1 rounded-md transition-all duration-200 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-500/20"
+                                    className="text-xs font-medium px-2.5 py-1 rounded-md transition-colors bg-[var(--brand-subtle)] text-[var(--brand-text)] hover:underline"
                                     title={`Full sync — re-fetch all data from WooCommerce`}
                                 >
                                     <span className="flex items-center gap-1"><RefreshCw size={10} /> Full</span>
@@ -643,7 +644,7 @@ function EntityCard({
                             <button
                                 onClick={() => changeSchedule({ enabled: !schedule.enabled })}
                                 disabled={schedulePending}
-                                className="p-1 rounded-md text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-50"
+                                className="p-1 rounded-md text-slate-400 hover:text-[var(--brand-text)] disabled:opacity-50"
                                 title={schedule.enabled ? `Pause ${label} schedule` : `Resume ${label} schedule`}
                             >
                                 {schedulePending ? <Loader2 size={13} className="animate-spin" /> : schedule.enabled ? <Pause size={13} /> : <Play size={13} />}
@@ -660,7 +661,7 @@ function EntityCard({
             {isActive && (
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-slate-200 dark:bg-slate-700">
                     <div
-                        className="h-full bg-blue-500 dark:bg-blue-400 transition-all duration-500 rounded-full"
+                        className="h-full bg-[var(--primary-color)] transition-all duration-500 rounded-full"
                         style={{ width: `${activeJob.progress}%` }}
                     />
                 </div>
@@ -683,16 +684,17 @@ function LogFilterPills({ activeFilter, onFilter }: { activeFilter: string | nul
     ];
 
     return (
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
             <Filter size={12} className="text-slate-400 dark:text-slate-500 mr-1" />
             {filters.map(f => (
                 <button
                     key={f.key ?? 'all'}
-                    onClick={() => onFilter(f.key)}
+                        onClick={() => onFilter(f.key)}
+                        aria-pressed={activeFilter === f.key}
                     className={`
                         text-[11px] font-medium px-2 py-0.5 rounded-md transition-colors
                         ${activeFilter === f.key
-                            ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400'
+                            ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)]'
                             : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50'
                         }
                     `}
@@ -810,14 +812,14 @@ function LogEntry({ log, isExpanded, onToggle, onRetry }: {
                     {isFailed && (
                         <button
                             onClick={onRetry}
-                            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 rounded-md transition-colors"
+                            className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-[var(--brand-text)] bg-[var(--brand-subtle)] hover:underline rounded-md transition-colors"
                             title="Retry this sync"
                         >
                             <RotateCcw size={11} />
                             Retry
                         </button>
                     )}
-                    <button onClick={onToggle} className="p-1">
+                    <button onClick={onToggle} aria-label={isExpanded ? 'Collapse sync details' : 'Expand sync details'} aria-expanded={isExpanded} className="p-1">
                         {isExpanded
                             ? <ChevronUp size={14} className="text-slate-400 dark:text-slate-500" />
                             : <ChevronDown size={14} className="text-slate-400 dark:text-slate-500" />

@@ -79,7 +79,7 @@ function BroadcastForm({ token }: { token: string }) {
                     <input aria-label="Title"
                         type="text"
                         required
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-[var(--focus-color)]"
                         placeholder="e.g. Scheduled Maintenance"
                         value={formData.title}
                         onChange={e => setFormData({ ...formData, title: e.target.value })}
@@ -91,7 +91,7 @@ function BroadcastForm({ token }: { token: string }) {
                     <textarea aria-label="Message"
                         required
                         rows={4}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-[var(--focus-color)]"
                         placeholder="Details about the update..."
                         value={formData.message}
                         onChange={e => setFormData({ ...formData, message: e.target.value })}
@@ -102,7 +102,7 @@ function BroadcastForm({ token }: { token: string }) {
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Type</label>
                         <select aria-label="Type"
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-[var(--focus-color)]"
                             value={formData.type}
                             onChange={e => setFormData({ ...formData, type: e.target.value })}
                         >
@@ -116,7 +116,7 @@ function BroadcastForm({ token }: { token: string }) {
                         <label className="block text-sm font-medium text-slate-700 mb-1">Link (Optional)</label>
                         <input aria-label="Link (Optional)"
                             type="text"
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-[var(--focus-color)]"
                             placeholder="/settings or https://..."
                             value={formData.link}
                             onChange={e => setFormData({ ...formData, link: e.target.value })}
@@ -125,16 +125,16 @@ function BroadcastForm({ token }: { token: string }) {
                 </div>
 
                 {/* Push Notification Toggle */}
-                <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                <div className="flex items-center gap-3 p-3 bg-[var(--brand-subtle)] rounded-lg border border-[var(--brand-border)]">
                     <input
                         type="checkbox"
                         id="sendPush"
                         checked={formData.sendPush}
                         onChange={e => setFormData({ ...formData, sendPush: e.target.checked })}
-                        className="w-5 h-5 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                        className="w-5 h-5 rounded border-[var(--brand-border)] text-[var(--primary-color)] accent-[var(--primary-color)] focus:ring-[var(--focus-color)]"
                     />
                     <label htmlFor="sendPush" className="flex items-center gap-2 cursor-pointer">
-                        <Bell size={18} className="text-indigo-600" />
+                        <Bell size={18} className="text-[var(--brand-text)]" />
                         <div>
                             <p className="font-medium text-slate-800">Send Push Notification</p>
                             <p className="text-sm text-slate-500">Also send as a push notification to all subscribed devices</p>
@@ -146,7 +146,7 @@ function BroadcastForm({ token }: { token: string }) {
                     <button
                         type="submit"
                         disabled={sending}
-                        className="w-full bg-blue-600 text-white font-medium py-2.5 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                        className="w-full bg-[var(--primary-color)] text-[var(--primary-foreground)] font-medium py-2.5 rounded-lg hover:bg-[var(--primary-hover)] transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                     >
                         {sending ? 'Sending...' : <><Send size={18} /> Send Broadcast</>}
                     </button>

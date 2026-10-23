@@ -128,7 +128,7 @@ export function CustomerGrowthWidget({ className, dateRange }: WidgetProps) {
         <div className={`${widgetCardClass} h-full w-full p-5 flex flex-col overflow-hidden min-h-[200px] ${className || ''}`} style={{ minHeight: '200px' }}>
             <div className={widgetHeaderRowClass}>
                 <h3 className={widgetTitleClass}>Customer Growth</h3>
-                <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-cyan-400 to-blue-500 shadow-blue-500/20`}>
+                <div className={widgetHeaderIconBadgeClass}>
                     <Users size={16} />
                 </div>
             </div>

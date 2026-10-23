@@ -46,7 +46,7 @@ export const VisitorsTable = ({ data, onVisitorClick }: VisitorsTableProps) => {
             {data.map(v => (
                 <tr
                     key={v.id}
-                    className={`hover:bg-blue-50/60 transition-colors group ${onVisitorClick ? 'cursor-pointer' : ''}`}
+                            className={`hover:bg-[var(--brand-subtle)] transition-colors group ${onVisitorClick ? 'cursor-pointer' : ''}`}
                     onClick={() => onVisitorClick?.(v.visitorId)}
                 >
                     {/* Visitor */}
@@ -61,7 +61,7 @@ export const VisitorsTable = ({ data, onVisitorClick }: VisitorsTableProps) => {
                             </div>
                             <div>
                                 <div className="font-medium text-gray-900 break-all">
-                                    {onVisitorClick ? <button type="button" onClick={event => { event.stopPropagation(); onVisitorClick(v.visitorId); }} className="text-left underline decoration-dotted underline-offset-4 focus-visible:outline-2 focus-visible:outline-blue-500" aria-label={`View visitor profile: ${v.customer?.firstName ? `${v.customer.firstName} ${v.customer.lastName || ''}`.trim() : v.visitorId}`}>
+                                        {onVisitorClick ? <button type="button" onClick={event => { event.stopPropagation(); onVisitorClick(v.visitorId); }} className="text-left underline decoration-dotted underline-offset-4 focus-visible:outline-2 focus-visible:outline-[var(--focus-color)]" aria-label={`View visitor profile: ${v.customer?.firstName ? `${v.customer.firstName} ${v.customer.lastName || ''}`.trim() : v.visitorId}`}>
                                         {v.customer?.firstName ? `${v.customer.firstName} ${v.customer.lastName || ''}`.trim() : `${v.visitorId.substring(0, 8)}...`}
                                     </button> : v.customer?.firstName
                                         ? `${v.customer.firstName} ${v.customer.lastName || ''}`.trim()
@@ -121,7 +121,7 @@ export const VisitorsTable = ({ data, onVisitorClick }: VisitorsTableProps) => {
                         </div>
                         {/* Profile link hint on hover */}
                         {onVisitorClick && (
-                            <div aria-hidden="true" className="text-xs text-blue-500 mt-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-center gap-1">
+                                    <div aria-hidden="true" className="text-xs text-[var(--brand-text)] mt-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-center gap-1">
                                 <ExternalLink size={10} /> View profile
                             </div>
                         )}

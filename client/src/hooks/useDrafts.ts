@@ -30,21 +30,25 @@ function writeDraft(conversationId: string, content: string): void {
  * Drafts are stored in localStorage keyed by conversation ID.
  */
 export function useDrafts() {
-    const latestArgsRef = useRef<{ conversationId: string; content: string }>({
-        conversationId: '',
-        content: ''
-    });
+    const pendingDraftsRef = useRef(new Map<string, string>());
     const debouncedSaveRef = useRef<ReturnType<typeof debounce> | null>(null);
 
     // Create the debounced writer once after mount and clean up on unmount.
     useEffect(() => {
-        debouncedSaveRef.current = debounce(() => {
-            const { conversationId, content } = latestArgsRef.current;
-            if (conversationId) writeDraft(conversationId, content);
-        }, 500);
+        const flushDrafts = () => {
+            for (const [conversationId, content] of pendingDraftsRef.current) {
+                writeDraft(conversationId, content);
+            }
+            pendingDraftsRef.current.clear();
+        };
+        debouncedSaveRef.current = debounce(flushDrafts, 500);
 
         const fn = debouncedSaveRef.current;
-        return () => fn?.cancel();
+        return () => {
+            fn.cancel();
+            flushDrafts();
+            debouncedSaveRef.current = null;
+        };
     }, []);
 
     /**
@@ -52,6 +56,9 @@ export function useDrafts() {
      */
     const getDraft = useCallback((conversationId: string): string => {
         if (!conversationId) return '';
+        if (pendingDraftsRef.current.has(conversationId)) {
+            return pendingDraftsRef.current.get(conversationId)!;
+        }
         try {
             return localStorage.getItem(`${DRAFT_KEY_PREFIX}${conversationId}`) || '';
         } catch {
@@ -64,11 +71,11 @@ export function useDrafts() {
      */
     const saveDraft = useCallback((conversationId: string, content: string) => {
         if (!conversationId) return;
-        latestArgsRef.current = { conversationId, content };
         if (!debouncedSaveRef.current) {
             writeDraft(conversationId, content);
             return;
         }
+        pendingDraftsRef.current.set(conversationId, content);
         debouncedSaveRef.current();
     }, []);
 
@@ -77,7 +84,8 @@ export function useDrafts() {
      */
     const clearDraft = useCallback((conversationId: string) => {
         if (!conversationId) return;
-        debouncedSaveRef.current?.cancel();
+        pendingDraftsRef.current.delete(conversationId);
+        if (pendingDraftsRef.current.size === 0) debouncedSaveRef.current?.cancel();
         try {
             localStorage.removeItem(`${DRAFT_KEY_PREFIX}${conversationId}`);
         } catch {
@@ -91,7 +99,7 @@ export function useDrafts() {
     const hasDraft = useCallback((conversationId: string): boolean => {
         if (!conversationId) return false;
         try {
-            const draft = localStorage.getItem(`${DRAFT_KEY_PREFIX}${conversationId}`);
+            const draft = getDraft(conversationId);
             if (!draft) return false;
             // Check for actual content
             const plainText = draft.replace(/<[^>]*>/g, '').trim();
@@ -99,7 +107,7 @@ export function useDrafts() {
         } catch {
             return false;
         }
-    }, []);
+    }, [getDraft]);
 
     return { getDraft, saveDraft, clearDraft, hasDraft };
 }

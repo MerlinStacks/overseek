@@ -26,7 +26,7 @@ function GeographyContent({ query, accountId, token }: { query: string; accountI
 }
 function Country({ country, query, accountId, token }: { country: ReturnType<typeof decode>[number]; query: string; accountId: string; token: string }) {
     const [open, setOpen] = useState(false);
-    return <div className="overflow-hidden rounded-lg border border-slate-100 dark:border-slate-700"><button className="w-full break-words bg-slate-50 px-4 py-3 text-left text-sm font-medium transition-colors hover:bg-indigo-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-500 dark:bg-slate-900/50 dark:hover:bg-slate-700" type="button" aria-expanded={open} onClick={() => setOpen(!open)}>{country.country} · {country.sessions} sessions · {money(country.revenue, country.currency)} · {country.sessions && country.rate != null ? `${country.rate.toFixed(2)}% conversion` : 'Conversion unavailable'}</button>
+    return <div className="overflow-hidden rounded-lg border border-slate-100 dark:border-slate-700"><button className="w-full break-words bg-slate-50 px-4 py-3 text-left text-sm font-medium transition-colors hover:bg-[var(--brand-subtle)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-color)] dark:bg-slate-900 dark:hover:bg-[var(--brand-subtle)]" type="button" aria-expanded={open} onClick={() => setOpen(!open)}>{country.country} · {country.sessions} sessions · {money(country.revenue, country.currency)} · {country.sessions && country.rate != null ? `${country.rate.toFixed(2)}% conversion` : 'Conversion unavailable'}</button>
         {open && <Cities country={country.country} query={query} accountId={accountId} token={token} />}
     </div>;
 }

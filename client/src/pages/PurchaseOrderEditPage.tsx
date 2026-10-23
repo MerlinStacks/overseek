@@ -435,18 +435,18 @@ function ScopedPurchaseOrderEditPage() {
     const isLocked = status === 'RECEIVED';
 
     return (
-        <div className="max-w-7xl mx-auto space-y-6">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <button onClick={() => navigate(PURCHASE_ORDERS_PATH)} className="p-2 hover:bg-gray-100 rounded-full">
+        <div className="min-w-0 max-w-7xl mx-auto space-y-6">
+            <div className="flex flex-wrap gap-4 items-center justify-between">
+                <div className="flex min-w-0 items-center gap-4">
+                    <button onClick={() => navigate(PURCHASE_ORDERS_PATH)} aria-label="Back to purchase orders" className="shrink-0 p-2 hover:bg-gray-100 rounded-lg">
                         <ArrowLeft size={20} />
                     </button>
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900">{isNew ? 'New Purchase Order' : `Edit PO ${poNumber || id?.substring(0, 8)}`}</h1>
+                    <div className="min-w-0 break-words">
+                        <h1 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-slate-100">{isNew ? 'New Purchase Order' : `Edit PO ${poNumber || id?.substring(0, 8)}`}</h1>
                         <p className="text-gray-500">Manage order details and items</p>
                     </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                     {!isNew && (
                         <button
                             onClick={() => {
@@ -494,7 +494,7 @@ function ScopedPurchaseOrderEditPage() {
                     <button
                         onClick={handleSave}
                         disabled={isLoading}
-                        className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                        className="flex items-center gap-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] px-6 py-2 rounded-lg hover:bg-[var(--primary-hover)] disabled:opacity-50"
                     >
                         {isLoading ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
                         Save Order
@@ -522,7 +522,7 @@ function ScopedPurchaseOrderEditPage() {
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-lg font-semibold">Order Items</h2>
                             {!isLocked && (
-                                <button onClick={addItem} className="text-blue-600 text-sm font-medium hover:underline flex items-center gap-1">
+                                <button onClick={addItem} className="text-[var(--brand-text)] text-sm font-medium hover:underline flex items-center gap-1">
                                     <Plus size={16} /> Add Line Item
                                 </button>
                             )}
@@ -634,7 +634,7 @@ function ScopedPurchaseOrderEditPage() {
                                 value={status}
                                 onChange={(e) => setStatus(e.target.value as POStatus)}
                                 disabled={isLocked}
-                                className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] disabled:bg-gray-100 disabled:cursor-not-allowed"
                             >
                                 <option value="DRAFT">Draft</option>
                                 <option value="ORDERED">Ordered</option>
@@ -652,7 +652,7 @@ function ScopedPurchaseOrderEditPage() {
                                     value={orderDate}
                                     onChange={(e) => setOrderDate(e.target.value)}
                                     disabled={isLocked}
-                                    className="pl-10 w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
+                                    className="pl-10 w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-[var(--focus-color)]"
                                 />
                             </div>
                         </div>
@@ -666,7 +666,7 @@ function ScopedPurchaseOrderEditPage() {
                                     value={expectedDate}
                                     onChange={(e) => setExpectedDate(e.target.value)}
                                     disabled={isLocked}
-                                    className="pl-10 w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
+                                    className="pl-10 w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-[var(--focus-color)]"
                                 />
                             </div>
                         </div>
@@ -683,7 +683,7 @@ function ScopedPurchaseOrderEditPage() {
                                         onChange={(e) => setTrackingNumber(e.target.value)}
                                         disabled={isLocked}
                                         placeholder="e.g. 1Z999AA10123456784"
-                                        className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                                        className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] font-mono text-sm"
                                     />
                                 </div>
                                 <div>
@@ -695,14 +695,14 @@ function ScopedPurchaseOrderEditPage() {
                                             onChange={(e) => setTrackingLink(e.target.value)}
                                             disabled={isLocked}
                                             placeholder="https://tracking.example.com/..."
-                                            className="flex-1 border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500 text-sm"
+                                            className="flex-1 border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] text-sm"
                                         />
                                         {trackingLink && (
                                             <a
                                                 href={getSafeHref(trackingLink)}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="flex items-center justify-center px-3 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                                                className="flex items-center justify-center px-3 bg-[var(--brand-subtle)] text-[var(--brand-text)] rounded-lg hover:bg-[var(--brand-subtle)] transition-colors"
                                                 title="Open tracking link"
                                             >
                                                 <ExternalLink size={18} />
@@ -720,7 +720,7 @@ function ScopedPurchaseOrderEditPage() {
                                 onChange={(e) => setNotes(e.target.value)}
                                 rows={4}
                                 disabled={isLocked}
-                                className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500 resize-none"
+                                className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] resize-none"
                             ></textarea>
                         </div>
                     </div>

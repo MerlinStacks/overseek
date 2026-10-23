@@ -51,6 +51,9 @@ describe('onboarding progress and review', () => {
     it('accepts account-bound verified stores without credentials but never calls tested-only email ready', () => {
         const draft = initial(); draft.email.verified = true;
         const view = render(<ReviewStep draft={draft} setDraft={vi.fn()} onNext={vi.fn()} onBack={vi.fn()} onSkip={vi.fn()} isSubmitting={false} />);
+        const summary = screen.getByLabelText('Integration setup summary');
+        expect(summary).toHaveClass('metric-strip');
+        expect(summary.querySelectorAll('dt')).toHaveLength(2);
         expect(screen.getAllByText('Ready')).toHaveLength(1); expect(screen.getByText(/Connection tested only/)).toBeInTheDocument();
         m.account = { id: 'b' }; view.rerender(<ReviewStep draft={draft} setDraft={vi.fn()} onNext={vi.fn()} onBack={vi.fn()} onSkip={vi.fn()} isSubmitting={false} />); expect(screen.queryByText('Ready')).toBeNull(); expect(screen.getByRole('button', { name: 'Complete Setup' })).toBeDisabled();
     });

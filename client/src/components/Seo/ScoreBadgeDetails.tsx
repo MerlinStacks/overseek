@@ -22,13 +22,13 @@ export function ScoreBadgeDetails({ label, className, children, details, interac
         onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) { setOpen(false); setPinned(false); } }}
         onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); setOpen(false); setPinned(false); } }}>
         <button type="button" aria-label={label} aria-expanded={open} aria-controls={open ? id : undefined}
-            className={`${className} cursor-help focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500`}
+            className={`${className} cursor-help focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-color)]`}
             onClick={event => { event.stopPropagation(); setPinned(!pinned); setOpen(!pinned); }}>
             {children}
         </button>
         {open && <div id={id} role="region" aria-label={`${label} details`} tabIndex={0}
             className="absolute left-0 top-full pt-2 z-50 w-72 max-w-[calc(100vw-2rem)]">
-            <div className="bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-200 rounded-lg shadow-xl border border-gray-200 dark:border-slate-700 p-3 max-h-72 overflow-y-auto text-xs font-normal space-y-2">{details}</div>
+            <div className="bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-200 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 p-3 max-h-72 overflow-y-auto text-xs font-normal space-y-2">{details}</div>
         </div>}
     </div>;
 }

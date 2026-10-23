@@ -17,12 +17,12 @@ export const StartingPointCard: React.FC<StartingPointCardProps> = ({ onClick, o
                 <button
                     type="button"
                     onClick={onClick}
-                    className="pointer-events-auto flex items-center gap-3 px-6 py-4 bg-white dark:bg-slate-800 border-2 border-dashed border-gray-300 dark:border-slate-600 rounded-xl hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-slate-700 transition-all duration-200 motion-reduce:transition-none group cursor-pointer"
+                    className="pointer-events-auto flex items-center gap-3 px-6 py-4 bg-white dark:bg-slate-800 border-2 border-dashed border-gray-300 dark:border-slate-600 rounded-xl hover:border-[var(--primary-color)] hover:bg-[var(--brand-subtle)] dark:hover:bg-slate-700 transition-all duration-200 motion-reduce:transition-none group cursor-pointer"
                 >
-                    <div className="p-2 bg-gray-100 rounded-lg group-hover:bg-blue-100 transition-colors">
-                        <MousePointer2 size={20} className="text-gray-500 group-hover:text-blue-600" />
+                    <div className="p-2 bg-gray-100 rounded-lg group-hover:bg-[var(--brand-subtle)] transition-colors">
+                        <MousePointer2 size={20} className="text-gray-500 group-hover:text-[var(--brand-text)]" />
                     </div>
-                    <span className="text-gray-700 dark:text-slate-100 font-medium group-hover:text-blue-700 dark:group-hover:text-blue-300">
+                    <span className="text-gray-700 dark:text-slate-100 font-medium group-hover:text-[var(--brand-text)] dark:group-hover:text-[var(--brand-text)]">
                         Select an Event
                     </span>
                 </button>
@@ -30,12 +30,12 @@ export const StartingPointCard: React.FC<StartingPointCardProps> = ({ onClick, o
                     <button
                         type="button"
                         onClick={onRecipeClick}
-                        className="pointer-events-auto flex items-center gap-3 px-6 py-4 bg-white dark:bg-slate-800 border-2 border-dashed border-purple-200 dark:border-purple-800 rounded-xl hover:border-purple-400 hover:bg-purple-50/50 dark:hover:bg-slate-700 transition-all duration-200 motion-reduce:transition-none group cursor-pointer"
+                        className="pointer-events-auto flex items-center gap-3 px-6 py-4 bg-white dark:bg-slate-800 border-2 border-dashed border-[var(--brand-border)] rounded-xl hover:border-[var(--primary-color)] hover:bg-[var(--brand-subtle)] dark:hover:bg-slate-700 transition-all duration-200 motion-reduce:transition-none group cursor-pointer"
                     >
-                        <div className="p-2 bg-purple-100 rounded-lg group-hover:bg-purple-200 transition-colors">
-                            <BookOpen size={20} className="text-purple-500 group-hover:text-purple-600" />
+                        <div className="p-2 bg-[var(--brand-subtle)] rounded-lg group-hover:bg-[var(--brand-subtle)] transition-colors">
+                            <BookOpen size={20} className="text-[var(--brand-text)] group-hover:text-[var(--brand-text)]" />
                         </div>
-                        <span className="text-purple-700 dark:text-purple-300 font-medium group-hover:text-purple-800 dark:group-hover:text-purple-200">
+                        <span className="text-[var(--brand-text)] font-medium group-hover:text-[var(--brand-text)] dark:group-hover:text-[var(--brand-text)]">
                             Use Recipe
                         </span>
                     </button>

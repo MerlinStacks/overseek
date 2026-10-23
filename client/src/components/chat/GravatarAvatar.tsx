@@ -3,7 +3,7 @@ import { cn } from '../../utils/cn';
 
 interface Props { email?: string; name: string; size?: 'sm' | 'md' | 'lg'; className?: string; variant?: 'blue' | 'gray' | 'amber' }
 const sizes = { sm: 'w-8 h-8 text-xs', md: 'w-10 h-10 text-sm', lg: 'w-12 h-12 text-base' };
-const variants = { blue: 'bg-blue-600', gray: 'bg-gray-500', amber: 'bg-amber-600' };
+const variants = { blue: 'bg-[var(--primary-color)] text-[var(--primary-foreground)]', gray: 'bg-gray-500 text-white', amber: 'bg-amber-600 text-white' };
 export const GravatarAvatar = memo(function GravatarAvatar({ email, name, size = 'sm', className, variant = 'gray' }: Props) {
     const normalized = typeof email === 'string' ? email.trim().toLowerCase() : '';
     return <AvatarImage key={JSON.stringify([normalized, size])} email={normalized} name={name} size={size} className={className} variant={variant} />;
@@ -25,7 +25,7 @@ function AvatarImage({ email, name, size = 'sm', className, variant = 'gray' }: 
         }
         return () => { disposed = true; };
     }, [email, pixels]);
-    return <div role="img" aria-label={name || 'Customer'} className={cn('rounded-full flex items-center justify-center font-medium shrink-0 overflow-hidden relative text-white', sizes[size], variants[variant], className)}>
+    return <div role="img" aria-label={name || 'Customer'} className={cn('rounded-full flex items-center justify-center font-medium shrink-0 overflow-hidden relative', sizes[size], variants[variant], className)}>
         <span aria-hidden="true">{name?.charAt(0).toUpperCase() || '?'}</span>
         {url && !failed && <img src={url} alt="" aria-hidden="true" referrerPolicy="no-referrer" loading="lazy" className="absolute inset-0 w-full h-full object-cover" onError={() => setFailed(true)} />}
     </div>;

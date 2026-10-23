@@ -18,9 +18,9 @@ export function ImageThumbnail({ item, onImageClick }: { item: Item; onImageClic
 }
 function ConsentThumbnail({ label, url, onImageClick }: { label: string; url: string; onImageClick: (url: string) => void }) {
     const [loaded, setLoaded] = useState(false), [failed, setFailed] = useState(false);
-    if (!loaded) return <button type="button" className="flex max-w-full items-center gap-2 rounded-lg border border-amber-200 bg-white/70 px-3 py-2 text-left text-xs text-amber-800 transition-colors hover:bg-amber-50 focus-visible:outline-2 focus-visible:outline-indigo-500 dark:border-amber-800 dark:bg-slate-800 dark:text-amber-200 dark:hover:bg-slate-700" onClick={() => setLoaded(true)}><ImageIcon size={16} className="shrink-0" /><span className="min-w-0 break-all">Load external image: {label}<span className="block text-[10px] opacity-75">{new URL(url).hostname}</span></span></button>;
+    if (!loaded) return <button type="button" className="flex max-w-full items-center gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2 text-left text-xs text-amber-800 transition-colors hover:bg-amber-50 focus-visible:outline-2 focus-visible:outline-[var(--focus-color)] dark:border-amber-800 dark:bg-slate-800 dark:text-amber-200 dark:hover:bg-slate-700" onClick={() => setLoaded(true)}><ImageIcon size={16} className="shrink-0" /><span className="min-w-0 break-all">Load external image: {label}<span className="block text-[10px] opacity-75">{new URL(url).hostname}</span></span></button>;
     if (failed) return <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">{label}: image unavailable</span>;
-    return <button type="button" aria-label={`Open image ${label}`} onClick={() => onImageClick(url)} className="cursor-zoom-in overflow-hidden rounded-lg border-2 border-transparent shadow-sm transition-colors hover:border-purple-400 focus-visible:outline-2 focus-visible:outline-indigo-500"><img src={url} alt={label} referrerPolicy="no-referrer" loading="lazy" onError={() => setFailed(true)} className="size-16 object-cover" /></button>;
+    return <button type="button" aria-label={`Open image ${label}`} onClick={() => onImageClick(url)} className="cursor-zoom-in overflow-hidden rounded-lg border-2 border-transparent shadow-sm transition-colors hover:border-[var(--primary-color)] focus-visible:outline-2 focus-visible:outline-[var(--focus-color)]"><img src={url} alt={label} referrerPolicy="no-referrer" loading="lazy" onError={() => setFailed(true)} className="size-16 object-cover" /></button>;
 }
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 export function OrderMetaSection({ metaData, onImageClick }: { metaData: Meta[]; onImageClick: (url: string) => void }) {
@@ -38,7 +38,7 @@ export function OrderMetaSection({ metaData, onImageClick }: { metaData: Meta[];
         return <div key={`${row.key}:${index}`} className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
             <span className="min-w-20 font-medium capitalize text-slate-600 dark:text-slate-400">{label}:</span>
             <span className={`min-w-0 flex-1 break-all whitespace-pre-line ${category(row) === 'Product Options' ? 'font-medium text-red-700 dark:text-red-300' : 'text-slate-900 dark:text-slate-100'}`}>
-                {href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline dark:text-blue-400" title={value}>{value.length > 60 ? `${value.slice(0, 60)}…` : value}</a> : value}
+                {href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-[var(--brand-text)] hover:underline " title={value}>{value.length > 60 ? `${value.slice(0, 60)}…` : value}</a> : value}
             </span>
         </div>;
     };
@@ -49,8 +49,8 @@ export function OrderMetaSection({ metaData, onImageClick }: { metaData: Meta[];
             if (!items.length) return null;
             const uploads = group === 'Uploaded Files', expanded = !collapsed.includes(group), contentId = `${id}-${groupIndex}`;
             const Icon = uploads ? ImageIcon : Settings;
-            return <section key={group} className={`min-w-0 overflow-hidden rounded-lg border ${uploads ? 'border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30' : 'border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30'}`}>
-                <button type="button" aria-expanded={expanded} aria-controls={contentId} onClick={() => setCollapsed(previous => expanded ? [...previous, group] : previous.filter(value => value !== group))} className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs font-semibold transition-colors hover:bg-white/30 dark:hover:bg-white/5 ${uploads ? 'text-amber-700 dark:text-amber-300' : 'text-blue-700 dark:text-blue-300'}`}>
+            return <section key={group} className={`min-w-0 overflow-hidden rounded-lg border ${uploads ? 'border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30' : 'border-[var(--brand-border)] bg-[var(--brand-subtle)] border-[var(--primary-color)] '}`}>
+                <button type="button" aria-expanded={expanded} aria-controls={contentId} onClick={() => setCollapsed(previous => expanded ? [...previous, group] : previous.filter(value => value !== group))} className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs font-semibold transition-colors hover:bg-white/30 dark:hover:bg-white/5 ${uploads ? 'text-amber-700 dark:text-amber-300' : 'text-[var(--brand-text)] '}`}>
                     <span className="flex items-center gap-2"><Icon size={12} />{group}<span className="rounded-full bg-white/60 px-1.5 py-0.5 text-[10px] dark:bg-white/10">{items.length}</span></span><ChevronDown size={14} className={expanded ? 'rotate-180' : ''} />
                 </button>
                 <div id={contentId} hidden={!expanded} className="space-y-2 bg-white/40 px-3 pb-3 pt-1 dark:bg-slate-900/20">

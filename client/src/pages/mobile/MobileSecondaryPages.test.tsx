@@ -46,6 +46,11 @@ describe('secondary companion screen styling', () => {
         function Location() { return <output data-testid="location">{useLocation().pathname}</output>; }
         await act(async () => render(<MemoryRouter><MobileCustomers /><Location /></MemoryRouter>));
         expect(screen.getByRole('heading', { name: 'Customers' })).toBeInTheDocument();
+        const summary = screen.getByLabelText('Customer results summary');
+        expect(summary).toHaveClass('metric-strip');
+        expect(summary.querySelectorAll('.metric-strip-item')).toHaveLength(2);
+        expect(summary).toHaveTextContent('Total Spent');
+        expect(summary).toHaveTextContent('$50.00');
         fireEvent.click(screen.getByRole('button', { name: /Jane Smith/ }));
         expect(screen.getByTestId('location')).toHaveTextContent('/m/customers/customer-1');
     });

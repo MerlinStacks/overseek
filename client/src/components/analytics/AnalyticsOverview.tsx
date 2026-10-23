@@ -8,7 +8,8 @@
  */
 
 import { useMemo } from 'react';
-import { Users, ShoppingCart, DollarSign, Globe, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
+import { Metric, MetricStrip } from '../ui/MetricStrip';
 import { LiveSession } from '../../types/analytics';
 import { VisitorsTable } from './VisitorsTable';
 import { useAccount } from '../../context/AccountContext';
@@ -66,60 +67,14 @@ export const AnalyticsOverview = ({ visitors, carts, setActiveView, onVisitorCli
     const maxBar = Math.max(...activityBars, 1);
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
             {/* ── Stat Cards ─────────────────────────────────────── */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Live Visitors */}
-                <div className="bg-white p-5 rounded-xl shadow-xs border border-gray-100 flex items-center gap-4">
-                    <div className="p-3 bg-blue-50 rounded-xl">
-                        <Users className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-3xl font-bold text-gray-900">{visitors.length}</span>
-                            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                        </div>
-                        <p className="text-sm text-gray-500">Live Visitors</p>
-                    </div>
-                </div>
-
-                {/* Active Carts */}
-                <div className="bg-white p-5 rounded-xl shadow-xs border border-gray-100 flex items-center gap-4">
-                    <div className="p-3 bg-amber-50 rounded-xl">
-                        <ShoppingCart className="w-5 h-5 text-amber-600" />
-                    </div>
-                    <div>
-                        <span className="text-3xl font-bold text-gray-900">{carts.length}</span>
-                        <p className="text-sm text-gray-500">Active Carts</p>
-                    </div>
-                </div>
-
-                {/* Potential Revenue */}
-                <div className="bg-white p-5 rounded-xl shadow-xs border border-gray-100 flex items-center gap-4">
-                    <div className="p-3 bg-green-50 rounded-xl">
-                        <DollarSign className="w-5 h-5 text-green-600" />
-                    </div>
-                    <div>
-                        <span className="text-3xl font-bold text-gray-900">{cartMoney(totalCartValue, currentAccount?.currency)}</span>
-                        <p className="text-sm text-gray-500">Current Cart Value (not revenue)</p>
-                    </div>
-                </div>
-
-                {/* Top Country */}
-                <div className="bg-white p-5 rounded-xl shadow-xs border border-gray-100 flex items-center gap-4">
-                    <div className="p-3 bg-purple-50 rounded-xl">
-                        <Globe className="w-5 h-5 text-purple-600" />
-                    </div>
-                    <div>
-                        <span className="text-3xl font-bold text-gray-900">
-                            {topCountries.length > 0 ? topCountries[0][1] : 0}
-                        </span>
-                        <p className="text-sm text-gray-500">
-                            {topCountries.length > 0 ? `From ${topCountries[0][0]}` : 'No data yet'}
-                        </p>
-                    </div>
-                </div>
-            </div>
+            <MetricStrip label="Live analytics summary">
+                <Metric label="Live Visitors" value={visitors.length} hint={<span className="inline-block h-2 w-2 rounded-full bg-green-500 animate-pulse" aria-hidden="true" />} />
+                <Metric label="Active Carts" value={carts.length} />
+                <Metric label="Current Cart Value (not revenue)" value={cartMoney(totalCartValue, currentAccount?.currency)} />
+                <Metric label={topCountries.length > 0 ? `From ${topCountries[0][0]}` : 'No data yet'} value={topCountries.length > 0 ? topCountries[0][1] : 0} />
+            </MetricStrip>
 
             {/* ── Activity Pulse + Geo ───────────────────────────── */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -134,7 +89,7 @@ export const AnalyticsOverview = ({ visitors, carts, setActiveView, onVisitorCli
                         {activityBars.map((count, i) => (
                             <div
                                 key={i}
-                                className="flex-1 rounded-t-md bg-gradient-to-t from-blue-500 to-blue-400 transition-all duration-300"
+                                        className="flex-1 rounded-t-md bg-blue-500 transition-all duration-300"
                                 style={{ height: `${Math.max((count / maxBar) * 100, 4)}%` }}
                                 title={`${i === 9 ? 'Less than 1 minute' : `${9 - i}–${10 - i} minutes`} ago: ${count} visitor${count !== 1 ? 's' : ''}`}
                             />
@@ -182,7 +137,7 @@ export const AnalyticsOverview = ({ visitors, carts, setActiveView, onVisitorCli
                     <button
                         type="button"
                         onClick={() => setActiveView('realtime')}
-                        className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                    className="text-sm text-[var(--brand-text)] hover:underline flex items-center gap-1"
                     >
                         View All <ArrowRight className="w-3.5 h-3.5" />
                     </button>

@@ -67,9 +67,9 @@ export const TriggerNode = memo(({ data, id }: NodeProps) => {
                 title={triggerLabel}
                 subtitle="WooCommerce"
                 icon={getTriggerIcon(config)}
-                iconBgColor="bg-linear-to-br from-blue-500 to-blue-600"
+                iconBgColor="bg-blue-600"
                 borderColor="border-blue-200"
-                bgColor="bg-linear-to-b from-blue-50/40 to-white"
+                bgColor="bg-white"
                 stepNumber={stepNumber}
                 stats={stats}
                 onSettingsClick={data.onSettingsClick as (() => void) | undefined}
@@ -117,7 +117,7 @@ export const ActionNode = memo(({ data, id }: NodeProps) => {
                 icon={getActionIcon(config)}
                 iconBgColor={getActionGradient(config)}
                 borderColor="border-emerald-200"
-                bgColor="bg-linear-to-b from-emerald-50/35 to-white"
+                bgColor="bg-white"
                 stepNumber={stepNumber}
                 stats={stats}
                 nodeId={id}
@@ -177,9 +177,9 @@ export const DelayNode = memo(({ data, id }: NodeProps) => {
                 title="Delay"
                 subtitle="Delay for a specific period"
                 icon={<Clock size={16} className="text-white" />}
-                iconBgColor="bg-linear-to-br from-yellow-500 to-orange-500"
+                iconBgColor="bg-amber-600"
                 borderColor="border-amber-200"
-                bgColor="bg-linear-to-b from-amber-50/35 to-white"
+                bgColor="bg-white"
                 stepNumber={stepNumber}
                 stats={stats}
                 nodeId={id}
@@ -229,9 +229,9 @@ export const ConditionNode = memo(({ data, id }: NodeProps) => {
                 title="Condition"
                 subtitle="Split based on rules"
                 icon={<Split size={16} className="text-white" />}
-                iconBgColor="bg-linear-to-br from-orange-500 to-red-500"
+                iconBgColor="bg-orange-600"
                 borderColor="border-orange-200"
-                bgColor="bg-linear-to-b from-orange-50/35 to-white"
+                bgColor="bg-white"
                 stepNumber={stepNumber}
                 stats={stats}
                 nodeId={id}

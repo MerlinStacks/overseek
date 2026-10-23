@@ -155,7 +155,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth, variant = 'd
         >
             <div
                 aria-hidden="true"
-                className="absolute inset-0 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-md"
+                className="absolute inset-0 bg-slate-900/40 dark:bg-slate-950/60"
                 onClick={onClose}
             />
 
@@ -167,14 +167,14 @@ export function Modal({ isOpen, onClose, title, children, maxWidth, variant = 'd
                 aria-label={title ? undefined : 'Dialog'}
                 tabIndex={-1}
                 className={isSheet
-                    ? `bg-slate-900 text-slate-100 rounded-t-3xl shadow-2xl w-full ${maxWidth ?? 'max-w-[40rem]'} overflow-hidden border border-slate-700 flex flex-col min-h-0 max-h-[min(100%,48rem)] relative z-10 animate-in slide-in-from-bottom duration-200`
-                    : `bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full ${maxWidth ?? 'max-w-lg'} overflow-hidden border border-slate-200/80 dark:border-slate-700/50 flex flex-col max-h-[90vh] relative z-10 animate-in zoom-in-95 duration-200`}
+                    ? `bg-slate-900 text-slate-100 rounded-t-xl shadow-lg w-full ${maxWidth ?? 'max-w-[40rem]'} overflow-hidden border border-slate-700 flex flex-col min-h-0 max-h-[min(100%,48rem)] relative z-10 animate-in fade-in duration-150 motion-reduce:animate-none`
+                    : `bg-white dark:bg-slate-800 rounded-xl shadow-lg w-full ${maxWidth ?? 'max-w-lg'} overflow-hidden border border-slate-200 dark:border-slate-700 flex flex-col max-h-[90vh] relative z-10 animate-in fade-in duration-150 motion-reduce:animate-none`}
             >
                 {(title || onClose) && (
                     <div className={isSheet
                         ? 'p-5 pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] shrink-0 border-b border-slate-700 flex justify-between items-center bg-slate-900'
-                        : 'p-5 border-b border-slate-100 dark:border-slate-700/50 flex justify-between items-center bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-800 dark:to-slate-800'}>
-                        <div id={title ? titleId : undefined} className={`font-bold text-lg ${isSheet ? 'text-slate-100' : 'text-slate-900 dark:text-white'}`}>
+                        : 'p-5 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800'}>
+                        <div id={title ? titleId : undefined} className={`font-semibold text-base ${isSheet ? 'text-slate-100' : 'text-slate-900 dark:text-white'}`}>
                             {title}
                         </div>
                         {onClose && (
@@ -183,8 +183,8 @@ export function Modal({ isOpen, onClose, title, children, maxWidth, variant = 'd
                                 aria-label="Close dialog"
                                 onClick={onClose}
                                 className={isSheet
-                                    ? 'p-2 min-w-11 min-h-11 shrink-0 flex items-center justify-center hover:bg-slate-800 rounded-xl text-slate-300 hover:text-white transition-colors'
-                                    : 'p-2 hover:bg-slate-200/80 dark:hover:bg-slate-700 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-all duration-200'}
+                                    ? 'p-2 min-w-11 min-h-11 shrink-0 flex items-center justify-center hover:bg-slate-800 rounded-lg text-slate-300 hover:text-white transition-colors'
+                                    : 'p-2 min-w-9 min-h-9 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors'}
                             >
                                 <X size={20} aria-hidden="true" />
                             </button>

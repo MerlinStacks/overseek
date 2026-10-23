@@ -170,7 +170,7 @@ export const ChatComposer = memo(function ChatComposer({
                             onClick={() => {
                                  setLocalPicker(false); onOpenCannedManager();
                             }}
-                            className="flex items-center gap-1 text-blue-600 hover:text-blue-700"
+                            className="flex items-center gap-1 text-[var(--brand-text)] hover:text-[var(--brand-text)]"
                         >
                             <span className="sr-only">Manage</span>
                             Manage
@@ -182,7 +182,7 @@ export const ChatComposer = memo(function ChatComposer({
                                 key={r.id}
                                 type="button"
                                 onClick={() => selectReply(r)}
-                                className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-0"
+                                className="w-full text-left px-3 py-2 hover:bg-[var(--brand-subtle)] transition-colors border-b border-gray-50 last:border-0"
                             >
                                 <span className="text-xs font-mono bg-gray-100 px-1.5 py-0.5 rounded-sm text-gray-600">
                                     /{r.shortcut}
@@ -193,7 +193,7 @@ export const ChatComposer = memo(function ChatComposer({
                     ) : (
                         <div className="px-3 py-4 text-center text-gray-500 text-sm">
                             {cannedResponses.length === 0 ? (
-                                <>No canned responses yet. <button onClick={onOpenCannedManager} className="text-blue-600 hover:underline">Add one</button></>
+                                <>No canned responses yet. <button onClick={onOpenCannedManager} className="text-[var(--brand-text)] hover:underline">Add one</button></>
                             ) : (
                                 'No matches found'
                             )}
@@ -209,7 +209,7 @@ export const ChatComposer = memo(function ChatComposer({
                     className={cn(
                         "px-4 py-2 text-sm font-medium border-b-2 transition-colors",
                         !isInternal
-                            ? "border-blue-600 text-blue-600"
+                            ? "border-[var(--primary-color)] text-[var(--brand-text)]"
                             : "border-transparent text-gray-500 hover:text-gray-700"
                     )}
                 >
@@ -230,9 +230,9 @@ export const ChatComposer = memo(function ChatComposer({
 
             {/* Quote Reply Preview */}
             {quotedMessage && (
-                <div className="px-4 py-2 border-b border-gray-100 bg-blue-50 flex items-start gap-2">
+                <div className="px-4 py-2 border-b border-gray-100 bg-[var(--brand-subtle)] flex items-start gap-2">
                     <div className="flex-1 min-w-0">
-                        <div className="text-xs text-blue-600 font-medium mb-0.5">
+                        <div className="text-xs text-[var(--brand-text)] font-medium mb-0.5">
                             Replying to {quotedMessage.senderType === 'AGENT' ? 'yourself' : (recipientName || 'customer')}
                         </div>
                         <div className="text-sm text-gray-600 truncate">
@@ -242,7 +242,7 @@ export const ChatComposer = memo(function ChatComposer({
                     </div>
                     <button
                         onClick={onClearQuote}
-                        className="p-1 rounded-sm hover:bg-blue-100 text-blue-400"
+                        className="p-1 rounded-sm hover:bg-[var(--brand-subtle)] text-[var(--brand-text)]"
                     >
                         <X size={14} />
                     </button>
@@ -269,7 +269,7 @@ export const ChatComposer = memo(function ChatComposer({
                         <select
                             value={selectedEmailAccountId}
                             onChange={(e) => onEmailAccountChange?.(e.target.value)}
-                            className="flex-1 text-gray-700 bg-transparent border-none outline-none cursor-pointer hover:text-blue-600 text-sm"
+                            className="flex-1 text-gray-700 bg-transparent border-none outline-none cursor-pointer hover:text-[var(--brand-text)] text-sm"
                         >
                             {emailAccounts.map(account => (
                                 <option key={account.id} value={account.id}>
@@ -387,9 +387,9 @@ export const ChatComposer = memo(function ChatComposer({
                         {stagedAttachments.map((file, index) => (
                             <div
                                 key={`${file.name}-${index}`}
-                                className="group inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-50 to-white border border-blue-200 rounded-full text-sm shadow-sm"
+                                className="group inline-flex items-center gap-2 px-3 py-1.5 bg-[var(--brand-subtle)] border border-[var(--brand-border)] rounded-full text-sm shadow-sm"
                             >
-                                <Paperclip size={14} className="text-blue-500" />
+                                <Paperclip size={14} className="text-[var(--brand-text)]" />
                                 <span className="text-gray-700 max-w-[150px] truncate">{file.name}</span>
                                 <span className="text-xs text-gray-400">
                                     ({(file.size / 1024).toFixed(0)}KB)
@@ -426,7 +426,7 @@ export const ChatComposer = memo(function ChatComposer({
                         </div>
                         <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
                             <div
-                                className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-200"
+                                className="h-full bg-[var(--primary-color)] rounded-full transition-all duration-200"
                                 style={{ width: `${uploadProgress}%` }}
                             />
                         </div>

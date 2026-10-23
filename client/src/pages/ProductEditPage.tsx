@@ -66,11 +66,11 @@ export function ProductEditPage() {
                 </p>
                 <div className="mt-4 flex items-center justify-center gap-4">
                     {hookData.loadError && (
-                        <button onClick={() => hookData.fetchProduct()} className="text-blue-600 hover:underline">
+                        <button onClick={() => hookData.fetchProduct()} className="text-[var(--brand-text)] hover:underline">
                             Try Again
                         </button>
                     )}
-                    <button onClick={() => navigate('/inventory')} className="text-blue-600 hover:underline">
+                    <button onClick={() => navigate('/inventory')} className="text-[var(--brand-text)] hover:underline">
                         Back to Inventory
                     </button>
                 </div>
@@ -163,7 +163,7 @@ function ProductEditPageContent({
             : saveState === 'saved'
                 ? 'text-green-700 bg-green-50 border-green-200'
                 : saveState === 'saving'
-                    ? 'text-blue-700 bg-blue-50 border-blue-200'
+                    ? 'text-[var(--brand-text)] bg-[var(--brand-subtle)] border-[var(--brand-border)]'
                     : 'text-slate-700 bg-slate-50 border-slate-200';
     const statusIcon = saveState === 'error'
         ? <AlertTriangle size={14} />
@@ -203,8 +203,8 @@ function ProductEditPageContent({
             label: 'General Details',
             icon: <FileText size={16} />,
             content: (
-                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2 space-y-6">
                             <GeneralInfoPanel
                                 production={production.general && { ...production.general, disabled: production.general.disabled || saveDisabled }}
@@ -215,7 +215,7 @@ function ProductEditPageContent({
                             />
                         </div>
                         <div className="space-y-6">
-                            <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-4">
+                            <div className="bg-white rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 p-4">
                                 {mainImageFailed ? (
                                     <div className="w-full h-64 bg-gray-50 rounded-lg flex flex-col items-center justify-center text-gray-400">
                                         <ImageOff size={48} />
@@ -235,7 +235,7 @@ function ProductEditPageContent({
                                     </div>
                                 )}
                             </div>
-                            <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6">
+                            <div className="bg-white rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 p-6">
                                 <ImageGallery
                                     images={(formData.images as unknown as GalleryImage[]) || []}
                                     onChange={(imgs) => updateFormData({ images: imgs })}
@@ -326,14 +326,14 @@ function ProductEditPageContent({
             label: 'SEO & Discovery',
             icon: <Search size={16} />,
             content: (
-                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     {/* Search Console Insights — full width hero */}
                     <ProductSearchInsightsPanel permalink={product.permalink} />
 
                     {/* SEO Health + Merchant Center — two-column grid */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <div className="space-y-6">
-                            <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-md rounded-xl shadow-xs border border-white/50 dark:border-slate-700/40 p-6">
+                            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 dark:border-slate-700/40 p-6">
                                 <div className="flex justify-between items-center mb-6">
                                     <h3 className="text-sm font-bold text-gray-900 dark:text-slate-100 uppercase tracking-wide">SEO Health</h3>
                                     <SeoScoreBadge score={seoResult.score || 0} size="md" tests={seoResult.tests} />
@@ -345,13 +345,13 @@ function ProductEditPageContent({
                                         type="text"
                                         value={formData.focusKeyword}
                                         onChange={(e) => updateFormData({ focusKeyword: e.target.value })}
-                                        className="w-full px-4 py-2 bg-white/50 dark:bg-slate-700/40 border border-gray-200 dark:border-slate-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all dark:text-slate-200"
+                                        className="w-full px-4 py-2 bg-white dark:bg-slate-700/40 border border-gray-200 dark:border-slate-600 rounded-lg text-sm focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] outline-hidden transition-all dark:text-slate-200"
                                     />
                                 </div>
                             </div>
                         </div>
                         <div className="space-y-6">
-                            <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-md rounded-xl shadow-xs border border-white/50 dark:border-slate-700/40 p-6">
+                            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 dark:border-slate-700/40 p-6">
                                 <h3 className="text-sm font-bold text-gray-900 dark:text-slate-100 uppercase tracking-wide mb-4">Merchant Center Status</h3>
                                 <MerchantCenterPanel score={product.merchantCenterScore} issues={product.merchantCenterIssues as MerchantIssue[] | null | undefined} />
                             </div>
@@ -439,7 +439,7 @@ function ProductEditPageContent({
     return (
         <div className="bg-gray-50/50 pb-20">
             {/* Header Sticky Bar */}
-            <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-gray-200/50 shadow-xs transition-all">
+            <div className="sticky top-0 z-30 bg-white border-b border-gray-200/50 shadow-xs transition-all">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                     <Breadcrumbs items={[
                         { label: 'Inventory', href: '/inventory' },
@@ -448,7 +448,7 @@ function ProductEditPageContent({
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div className="flex items-center gap-4">
                             <div>
-                                <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                            <h1 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-slate-100 flex items-center gap-2">
                                     {product.name}
                                     <span className={`text-xs px-2 py-0.5 rounded-full border ${formData.stockStatus === 'instock' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
                                         {formData.stockStatus === 'instock' ? 'In Stock' : 'Out of Stock'}
@@ -468,7 +468,7 @@ function ProductEditPageContent({
                                 <div className="flex items-center gap-3 text-sm text-gray-500 mt-1">
                                     <span className="font-mono bg-gray-100/80 px-2 py-0.5 rounded-sm text-xs text-gray-600">ID: {product.wooId}</span>
                                     {formData.sku && <span className="flex items-center gap-1"><Tag size={12} /> {formData.sku}</span>}
-                                        <span className="flex items-center gap-1 text-purple-600 dark:text-purple-400" title={productViews ? `${productViews.views30d} views in 30 days` : 'Product views unavailable'}>
+                                        <span className="flex items-center gap-1 text-[var(--brand-text)] " title={productViews ? `${productViews.views30d} views in 30 days` : 'Product views unavailable'}>
                                             <Eye size={12} />
                                             <span className="font-medium">{productViews?.views7d ?? '—'}</span>
                                             <span className="text-gray-400">7d</span>
@@ -482,13 +482,13 @@ function ProductEditPageContent({
                                                 aria-label="Refresh product views"
                                                 aria-busy={isRefreshingViews}
                                                 title={isRefreshingViews ? 'Refreshing product views…' : 'Refresh product views'}
-                                                className="inline-flex h-6 w-6 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-purple-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-purple-400"
+                                                className="inline-flex h-6 w-6 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-[var(--brand-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-color)] disabled:opacity-50 dark:hover:bg-gray-800 "
                                             >
                                                 <RefreshCw size={12} aria-hidden="true" className={isRefreshingViews ? 'animate-spin' : undefined} />
                                             </button>
                                         </span>
                                     <span aria-hidden="true">&bull;</span>
-                                    <a href={getSafeHref(product.permalink)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors">
+                                    <a href={getSafeHref(product.permalink)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[var(--brand-text)] hover:text-[var(--brand-text)] transition-colors">
                                         View on Store <ExternalLink size={12} />
                                     </a>
                                     {lastSyncLabel && (
@@ -506,7 +506,7 @@ function ProductEditPageContent({
                             <button
                                 onClick={handleSync}
                                 disabled={saveDisabled || isLoading}
-                                className="flex h-10 min-w-28 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-gray-300/80 bg-white/50 px-4 text-sm font-medium text-gray-700 backdrop-blur-xs transition-colors hover:bg-white disabled:opacity-50"
+                                className="flex h-10 min-w-28 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-gray-300/80 bg-white px-4 text-sm font-medium text-gray-700 transition-colors hover:bg-white disabled:opacity-50"
                             >
                                 {isSyncing ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
                                 <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync'}</span>
@@ -515,7 +515,7 @@ function ProductEditPageContent({
                                 <button
                                     onClick={discardDraft}
                                     disabled={saveDisabled}
-                                    className="flex h-10 min-w-28 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-red-200 bg-red-50 px-4 text-sm font-medium text-red-700 backdrop-blur-xs transition-colors hover:bg-red-100"
+                                    className="flex h-10 min-w-28 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-red-200 bg-red-50 px-4 text-sm font-medium text-red-700 transition-colors hover:bg-red-100"
                                     title="Discard restored draft and reset to saved version"
                                 >
                                     <Trash2 size={18} />
@@ -525,7 +525,7 @@ function ProductEditPageContent({
                             <button
                                 onClick={() => void handleSaveAll()}
                                 disabled={saveDisabled}
-                                className="flex h-10 min-w-28 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-blue-600/90 px-4 text-sm font-medium text-white shadow-md shadow-blue-500/20 backdrop-blur-xs transition-all hover:bg-blue-600 disabled:opacity-50"
+                                className="flex h-10 min-w-28 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-[var(--primary-color)] px-4 text-sm font-medium text-[var(--primary-foreground)] transition-colors hover:bg-[var(--primary-hover)] disabled:opacity-50"
                             >
                                 {isSavingAnything ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
                                 {isSavingAnything ? 'Saving...' : 'Save Changes'}
@@ -547,7 +547,7 @@ function ProductEditPageContent({
                 />
             </div>
 
-            <div className="sm:hidden fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 backdrop-blur-xl">
+            <div className="sm:hidden fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white ">
                 <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
                     <div className="min-w-0">
                         <div className="truncate text-sm font-medium text-gray-900">
@@ -568,7 +568,7 @@ function ProductEditPageContent({
                         <button
                             onClick={() => void handleSaveAll()}
                             disabled={saveDisabled}
-                            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                            className="rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] disabled:opacity-50"
                         >
                             {isSavingAnything ? 'Saving...' : 'Save'}
                         </button>
@@ -583,7 +583,7 @@ function ProductEditPageContent({
 function ProductEditSkeleton() {
     return (
         <div className="bg-gray-50/50 pb-20">
-            <div className="sticky top-0 z-30 border-b border-gray-200/50 bg-white/80 backdrop-blur-xl shadow-xs">
+            <div className="sticky top-0 z-30 border-b border-gray-200/50 bg-white shadow-xs">
                 <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
                     <div className="h-4 w-48 animate-pulse rounded bg-gray-200" />
                     <div className="mt-4 flex items-center justify-between gap-4">
@@ -599,7 +599,7 @@ function ProductEditSkeleton() {
                     </div>
                 </div>
                 <div className="mx-auto max-w-7xl px-4 pb-4 sm:px-6 lg:px-8">
-                    <div className="h-12 animate-pulse rounded-2xl bg-gray-200" />
+                    <div className="h-12 animate-pulse rounded-xl bg-gray-200" />
                 </div>
             </div>
             <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">

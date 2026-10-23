@@ -65,6 +65,6 @@ function DateTimeSettingsForm() {
         <p className="text-sm text-gray-600 dark:text-slate-300">Preview: {formatPreferredDateTime(new Date('2026-11-22T15:30:00Z'), 'datetime', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }, preferences)}</p>
         {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         <p role="status" className="text-sm text-emerald-600 dark:text-emerald-400">{message}</p>
-        <button type="button" onClick={save} disabled={saving || !user || !token} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">{saving ? 'Saving...' : 'Save date & time'}</button>
+        <button type="button" onClick={save} disabled={saving || !user || !token} className="rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] disabled:opacity-50">{saving ? 'Saving...' : 'Save date & time'}</button>
     </section>;
 }

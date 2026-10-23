@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Metric, MetricStrip } from '../components/ui/MetricStrip';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -39,7 +40,7 @@ export function EmailDashboardPage() {
 function ScopedEmailDashboard({ token, accountId }: { token: string; accountId: string }) {
     const [days, setDays] = useState(30);
     return <main className="space-y-5 text-slate-900 dark:text-slate-100"><h1 className="text-2xl font-bold">Email Hub</h1>
-        <div aria-label="Reporting period" className="flex gap-3">{[7, 30, 90].map(value => <button type="button" key={value} aria-pressed={days === value} onClick={() => setDays(value)} className={days === value ? 'rounded bg-indigo-600 text-white px-3 py-2' : 'rounded border px-3 py-2'}>{value}d</button>)}</div>
+        <div aria-label="Reporting period" className="flex gap-3">{[7, 30, 90].map(value => <button type="button" key={value} aria-pressed={days === value} onClick={() => setDays(value)} className={days === value ? 'rounded bg-[var(--primary-color)] text-[var(--primary-foreground)] px-3 py-2' : 'rounded border px-3 py-2'}>{value}d</button>)}</div>
         <DashboardRead key={days} token={token} accountId={accountId} days={days} />
         <DeliveryHealthPanel token={token} accountId={accountId} />
     </main>;
@@ -61,12 +62,12 @@ function DashboardRead({ token, accountId, days }: { token: string; accountId: s
     const max = Math.max(1, ...data.trends.map(row => row.unsubscribes));
     return <>
         <p className={ui.muted}>{data.rangeStart} to {data.rangeEnd} ({data.timezone}; current day {data.coverage.currentDayPartial ? 'partial' : 'complete'}).</p>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {[['Flow revenue', money(data.kpis.flowRevenue)], ['Broadcast revenue', money(data.kpis.broadcastRevenue)], ['New unsubscribe records', data.kpis.totalUnsubscribes.toLocaleString()], ['Failed-status share', percent(data.kpis.failureRate)], ['Flow send events', data.kpis.flowSends.toLocaleString()], ['Broadcast send events', data.kpis.broadcastSends.toLocaleString()]].map(([label, value]) => <div className={card} key={label}><h2 className={ui.muted}>{label}</h2><p className="text-2xl font-semibold tabular-nums">{value}</p></div>)}
-        </div>
+        <MetricStrip label="Email observations">
+            {[['Flow revenue', money(data.kpis.flowRevenue)], ['Broadcast revenue', money(data.kpis.broadcastRevenue)], ['New unsubscribe records', data.kpis.totalUnsubscribes.toLocaleString()], ['Failed-status share', percent(data.kpis.failureRate)], ['Flow send events', data.kpis.flowSends.toLocaleString()], ['Broadcast send events', data.kpis.broadcastSends.toLocaleString()]].map(([label, value]) => <Metric key={label} label={label} value={value} />)}
+        </MetricStrip>
         <DataNote title="Email reporting definitions"><p>{data.coverage.revenue}</p><p>{data.coverage.failureDefinition}</p><p>{data.kpis.failedCount} failed-status rows / {data.kpis.attemptedCount} terminal-status rows; {data.coverage.unknownStatusRows} other-status rows excluded.</p><p>{data.coverage.unsubscribeDefinition}</p></DataNote>
         <div className={card}><h2 className="font-semibold">UTC delivery observations</h2>{!data.coverage.trendComplete ? <p role="status" className={ui.notice}>Daily trends unavailable: row coverage limit exceeded.</p> : data.trends.slice(-10).map(row => <div key={row.date} className="flex flex-wrap items-center gap-3 border-b border-slate-100 py-2.5 text-xs last:border-0 dark:border-slate-700"><span className="tabular-nums">{row.date}</span><div className="h-2 min-w-20 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700" aria-hidden="true"><div className="h-2 rounded-full bg-indigo-500" style={{ width: `${row.unsubscribes / max * 100}%` }} /></div><span>{row.unsubscribes} new unsubscribe records</span><span className={ui.muted}>{percent(row.failureRate)} failed-status share</span></div>)}</div>
-        <div ref={section} data-focused="false" className={`${card} data-[focused=true]:ring-2 data-[focused=true]:ring-indigo-500`}><h2 className="font-semibold">Recent unsubscribe records in this window</h2>
+        <div ref={section} data-focused="false" className={`${card} data-[focused=true]:ring-2 data-[focused=true]:ring-[var(--focus-color)]`}><h2 className="font-semibold">Recent unsubscribe records in this window</h2>
             {!data.recentUnsubscribes.length ? <p className={ui.empty}>No unsubscribe records in this window.</p> : <div className="overflow-x-auto"><table className={ui.table}><thead className={ui.tableHead}><tr>{['Email', 'Scope', 'Reason', 'Created'].map(label => <th scope="col" className={`${ui.cell} font-medium`} key={label}>{label}</th>)}</tr></thead><tbody className={ui.tableBody}>{data.recentUnsubscribes.map(row => <tr key={row.id}><td className={`${ui.cell} break-all`}>{row.email}</td><td className={ui.cell}><span className={ui.badge}>{row.scope}</span></td><td className={ui.cell}>{row.reason || 'Not provided'}</td><td className={`${ui.cell} whitespace-nowrap text-xs`}>{new Date(row.createdAt).toLocaleString()}</td></tr>)}</tbody></table></div>}
         </div>
     </>;

@@ -77,7 +77,7 @@ export function MetaAdsDrilldown({ adAccountId, parentId, level, days }: Props) 
                                 <Fragment key={row.campaignId}>
                                     <tr className="text-slate-800 dark:text-slate-200">
                                         <td className="p-2">{level === 'adset' ? (
-                                            <button aria-expanded={expanded === row.campaignId} onClick={() => setExpanded(expanded === row.campaignId ? null : row.campaignId)} className="flex items-center gap-2 font-medium text-indigo-600 dark:text-indigo-400">
+                                            <button aria-expanded={expanded === row.campaignId} onClick={() => setExpanded(expanded === row.campaignId ? null : row.campaignId)} className="flex items-center gap-2 font-medium text-[var(--brand-text)]">
                                                 <ChevronRight size={16} className={expanded === row.campaignId ? 'rotate-90' : ''} />{row.campaignName}
                                             </button>
                                         ) : row.campaignName}</td>

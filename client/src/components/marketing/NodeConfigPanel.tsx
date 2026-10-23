@@ -129,8 +129,8 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
     const isEmailAction = node.type === 'action' && (!localData.config?.actionType || localData.config.actionType === 'SEND_EMAIL');
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 backdrop-blur-xs sm:p-6">
-            <div role="dialog" aria-modal="true" aria-labelledby="node-config-title" className={`bg-white rounded-xl shadow-2xl w-full flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 ${isEmailAction ? 'max-w-6xl max-h-[92dvh]' : 'max-w-xl max-h-[80dvh]'}`}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-6">
+            <div role="dialog" aria-modal="true" aria-labelledby="node-config-title" className={`bg-white rounded-xl shadow-sm w-full flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 ${isEmailAction ? 'max-w-6xl max-h-[92dvh]' : 'max-w-xl max-h-[80dvh]'}`}>
                 {/* Header */}
                 <div className={`flex shrink-0 items-center justify-between px-6 py-4 border-b`}>
                     <div className="flex items-center gap-3">
@@ -161,7 +161,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
                             type="text"
                             value={localData.label || ''}
                             onChange={(e) => updateLabel(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)]"
                         />
                     </div>
 
@@ -229,7 +229,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
                         </button>
                         <button
                             onClick={handleSave}
-                            className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors"
+                        className="flex items-center gap-1.5 px-5 py-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] text-sm font-medium transition-colors"
                         >
                             <Save size={16} />
                             Apply to draft

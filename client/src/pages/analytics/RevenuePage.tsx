@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useScopedRequest } from '../../hooks/useScopedRequest';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { DateRangeFilter } from '../../components/analytics/DateRangeFilter';
+import { Metric, MetricStrip } from '../../components/ui/MetricStrip';
 import { AOVTrendView } from '../../components/analytics/AOVTrendView';
 import { record, metric, count, rows, label, money, validDays } from '../../components/analytics/analyticsRead';
 
@@ -29,9 +30,9 @@ function RevenueContent({ accountId, token, days, currency }: { accountId: strin
     if (loading) return <p role="status">Loading revenue…</p>;
     if (error || !data) return <div role="alert">Revenue unavailable. <button onClick={retry}>Retry revenue</button></div>;
     return <>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">{[
+        <MetricStrip label="Revenue summary">{[
             ['Total Revenue', money(data.totalRevenue, currency)], ['Orders', data.orderCount.toLocaleString()], ['Avg Order Value', data.orderCount ? money(data.aov, currency) : 'Unavailable (no orders)'],
-        ].map(([title, value]) => <Card key={title}><CardContent className="p-6"><p className="text-sm text-slate-500 dark:text-slate-400">{title}</p><p className="text-2xl font-bold">{value}</p></CardContent></Card>)}</div>
+        ].map(([title, value]) => <Metric key={title} label={title} value={value} />)}</MetricStrip>
         <AOVTrendView days={days} />
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">{data.groups.map(group => <Card key={group.title}><CardHeader><CardTitle>{group.title}</CardTitle></CardHeader><CardContent>
             {!group.rows.length ? <p>No attributed revenue in this range.</p> : group.rows.slice(0, 8).map((row, index) => <div key={`${row.label}:${index}`} className="mb-3">

@@ -106,7 +106,7 @@ function ScopedAdSuggestionsWidget() {
     if (loading) {
         return (
             <div className={`${widgetGlassCardClass} p-6 h-full flex items-center justify-center`}>
-                <div role="status" aria-label="Loading ad suggestions" className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+                <div role="status" aria-label="Loading ad suggestions" className="w-8 h-8 border-4 border-[var(--brand-border)] border-t-[var(--primary-color)] rounded-full animate-spin"></div>
             </div>
         );
     }
@@ -115,7 +115,7 @@ function ScopedAdSuggestionsWidget() {
         return (
             <div className={`${widgetGlassCardClass} p-6 h-full flex flex-col`}>
                 <div className={`${widgetHeaderRowClass} justify-start gap-2`}>
-                    <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-amber-400 to-orange-500 shadow-amber-500/20`}>
+                    <div className={widgetHeaderIconBadgeClass}>
                         <Lightbulb size={16} />
                     </div>
                     <h3 className={widgetTitleClass}>Ad Suggestions</h3>
@@ -127,7 +127,7 @@ function ScopedAdSuggestionsWidget() {
                     <p role="status" className="text-sm text-slate-600 dark:text-slate-300">{data.message}</p>
                     <button type="button"
                         onClick={handleNavigate}
-                        className="mt-4 text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                        className="mt-4 text-sm text-[var(--brand-text)] hover:underline focus-visible:outline-[var(--focus-color)] flex items-center gap-1"
                     >
                         Connect Ads <ExternalLink size={14} />
                     </button>
@@ -149,7 +149,7 @@ function ScopedAdSuggestionsWidget() {
         <div className={`${widgetGlassCardClass} p-6 h-full flex flex-col overflow-hidden`}>
             <div className={widgetHeaderRowClass}>
                 <div className="flex items-center gap-2">
-                    <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-amber-400 to-orange-500 shadow-amber-500/20`}>
+                    <div className={widgetHeaderIconBadgeClass}>
                         <Lightbulb size={16} />
                     </div>
                     <h3 className={widgetTitleClass}>Ad Suggestions</h3>
@@ -157,7 +157,7 @@ function ScopedAdSuggestionsWidget() {
                 <div className="flex items-center gap-1">
                     {hasPermission('manage_marketing') && <button type="button" aria-label="Add business context"
                         onClick={() => setShowContextModal(true)}
-                        className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                        className="p-1.5 text-[var(--brand-text)] hover:bg-[var(--brand-subtle)] focus-visible:outline-[var(--focus-color)] rounded-lg transition-colors"
                         title="Add business context"
                     >
                         <MessageCirclePlus size={16} />
@@ -165,14 +165,14 @@ function ScopedAdSuggestionsWidget() {
                     <button type="button" aria-label="Refresh suggestions"
                         onClick={() => fetchSuggestions(true)}
                         disabled={refreshing}
-                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                        className="p-1.5 text-[var(--brand-text)] hover:bg-[var(--brand-subtle)] focus-visible:outline-[var(--focus-color)] rounded-lg transition-colors disabled:opacity-50"
                         title="Refresh suggestions"
                     >
                         <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
                     </button>
                     <button type="button"
                         onClick={handleNavigate}
-                        className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 ml-1"
+                        className="text-xs text-[var(--brand-text)] hover:underline focus-visible:outline-[var(--focus-color)] flex items-center gap-1 ml-1"
                     >
                         View All <ExternalLink size={12} />
                     </button>
@@ -207,7 +207,7 @@ function ScopedAdSuggestionsWidget() {
                         {data.action_items.slice(0, 3).map((item, idx) => (
                             <span
                                 key={idx}
-                                className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full"
+                                className="text-xs bg-[var(--brand-subtle)] text-[var(--brand-text)] px-2 py-1 rounded-full"
                             >
                                 {item.replace(/^\d+\.\s*/, '')}
                             </span>

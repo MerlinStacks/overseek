@@ -317,7 +317,7 @@ export function CAPISettings() {
             </a>
 
             {/* Google Consent Mode v2 */}
-            <div id="consent-mode" className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 p-5">
+            <div id="consent-mode" className="rounded-lg border border-[var(--brand-border)] bg-[var(--brand-subtle)] p-5">
                 <div className="flex items-start gap-3">
                     <Shield className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
                     <div className="flex-1">
@@ -347,7 +347,7 @@ export function CAPISettings() {
                                     finally { setSavingConsent(false); }
                                 }}
                                 disabled={savingConsent}
-                                className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors text-xs font-medium"
+                                className="flex items-center gap-1 px-3 py-1.5 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] disabled:opacity-50 transition-colors text-xs font-medium"
                             >
                                 {savingConsent ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
                                 Save
@@ -512,7 +512,7 @@ export function CAPISettings() {
                                     <button
                                         onClick={() => handleSave(platform.key)}
                                         disabled={saving === platform.key}
-                                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm font-medium"
+                                        className="flex items-center gap-2 px-4 py-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] disabled:opacity-50 transition-colors text-sm font-medium"
                                     >
                                         {saving === platform.key ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                                         Save

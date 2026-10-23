@@ -104,7 +104,9 @@ export const decodeInvoiceEntities = (text: string): string => {
   return text
     .replace(/&#(\d+);/g, (match, code) => decodeNumericEntity(code, 10, match))
     .replace(/&#x([0-9a-fA-F]+);/g, (match, code) => decodeNumericEntity(code, 16, match))
-    .replace(/&([a-zA-Z][a-zA-Z0-9]+);?/g, (match, name) => namedEntities[name] ?? match);
+    .replace(/&([a-zA-Z][a-zA-Z0-9]+);?/g, (match, name) => (
+      Object.prototype.hasOwnProperty.call(namedEntities, name) ? namedEntities[name] : match
+    ));
 };
 
 const sanitizeInvoiceDisplayText = (text: string): string => {

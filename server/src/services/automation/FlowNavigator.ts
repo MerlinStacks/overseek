@@ -50,8 +50,9 @@ export function findNextNodeId(
  * Calculate delay duration in milliseconds from node data.
  */
 export function calculateDelayDuration(data: any): number {
-    const val = parseInt(data.value || data.duration || '0', 10);
-    const unit = data.unit || 'minutes';
+    // Keep field precedence, numeric parsing and unit defaults in sync with flow validation.
+    const val = Number(data.duration || data.value || 0);
+    const unit = String(data.unit || 'hours').toLowerCase();
     return val * (DELAY_MULTIPLIERS[unit] || 60000);
 }
 

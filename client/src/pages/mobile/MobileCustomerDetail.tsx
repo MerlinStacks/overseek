@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Metric, MetricStrip } from '../../components/ui/MetricStrip';
 import { Logger } from '../../utils/logger';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Mail, Phone, MapPin, ShoppingBag, Calendar, RefreshCw, Package, ChevronRight, DollarSign, Send } from 'lucide-react';
+import { ArrowLeft, Mail, Phone, MapPin, ShoppingBag, Calendar, RefreshCw, Package, ChevronRight, Send } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { formatCurrency, formatDate } from '../../utils/format';
@@ -531,29 +532,11 @@ export function MobileCustomerDetail() {
             </div>
 
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-3">
-                <div className="mobile-panel p-3">
-                    <div className="flex items-center gap-1 text-slate-400 mb-1">
-                        <DollarSign size={14} />
-                        <span className="text-xs font-medium">Total</span>
-                    </div>
-                    <p className="break-words text-lg font-semibold text-white">{formatAccountCurrency(customer.totalSpent)}</p>
-                </div>
-                <div className="mobile-panel p-3">
-                    <div className="mobile-brand-text flex items-center gap-1 mb-1">
-                        <Package size={14} />
-                        <span className="text-xs font-medium">Orders</span>
-                    </div>
-                    <p className="text-lg font-semibold text-white">{customer.ordersCount}</p>
-                </div>
-                <div className="mobile-panel p-3">
-                    <div className="flex items-center gap-1 text-slate-400 mb-1">
-                        <ShoppingBag size={14} />
-                        <span className="text-xs font-medium">AOV</span>
-                    </div>
-                    <p className="text-lg font-semibold text-white">{formatAccountCurrency(avgOrder)}</p>
-                </div>
-            </div>
+            <MetricStrip label="Customer totals">
+                <Metric label="Total" value={formatAccountCurrency(customer.totalSpent)} />
+                <Metric label="Orders" value={customer.ordersCount} />
+                <Metric label="AOV" value={formatAccountCurrency(avgOrder)} />
+            </MetricStrip>
 
             <div className="mobile-panel overflow-hidden">
                 <h2 className="font-semibold text-white p-4 border-b border-white/5">Inbox Emails ({inboxConversations.length})</h2>

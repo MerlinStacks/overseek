@@ -36,13 +36,13 @@ function VideoPreview({ value }: { value: ProductVideoItem }) {
     if (source.kind === 'iframe') {
         return <iframe src={source.src} title="Product video" allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen className="aspect-video w-full rounded-lg bg-black" />;
     }
-    return <a href={source.src} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 rounded-lg bg-slate-100 p-12 text-blue-700">Open video on provider <ExternalLink size={18} /></a>;
+    return <a href={source.src} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 rounded-lg bg-slate-100 p-12 text-[var(--brand-text)]">Open video on provider <ExternalLink size={18} /></a>;
 }
 
 function PreviewModal({ value, onClose }: { value: ProductVideoItem; onClose: () => void }) {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4" onClick={onClose}>
-            <div className="w-full max-w-4xl rounded-xl bg-white p-4 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="w-full max-w-4xl rounded-xl bg-white p-4 shadow-lg" onClick={(event) => event.stopPropagation()}>
                 <VideoPreview value={value} />
                 <button type="button" onClick={onClose} className="mt-3 w-full rounded-lg border border-slate-300 py-2 text-sm font-medium hover:bg-slate-50">Close</button>
             </div>
@@ -66,7 +66,7 @@ function VideoFields({ value, disabled, onChange }: { value: ProductVideoItem; d
 function UploadButton({ disabled, onUpload }: { disabled?: boolean; onUpload: (file: File) => Promise<void> }) {
     const [uploading, setUploading] = useState(false);
     return (
-        <label className={`inline-flex items-center gap-2 rounded-lg border border-blue-200 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 ${disabled || uploading ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`}>
+        <label className={`inline-flex items-center gap-2 rounded-lg border border-[var(--brand-border)] px-3 py-2 text-sm font-medium text-[var(--brand-text)] hover:bg-[var(--brand-subtle)] ${disabled || uploading ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`}>
             {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} Upload video
             <input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,.mp4,.webm,.ogg,.mov" disabled={disabled || uploading} className="hidden" onChange={async (event) => {
                 const file = event.target.files?.[0];
@@ -159,16 +159,16 @@ export function ProductVideoTile({ productId }: { productId: number }) {
     return (
         <>
             <div className="group relative aspect-square overflow-hidden rounded-lg border-2 border-dashed border-slate-300 bg-slate-50">
-                {value.video_url ? <VideoArtwork value={value} /> : <button type="button" onClick={openEditor} className="flex h-full w-full flex-col items-center justify-center text-blue-600 hover:bg-blue-50"><Video size={28} /><span className="mt-2 text-xs">Add video</span></button>}
+                {value.video_url ? <VideoArtwork value={value} /> : <button type="button" onClick={openEditor} className="flex h-full w-full flex-col items-center justify-center text-[var(--brand-text)] hover:bg-[var(--brand-subtle)]"><Video size={28} /><span className="mt-2 text-xs">Add video</span></button>}
                 {value.video_url && <>
-                    <button type="button" onClick={() => setPreviewing(true)} className="absolute inset-0 flex items-center justify-center bg-black/15 transition hover:bg-black/30"><span className="rounded-full bg-white/95 p-3 text-blue-700 shadow"><Play size={20} fill="currentColor" /></span></button>
-                    <span className="absolute left-2 top-2 rounded-full bg-purple-600 px-2 py-1 text-[10px] font-semibold uppercase text-white">Video</span>
-                    <button type="button" onClick={openEditor} className="absolute right-2 top-2 rounded-full bg-white/95 p-1.5 text-slate-700 opacity-0 shadow transition group-hover:opacity-100"><Pencil size={14} /></button>
+                    <button type="button" onClick={() => setPreviewing(true)} className="absolute inset-0 flex items-center justify-center bg-black/15 transition hover:bg-black/30"><span className="rounded-full bg-white p-3 text-[var(--brand-text)] shadow"><Play size={20} fill="currentColor" /></span></button>
+                    <span className="absolute left-2 top-2 rounded-full bg-[var(--primary-color)] px-2 py-1 text-[10px] font-semibold uppercase text-[var(--primary-foreground)]">Video</span>
+                    <button type="button" onClick={openEditor} className="absolute right-2 top-2 rounded-full bg-white p-1.5 text-slate-700 opacity-0 shadow transition group-hover:opacity-100"><Pencil size={14} /></button>
                 </>}
             </div>
 
             {editing && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setEditing(false)}>
-                <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+                <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-lg" onClick={(event) => event.stopPropagation()}>
                     <h3 className="mb-1 flex items-center gap-2 text-lg font-semibold"><Video size={20} /> Product video</h3>
                     <p className="mb-5 text-sm text-slate-500">This video appears with the product photos and is used by product feeds.</p>
                     <VideoFields value={draft} disabled={!state.gallery.plugin_active} onChange={setDraft} />
@@ -182,7 +182,7 @@ export function ProductVideoTile({ productId }: { productId: number }) {
                             }} />
                             {draft.video_url && <button type="button" onClick={() => setDraft(EMPTY_VIDEO)} className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600"><Trash2 size={16} /> Remove</button>}
                         </div>
-                        <div className="flex gap-2"><button type="button" onClick={() => setEditing(false)} className="rounded-lg border px-4 py-2 text-sm">Cancel</button><button type="button" onClick={save} disabled={saving || !state.gallery.plugin_active} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save</button></div>
+                        <div className="flex gap-2"><button type="button" onClick={() => setEditing(false)} className="rounded-lg border px-4 py-2 text-sm">Cancel</button><button type="button" onClick={save} disabled={saving || !state.gallery.plugin_active} className="inline-flex items-center gap-2 rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] disabled:opacity-50">{saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save</button></div>
                     </div>
                 </div>
             </div>}
@@ -225,15 +225,15 @@ export function VariantVideoEditor({ productId, variationId }: { productId: numb
     const effectiveValue = inheritMain ? state.gallery.product_video : draft;
 
     return (
-        <div className="rounded-lg border border-purple-100 bg-purple-50/30 p-4">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h4 className="flex items-center gap-2 text-sm font-semibold text-slate-800"><Video size={15} className="text-purple-600" /> Variation video</h4><p className="text-[11px] text-slate-500">Shown for this variation in the WooCommerce gallery.</p></div><label className="flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={inheritMain} onChange={(event) => setInheritMain(event.target.checked)} /> Use main video for all variations</label></div>
+        <div className="rounded-lg border border-[var(--brand-border)] bg-[var(--brand-subtle)] p-4">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h4 className="flex items-center gap-2 text-sm font-semibold text-slate-800"><Video size={15} className="text-[var(--brand-text)]" /> Variation video</h4><p className="text-[11px] text-slate-500">Shown for this variation in the WooCommerce gallery.</p></div><label className="flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={inheritMain} onChange={(event) => setInheritMain(event.target.checked)} /> Use main video for all variations</label></div>
             <VideoFields value={effectiveValue} disabled={inheritMain || !state.gallery.plugin_active} onChange={setDraft} />
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex gap-2"><UploadButton disabled={inheritMain || !state.gallery.plugin_active} onUpload={async (file) => {
                     const video_url = await state.upload(file);
                     setDraft((current) => ({ ...current, video_url }));
                 }} />{effectiveValue.video_url && <button type="button" onClick={() => setPreviewing(true)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><Play size={16} /> Preview</button>}{draft.video_url && !inheritMain && <button type="button" onClick={() => setDraft(EMPTY_VIDEO)} className="rounded-lg border border-red-200 p-2 text-red-600" title="Remove video"><Trash2 size={16} /></button>}</div>
-                <button type="button" onClick={save} disabled={saving || !state.gallery.plugin_active} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save video</button>
+                <button type="button" onClick={save} disabled={saving || !state.gallery.plugin_active} className="inline-flex items-center gap-2 rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] disabled:opacity-50">{saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save video</button>
             </div>
             {previewing && effectiveValue.video_url && <PreviewModal value={effectiveValue} onClose={() => setPreviewing(false)} />}
         </div>

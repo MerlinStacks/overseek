@@ -38,7 +38,7 @@ export function Skeleton({
         <div
             aria-hidden="true"
             className={cn(
-                "animate-pulse motion-reduce:animate-none bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 dark:from-slate-700 dark:via-slate-600 dark:to-slate-700 bg-[length:200%_100%]",
+                "animate-pulse motion-reduce:animate-none bg-slate-200 dark:bg-slate-700",
                 roundedClasses[rounded],
                 className
             )}
@@ -161,14 +161,26 @@ export function TableSkeleton({
     );
 }
 
+/** Matches the compact summary height to avoid a tall-card loading layout jump. */
+export function MetricStripSkeleton({ metrics = 4, className }: { metrics?: number; className?: string }) {
+    return <div aria-hidden="true" className={cn('metric-strip', className)}>
+        {Array.from({ length: count(metrics) }).map((_, index) => <div key={index} className="metric-strip-item">
+            <Skeleton className="h-3 w-24 max-w-full" />
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <Skeleton className="h-5 w-12" />
+                <Skeleton className="h-3 w-20 max-w-full" />
+            </div>
+        </div>)}
+    </div>;
+}
+
 /**
  * CardSkeleton - Dashboard card loading state
  */
 export function CardSkeleton({ className }: { className?: string }) {
     return (
         <div aria-hidden="true" className={cn(
-            "bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/80 dark:border-slate-700/50 p-6 animate-pulse motion-reduce:animate-none",
-            "shadow-[0_1px_3px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)]",
+            "bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6 animate-pulse motion-reduce:animate-none",
             className
         )}>
             <div className="flex items-center justify-between mb-4">

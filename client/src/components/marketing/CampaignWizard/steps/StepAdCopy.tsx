@@ -43,7 +43,7 @@ export function StepAdCopy({ draft, setDraft }: WizardStepProps) {
     const inputClass = 'block w-full p-2 border rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100';
     return <section aria-label="Campaign ad copy" className="space-y-6 text-slate-900 dark:text-slate-100">
         <h3 className="text-2xl font-bold">Review Ad Copy</h3><p>Write your ad copy manually, or insert starter templates based on the selected product name. Templates are not AI-generated and make no shipping, discount or quality claims.</p>
-        <button type="button" onClick={insertTemplate} className="px-4 py-2 rounded-lg bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">Insert starter templates</button>
+        <button type="button" onClick={insertTemplate} className="px-4 py-2 rounded-lg bg-[var(--brand-subtle)] text-[var(--brand-text)]">Insert starter templates</button>
         {notice && <p role="status">{notice}</p>}
         <section aria-label="Ad preview" className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 space-y-2">
             <p className="text-xs">Ad preview · {destination ? `${destination.host}${destination.pathname}${destination.search}` : 'Enter a valid destination URL'}</p>

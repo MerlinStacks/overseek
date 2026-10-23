@@ -243,11 +243,11 @@ export function ForecastChart({ dateRange, refreshKey = 0 }: ForecastProps) {
     if (isLoading) return <div className="h-64 flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
 
     return (
-        <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
-            <div className="flex justify-between items-center mb-6">
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-xs border border-gray-200 dark:border-slate-700">
+            <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
                 <div>
-                    <h3 className="text-lg font-bold text-gray-900">Sales Forecast</h3>
-                    <p className="text-sm text-gray-500">Predicted sales for the next 30 days based on recent trends</p>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100">Sales Forecast</h3>
+                    <p className="text-sm text-gray-500 dark:text-slate-400">Predicted sales for the next 30 days based on recent trends</p>
                     {metadata && (
                         <p className="mt-1 text-xs text-gray-400">
                             {methodLabel}
@@ -282,15 +282,15 @@ export function ForecastChart({ dateRange, refreshKey = 0 }: ForecastProps) {
                 <div className="flex flex-wrap justify-center mt-4 gap-x-6 gap-y-2 text-sm">
                     <div className="flex items-center gap-2">
                         <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                        <span className="text-gray-600">Historical Sales</span>
+                        <span className="text-gray-600 dark:text-slate-300">Historical Sales</span>
                     </div>
                     <div className="flex items-center gap-2">
                         <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-                        <span className="text-gray-600">Forecast (Projected)</span>
+                        <span className="text-gray-600 dark:text-slate-300">Forecast (Projected)</span>
                     </div>
                     <div className="flex items-center gap-2">
                         <div className="w-3 h-3 bg-purple-200 rounded-full"></div>
-                        <span className="text-gray-600">Likely Range</span>
+                        <span className="text-gray-600 dark:text-slate-300">Likely Range</span>
                     </div>
                 </div>
             </div>

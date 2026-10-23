@@ -150,7 +150,7 @@ function GoldPriceMarginReport() {
     return (
         <div className="p-6 max-w-7xl mx-auto">
             {/* Header */}
-            <div className="mb-6">
+            <div className="mb-4">
                 <Link
                     to="/dashboard"
                     className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 mb-4"
@@ -194,7 +194,7 @@ function GoldPriceMarginReport() {
                         placeholder="Search this page by name, variant, or SKU..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+                        className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--brand-border)] focus:border-[var(--primary-color)]"
                     />
                 </div>
             </div>
@@ -220,7 +220,7 @@ function GoldPriceMarginReport() {
                     <button
                         type="button"
                         onClick={() => fetchReport(currentPage)}
-                        className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors"
+                        className="px-4 py-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] transition-colors"
                     >
                         Retry
                     </button>

@@ -137,14 +137,14 @@ function CompetitorContent() {
                             if (event.key !== 'Enter' || event.repeat || event.nativeEvent.isComposing) return;
                             event.preventDefault(); handleAdd();
                         }}
-                        className="min-w-0 flex-1 px-3 py-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/50"
+                        className="min-w-0 flex-1 px-3 py-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--focus-color)]"
                     />
                     <button
                         id="add-competitor-btn"
                         type="button"
                         onClick={handleAdd}
                         disabled={saving || addCompetitor.isPending || !newDomain.trim()}
-                        className="px-4 py-2 rounded-lg bg-sky-500/20 text-sky-400 text-sm font-medium hover:bg-sky-500/30 transition-colors disabled:opacity-50"
+                        className="px-4 py-2 rounded-lg bg-[var(--primary-color)] text-[var(--primary-foreground)] text-sm font-medium hover:bg-[var(--primary-hover)] focus-visible:outline-[var(--focus-color)] transition-colors disabled:opacity-50"
                     >
                         {addCompetitor.isPending ? 'Adding…' : 'Add'}
                     </button>
@@ -189,15 +189,15 @@ function CompetitorContent() {
 
             {/* ── View Tabs ── */}
             {competitors.length > 0 && (
-                <div className="flex gap-1 bg-white/5 rounded-lg p-1">
+                <div className="flex gap-1 bg-slate-100 dark:bg-slate-900 rounded-lg p-1">
                     {(['positions', 'movement', 'headtohead'] as const).map(view => (
                         <button
                             type="button" aria-pressed={activeView === view}
                             key={view}
                             onClick={() => setActiveView(view)}
-                            className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeView === view
-                                ? 'bg-sky-500/20 text-sky-400'
-                                : 'text-slate-400 hover:text-white hover:bg-white/5'
+                            className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors focus-visible:outline-[var(--focus-color)] ${activeView === view
+                                ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)]'
+                                : 'text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800'
                                 }`}
                         >
                             {view === 'positions' && '📊 Positions'}
@@ -253,8 +253,8 @@ function CompetitorCard({
     return (
         <div
             className={`relative p-4 rounded-xl border border-slate-200 dark:border-slate-700 transition-all ${isSelected
-                ? 'border-sky-500/50 bg-sky-500/10 shadow-lg shadow-sky-500/5'
-                : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/[0.07]'
+                ? 'border-[var(--brand-border)] bg-[var(--brand-subtle)]'
+                : 'bg-white dark:bg-slate-800 hover:border-[var(--brand-border)]'
                 }`}
         >
             <button
@@ -266,7 +266,7 @@ function CompetitorCard({
                 ✕
             </button>
 
-            <button type="button" disabled={disabled} aria-label={`Select competitor ${competitor.domain}`} aria-pressed={isSelected} onClick={onSelect} className="block w-full text-left rounded-lg focus-visible:outline-2 focus-visible:outline-sky-500">
+            <button type="button" disabled={disabled} aria-label={`Select competitor ${competitor.domain}`} aria-pressed={isSelected} onClick={onSelect} className="block w-full text-left rounded-lg focus-visible:outline-2 focus-visible:outline-[var(--focus-color)]">
             <span className="block text-sm font-semibold text-slate-900 dark:text-white truncate pr-6">{competitor.domain}</span>
 
             <span className="mt-3 grid grid-cols-2 gap-2 text-xs">

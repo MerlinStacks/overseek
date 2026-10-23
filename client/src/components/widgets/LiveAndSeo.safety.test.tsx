@@ -40,7 +40,7 @@ it('keeps the live widget layout bounded and its styled refresh action working',
     await waitFor(() => expect(refresh).toBeEnabled());
     fireEvent.click(refresh);
     await waitFor(() => expect(m.request).toHaveBeenCalledTimes(2));
-    expect(screen.getByRole('button', { name: 'View Real-time Report' })).toHaveClass('text-blue-600');
+    expect(screen.getByRole('button', { name: 'View Real-time Report' })).toHaveClass('text-[var(--brand-text)]');
 });
 it('impression-weights SEO position and labels neutral movement and the actual comparison', () => {
     m.queries = [{ query: 'one', clicks: 1, impressions: 1, position: 1 }, { query: 'two', clicks: 1, impressions: 99, position: 11 }];

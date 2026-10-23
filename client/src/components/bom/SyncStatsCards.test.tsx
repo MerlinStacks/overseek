@@ -12,6 +12,9 @@ describe('BOM sync summary', () => {
         expect(screen.getByRole('button', { name: /Needs Sync/ })).toHaveAttribute('aria-pressed', 'true');
         expect(screen.queryByRole('button', { name: /In Sync/ })).toBeNull();
         expect(screen.getByText('In Sync').parentElement).toHaveTextContent('7');
+        expect(screen.getByLabelText('BOM sync summary and filters')).toHaveClass('flex-wrap');
+        expect(screen.getByRole('button', { name: /Needs Sync/ })).toHaveClass('min-h-11');
+        for (const button of screen.getAllByRole('button')) expect(button).not.toHaveClass('p-4', 'rounded-xl');
         for (const button of screen.getAllByRole('button')) expect(button).toHaveAttribute('type', 'button');
     });
 });

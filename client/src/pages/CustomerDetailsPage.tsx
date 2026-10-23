@@ -5,6 +5,7 @@ import { formatCurrency, formatDateSafe, formatTimeSafe, formatDateTimeSafe, toV
 import { Mail, Calendar, Activity, Zap, Users, Send } from 'lucide-react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
+import { Metric, MetricStrip } from '../components/ui/MetricStrip';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { MergeCustomerModal } from '../components/customers/MergeCustomerModal';
@@ -162,11 +163,11 @@ function CustomerDetailsSkeleton() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="metric-strip" aria-hidden="true">
                 {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="bg-white p-6 rounded-xl border border-gray-200 space-y-3">
+                    <div key={i} className="metric-strip-item space-y-2">
                         <div className="h-4 w-24 rounded bg-gray-200" />
-                        <div className="h-8 w-28 rounded bg-gray-200" />
+                        <div className="h-6 w-28 rounded bg-gray-200" />
                     </div>
                 ))}
             </div>
@@ -425,7 +426,7 @@ export function CustomerDetailsPage() {
             <p className="mt-2 text-sm text-gray-600">{notFound ? 'This contact may have been removed or belongs to another account.' : loadError}</p>
             <div className="mt-5 flex justify-center gap-3">
                 <Link to="/contacts" className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium">Back to contacts</Link>
-                {!notFound && <button onClick={() => void fetchCustomerDetails()} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Retry</button>}
+                {!notFound && <button onClick={() => void fetchCustomerDetails()} className="rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)]">Retry</button>}
             </div>
         </div>
     );
@@ -464,11 +465,11 @@ export function CustomerDetailsPage() {
                 ]} />
                 <div className="flex flex-col gap-4 lg:flex-row lg:justify-between lg:items-start">
                     <div className="flex items-start gap-3 sm:gap-4">
-                        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xl sm:text-2xl shrink-0">
+                        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-[var(--brand-subtle)] text-[var(--brand-text)] flex items-center justify-center font-bold text-xl sm:text-2xl shrink-0">
                             {initials}
                         </div>
                         <div className="min-w-0">
-                            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 break-words">{customer.firstName} {customer.lastName}</h1>
+                            <h1 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-slate-100 break-words">{customer.firstName} {customer.lastName}</h1>
                             <span className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadge.className}`}>
                                 {statusBadge.label}
                             </span>
@@ -483,7 +484,7 @@ export function CustomerDetailsPage() {
                                     {metadata.recordSource === 'search-fallback' ? ' • Showing search fallback data' : ''}
                                 </p>
                             )}
-                            {isRefreshing && <p role="status" className="mt-1 text-xs text-blue-600">Refreshing contact data…</p>}
+                            {isRefreshing && <p role="status" className="mt-1 text-xs text-[var(--brand-text)]">Refreshing contact data…</p>}
                             {loadError && data && <p role="alert" className="mt-1 text-xs text-amber-700">Refresh failed. Showing the last loaded data.</p>}
                             {profileFeedback && <p role="status" className="mt-1 text-xs text-emerald-700">{profileFeedback}</p>}
                         </div>
@@ -496,7 +497,7 @@ export function CustomerDetailsPage() {
                                 value={customer.contactStatus || 'UNVERIFIED'}
                                 onChange={(event) => updateContactStatus(event.target.value as (typeof CONTACT_STATUS_OPTIONS)[number]['value'])}
                                 disabled={isUpdatingStatus}
-                                className="w-full min-w-[180px] rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-800 focus:border-blue-500 focus:outline-none sm:w-auto"
+                                className="w-full min-w-[180px] rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-800 focus:border-[var(--primary-color)] focus:outline-none sm:w-auto"
                             >
                                 {CONTACT_STATUS_OPTIONS.map((option) => (
                                     <option key={option.value} value={option.value}>{option.label}</option>
@@ -520,25 +521,12 @@ export function CustomerDetailsPage() {
                 </div>
             </div>
 
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
-                    <p className="text-sm font-medium text-gray-500">Total Spent</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(Number(customer.totalSpent))}</p>
-                </div>
-                <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
-                    <p className="text-sm font-medium text-gray-500">Orders</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">{customer.ordersCount}</p>
-                </div>
-                <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
-                    <p className="text-sm font-medium text-gray-500">Average Order</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(customer.ordersCount > 0 ? Number(customer.totalSpent) / customer.ordersCount : 0)}</p>
-                </div>
-                <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
-                    <p className="text-sm font-medium text-gray-500">Last Active</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">{activity[0] ? formatDateSafe(activity[0].lastActiveAt) : 'N/A'}</p>
-                </div>
-            </div>
+            <MetricStrip label="Contact summary">
+                <Metric label="Total Spent" value={fmt(Number(customer.totalSpent))} />
+                <Metric label="Orders" value={customer.ordersCount} />
+                <Metric label="Average Order" value={fmt(customer.ordersCount > 0 ? Number(customer.totalSpent) / customer.ordersCount : 0)} />
+                <Metric label="Last Active" value={activity[0] ? formatDateSafe(activity[0].lastActiveAt) : 'N/A'} />
+            </MetricStrip>
 
             {/* Content Tabs */}
             <div className="bg-white rounded-xl shadow-xs border border-gray-200 min-h-[500px]">
@@ -563,7 +551,7 @@ export function CustomerDetailsPage() {
                                 setActiveTab(nextTab);
                                 window.requestAnimationFrame(() => document.getElementById(`contact-tab-${nextTab}`)?.focus());
                             }}
-                            className={`py-3 sm:py-4 px-3 sm:px-0 text-sm font-medium border-b-2 transition-colors capitalize whitespace-nowrap ${activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                            className={`py-3 sm:py-4 px-3 sm:px-0 text-sm font-medium border-b-2 transition-colors capitalize whitespace-nowrap ${activeTab === tab ? 'border-[var(--primary-color)] text-[var(--brand-text)]' : 'border-transparent text-gray-500 hover:text-gray-700'
                                 }`}
                         >
                             {tab}
@@ -641,7 +629,7 @@ export function CustomerDetailsPage() {
                             <tbody className="divide-y divide-gray-50">
                                 {orders.map(order => (
                                     <tr key={order.id} className="hover:bg-gray-50">
-                                        <td className="py-4 font-medium"><Link to={`/orders/${order.id}`} className="text-blue-600 hover:underline">#{order.number}</Link></td>
+                                        <td className="py-4 font-medium"><Link to={`/orders/${order.id}`} className="text-[var(--brand-text)] hover:underline">#{order.number}</Link></td>
                                         <td className="py-4 text-gray-600">{formatDateSafe(order.dateCreated, '-')}</td>
                                         <td className="py-4">
                                             <span className={`px-2 py-1 rounded text-xs font-semibold uppercase ${order.status === 'completed' ? 'bg-green-100 text-green-700' :
@@ -664,7 +652,7 @@ export function CustomerDetailsPage() {
 
                     {activeTab === 'automations' && (
                         <div>
-                            <div className="bg-blue-50 text-blue-700 p-4 rounded-lg mb-6 text-sm flex gap-2">
+                            <div className="bg-[var(--brand-subtle)] text-[var(--brand-text)] p-4 rounded-lg mb-6 text-sm flex gap-2">
                                 <Activity size={18} />
                                 <span>Showing <strong>Marketing Automation</strong> history. Broadcast history is not currently linked to individual profiles.</span>
                             </div>
@@ -716,7 +704,7 @@ export function CustomerDetailsPage() {
                                                                             onClick={() => resendAutomationEmail(email.id)}
                                                                             disabled={!email.canResend || resendingEmailId === email.id}
                                                                             title={email.canResend ? 'Resend this email' : 'Stored email body is no longer available'}
-                                                                            className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                            className="inline-flex items-center gap-1 rounded-md border border-[var(--brand-border)] bg-[var(--brand-subtle)] px-2 py-1 font-semibold text-[var(--brand-text)] transition-colors hover:bg-[var(--brand-subtle)] disabled:cursor-not-allowed disabled:opacity-60"
                                                                         >
                                                                             <Send size={12} />
                                                                             {resendingEmailId === email.id ? 'Resending...' : 'Resend'}
@@ -751,14 +739,14 @@ export function CustomerDetailsPage() {
 
                     {activeTab === 'activity' && (
                         <div>
-                            <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                            <div className="mb-4 rounded-lg border border-[var(--brand-border)] bg-[var(--brand-subtle)] px-4 py-3 text-sm text-[var(--brand-text)]">
                                 Showing {activity.length} recent {activity.length === 1 ? 'session' : 'sessions'} and up to 5 events per session.
                             </div>
                             <div className="space-y-6">
                                 {activity.map(session => (
                                     <div key={session.id} className="flex gap-4">
                                         <div className="flex flex-col items-center">
-                                            <div className="w-2 h-2 rounded-full bg-blue-400 mt-2"></div>
+                                            <div className="w-2 h-2 rounded-full bg-[var(--primary-color)] mt-2"></div>
                                             <div className="w-0.5 h-full bg-gray-100 my-1"></div>
                                         </div>
                                         <div className="flex-1 pb-4">

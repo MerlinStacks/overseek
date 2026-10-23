@@ -93,13 +93,13 @@ export function EmailPreviewModal({ htmlContent, subject, previewText, category 
     };
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-xs">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 ">
+            <div className="bg-white rounded-xl shadow-sm w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-blue-100">
-                            <Eye size={18} className="text-blue-600" />
+                        <div className="p-2 rounded-lg bg-[var(--brand-subtle)]">
+                            <Eye size={18} className="text-[var(--brand-text)]" />
                         </div>
                         <div>
                             <h3 className="font-semibold text-gray-900">Preview & Test</h3>
@@ -119,7 +119,7 @@ export function EmailPreviewModal({ htmlContent, subject, previewText, category 
                     <button
                         onClick={() => setActiveTab('preview')}
                         className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'preview'
-                            ? 'bg-blue-100 text-blue-700'
+                            ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)]'
                             : 'text-gray-600 hover:bg-gray-100'
                             }`}
                     >
@@ -129,7 +129,7 @@ export function EmailPreviewModal({ htmlContent, subject, previewText, category 
                     <button
                         onClick={() => setActiveTab('test')}
                         className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'test'
-                            ? 'bg-blue-100 text-blue-700'
+                            ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)]'
                             : 'text-gray-600 hover:bg-gray-100'
                             }`}
                     >
@@ -162,8 +162,8 @@ export function EmailPreviewModal({ htmlContent, subject, previewText, category 
                     ) : (
                         <div className="max-w-md mx-auto py-8">
                             <div className="text-center mb-6">
-                                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <Send size={24} className="text-blue-600" />
+                                <div className="w-16 h-16 bg-[var(--brand-subtle)] rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <Send size={24} className="text-[var(--brand-text)]" />
                                 </div>
                                 <h4 className="text-lg font-medium text-gray-900">Send a Test Email</h4>
                                 <p className="text-sm text-gray-500 mt-1">
@@ -181,7 +181,7 @@ export function EmailPreviewModal({ htmlContent, subject, previewText, category 
                                         value={testEmail}
                                         onChange={(e) => setTestEmail(e.target.value)}
                                         placeholder="your@email.com"
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)]"
                                     />
                                 </div>
 
@@ -201,7 +201,7 @@ export function EmailPreviewModal({ htmlContent, subject, previewText, category 
                                 <button
                                     onClick={handleSendTest}
                                     disabled={sending || !testEmail || !preview}
-                                    className="w-full flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:opacity-50"
+                                className="w-full flex items-center justify-center gap-2 px-5 py-3 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] font-medium transition-colors disabled:opacity-50"
                                 >
                                     {sending ? (
                                         <Loader2 size={18} className="animate-spin" />

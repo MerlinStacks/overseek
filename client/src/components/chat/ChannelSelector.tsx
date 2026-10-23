@@ -78,9 +78,9 @@ export function ChannelSelector({
                 onClick={() => setIsOpen(!isOpen)}
                 className={cn(
                     "flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-sm",
-                    "hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500",
+                        "hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[var(--focus-color)]",
                     disabled && "opacity-50 cursor-not-allowed",
-                    isOpen && "bg-gray-50 ring-2 ring-blue-500"
+                        isOpen && "bg-gray-50 ring-2 ring-[var(--focus-color)]"
                 )}
             >
                 <span className="text-gray-400 text-xs uppercase font-medium">To</span>
@@ -101,7 +101,7 @@ export function ChannelSelector({
 
             {/* Dropdown Menu */}
             {isOpen && (
-                <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1">
+                <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-sm z-50 py-1">
                     <div className="px-3 py-2 border-b border-gray-100">
                         <span className="text-xs font-medium text-gray-500 uppercase">
                             Reply via
@@ -126,12 +126,12 @@ export function ChannelSelector({
                                 className={cn(
                                     "w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors",
                                     isUnavailable ? "opacity-60 cursor-not-allowed" : "hover:bg-gray-50",
-                                    isSelected && "bg-blue-50"
+                                    isSelected && "bg-[var(--brand-subtle)]"
                                 )}
                             >
                                 <div className={cn(
                                     "w-8 h-8 rounded-full flex items-center justify-center",
-                                    isSelected ? "bg-blue-100" : "bg-gray-100"
+                                    isSelected ? "bg-[var(--brand-subtle)]" : "bg-gray-100"
                                 )}>
                                     <OptIcon size={16} className={optConfig.color} />
                                 </div>
@@ -150,7 +150,7 @@ export function ChannelSelector({
                                     )}
                                 </div>
                                 {isSelected && (
-                                    <div className="w-2 h-2 rounded-full bg-blue-600" />
+                                    <div className="w-2 h-2 rounded-full bg-[var(--primary-color)]" />
                                 )}
                             </button>
                         );

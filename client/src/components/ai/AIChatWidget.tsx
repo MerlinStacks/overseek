@@ -138,20 +138,20 @@ function AccountAIChat() {
                 <button
                     type="button" aria-label="Open store analyst" aria-expanded="false"
                     onClick={() => setIsOpen(true)}
-                    className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-xl flex items-center justify-center transition-all hover:scale-105 z-50 group"
+                    className="fixed bottom-6 right-6 w-12 h-12 bg-[var(--primary-color)] hover:bg-[var(--primary-hover)] text-[var(--primary-foreground)] rounded-xl shadow-sm flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-color)] z-50"
                 >
-                    <Sparkles size={24} className="group-hover:animate-pulse" />
+                    <Sparkles size={22} />
                 </button>
             )}
 
-            {/* Chat Window - Glassmorphism */}
+            {/* Analyst conversation */}
             {isOpen && (
-                <div role="dialog" aria-label="Store analyst" onKeyDown={event => { if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.stopPropagation(); setIsOpen(false); } }} className="fixed bottom-3 right-3 sm:bottom-6 sm:right-6 w-[min(400px,calc(100vw-1.5rem))] h-[min(650px,calc(100dvh-1.5rem))] flex flex-col z-50 overflow-hidden animate-in motion-reduce:animate-none slide-in-from-bottom-5 fade-in duration-300 font-sans rounded-3xl shadow-2xl border border-white/20 backdrop-blur-xl bg-white/95 dark:bg-slate-900/95">
+                <div role="dialog" aria-label="Store analyst" onKeyDown={event => { if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.stopPropagation(); setIsOpen(false); } }} className="fixed bottom-3 right-3 sm:bottom-6 sm:right-6 w-[min(400px,calc(100vw-1.5rem))] h-[min(650px,calc(100dvh-1.5rem))] flex flex-col z-50 overflow-hidden font-sans rounded-xl shadow-sm border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
 
                     {/* Header */}
-                    <div className="bg-white/40 backdrop-blur-md p-4 flex justify-between items-center border-b border-white/20">
+                    <div className="bg-white dark:bg-slate-900 p-4 flex justify-between items-center border-b border-slate-200 dark:border-slate-700">
                         <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-linear-to-br from-blue-500 to-violet-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
+                            <div className="w-8 h-8 rounded-full bg-[var(--primary-color)] flex items-center justify-center text-[var(--primary-foreground)] shadow-sm ">
                                 <Bot size={18} />
                             </div>
                             <div>
@@ -169,8 +169,8 @@ function AccountAIChat() {
                         {messages.map(msg => (
                             <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`max-w-[85%] px-5 py-3 shadow-sm ${msg.role === 'user'
-                                    ? 'bg-linear-to-br from-blue-600 to-indigo-600 text-white rounded-2xl rounded-tr-sm'
-                                    : 'bg-white/60 backdrop-blur-sm border border-white/40 text-slate-800 rounded-2xl rounded-tl-sm'
+                                    ? 'bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-xl rounded-tr-sm'
+                                    : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl rounded-tl-sm'
                                     }`}>
 
                                     <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert' : 'prose-slate'}`}>
@@ -200,8 +200,8 @@ function AccountAIChat() {
 
                         {isThinking && (
                             <div role="status" className="flex justify-start">
-                                <div className="bg-white border border-gray-100 rounded-2xl rounded-bl-none px-4 py-3 shadow-xs flex items-center gap-2">
-                                    <Loader2 size={16} className="animate-spin text-blue-600" />
+                                <div className="bg-white border border-gray-100 rounded-xl rounded-bl-none px-4 py-3 shadow-xs flex items-center gap-2">
+                                    <Loader2 size={16} className="animate-spin text-[var(--brand-text)]" />
                                     <span className="text-xs text-slate-500 font-medium">Analyzing data...</span>
                                 </div>
                             </div>
@@ -217,7 +217,7 @@ function AccountAIChat() {
                                     type="button"
                                     key={idx}
                                     onClick={() => handleSend(undefined, action.query)}
-                                    className="flex items-center gap-2 whitespace-nowrap px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 transition-colors shadow-xs"
+                                    className="flex items-center gap-2 whitespace-nowrap px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-[var(--brand-subtle)] hover:border-[var(--brand-border)] hover:text-[var(--brand-text)] transition-colors shadow-xs"
                                 >
                                     {action.icon}
                                     {action.label}
@@ -227,14 +227,14 @@ function AccountAIChat() {
                     )}
 
                     {/* Input */}
-                    <div className="p-3 bg-white/40 backdrop-blur-md border-t border-white/20">
+                    <div className="p-3 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700">
                         {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300 mb-2">{error}</p>}
                         <form onSubmit={(e) => handleSend(e)} className="flex gap-2">
                             <input
                                 aria-label="Question for store analyst" maxLength={10000}
                                 type="text"
                                 placeholder="Ask about sales, visitors, forecasts..."
-                                className="flex-1 px-4 py-3 bg-white/60 backdrop-blur-xl rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500/50 focus:bg-white/80 transition-all text-slate-800 placeholder:text-slate-500 shadow-inner border border-white/40"
+                                className="min-w-0 flex-1 px-3 py-2 bg-white dark:bg-slate-800 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] text-slate-800 dark:text-slate-100 placeholder:text-slate-500 border border-slate-300 dark:border-slate-600"
                                 value={input}
                                 onChange={e => setInput(e.target.value)}
                                 disabled={isThinking}
@@ -243,7 +243,7 @@ function AccountAIChat() {
                                 aria-label="Send question"
                                 type="submit"
                                 disabled={!input.trim() || isThinking}
-                                className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg active:scale-95"
+                                className="w-10 h-10 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg flex items-center justify-center hover:bg-[var(--primary-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-color)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                                 <Send size={18} />
                             </button>

@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { Metric, MetricStrip } from '../ui/MetricStrip';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useScopedRequest } from '../../hooks/useScopedRequest';
@@ -39,10 +40,10 @@ function AccountIntelligence({ accountId, token }: { accountId: string; token: s
     const cannibalized = rows?.overlap.filter(item => item.cannibalizationScore >= 50) ?? [];
     return <div className="space-y-4 text-slate-900 dark:text-slate-100">
         <h2 className="text-lg font-semibold">Search Intelligence</h2>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">{[
+        <MetricStrip label="Search intelligence summary">{[
             ['Cannibalized Keywords', data.cannibalizationCount], ['Est. Wasted Spend', reportMoney(data.estimatedWastedSpend, data.currency ?? undefined)],
             ['Organic Opportunities', data.organicOnlyCount], ['Neg Keyword Candidates', data.negativeCandidates]
-        ].map(([label, value]) => <div key={label} className="p-4 bg-slate-100 dark:bg-slate-800 rounded-xl"><p className="text-xs text-slate-600 dark:text-slate-400">{label}</p><p className="text-xl font-semibold">{value}</p></div>)}</div>
+        ].map(([label, value]) => <Metric key={label} label={label} value={value} />)}</MetricStrip>
         <p className="text-xs text-slate-500 dark:text-slate-400">Estimates use the reporting window and ad currency, without currency conversion. Scores are heuristic indicators, not statistical confidence.</p>
         {correlation.loading && <p role="status">Loading correlation details...</p>}
         {correlation.error && <p role="alert">Could not load correlation details. <button type="button" onClick={correlation.retry}>Retry correlation</button></p>}

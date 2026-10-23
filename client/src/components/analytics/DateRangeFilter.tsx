@@ -25,8 +25,8 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({ value, onChang
                     type="button"
                     aria-pressed={value === range.value}
                     onClick={() => onChange(range.value)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${value === range.value
-                        ? 'bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-xs'
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors focus-visible:outline-[var(--focus-color)] ${value === range.value
+                        ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)]'
                         : 'text-gray-500 dark:text-slate-300 hover:text-gray-700 dark:hover:text-white'
                         }`}
                 >

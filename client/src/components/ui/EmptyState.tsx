@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { cn } from '../../utils/cn';
+import { workspaceStyles } from './workspaceStyles';
 
 interface EmptyStateProps {
     /** Icon component to display */
@@ -45,8 +46,7 @@ export function EmptyState({
             "flex flex-col items-center justify-center py-16 px-8 text-center",
             className
         )}>
-            {/* Icon with gradient background */}
-            <div className="mb-5 p-4 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200/50 dark:from-slate-700 dark:to-slate-800 text-slate-400 dark:text-slate-500">
+            <div className="mb-5 p-3 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
                 {icon}
             </div>
 
@@ -62,12 +62,12 @@ export function EmptyState({
                 </p>
             )}
 
-            {/* Primary Action - Gradient Button */}
+            {/* Primary action */}
             {action && (
                 <button
                     type="button"
                     onClick={action.onClick}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-500 to-violet-500 hover:from-blue-600 hover:to-violet-600 text-white text-sm font-medium rounded-xl transition-all duration-200 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/35 hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:transform-none"
+                    className={workspaceStyles.primary}
                 >
                     {action.icon}
                     {action.label}
@@ -89,7 +89,7 @@ export function EmptyState({
  */
 export function EmptyStateCard(props: EmptyStateProps) {
     return (
-        <div className="bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-[0_1px_3px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)]">
+        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
             <EmptyState {...props} />
         </div>
     );

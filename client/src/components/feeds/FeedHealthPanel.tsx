@@ -1,4 +1,5 @@
 import { useApiQuery } from '../../hooks/useApiQuery';
+import { Metric, MetricStrip } from '../ui/MetricStrip';
 import { useState } from 'react';
 
 interface ExportEvent { at: string; status: 'generated' | 'failed'; message: string }
@@ -23,14 +24,11 @@ const dateLabel = (value?: string | null) => value ? new Date(value).toLocaleStr
 export function FeedHealthResults({ report }: { report: FeedHealthReport }) {
     return (
         <div className="space-y-3 text-sm text-slate-700 dark:text-slate-200">
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <MetricStrip label="Feed validation summary">
                 {([['Included rows', report.included], ['Excluded rows', report.excluded], ['Validation errors', report.errors], ['Warnings', report.warnings]] as const).map(([label, value]) => (
-                    <div key={label} className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900/50">
-                        <div className="text-xs text-slate-500 dark:text-slate-400">{label}</div>
-                        <div className="text-xl font-semibold">{value.toLocaleString()}</div>
-                    </div>
+                    <Metric key={label} label={label} value={value.toLocaleString()} />
                 ))}
-            </div>
+            </MetricStrip>
             <p className="text-xs text-slate-500 dark:text-slate-400">
                 {report.scannedProducts.toLocaleString()} products scanned at {dateLabel(report.generatedAt)}. Counts apply to the selected variation mode, not your search. Checks are read-only and do not remove invalid items. Results are cached for up to 60 seconds.
             </p>
@@ -98,7 +96,7 @@ function ScopedFeedHealth({ accountId, channel, variationMode, headers }: { acco
                 <button type="button" disabled={isChecking || !ready} onClick={async () => {
                     setIsChecking(true);
                     try { await refetch(); } catch { /* The query's error state below is the acknowledgement failure. */ } finally { setIsChecking(false); }
-                }} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm text-white disabled:opacity-50">
+                }} className="rounded-lg bg-[var(--primary-color)] px-3 py-2 text-sm text-[var(--primary-foreground)] disabled:opacity-50">
                     {isChecking ? 'Checking...' : 'Check feed health'}
                 </button>
             </div>

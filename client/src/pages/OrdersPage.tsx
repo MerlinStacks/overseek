@@ -96,7 +96,7 @@ export function OrdersPage() {
     }, [token, currentAccount?.id, setOrderActionState, toast]);
 
     return (
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-4">
             <OrderPreviewModal
                 orderId={selectedOrderId}
                 isOpen={!!selectedOrderId}
@@ -112,11 +112,11 @@ export function OrdersPage() {
 
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                 <div>
-                    <h1 className="text-xl md:text-2xl font-bold text-gray-900">Orders</h1>
+                    <h1 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-slate-100">Orders</h1>
                     <span className="text-sm text-gray-500">Store: {currentAccount?.name}</span>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center w-full lg:w-auto">
+                <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 items-stretch sm:items-center w-full lg:w-auto">
                     {/* Picklist Toolbar */}
                     <div className="hidden md:flex items-center gap-2 bg-gray-50 p-1.5 rounded-lg border border-gray-200">
                         <select
@@ -131,7 +131,7 @@ export function OrdersPage() {
                         <button
                             onClick={handleGeneratePicklist}
                             disabled={isGeneratingPicklist}
-                            className="bg-yellow-400 text-yellow-900 border border-yellow-500 px-3 py-1.5 rounded-md text-sm font-medium hover:bg-yellow-500 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50"
+                            className="bg-[var(--primary-color)] text-[var(--primary-foreground)] px-3 py-1.5 rounded-md text-sm font-medium hover:bg-[var(--primary-hover)] transition-colors flex items-center gap-2 disabled:opacity-50"
                         >
                             {isGeneratingPicklist ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
                             Picklist
@@ -143,7 +143,7 @@ export function OrdersPage() {
                         <input
                             type="text"
                             placeholder="Search orders..."
-                            className="w-full sm:w-auto pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500"
+                            className="w-full sm:w-auto pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-hidden focus:ring-2 focus:ring-[var(--focus-color)]"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
@@ -159,7 +159,7 @@ export function OrdersPage() {
                                 <Tag size={16} />
                                 <span className="hidden sm:inline">Tags</span>
                                 {selectedTags.length > 0 && (
-                                    <span className="bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full">
+                                    <span className="bg-[var(--primary-color)] text-[var(--primary-foreground)] text-xs px-1.5 py-0.5 rounded-full">
                                         {selectedTags.length}
                                     </span>
                                 )}
@@ -169,7 +169,7 @@ export function OrdersPage() {
                                     <div className="p-2 border-b border-gray-100 flex justify-between items-center">
                                         <span className="text-xs font-semibold text-gray-500 uppercase">Filter by Tag</span>
                                         {selectedTags.length > 0 && (
-                                            <button onClick={() => setSelectedTags([])} className="text-xs text-blue-600 hover:underline">
+                                            <button onClick={() => setSelectedTags([])} className="text-xs text-[var(--brand-text)] hover:underline">
                                                 Clear all
                                             </button>
                                         )}
@@ -183,7 +183,7 @@ export function OrdersPage() {
                                                     if (e.target.checked) setSelectedTags([...selectedTags, tag]);
                                                     else setSelectedTags(selectedTags.filter(t => t !== tag));
                                                 }}
-                                                className="rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                className="rounded-sm border-gray-300 text-[var(--brand-text)] focus:ring-[var(--focus-color)]"
                                             />
                                             <span className="text-sm text-gray-700">{tag}</span>
                                         </label>
@@ -240,11 +240,11 @@ export function OrdersPage() {
                                     <tr key={order.id} className="hover:bg-gray-50 transition-colors">
                                         <td className="px-3 md:px-6 py-3 md:py-4 font-medium outline-hidden">
                                             <div className="flex items-center gap-2">
-                                                <button onClick={() => setSelectedOrderId(order.id)} className="p-1 hover:bg-blue-100 rounded text-gray-400 hover:text-blue-600 transition-colors" title="Quick preview">
+                                                <button onClick={() => setSelectedOrderId(order.id)} className="p-1 hover:bg-[var(--brand-subtle)] rounded text-gray-400 hover:text-[var(--brand-text)] transition-colors" title="Quick preview">
                                                     <Eye size={16} />
                                                 </button>
                                                 <FraudIcon orderId={order.id} />
-                                                <Link to={`/orders/${order.id}`} className="text-blue-600 hover:text-blue-800 hover:underline" onClick={(e) => e.stopPropagation()}>
+                                                <Link to={`/orders/${order.id}`} className="text-[var(--brand-text)] hover:text-[var(--brand-text)] hover:underline" onClick={(e) => e.stopPropagation()}>
                                                     #{order.id}
                                                 </Link>
                                             </div>
@@ -264,11 +264,11 @@ export function OrdersPage() {
                                         </td>
                                         <td className="px-3 md:px-6 py-3 md:py-4 text-sm text-gray-900">
                                             {order.customer_id && order.customer_id > 0 ? (
-                                                <Link to={`/customers/${order.customer_id}`} className="block hover:text-blue-600" onClick={(e) => e.stopPropagation()} title={order.billing.email}>
+                                                <Link to={`/customers/${order.customer_id}`} className="block hover:text-[var(--brand-text)]" onClick={(e) => e.stopPropagation()} title={order.billing.email}>
                                                     <div className="font-medium">{order.billing.first_name} {order.billing.last_name}</div>
                                                     <div className="text-gray-500 text-xs truncate max-w-[150px]">{order.billing.email}</div>
                                                     {order._customerMeta?.ordersCount !== undefined && (
-                                                        <div className="text-blue-600 text-xs font-medium">
+                                                        <div className="text-[var(--brand-text)] text-xs font-medium">
                                                             {order._customerMeta.ordersCount} order{order._customerMeta.ordersCount !== 1 ? 's' : ''} incl. this one
                                                         </div>
                                                     )}
@@ -278,7 +278,7 @@ export function OrdersPage() {
                                                     <div className="font-medium">{order.billing.first_name} {order.billing.last_name}</div>
                                                     <div className="text-gray-500 text-xs truncate max-w-[150px]">{order.billing.email}</div>
                                                     {order._customerMeta?.ordersCount !== undefined && (
-                                                        <div className="text-blue-600 text-xs font-medium">
+                                                        <div className="text-[var(--brand-text)] text-xs font-medium">
                                                             {order._customerMeta.ordersCount} order{order._customerMeta.ordersCount !== 1 ? 's' : ''} incl. this one
                                                         </div>
                                                     )}
@@ -313,7 +313,7 @@ export function OrdersPage() {
                                         <td className="px-3 md:px-6 py-3 md:py-4">
                                             {attributions[order.id] ? (
                                                 <span
-                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700 cursor-default"
+                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--brand-subtle)] text-[var(--brand-text)] cursor-default"
                                                     title={[
                                                         attributions[order.id]!.firstTouchSource && `First touch: ${attributions[order.id]!.firstTouchSource}`,
                                                         attributions[order.id]!.utmSource && `UTM Source: ${attributions[order.id]!.utmSource}`,

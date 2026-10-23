@@ -3,10 +3,7 @@ import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import {
     ShoppingCart,
-    MessageSquare,
-    Eye,
     ArrowRight,
-    DollarSign,
     Users
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -270,41 +267,26 @@ function MobileDashboardContent() {
             </div>}
             {hasPermission('view_finance') && <RevenueAnomalyBanner anomaly={anomaly} />}
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="mobile-metric-strip grid grid-cols-2 gap-x-3">
                 <button onClick={() => navigate('/m/orders')} className="mobile-metric">
-                    <div className="mb-3 flex items-center justify-between">
-                        <ShoppingCart size={18} className="mobile-brand-text" />
-                        {ordersTrend !== null && <span title="Compared with yesterday"><TrendBadge value={ordersTrend} /></span>}
-                    </div>
-                    <p className="text-3xl font-semibold tabular-nums tracking-tight text-white">{stats?.todayOrders ?? '—'}</p>
+                    <div className="flex flex-wrap items-baseline gap-2"><p className="text-xl font-semibold tabular-nums tracking-tight text-white">{stats?.todayOrders ?? '—'}</p>{ordersTrend !== null && <span title="Compared with yesterday"><TrendBadge value={ordersTrend} /></span>}</div>
                     <p className="text-xs font-medium text-slate-400">Orders today</p>
                 </button>
 
                 {hasPermission('view_finance') && (
                     <button onClick={() => navigate('/m/analytics')} className="mobile-metric">
-                        <div className="mb-3 flex items-center justify-between">
-                            <DollarSign size={18} className="mobile-brand-text" />
-                            {revenueTrend !== null && <span title="Compared with yesterday"><TrendBadge value={revenueTrend} /></span>}
-                        </div>
-                        <p className="break-all text-2xl font-semibold tabular-nums tracking-tight text-white">{stats?.todayRevenue !== undefined ? formatAccountCurrency(stats.todayRevenue) : '—'}</p>
+                        <div className="flex flex-wrap items-baseline gap-2"><p className="break-all text-xl font-semibold tabular-nums tracking-tight text-white">{stats?.todayRevenue !== undefined ? formatAccountCurrency(stats.todayRevenue) : '—'}</p>{revenueTrend !== null && <span title="Compared with yesterday"><TrendBadge value={revenueTrend} /></span>}</div>
                         <p className="text-xs font-medium text-slate-400">Revenue today</p>
                     </button>
                 )}
 
                 <button onClick={() => navigate('/m/inbox')} className="mobile-metric">
-                    <div className="mb-3 flex items-center justify-between">
-                        <MessageSquare size={18} className="mobile-brand-text" />
-                        {(stats?.pendingMessages || 0) > 0 && <span className="mobile-brand-soft rounded px-2 py-0.5 text-xs font-medium">New</span>}
-                    </div>
-                    <p className="text-3xl font-semibold tabular-nums tracking-tight text-white">{stats?.pendingMessages ?? '—'}</p>
+                    <div className="flex flex-wrap items-baseline gap-2"><p className="text-xl font-semibold tabular-nums tracking-tight text-white">{stats?.pendingMessages ?? '—'}</p>{(stats?.pendingMessages || 0) > 0 && <span className="mobile-brand-soft rounded px-2 py-0.5 text-xs font-medium">New</span>}</div>
                     <p className="text-xs font-medium text-slate-400">Unread messages</p>
                 </button>
 
                 <button onClick={() => navigate('/m/live-visitors')} className="mobile-metric">
-                    <div className="mb-3 flex items-center justify-between">
-                        <Eye size={18} className="mobile-brand-text" />
-                    </div>
-                    <p className="text-3xl font-semibold tabular-nums tracking-tight text-white">{liveVisitors?.accountId === accountId ? liveVisitors?.count ?? '—' : '—'}</p>
+                    <p className="text-xl font-semibold tabular-nums tracking-tight text-white">{liveVisitors?.accountId === accountId ? liveVisitors?.count ?? '—' : '—'}</p>
                     <p className="text-xs font-medium text-slate-400">Live visitors</p>
                     <p className="mt-1 text-[11px] text-slate-500">Active in the last 3 minutes</p>
                 </button>

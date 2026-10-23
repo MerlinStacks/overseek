@@ -144,7 +144,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
                 if (result === 'success' && refreshedToken) {
                     authRetried = true;
                     requestToken = refreshedToken;
-                    const retryHeaders = new Headers(config.headers);
+                    const retryHeaders: Headers = new Headers(config.headers);
                     retryHeaders.set('Authorization', `Bearer ${refreshedToken}`);
                     config.headers = retryHeaders;
                     attempt--;

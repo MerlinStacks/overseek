@@ -140,7 +140,7 @@ function OpenSchedulePicker({
             onClose={busy ? undefined : onClose}
             title={
                 <div className="flex items-center gap-2 text-white">
-                    <Clock className="w-5 h-5 text-indigo-400" />
+                    <Clock className="w-5 h-5 text-[var(--brand-text)]" />
                     <span>Schedule Message</span>
                 </div>
             }
@@ -162,7 +162,7 @@ function OpenSchedulePicker({
                                     'px-3 py-2 rounded-lg text-sm font-medium transition-all',
                                     'border',
                                     selectedPreset === preset.value && !useCustom
-                                        ? 'bg-indigo-600 border-indigo-500 text-white'
+                                        ? 'bg-[var(--primary-color)] border-[var(--primary-color)] text-[var(--primary-foreground)]'
                                         : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-gray-600'
                                 )}
                             >
@@ -184,7 +184,7 @@ function OpenSchedulePicker({
                     <label className="text-sm font-medium text-gray-400">Custom Time</label>
                     <div className="flex gap-2">
                         <div className="flex-1">
-                            <div className="flex items-center gap-2 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus-within:border-indigo-500">
+                            <div className="flex items-center gap-2 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus-within:border-[var(--primary-color)]">
                                 <Calendar className="w-4 h-4 text-gray-400" />
                                 <input
                                     aria-label="Scheduled date" disabled={busy}
@@ -200,7 +200,7 @@ function OpenSchedulePicker({
                             </div>
                         </div>
                         <div className="flex-1">
-                            <div className="flex items-center gap-2 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus-within:border-indigo-500">
+                            <div className="flex items-center gap-2 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus-within:border-[var(--primary-color)]">
                                 <Clock className="w-4 h-4 text-gray-400" />
                                 <input
                                     aria-label="Scheduled time" disabled={busy}
@@ -219,8 +219,8 @@ function OpenSchedulePicker({
 
                 {/* Selected Time Preview */}
                 {scheduledTime && (
-                    <div className="p-3 bg-indigo-900/30 border border-indigo-700/50 rounded-lg">
-                        <div className="flex items-center gap-2 text-indigo-300">
+                    <div className="p-3 bg-[var(--brand-subtle)] border border-[var(--brand-border)] rounded-lg">
+                        <div className="flex items-center gap-2 text-[var(--brand-text)]">
                             <Send className="w-4 h-4" />
                             <span className="text-sm">
                                 Message will be sent: <strong>{formatScheduleTime(scheduledTime)}</strong>
@@ -246,7 +246,7 @@ function OpenSchedulePicker({
                     className={cn(
                         'px-4 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-2',
                         scheduledTime && !isLoading
-                            ? 'bg-indigo-600 text-white hover:bg-indigo-500'
+                                ? 'bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]'
                             : 'bg-gray-700 text-gray-500 cursor-not-allowed'
                     )}
                 >

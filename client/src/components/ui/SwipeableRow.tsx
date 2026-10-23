@@ -89,7 +89,7 @@ export function SwipeableRow({
     return (
         <div
             ref={containerRef}
-            className={`relative overflow-hidden rounded-2xl ${isRemoving ? 'animate-out slide-out-to-right duration-200' : ''}`}
+            className={`relative overflow-hidden rounded-xl ${isRemoving ? 'animate-out slide-out-to-right duration-200 motion-reduce:animate-none' : ''}`}
         >
             {/* Left Action Background */}
             {leftAction && (

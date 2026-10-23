@@ -297,22 +297,22 @@ export function InternalProductsList() {
     const totalPages = Math.ceil(total / limit);
 
     return (
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
             {/* Header */}
-            <div className="flex justify-between items-center">
-                <div className="relative">
+            <div className="flex flex-wrap gap-3 justify-between items-center">
+                <div className="relative w-full sm:w-auto">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                     <input
                         type="text"
                         placeholder="Search components..."
-                        className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 w-64"
+                        className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] w-full sm:w-64"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
                 <button
                     onClick={openCreateModal}
-                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all shadow-sm"
+                    className="flex items-center gap-2 px-4 py-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] transition-colors"
                 >
                     <Plus size={18} />
                     Add Component
@@ -320,8 +320,8 @@ export function InternalProductsList() {
             </div>
 
             {/* Table */}
-            <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
-                <table className="w-full text-left border-collapse">
+            <div className="max-w-full bg-white rounded-xl shadow-xs border border-gray-200 overflow-x-auto">
+                <table className="w-full min-w-[760px] text-left border-collapse">
                     <thead>
                         <tr className="bg-gray-50 border-b border-gray-200 text-xs uppercase text-gray-500 font-semibold">
                             <th className="px-6 py-4 w-16">Image</th>
@@ -338,7 +338,7 @@ export function InternalProductsList() {
                         {isLoading ? (
                             <tr>
                                 <td colSpan={8} className="p-12 text-center">
-                                    <Loader2 className="animate-spin inline text-blue-600" />
+                                    <Loader2 className="animate-spin inline text-[var(--brand-text)]" />
                                 </td>
                             </tr>
                         ) : products.length === 0 ? (
@@ -395,7 +395,7 @@ export function InternalProductsList() {
                                     </td>
                                     <td className="px-6 py-4">
                                         {product.bomUsageCount && product.bomUsageCount > 0 ? (
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--brand-subtle)] text-[var(--brand-text)]">
                                                 {product.bomUsageCount} BOM{product.bomUsageCount > 1 ? 's' : ''}
                                             </span>
                                         ) : (
@@ -406,7 +406,7 @@ export function InternalProductsList() {
                                         <div className="flex items-center justify-center gap-1">
                                             <button
                                                 onClick={() => openEditModal(product)}
-                                                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                className="p-2 text-gray-500 hover:text-[var(--brand-text)] hover:bg-[var(--brand-subtle)] rounded-lg transition-colors"
                                                 title="Edit"
                                             >
                                                 <Edit2 size={16} />
@@ -443,7 +443,7 @@ export function InternalProductsList() {
             {/* Create/Edit Modal */}
             {showModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="bg-white rounded-xl shadow-lg w-full max-w-lg mx-4 animate-in fade-in zoom-in-95 duration-200">
                         <div className="px-6 py-4 border-b border-gray-100">
                             <h2 className="text-lg font-semibold text-gray-900">
                                 {editingProduct ? 'Edit Component' : 'Add Component'}
@@ -456,7 +456,7 @@ export function InternalProductsList() {
                                     type="text"
                                     value={formData.name}
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)]"
                                     placeholder="Component name"
                                 />
                             </div>
@@ -467,7 +467,7 @@ export function InternalProductsList() {
                                         type="text"
                                         value={formData.sku}
                                         onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)]"
                                         placeholder="INT-001"
                                     />
                                 </div>
@@ -477,7 +477,7 @@ export function InternalProductsList() {
                                         type="text"
                                         value={formData.binLocation}
                                         onChange={(e) => setFormData({ ...formData, binLocation: e.target.value })}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)]"
                                         placeholder="A1-B2"
                                     />
                                 </div>
@@ -489,7 +489,7 @@ export function InternalProductsList() {
                                         type="number"
                                         value={formData.stockQuantity}
                                         onChange={(e) => setFormData({ ...formData, stockQuantity: Number(e.target.value) })}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)]"
                                         min="0"
                                     />
                                 </div>
@@ -500,7 +500,7 @@ export function InternalProductsList() {
                                             type="number"
                                             value={formData.cogs}
                                             onChange={(e) => setFormData({ ...formData, cogs: e.target.value })}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)]"
                                             min="0"
                                             step="0.01"
                                             placeholder="0.00"
@@ -513,7 +513,7 @@ export function InternalProductsList() {
                                 <select
                                     value={formData.supplierId}
                                     onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)]"
                                 >
                                     <option value="">No supplier</option>
                                     {suppliers.map((s) => (
@@ -526,7 +526,7 @@ export function InternalProductsList() {
                                 <textarea
                                     value={formData.description}
                                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)]"
                                     rows={3}
                                     placeholder="Optional description..."
                                 />
@@ -542,7 +542,7 @@ export function InternalProductsList() {
                             <button
                                 onClick={handleSave}
                                 disabled={isSaving || !formData.name.trim()}
-                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                                className="px-4 py-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-50 flex items-center gap-2"
                             >
                                 {isSaving && <Loader2 size={16} className="animate-spin" />}
                                 {editingProduct ? 'Save Changes' : 'Create Component'}

@@ -23,7 +23,7 @@ export function EmailAccountList({ accounts, onEdit, onDelete, onAdd, onSetDefau
                 <button
                     type="button"
                     onClick={onAdd}
-                    className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                    className="flex items-center gap-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] px-4 py-2 rounded-lg hover:bg-[var(--primary-hover)] transition-colors text-sm font-medium"
                 >
                     <Plus size={16} />
                     Add Account

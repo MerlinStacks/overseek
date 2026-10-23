@@ -422,7 +422,7 @@ export function OrderDetailPage() {
     const legacyTrackingPanel = hasTrackingItems ? (
         <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
             <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
-                <Truck size={18} className="text-blue-500" />
+                <Truck size={18} className="text-[var(--brand-text)]" />
                 Shipment Tracking
             </div>
 
@@ -455,7 +455,7 @@ export function OrderDetailPage() {
                                     href={item.trackingUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="p-1.5 hover:bg-blue-50 rounded text-blue-500 hover:text-blue-700 transition-colors"
+                                    className="p-1.5 hover:bg-[var(--brand-subtle)] rounded text-[var(--brand-text)] hover:text-[var(--brand-text)] transition-colors"
                                     title="Track shipment"
                                 >
                                     <ExternalLink size={14} />
@@ -484,7 +484,7 @@ export function OrderDetailPage() {
             customer: (
                 <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
                     <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
-                        <User size={18} className="text-blue-500" />
+                        <User size={18} className="text-[var(--brand-text)]" />
                         Customer Details
                     </div>
 
@@ -495,7 +495,7 @@ export function OrderDetailPage() {
                                 {order.customer_id && order.customer_id > 0 ? (
                                     <Link
                                         to={`/customers/${order.customer_id}`}
-                                        className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                                        className="text-sm font-medium text-[var(--brand-text)] hover:text-[var(--brand-text)] hover:underline"
                                     >
                                         {billing.first_name} {billing.last_name}
                                     </Link>
@@ -529,7 +529,7 @@ export function OrderDetailPage() {
             addresses: (
                 <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
                     <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
-                        <MapPin size={18} className="text-blue-500" />
+                        <MapPin size={18} className="text-[var(--brand-text)]" />
                         Addresses
                     </div>
 
@@ -564,7 +564,7 @@ export function OrderDetailPage() {
             attribution: (
                 <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
                     <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
-                        <TrendingUp size={18} className="text-blue-500" />
+                        <TrendingUp size={18} className="text-[var(--brand-text)]" />
                         Attribution
                     </div>
 
@@ -573,7 +573,7 @@ export function OrderDetailPage() {
                             <div>
                                 <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Traffic Source</div>
                                 <div className="flex flex-wrap gap-2">
-                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-[var(--brand-subtle)] text-[var(--brand-text)]">
                                         First: {attribution.firstTouchSource}
                                     </span>
                                     <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
@@ -648,7 +648,7 @@ export function OrderDetailPage() {
             <div className="flex flex-wrap items-center gap-4 mb-6">
                 <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-3">
-                        <h1 className="text-2xl font-bold text-gray-900">Order #{order.id}</h1>
+                            <h1 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-slate-100">Order #{order.id}</h1>
                         <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide
               ${order.status === 'completed' ? 'bg-green-100 text-green-700' :
                                 order.status === 'processing' ? 'bg-blue-100 text-blue-700' :
@@ -670,7 +670,7 @@ export function OrderDetailPage() {
                             }
                         }}
                         disabled={isUpdatingStatus || orderStatusOptions.length === 0}
-                        className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:opacity-60"
+                        className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[var(--focus-color)] disabled:opacity-60"
                     >
                         <option value="">{isUpdatingStatus ? 'Updating status...' : 'Change status...'}</option>
                         {orderStatusOptions.map((status) => (
@@ -758,7 +758,7 @@ export function OrderDetailPage() {
                                     </tr>
                                     <tr className="border-t border-gray-200 bg-gray-100">
                                         <td colSpan={3} className="px-6 py-4 text-right font-bold text-gray-900 text-lg">Total</td>
-                                        <td className="px-6 py-4 text-right font-bold text-blue-600 text-lg">
+                                        <td className="px-6 py-4 text-right font-bold text-[var(--brand-text)] text-lg">
                                             {formatCurrency(toNumber(order.total), order.currency)}
                                         </td>
                                     </tr>
@@ -789,7 +789,7 @@ export function OrderDetailPage() {
                     <div className="flex justify-end items-center gap-3">
                         <button
                             onClick={() => setIsReorderMode((prev) => !prev)}
-                            className={`text-xs underline underline-offset-2 ${isReorderMode ? 'text-indigo-600 hover:text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`text-xs underline underline-offset-2 ${isReorderMode ? 'text-[var(--brand-text)] hover:text-[var(--brand-text)]' : 'text-gray-500 hover:text-gray-700'}`}
                         >
                             {isReorderMode ? 'Done reordering' : 'Reorder panels'}
                         </button>
@@ -840,18 +840,18 @@ export function OrderDetailPage() {
                         >
                             {isReorderMode && draggedPanelId && dragOverPanelId === panelId && draggedPanelId !== panelId && (
                                 <div
-                                    className="mb-2 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/60 p-4"
+                                    className="mb-2 rounded-xl border border-dashed border-[var(--brand-border)] bg-[var(--brand-subtle)] p-4"
                                     style={{ height: draggedPanelHeight || panelRefs.current[draggedPanelId]?.getBoundingClientRect().height || undefined }}
                                 >
-                                    <div className="h-3 w-32 animate-pulse rounded bg-indigo-200/70" />
-                                    <div className="mt-3 h-2 w-full animate-pulse rounded bg-indigo-100" />
-                                    <div className="mt-2 h-2 w-4/5 animate-pulse rounded bg-indigo-100" />
+                                    <div className="h-3 w-32 animate-pulse rounded bg-[var(--brand-subtle)]" />
+                                    <div className="mt-3 h-2 w-full animate-pulse rounded bg-[var(--brand-subtle)]" />
+                                    <div className="mt-2 h-2 w-4/5 animate-pulse rounded bg-[var(--brand-subtle)]" />
                                 </div>
                             )}
                             <div className="relative">
                                 {isReorderMode && (
                                     <div className="absolute right-3 top-3 z-10">
-                                        <div className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white/95 px-2 py-1 text-xs text-gray-500 cursor-move shadow-sm">
+                                        <div className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-500 cursor-move shadow-sm">
                                             <GripVertical size={12} />
                                             Move
                                         </div>

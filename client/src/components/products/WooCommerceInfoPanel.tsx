@@ -15,9 +15,9 @@ export interface WooCommerceInfoPanelProps {
  */
 export function WooCommerceInfoPanel({ categories, tags, onCategoriesChange, onTagsChange }: WooCommerceInfoPanelProps) {
     return (
-        <div className="bg-white/70 dark:bg-slate-800/80 backdrop-blur-md rounded-xl shadow-xs border border-white/50 dark:border-slate-700/50 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 dark:border-slate-700/50 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide mb-4 flex items-center gap-2">
-                <Package size={16} className="text-purple-600" />
+                <Package size={16} className="text-[var(--brand-text)]" />
                 WooCommerce Info
             </h3>
 

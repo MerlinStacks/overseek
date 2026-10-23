@@ -30,7 +30,7 @@ export function HelpCenterHome() {
     return (
         <div className="max-w-7xl mx-auto">
             {/* Header Section */}
-            <div className="text-center py-12 px-4 mb-10 bg-linear-to-b from-white to-gray-50/50 dark:from-slate-800 dark:to-slate-900 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-xs">
+            <div className="text-center py-10 px-4 mb-8 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
                 <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4 tracking-tight">How can we help you?</h1>
                 <p className="text-gray-500 mb-8 max-w-lg mx-auto text-lg leading-relaxed">Search for answers or browse our help guide collections.</p>
                 <div className="flex justify-center">
@@ -47,7 +47,7 @@ export function HelpCenterHome() {
                         return (
                             <div key={collection.id} className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-xs hover:shadow-lg transition-all motion-reduce:transition-none border border-gray-100 dark:border-slate-700 flex flex-col h-full group duration-300 hover:-translate-y-1">
                                 <div className="flex items-center gap-4 mb-4">
-                                    <div className="p-3 bg-blue-50 text-blue-600 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition-colors duration-300">
+                                <div className="p-2.5 bg-[var(--brand-subtle)] text-[var(--brand-text)] rounded-lg">
                                         <Icon size={24} strokeWidth={2} />
                                     </div>
                                     <h3 className="text-lg font-bold text-gray-900 dark:text-white">{collection.title}</h3>
@@ -60,9 +60,9 @@ export function HelpCenterHome() {
                                         <Link
                                             key={article.id}
                                             to={`/help/article/${encodeURIComponent(article.slug)}`}
-                                            className="group/item flex items-center gap-2 text-sm text-gray-600 dark:text-slate-300 hover:text-blue-600 cursor-pointer transition-colors"
+                                                className="group/item flex items-center gap-2 text-sm text-gray-600 dark:text-slate-300 hover:text-[var(--brand-text)] cursor-pointer transition-colors"
                                         >
-                                            <FileText size={14} className="opacity-40 group-hover/item:text-blue-500 group-hover/item:opacity-100 transition-all" />
+                                                <FileText size={14} className="opacity-40 group-hover/item:text-[var(--brand-text)] group-hover/item:opacity-100 transition-colors" />
                                             <span className="truncate">{article.title}</span>
                                         </Link>
                                     )) : (
@@ -70,7 +70,7 @@ export function HelpCenterHome() {
                                     )}
 
                                     {collection.articles?.length > 5 && (
-                                        <button type="button" aria-expanded={!!expanded[collection.id]} aria-controls={`help-collection-${collection.id}`} onClick={() => setExpanded(previous => ({ ...previous, [collection.id]: !previous[collection.id] }))} className="text-xs font-semibold text-blue-500 hover:text-blue-600 mt-2 uppercase tracking-wide">
+                                            <button type="button" aria-expanded={!!expanded[collection.id]} aria-controls={`help-collection-${collection.id}`} onClick={() => setExpanded(previous => ({ ...previous, [collection.id]: !previous[collection.id] }))} className="text-xs font-semibold text-[var(--brand-text)] hover:underline mt-2">
                                             {expanded[collection.id] ? 'Show fewer articles' : `View all ${collection.articles.length} articles`}
                                         </button>
                                     )}
@@ -81,7 +81,7 @@ export function HelpCenterHome() {
                 </div>
 
                 {collections.length === 0 && (
-                    <div className="text-center py-20 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                <div className="text-center py-16 bg-gray-50 dark:bg-slate-900 rounded-xl border border-dashed border-gray-200 dark:border-slate-700">
                         <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-white shadow-xs mb-4">
                             <HelpCircle className="text-gray-400" size={32} />
                         </div>

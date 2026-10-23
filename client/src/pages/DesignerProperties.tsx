@@ -38,13 +38,13 @@ interface DesignerPropertiesProps {
 
 const TYPE_CONFIG: Record<string, { icon: LucideIcon; label: string; color: string }> = {
     header: { icon: Heading, label: 'Header', color: 'text-slate-600 bg-slate-50' },
-    text: { icon: Type, label: 'Text Block', color: 'text-blue-600 bg-blue-50' },
-    image: { icon: ImageIcon, label: 'Image', color: 'text-purple-600 bg-purple-50' },
-    order_details: { icon: FileText, label: 'Order Details', color: 'text-sky-600 bg-sky-50' },
-    customer_details: { icon: User, label: 'Customer Details', color: 'text-indigo-600 bg-indigo-50' },
-    order_table: { icon: Table, label: 'Order Items', color: 'text-emerald-600 bg-emerald-50' },
-    totals: { icon: DollarSign, label: 'Totals', color: 'text-amber-600 bg-amber-50' },
-    payment_block: { icon: QrCode, label: 'Payment Block', color: 'text-cyan-600 bg-cyan-50' },
+    text: { icon: Type, label: 'Text Block', color: 'text-[var(--brand-text)] bg-[var(--brand-subtle)]' },
+    image: { icon: ImageIcon, label: 'Image', color: 'text-[var(--brand-text)] bg-[var(--brand-subtle)]' },
+    order_details: { icon: FileText, label: 'Order Details', color: 'text-[var(--brand-text)] bg-[var(--brand-subtle)]' },
+    customer_details: { icon: User, label: 'Customer Details', color: 'text-[var(--brand-text)] bg-[var(--brand-subtle)]' },
+    order_table: { icon: Table, label: 'Order Items', color: 'text-[var(--brand-text)] bg-[var(--brand-subtle)]' },
+    totals: { icon: DollarSign, label: 'Totals', color: 'text-[var(--brand-text)] bg-[var(--brand-subtle)]' },
+    payment_block: { icon: QrCode, label: 'Payment Block', color: 'text-[var(--brand-text)] bg-[var(--brand-subtle)]' },
     footer: { icon: LayoutTemplate, label: 'Footer', color: 'text-slate-600 bg-slate-50' }
 };
 
@@ -145,7 +145,7 @@ function ScopedDesignerProperties({ items, selectedId, onUpdateItem, onDeleteIte
     };
 
     return (
-        <div className="w-80 bg-white/90 backdrop-blur-xs border-l border-slate-200/60 flex flex-col shadow-xl z-20">
+        <div className="w-80 bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 flex flex-col z-20">
             {/* Header */}
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -185,7 +185,7 @@ function ScopedDesignerProperties({ items, selectedId, onUpdateItem, onDeleteIte
                                     <label className="block text-xs font-semibold text-slate-600 mb-2">Logo Image</label>
                                     <div
                                         className={`relative border-2 border-dashed rounded-xl p-4 text-center transition-all cursor-pointer
-                                            ${isDragging ? 'border-purple-500 bg-purple-50' : 'border-slate-200 hover:border-purple-400 hover:bg-purple-50/50'}
+                                            ${isDragging ? 'border-[var(--primary-color)] bg-[var(--brand-subtle)]' : 'border-slate-200 hover:border-[var(--primary-color)] hover:bg-[var(--brand-subtle)]'}
                                             ${isUploading ? 'opacity-60 pointer-events-none' : ''}`}
                                         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                                         onDragLeave={() => setIsDragging(false)}
@@ -207,11 +207,11 @@ function ScopedDesignerProperties({ items, selectedId, onUpdateItem, onDeleteIte
                                                 if (file) handleImageUpload(file, 'logo');
                                             }}
                                         />
-                                        <button type="button" onClick={() => fileInputRef.current?.click()} className="text-sm text-indigo-600">Choose logo image</button>
+                                        <button type="button" onClick={() => fileInputRef.current?.click()} className="text-sm text-[var(--brand-text)]">Choose logo image</button>
                                         {isUploading ? (
                                             <div className="flex flex-col items-center gap-1">
-                                                <Loader2 size={20} className="text-purple-500 animate-spin" />
-                                                <span className="text-xs text-purple-600">Uploading...</span>
+                                                <Loader2 size={20} className="text-[var(--brand-text)] animate-spin" />
+                                                <span className="text-xs text-[var(--brand-text)]">Uploading...</span>
                                             </div>
                                         ) : selectedItem.logo ? (
                                             <div className="flex flex-col items-center gap-2">
@@ -237,7 +237,7 @@ function ScopedDesignerProperties({ items, selectedId, onUpdateItem, onDeleteIte
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-600 mb-2">Business Details</label>
                                     <textarea aria-label="Business Details"
-                                        className="w-full text-sm border border-slate-200 rounded-xl shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 p-3 resize-none transition-all"
+                                        className="w-full text-sm border border-slate-200 rounded-xl shadow-xs focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)] p-3 resize-none transition-all"
                                         rows={5}
                                         placeholder={"Company Name\n123 Street Address\nCity, State ZIP\nABN: 12 345 678 901\nPh: (02) 1234 5678"}
                                         value={selectedItem.businessDetails || ''}
@@ -263,7 +263,7 @@ function ScopedDesignerProperties({ items, selectedId, onUpdateItem, onDeleteIte
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-600 mb-2">Content</label>
                                     <textarea aria-label="Text content"
-                                        className="w-full text-sm border border-slate-200 rounded-xl shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 p-3 resize-none transition-all"
+                                        className="w-full text-sm border border-slate-200 rounded-xl shadow-xs focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)] p-3 resize-none transition-all"
                                         rows={6}
                                         placeholder="Enter your text content..."
                                         value={selectedItem.content}
@@ -295,7 +295,7 @@ function ScopedDesignerProperties({ items, selectedId, onUpdateItem, onDeleteIte
                                                 onChange={(e) => updateStyle('autoFit', e.target.checked)}
                                                 className="sr-only peer"
                                             />
-                                            <div className="w-9 h-5 bg-slate-200 rounded-full peer peer-checked:bg-indigo-500 transition-colors"></div>
+                                            <div className="w-9 h-5 bg-slate-200 rounded-full peer peer-checked:bg-[var(--primary-color)] transition-colors"></div>
                                             <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow-sm peer-checked:translate-x-4 transition-transform"></div>
                                         </div>
                                         <span className="text-xs font-medium text-slate-600 group-hover:text-slate-800">Auto-fit text to block</span>
@@ -304,7 +304,7 @@ function ScopedDesignerProperties({ items, selectedId, onUpdateItem, onDeleteIte
                                         <button
                                             type="button" aria-pressed={selectedItem.style?.fontWeight === 'bold'}
                                             onClick={() => updateStyle('fontWeight', selectedItem.style?.fontWeight === 'bold' ? 'normal' : 'bold')}
-                                            className={`p-1.5 rounded-md transition-all ${selectedItem.style?.fontWeight === 'bold' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+                                            className={`p-1.5 rounded-md transition-all ${selectedItem.style?.fontWeight === 'bold' ? 'bg-white shadow-xs text-[var(--brand-text)]' : 'text-slate-500 hover:text-slate-700'}`}
                                             title="Bold"
                                         >
                                             <Bold size={16} />
@@ -312,7 +312,7 @@ function ScopedDesignerProperties({ items, selectedId, onUpdateItem, onDeleteIte
                                         <button
                                             type="button" aria-pressed={selectedItem.style?.fontStyle === 'italic'}
                                             onClick={() => updateStyle('fontStyle', selectedItem.style?.fontStyle === 'italic' ? 'normal' : 'italic')}
-                                            className={`p-1.5 rounded-md transition-all ${selectedItem.style?.fontStyle === 'italic' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+                                            className={`p-1.5 rounded-md transition-all ${selectedItem.style?.fontStyle === 'italic' ? 'bg-white shadow-xs text-[var(--brand-text)]' : 'text-slate-500 hover:text-slate-700'}`}
                                             title="Italic"
                                         >
                                             <Italic size={16} />
@@ -321,7 +321,7 @@ function ScopedDesignerProperties({ items, selectedId, onUpdateItem, onDeleteIte
                                         <button
                                             type="button" aria-pressed={!selectedItem.style?.textAlign || selectedItem.style.textAlign === 'left'}
                                             onClick={() => updateStyle('textAlign', 'left')}
-                                            className={`p-1.5 rounded-md transition-all ${(!selectedItem.style?.textAlign || selectedItem.style?.textAlign === 'left') ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+                                            className={`p-1.5 rounded-md transition-all ${(!selectedItem.style?.textAlign || selectedItem.style?.textAlign === 'left') ? 'bg-white shadow-xs text-[var(--brand-text)]' : 'text-slate-500 hover:text-slate-700'}`}
                                             title="Align Left"
                                         >
                                             <AlignLeft size={16} />
@@ -329,7 +329,7 @@ function ScopedDesignerProperties({ items, selectedId, onUpdateItem, onDeleteIte
                                         <button
                                             type="button" aria-pressed={selectedItem.style?.textAlign === 'center'}
                                             onClick={() => updateStyle('textAlign', 'center')}
-                                            className={`p-1.5 rounded-md transition-all ${selectedItem.style?.textAlign === 'center' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+                                            className={`p-1.5 rounded-md transition-all ${selectedItem.style?.textAlign === 'center' ? 'bg-white shadow-xs text-[var(--brand-text)]' : 'text-slate-500 hover:text-slate-700'}`}
                                             title="Align Center"
                                         >
                                             <AlignCenter size={16} />
@@ -337,7 +337,7 @@ function ScopedDesignerProperties({ items, selectedId, onUpdateItem, onDeleteIte
                                         <button
                                             type="button" aria-pressed={selectedItem.style?.textAlign === 'right'}
                                             onClick={() => updateStyle('textAlign', 'right')}
-                                            className={`p-1.5 rounded-md transition-all ${selectedItem.style?.textAlign === 'right' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+                                            className={`p-1.5 rounded-md transition-all ${selectedItem.style?.textAlign === 'right' ? 'bg-white shadow-xs text-[var(--brand-text)]' : 'text-slate-500 hover:text-slate-700'}`}
                                             title="Align Right"
                                         >
                                             <AlignRight size={16} />
@@ -354,7 +354,7 @@ function ScopedDesignerProperties({ items, selectedId, onUpdateItem, onDeleteIte
                                     <label className="block text-xs font-semibold text-slate-600 mb-2">Upload Image</label>
                                     <div
                                         className={`relative border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer
-                                            ${isDragging ? 'border-purple-500 bg-purple-50' : 'border-slate-200 hover:border-purple-400 hover:bg-purple-50/50'}
+                                            ${isDragging ? 'border-[var(--primary-color)] bg-[var(--brand-subtle)]' : 'border-slate-200 hover:border-[var(--primary-color)] hover:bg-[var(--brand-subtle)]'}
                                             ${isUploading ? 'opacity-60 pointer-events-none' : ''}`}
                                         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                                         onDragLeave={() => setIsDragging(false)}
@@ -367,11 +367,11 @@ function ScopedDesignerProperties({ items, selectedId, onUpdateItem, onDeleteIte
                                             className="hidden"
                                             onChange={handleFileSelect}
                                         />
-                                        <button type="button" onClick={() => fileInputRef.current?.click()} className="text-sm text-indigo-600">Choose image</button>
+                                        <button type="button" onClick={() => fileInputRef.current?.click()} className="text-sm text-[var(--brand-text)]">Choose image</button>
                                         {isUploading ? (
                                             <div className="flex flex-col items-center gap-2">
-                                                <Loader2 size={24} className="text-purple-500 animate-spin" />
-                                                <span className="text-sm text-purple-600 font-medium">Uploading...</span>
+                                                <Loader2 size={24} className="text-[var(--brand-text)] animate-spin" />
+                                                <span className="text-sm text-[var(--brand-text)] font-medium">Uploading...</span>
                                             </div>
                                         ) : (
                                             <div className="flex flex-col items-center gap-2">
@@ -450,7 +450,7 @@ function ScopedDesignerProperties({ items, selectedId, onUpdateItem, onDeleteIte
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-600 mb-2">Pay URL (supports placeholders)</label>
                                     <input aria-label="Pay URL"
-                                        className="w-full text-sm border border-slate-200 rounded-xl shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 p-3 transition-all"
+                                        className="w-full text-sm border border-slate-200 rounded-xl shadow-xs focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)] p-3 transition-all"
                                         placeholder="https://pay.example.com/invoice/{{invoice.number}}"
                                         value={selectedItem.content || ''}
                                         onChange={(e) => onUpdateItem({ content: e.target.value })}
@@ -463,9 +463,9 @@ function ScopedDesignerProperties({ items, selectedId, onUpdateItem, onDeleteIte
                         )}
 
                         {selectedItem.type === 'customer_details' && (
-                            <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
-                                <p className="text-sm font-medium text-indigo-700 mb-1">Customer Information</p>
-                                <p className="text-xs text-indigo-600 leading-relaxed">
+                            <div className="p-4 bg-[var(--brand-subtle)] rounded-xl border border-[var(--brand-border)]">
+                                <p className="text-sm font-medium text-[var(--brand-text)] mb-1">Customer Information</p>
+                                <p className="text-xs text-[var(--brand-text)] leading-relaxed">
                                     Automatically displays the customer's billing and shipping details, including name, address, and contact info.
                                 </p>
                             </div>
@@ -476,7 +476,7 @@ function ScopedDesignerProperties({ items, selectedId, onUpdateItem, onDeleteIte
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-600 mb-2">Footer Content</label>
                                     <textarea aria-label="Footer content"
-                                        className="w-full text-sm border border-slate-200 rounded-xl shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 p-3 resize-none transition-all"
+                                        className="w-full text-sm border border-slate-200 rounded-xl shadow-xs focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)] p-3 resize-none transition-all"
                                         rows={4}
                                         placeholder="Enter footer text (e.g., Thank you for your business)..."
                                         value={selectedItem.content}
@@ -498,11 +498,11 @@ function ScopedDesignerProperties({ items, selectedId, onUpdateItem, onDeleteIte
                     <button
                         type="button" disabled={isUploading}
                         onClick={onDuplicateItem}
-                        className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 text-sm font-semibold transition-all border border-indigo-100 hover:border-indigo-200"
+                        className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-[var(--brand-subtle)] text-[var(--brand-text)] rounded-xl hover:bg-[var(--brand-subtle)] text-sm font-semibold transition-all border border-[var(--brand-border)] hover:border-[var(--brand-border)]"
                     >
                         <Copy size={16} />
                         Duplicate Component
-                        <span className="text-xs text-indigo-400 ml-auto">Ctrl+D</span>
+                        <span className="text-xs text-[var(--brand-text)] ml-auto">Ctrl+D</span>
                     </button>
                 )}
                 <button

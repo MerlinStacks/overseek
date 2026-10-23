@@ -138,7 +138,7 @@ function ScopedEmailLogWidget({ className, token, accountId }: Pick<WidgetProps,
                             {issueCount} issue{issueCount === 1 ? '' : 's'} in sample
                         </Link>
                     )}
-                    <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-indigo-500 to-violet-600 shadow-indigo-500/20`}>
+                    <div className={widgetHeaderIconBadgeClass}>
                         <Mail size={16} />
                     </div>
                 </div>
@@ -182,7 +182,7 @@ function ScopedEmailLogWidget({ className, token, accountId }: Pick<WidgetProps,
             </div>
 
             {!loading && !error && logs.length > 0 && (
-                <Link to="/emails/logs" className="mt-3 text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300">
+                <Link to="/emails/logs" className="mt-3 text-xs font-semibold text-[var(--brand-text)] hover:underline focus-visible:outline-[var(--focus-color)]">
                     View all email logs
                 </Link>
             )}

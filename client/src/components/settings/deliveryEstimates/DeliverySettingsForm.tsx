@@ -98,8 +98,8 @@ export function DeliverySettingsForm({ accountId, token, canEdit, featureEnabled
             {canEdit && canRead && !launch.error && <button type="button" role="switch" aria-checked={on} aria-label="Delivery estimates"
                 disabled={saving || (!on && (loading || !settings || blocked || !featureEnabled || !canRead || !status))}
                 onClick={() => void (on ? disable() : save(true))}
-                className={`inline-flex min-h-11 shrink-0 items-center gap-3 whitespace-nowrap rounded-full px-4 py-2 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 ${on ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100'}`}>
-                <span aria-hidden="true" className={`relative block h-6 w-10 shrink-0 rounded-full ${on ? 'bg-indigo-400' : 'bg-slate-400'}`}><span className={`absolute left-0 top-1 h-4 w-4 rounded-full bg-white transition-transform ${on ? 'translate-x-5' : 'translate-x-1'}`} /></span>
+                className={`inline-flex min-h-11 shrink-0 items-center gap-3 whitespace-nowrap rounded-lg px-4 py-2 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-text)] disabled:opacity-50 ${on ? 'bg-[var(--primary-color)] text-[var(--primary-foreground)]' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100'}`}>
+                <span aria-hidden="true" className={`relative block h-6 w-10 shrink-0 rounded-full ${on ? 'bg-black/20' : 'bg-slate-400'}`}><span className={`absolute left-0 top-1 h-4 w-4 rounded-full ${on ? 'bg-[var(--primary-foreground)]' : 'bg-white'} transition-transform ${on ? 'translate-x-5' : 'translate-x-1'}`} /></span>
                 <span>{on ? 'Turn off' : 'Turn on'}</span>
             </button>}
             {canEdit && (!canRead || launch.error) && <button type="button" disabled={saving} onClick={() => void disable()} className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-slate-600">Turn off estimates</button>}
@@ -136,7 +136,7 @@ export function DeliverySettingsForm({ accountId, token, canEdit, featureEnabled
                     </div>
                 </details>
             </fieldset>
-            {canEdit && <div className="flex items-center gap-3"><button type="submit" disabled={saving || blocked || !dirty} className="rounded-lg bg-indigo-600 px-5 py-2.5 font-medium text-white disabled:opacity-50">{saving ? 'Saving…' : 'Save changes'}</button>
+            {canEdit && <div className="flex items-center gap-3"><button type="submit" disabled={saving || blocked || !dirty} className="rounded-lg bg-[var(--primary-color)] px-5 py-2.5 font-medium text-[var(--primary-foreground)] disabled:opacity-50">{saving ? 'Saving…' : 'Save changes'}</button>
                 {success && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">Saved. Your store updates automatically.</p>}
             </div>}
         </form>}

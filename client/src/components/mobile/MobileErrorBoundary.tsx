@@ -48,23 +48,23 @@ export class MobileErrorBoundary extends Component<Props, State> {
     render(): ReactNode {
         if (this.state.hasError) {
             return (
-                <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
-                    <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-6">
-                        <WifiOff size={40} className="text-red-500" />
+                <div className="mobile-panel min-h-[60vh] flex flex-col items-center justify-center p-6">
+                    <div className="w-14 h-14 bg-red-950 rounded-lg flex items-center justify-center mb-6">
+                        <WifiOff size={28} className="text-red-400" />
                     </div>
 
-                    <h1 className="text-xl font-bold text-gray-900 mb-2 text-center">
+                    <h1 className="text-xl font-semibold text-slate-100 mb-2 text-center">
                         Something went wrong
                     </h1>
 
-                    <p className="text-gray-500 text-center mb-8 max-w-xs">
+                    <p className="text-slate-400 text-center mb-8 max-w-xs">
                         We're sorry, but something unexpected happened. Please try again.
                     </p>
 
-                    <div className="flex gap-3">
+                    <div className="flex flex-wrap justify-center gap-3">
                         <button
                             onClick={this.handleRetry}
-                            className="flex items-center gap-2 px-5 py-3 bg-indigo-600 text-white rounded-xl font-medium active:scale-95 transition-transform"
+                            className="mobile-brand-solid flex items-center gap-2 px-5 py-3 rounded-lg font-medium active:scale-95 transition-transform"
                         >
                             <RefreshCw size={18} />
                             Try Again
@@ -72,7 +72,7 @@ export class MobileErrorBoundary extends Component<Props, State> {
 
                         <button
                             onClick={this.handleGoHome}
-                            className="flex items-center gap-2 px-5 py-3 bg-gray-200 text-gray-700 rounded-xl font-medium active:scale-95 transition-transform"
+                            className="flex items-center gap-2 px-5 py-3 bg-slate-800 border border-slate-600 text-slate-200 rounded-lg font-medium active:scale-95 transition-transform"
                         >
                             <Home size={18} />
                             Home
@@ -80,8 +80,8 @@ export class MobileErrorBoundary extends Component<Props, State> {
                     </div>
 
                     {import.meta.env.DEV && this.state.error && (
-                        <div className="mt-8 p-4 bg-gray-100 rounded-xl max-w-sm">
-                            <p className="text-xs font-mono text-red-600 break-all">
+                        <div className="mt-8 p-4 bg-slate-900 rounded-lg max-w-sm">
+                            <p className="text-xs font-mono text-red-400 break-all">
                                 {this.state.error.message}
                             </p>
                         </div>

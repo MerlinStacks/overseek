@@ -64,7 +64,7 @@ export function AdminSidebar() {
                         className={({ isActive }) => cn(
                             "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative",
                             isActive
-                                ? "bg-blue-600 text-white font-medium shadow-md shadow-blue-900/20"
+                                ? "bg-blue-600 text-white font-medium"
                                 : "text-slate-400 hover:bg-slate-800 hover:text-white"
                         )}
                     >

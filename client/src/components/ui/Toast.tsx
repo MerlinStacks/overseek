@@ -45,7 +45,7 @@ export function Toast({ message, isVisible, onClose, duration = 3000, type = 'su
 
     return (
         <div className="animate-in slide-in-from-bottom-5 fade-in duration-300 motion-reduce:animate-none" role={type === 'error' ? 'alert' : 'status'} aria-atomic="true">
-            <div className={`${bgColors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 w-full max-w-full`}>
+            <div className={`${bgColors[type]} text-white px-4 py-3 rounded-lg shadow-sm flex items-center gap-3 w-full max-w-full`}>
                 <div className={`${iconBgColors[type]} rounded-full p-1`}>
                     {icons[type]}
                 </div>

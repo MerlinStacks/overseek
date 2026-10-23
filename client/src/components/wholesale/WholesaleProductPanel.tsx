@@ -144,7 +144,7 @@ export const WholesaleProductPanel = forwardRef<WholesaleProductPanelRef, Wholes
         <div className="space-y-6">
             {!canEdit && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">You have read-only access to wholesale catalog settings.</div>}
             {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">{error}</div>}
-            <section className="rounded-2xl border border-slate-200/70 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-800/80">
+            <section className="rounded-xl border border-slate-200/70 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
                 <div className="grid gap-6 lg:grid-cols-2">
                     <div>
                         <label className="mb-2 block text-sm font-semibold text-slate-800 dark:text-slate-100">Wholesale notes</label>
@@ -164,16 +164,16 @@ export const WholesaleProductPanel = forwardRef<WholesaleProductPanelRef, Wholes
                     <div className="flex flex-wrap gap-2">
                         {PROCESS_OPTIONS.map(option => {
                             const selected = profile.personalisationTypes.includes(option.value);
-                            return <button type="button" key={option.value} disabled={!canEdit} onClick={() => setField('personalisationTypes', selected ? profile.personalisationTypes.filter(value => value !== option.value) : [...profile.personalisationTypes, option.value])} className={`rounded-full border px-3 py-1.5 text-sm transition disabled:opacity-60 ${selected ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-200' : 'border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300'}`}>{option.label}</button>;
+                            return <button type="button" key={option.value} disabled={!canEdit} onClick={() => setField('personalisationTypes', selected ? profile.personalisationTypes.filter(value => value !== option.value) : [...profile.personalisationTypes, option.value])} className={`rounded-full border px-3 py-1.5 text-sm transition disabled:opacity-60 ${selected ? 'border-[var(--primary-color)] bg-[var(--brand-subtle)] text-[var(--brand-text)] ' : 'border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300'}`}>{option.label}</button>;
                         })}
                     </div>
                 </div>
             </section>
 
-            <section className="rounded-2xl border border-slate-200/70 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-800/80">
+            <section className="rounded-xl border border-slate-200/70 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
                 <div className="mb-4 flex items-center justify-between">
                     <div><h3 className="font-semibold text-slate-900 dark:text-white">Quantity pricing</h3><p className="text-sm text-slate-500">Ranges are calculated automatically from each minimum quantity.</p></div>
-                    <button type="button" disabled={!canEdit || profile.priceTiers.length >= 5} onClick={() => setField('priceTiers', [...profile.priceTiers, { minimumQuantity: (profile.priceTiers[profile.priceTiers.length - 1]?.minimumQuantity || 0) + 1, unitPrice: '', isPoa: false, leadTimeDays: null }])} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"><Plus size={16} /> Add tier</button>
+                    <button type="button" disabled={!canEdit || profile.priceTiers.length >= 5} onClick={() => setField('priceTiers', [...profile.priceTiers, { minimumQuantity: (profile.priceTiers[profile.priceTiers.length - 1]?.minimumQuantity || 0) + 1, unitPrice: '', isPoa: false, leadTimeDays: null }])} className="inline-flex items-center gap-2 rounded-lg bg-[var(--primary-color)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] disabled:opacity-50"><Plus size={16} /> Add tier</button>
                 </div>
                 <div className="space-y-3">
                     {profile.priceTiers.map((tier, index) => (
@@ -196,16 +196,16 @@ export const WholesaleProductPanel = forwardRef<WholesaleProductPanelRef, Wholes
                 {removalWarning && <div className="mt-4 flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"><AlertTriangle className="shrink-0" size={18} /> Saving with no tiers suspends this product in catalogs until valid pricing is restored.</div>}
                 {validationErrors.length > 0 && <ul className="mt-4 space-y-1 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">{validationErrors.map(message => <li key={message}>{message}</li>)}</ul>}
             </section>
-            <section className="rounded-2xl border border-slate-200/70 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-800/80">
+            <section className="rounded-xl border border-slate-200/70 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
                 <div className="mb-4 flex items-center justify-between"><div><h3 className="font-semibold text-slate-900 dark:text-white">Pricing history</h3><p className="text-sm text-slate-500">Compact pricing, tax, and process changes. Wholesale notes are not displayed.</p></div>{historyLoading && <Loader2 className="animate-spin text-slate-400" size={18} />}</div>
                 <div className="space-y-3">{history.events.map(event => { const oldValue = formatHistorySnapshot(event.details?.old); const newValue = formatHistorySnapshot(event.details?.new); return <article key={event.id} className="rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-700"><div className="mb-3 flex flex-wrap justify-between gap-2"><span className="font-semibold text-slate-800 dark:text-slate-100">{event.user?.fullName || event.user?.email || 'Wholesale staff'}</span><time className="text-xs text-slate-500">{new Date(event.createdAt).toLocaleString()}</time></div><div className="grid gap-3 md:grid-cols-2"><HistorySnapshot label="Before" value={oldValue} /><HistorySnapshot label="After" value={newValue} /></div></article>; })}{!history.events.length && !historyLoading && <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">No pricing changes recorded yet.</div>}</div>
                 {history.totalPages > 1 && <div className="mt-4 flex items-center justify-end gap-3 text-sm"><button aria-label="Previous history page" disabled={historyLoading || history.page <= 1} onClick={() => void loadHistory(history.page - 1)} className="rounded-lg border border-slate-300 p-2 disabled:opacity-40 dark:border-slate-600"><ChevronLeft size={16} /></button><span>Page {history.page} of {history.totalPages}</span><button aria-label="Next history page" disabled={historyLoading || history.page >= history.totalPages} onClick={() => void loadHistory(history.page + 1)} className="rounded-lg border border-slate-300 p-2 disabled:opacity-40 dark:border-slate-600"><ChevronRight size={16} /></button></div>}
             </section>
-            {canEdit && <div className="flex justify-end"><button type="button" onClick={() => void save()} disabled={!loadSucceeded || saving || validationErrors.length > 0} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 font-medium text-white shadow-sm disabled:opacity-50">{saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} {saving ? 'Saving wholesale...' : 'Save wholesale settings'}</button></div>}
+            {canEdit && <div className="flex justify-end"><button type="button" onClick={() => void save()} disabled={!loadSucceeded || saving || validationErrors.length > 0} className="inline-flex items-center gap-2 rounded-xl bg-[var(--primary-color)] px-5 py-2.5 font-medium text-[var(--primary-foreground)] shadow-sm disabled:opacity-50">{saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} {saving ? 'Saving wholesale...' : 'Save wholesale settings'}</button></div>}
         </div>
     );
 });
 
 function HistorySnapshot({ label, value }: { label: string; value: ReturnType<typeof formatHistorySnapshot> }) {
-    return <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900/70"><div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</div><div>{value.tiers}</div><div className="mt-1 text-xs text-slate-500">{value.tax} · {value.badges} · {value.turnaround}</div></div>;
+    return <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900"><div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</div><div>{value.tiers}</div><div className="mt-1 text-xs text-slate-500">{value.tax} · {value.badges} · {value.turnaround}</div></div>;
 }

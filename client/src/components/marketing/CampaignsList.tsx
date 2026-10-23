@@ -597,7 +597,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                 </div>
                 <button
                     onClick={() => setShowCreate(true)}
-                    className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                    className="inline-flex items-center gap-2 rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]"
                 >
                     <Plus size={16} /> Create Email Broadcast
                 </button>
@@ -609,7 +609,8 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`rounded px-3 py-1.5 text-sm transition ${activeTab === tab.id ? 'bg-sky-100 text-sky-700' : 'text-gray-600 hover:bg-gray-100'}`}
+                            aria-pressed={activeTab === tab.id}
+                            className={`rounded px-3 py-1.5 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-[var(--focus-color)] ${activeTab === tab.id ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)]' : 'text-gray-600 hover:bg-gray-100'}`}
                         >
                             {tab.label} <span className="ml-1 text-xs text-gray-500">{tab.count}</span>
                         </button>
@@ -624,7 +625,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                         value={query}
                         onChange={(event) => setQuery(sanitizeBidiText(event.target.value))}
                         placeholder="Search..."
-                        className="h-10 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-900 focus:border-sky-400 focus:outline-none"
+                        className="h-10 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-900 focus:border-[var(--primary-color)] focus:outline-2 focus:outline-[var(--focus-color)]"
                         dir="ltr"
                         style={LTR_TEXT_STYLE}
                     />
@@ -658,18 +659,18 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                             {isLoading ? (
                                 <tr>
                                     <td colSpan={10} className="px-4 py-12 text-center text-gray-500">
-                                        <span className="inline-flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Loading broadcasts...</span>
+                                        <span role="status" className="inline-flex items-center gap-2"><Loader2 size={16} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> Loading broadcasts...</span>
                                     </td>
                                 </tr>
                             ) : filteredCampaigns.length === 0 ? (
                                 <tr>
-                                    <td colSpan={10} className="px-4 py-12 text-center text-gray-500">No broadcasts found.</td>
+                                    <td colSpan={10} className="px-4 py-12 text-center text-gray-500"><p role="status">No broadcasts found.</p><p className="mt-1 text-xs">Check your filters or create an email broadcast to get started.</p></td>
                                 </tr>
                             ) : filteredCampaigns.map((campaign) => (
                                 <tr key={campaign.id} className="border-t border-gray-100 hover:bg-slate-50/70">
                                     <td className="px-4 py-3">
                                         <button
-                                            className="font-medium text-sky-700 hover:text-sky-800"
+                                            className="font-medium text-[var(--brand-text)] hover:underline"
                                             onClick={() => campaign.status === 'DRAFT' ? onEdit(campaign.id, campaign.name, campaign.subject) : setReviewCampaignId(campaign.id)}
                                         >
                                             {campaign.name}
@@ -690,7 +691,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                                         </span>
                                     </td>
                                     <td className="px-4 py-3 text-right">
-                                        <button onClick={() => setReviewCampaignId(campaign.id)} className="mr-2 rounded-lg border border-indigo-200 px-2.5 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Review & send</button>
+                                        <button onClick={() => setReviewCampaignId(campaign.id)} className="mr-2 rounded-lg border border-[var(--brand-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--brand-text)] hover:bg-[var(--brand-subtle)]">Review & send</button>
                                         <button
                                             onClick={() => setDeletingId(campaign.id)}
                                             className="rounded p-1.5 text-rose-600 hover:bg-rose-50"
@@ -717,7 +718,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                                 <div key={label} className="flex min-w-0 flex-1 items-center">
                                     <button
                                         onClick={() => setWizardStep(step)}
-                                        className={`flex h-9 w-9 items-center justify-center rounded-full border text-xs font-semibold ${isDone || isActive ? 'border-sky-600 bg-sky-600 text-white' : 'border-gray-300 bg-white text-gray-500'}`}
+                                        className={`flex h-9 w-9 items-center justify-center rounded-full border text-xs font-semibold ${isDone || isActive ? 'border-[var(--primary-color)] bg-[var(--primary-color)] text-[var(--primary-foreground)]' : 'border-gray-300 bg-white text-gray-500'}`}
                                     >
                                         {isDone ? <Check size={14} /> : step}
                                     </button>
@@ -750,7 +751,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                                     <div className="space-y-3">
                                         <div className="text-sm font-medium text-gray-700">Type</div>
                                         <div className="flex items-center gap-2">
-                                            <button className="rounded-lg border border-sky-600 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700">Standard</button>
+                                            <button className="rounded-lg border border-[var(--brand-border)] bg-[var(--brand-subtle)] px-3 py-1.5 text-sm font-medium text-[var(--brand-text)]">Standard</button>
                                             <button className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-500" disabled>A/B Test</button>
                                         </div>
                                     </div>
@@ -856,7 +857,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                                                     {contactsLoading ? (
                                                         <tr>
                                                             <td colSpan={3} className="px-4 py-8 text-center text-gray-500">
-                                                                <span className="inline-flex items-center gap-2"><Loader2 size={15} className="animate-spin" /> Loading contacts...</span>
+                                                                <span role="status" className="inline-flex items-center gap-2"><Loader2 size={15} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> Loading contacts...</span>
                                                             </td>
                                                         </tr>
                                                     ) : contactRows.length === 0 ? (
@@ -867,9 +868,9 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                                                         <tr key={contact.id} className="border-t border-gray-100">
                                                             <td className="px-4 py-2.5">
                                                                 <div className="flex items-center gap-3">
-                                                                    <input type="checkbox" defaultChecked className="h-4 w-4 rounded border-gray-300 text-sky-600" />
-                                                                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-sky-600 text-xs font-semibold text-white">{contact.initials}</div>
-                                                                    <span className="font-medium text-sky-700">{contact.name}</span>
+                                                                    <input type="checkbox" defaultChecked className="h-4 w-4 rounded border-gray-300 accent-[var(--primary-color)]" />
+                                                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--primary-color)] text-xs font-semibold text-[var(--primary-foreground)]">{contact.initials}</div>
+                                                                    <span className="font-medium text-[var(--brand-text)]">{contact.name}</span>
                                                                 </div>
                                                             </td>
                                                             <td className="px-4 py-2.5 text-gray-600">{contact.email}</td>
@@ -953,7 +954,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                     <div className="flex items-center justify-between">
                         <button
                             onClick={() => setWizardStep((prev) => (prev === 1 ? prev : (prev - 1) as WizardStep))}
-                            className="inline-flex items-center gap-1 rounded-lg border border-sky-600 px-4 py-2 text-sm font-medium text-sky-700 disabled:opacity-40"
+                            className="inline-flex items-center gap-1 rounded-lg border border-[var(--brand-border)] px-4 py-2 text-sm font-medium text-[var(--brand-text)] disabled:opacity-40"
                             disabled={wizardStep === 1}
                         >
                             <ChevronLeft size={14} /> Previous
@@ -962,14 +963,14 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                         {wizardStep < 4 ? (
                             <button
                                 onClick={() => setWizardStep((prev) => (prev + 1) as WizardStep)}
-                                className="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                                className="inline-flex items-center gap-1 rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]"
                             >
                                 Next <ChevronRight size={14} />
                             </button>
                         ) : (
                             <button
                                 onClick={() => void handleCreateBroadcast()}
-                                className="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                                className="inline-flex items-center gap-1 rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]"
                             >
                                 Create Broadcast
                             </button>
@@ -1065,17 +1066,17 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                         </button>
                         <button
                             onClick={() => addGroup('OR')}
-                            className="rounded-lg border border-sky-500 px-3 py-2 text-sm font-medium text-sky-700"
+                            className="rounded-lg border border-[var(--brand-border)] px-3 py-2 text-sm font-medium text-[var(--brand-text)]"
                         >
                             OR Condition
                         </button>
                     </div>
 
                     <div className="flex justify-end gap-3 border-t border-gray-200 pt-4">
-                        <button className="rounded-lg border border-sky-500 px-4 py-2 text-sm font-medium text-sky-700">Save as Audience</button>
+                        <button className="rounded-lg border border-[var(--brand-border)] px-4 py-2 text-sm font-medium text-[var(--brand-text)]">Save as Audience</button>
                         <button
                             onClick={applyFilterChanges}
-                            className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                                className="rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]"
                         >
                             Filter
                         </button>

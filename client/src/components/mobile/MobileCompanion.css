@@ -1,16 +1,26 @@
-.mobile-companion {
+.mobile-companion,
+.mobile-companion.dark {
     color-scheme: dark;
     background: #101318;
     color: #f1f5f9;
     --mobile-surface: #181d25;
     --mobile-line: #ffffff12;
+    /* Shared controls also live in the companion, regardless of the desktop theme. */
+    --brand-text: var(--mobile-accent);
+    --brand-subtle: color-mix(in srgb, var(--mobile-brand) 16%, #181d25);
+    --brand-border: color-mix(in srgb, var(--mobile-brand) 35%, #475569);
+    --focus-color: var(--mobile-accent);
 }
 
 .mobile-companion .mobile-brand-text { color: var(--mobile-accent); }
 .mobile-companion .mobile-brand-soft { background: color-mix(in srgb, var(--mobile-brand) 16%, #181d25); color: var(--mobile-accent); }
 .mobile-companion .mobile-brand-solid { background: var(--mobile-brand); color: var(--mobile-brand-foreground); }
-.mobile-companion .mobile-panel { background: var(--mobile-surface); border: 1px solid var(--mobile-line); border-radius: 14px; }
-.mobile-companion .mobile-metric { background: var(--mobile-surface); border: 1px solid var(--mobile-line); border-radius: 14px; padding: 18px; text-align: left; min-width: 0; }
+.mobile-companion button.mobile-brand-solid:not(:disabled):hover,
+.mobile-companion a.mobile-brand-solid:hover { background: var(--primary-hover); }
+.mobile-companion .mobile-panel { background: var(--mobile-surface); border: 1px solid var(--mobile-line); border-radius: 10px; }
+.mobile-companion .mobile-metric { background: transparent; border: 0; border-radius: 0; padding: 10px 12px; text-align: left; min-width: 0; min-height: 60px; }
+.mobile-companion .mobile-metric-strip { border-block: 1px solid var(--mobile-line); }
+.mobile-companion .metric-strip { border-color: var(--mobile-line); }
 .mobile-companion .mobile-nav { background: #101318; border-top: 1px solid var(--mobile-line); }
 .mobile-companion .mobile-nav-active { color: var(--mobile-accent); }
 .mobile-companion .mobile-icon { background: #ffffff08; color: #94a3b8; }

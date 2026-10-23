@@ -52,24 +52,24 @@ function RegistrationForm() {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
             <div className="sm:mx-auto sm:w-full sm:max-w-md">
-                <div className="flex justify-center text-blue-600">
+                <div className="flex justify-center text-[var(--brand-text)]">
                     <LayoutDashboard size={48} />
                 </div>
-                <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                <h2 className="mt-6 text-center text-3xl font-bold text-slate-900 dark:text-slate-100">
                     Create your account
                 </h2>
-                <p className="mt-2 text-center text-sm text-gray-600">
+                <p className="mt-2 text-center text-sm text-slate-600 dark:text-slate-400">
                     Already have an account?{' '}
-                    <Link to="/login" className="font-medium text-blue-600 hover:text-blue-500">
+                    <Link to="/login" className="font-medium text-[var(--brand-text)] hover:underline">
                         Sign in
                     </Link>
                 </p>
             </div>
 
             <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-                <div className="bg-white py-8 px-4 shadow-sm sm:rounded-lg sm:px-10">
+                <div className="bg-white dark:bg-slate-900 py-8 px-4 border border-slate-200 dark:border-slate-800 sm:rounded-xl sm:px-10">
                     <form className="space-y-6" onSubmit={handleSubmit}>
                         <fieldset disabled={loading} className="space-y-6">
                         {(error || mutation.error) && (
@@ -79,7 +79,7 @@ function RegistrationForm() {
                         )}
 
                         <div>
-                            <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">
+                            <label htmlFor="fullName" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                                 Full Name
                             </label>
                             <div className="mt-1">
@@ -92,13 +92,13 @@ function RegistrationForm() {
                                     required
                                     value={fullName}
                                     onChange={(e) => setFullName(e.target.value)}
-                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-xs placeholder-gray-400 focus:outline-hidden focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                    className="appearance-none block w-full px-3 py-2.5 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--brand-border)] focus:border-[var(--primary-color)] sm:text-sm"
                                 />
                             </div>
                         </div>
 
                         <div>
-                            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                            <label htmlFor="email" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                                 Email address
                             </label>
                             <div className="mt-1">
@@ -110,13 +110,13 @@ function RegistrationForm() {
                                     required
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-xs placeholder-gray-400 focus:outline-hidden focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                    className="appearance-none block w-full px-3 py-2.5 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--brand-border)] focus:border-[var(--primary-color)] sm:text-sm"
                                 />
                             </div>
                         </div>
 
                         <div>
-                            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                            <label htmlFor="password" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                                 Password
                             </label>
                             <div className="mt-1">
@@ -129,7 +129,7 @@ function RegistrationForm() {
                                     required
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-xs placeholder-gray-400 focus:outline-hidden focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                    className="appearance-none block w-full px-3 py-2.5 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--brand-border)] focus:border-[var(--primary-color)] sm:text-sm"
                                 />
                             </div>
                         </div>
@@ -138,7 +138,7 @@ function RegistrationForm() {
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-xs text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg text-sm font-medium text-[var(--primary-foreground)] bg-[var(--primary-color)] hover:bg-[var(--primary-hover)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--focus-color)] disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {loading ? <><Loader2 aria-hidden="true" className="animate-spin motion-reduce:animate-none" size={20} /><span role="status">Registering...</span></> : 'Register'}
                             </button>

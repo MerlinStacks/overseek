@@ -56,14 +56,14 @@ function ScopedAdCopyModal({ onClose, productId, productName, onCopyGenerated, t
         try { await navigator.clipboard.writeText(text); if (live.current && sequence === copySequence.current) { setCopied(new Set([key])); setStatus('Copied to clipboard.'); } }
         catch { if (live.current && sequence === copySequence.current) { setCopied(new Set()); setStatus('Could not copy. Select and copy the text manually.'); } }
     }
-    return <dialog ref={dialog} aria-labelledby="ad-copy-title" onCancel={event => { event.preventDefault(); onClose(); }} className="m-auto w-[calc(100%-2rem)] max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-gray-900 text-slate-900 dark:text-white p-6 backdrop:bg-black/50">
+    return <dialog ref={dialog} aria-labelledby="ad-copy-title" onCancel={event => { event.preventDefault(); onClose(); }} className="m-auto w-[calc(100%-2rem)] max-w-3xl max-h-[90vh] overflow-y-auto rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-gray-900 text-slate-900 dark:text-white p-6 backdrop:bg-black/50">
         <div className="flex justify-between gap-4"><h2 id="ad-copy-title" className="text-lg font-semibold">AI Ad Copy Generator</h2><button type="button" onClick={onClose} aria-label="Close ad copy generator">Close</button></div>
         <p>{productName || 'Generate copy for your store'}</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 my-4">
             <label>Tone<select disabled={busy} value={tone} onChange={e => setTone(e.target.value)} className="block w-full bg-white dark:bg-slate-800 border rounded p-2">{tones.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
             <label>Platform<select disabled={busy} value={platform} onChange={e => setPlatform(e.target.value)} className="block w-full bg-white dark:bg-slate-800 border rounded p-2">{platforms.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         </div>
-        <button type="button" disabled={busy || !tones.length || !platforms.length} onClick={() => void generate()} className="rounded bg-violet-700 text-white px-4 py-2 disabled:opacity-50">{busy ? 'Generating…' : 'Generate Ad Copy'}</button>
+        <button type="button" disabled={busy || !tones.length || !platforms.length} onClick={() => void generate()} className="rounded bg-[var(--primary-color)] text-[var(--primary-foreground)] px-4 py-2 disabled:opacity-50">{busy ? 'Generating…' : 'Generate Ad Copy'}</button>
         {error && <p role="alert">{error}</p>}<p role="status">{status}</p>
         {copy && <div className="bg-gray-900 text-white p-4 rounded-xl"><GeneratedCopyDisplay generatedCopy={copy} copiedItems={copied} onCopy={(text, key) => void clipboard(text, key)} onCopyAll={() => void clipboard([...copy.headlines, ...copy.descriptions, ...(copy.primaryTexts || [])].join('\n'), 'all')} /></div>}
         <p className="text-sm mt-4">AI or template suggestions require review before publication. Nothing is published here.</p>

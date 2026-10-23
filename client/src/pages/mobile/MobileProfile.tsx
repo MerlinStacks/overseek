@@ -199,12 +199,13 @@ export function MobileProfile() {
             {/* Profile Form */}
             <div className="mobile-panel p-5 space-y-5">
                 <div>
-                    <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">Full Name</label>
+                    <label htmlFor="mobile-profile-name" className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">Full Name</label>
                     <div className="relative">
                         <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                             <User size={18} />
                         </div>
                         <input
+                            id="mobile-profile-name"
                             type="text"
                             value={fullName}
                             onChange={e => setFullName(e.target.value)}
@@ -215,12 +216,13 @@ export function MobileProfile() {
                 </div>
 
                 <div>
-                    <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">Email</label>
+                    <label htmlFor="mobile-profile-email" className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">Email</label>
                     <div className="relative">
                         <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                             <Mail size={18} />
                         </div>
                         <input
+                            id="mobile-profile-email"
                             type="email"
                             value={email}
                             disabled

@@ -253,7 +253,7 @@ function CrawlerBlockPageContent() {
                         type="button"
                         onClick={handleSave}
                         disabled={isSaving || isLoading || !hasChanges}
-                        className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 text-sm"
+                        className="flex items-center gap-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] px-4 py-2 rounded-lg hover:bg-[var(--primary-hover)] transition-colors font-medium disabled:opacity-50 text-sm"
                     >
                         {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                         Save Template

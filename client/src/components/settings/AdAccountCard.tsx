@@ -68,15 +68,15 @@ export function AdAccountCard({
     const isTemporarilyUnavailable = error?.code === 'AD_INSIGHTS_UNAVAILABLE' || error?.isRecoverable;
 
     return (
-        <div className={`bg-white rounded-xl shadow-xs border p-4 ${isPending ? 'border-amber-300' : error ? isTemporarilyUnavailable ? 'border-amber-200' : 'border-red-200' : 'border-gray-200'}`}>
+        <div className={`bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl border p-4 ${isPending ? 'border-amber-300 dark:border-amber-800' : error ? isTemporarilyUnavailable ? 'border-amber-200 dark:border-amber-800' : 'border-red-200 dark:border-red-900' : 'border-slate-200 dark:border-slate-700'}`}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex min-w-0 items-center gap-3">
                     <div className={`p-2 rounded-lg ${account.platform === 'META' ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'}`}>
                         {account.platform === 'META' ? <Facebook size={20} /> : <GoogleIcon className="w-5 h-5" />}
                     </div>
                     <div>
-                        <h3 className="font-semibold text-gray-900">{account.name}</h3>
-                        <p className="text-xs text-gray-500 font-mono">{isPending ? 'Setup not complete' : account.externalId}</p>
+                        <h3 className="font-semibold text-slate-900 dark:text-slate-100">{account.name}</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{isPending ? 'Setup not complete' : account.externalId}</p>
                     </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
@@ -98,19 +98,19 @@ export function AdAccountCard({
                                 onClick={onReconnect}
                                 aria-label={`Reconnect ${account.platform === 'GOOGLE' ? 'Google Ads' : 'Meta'} account`}
                                 title="Renew permissions without removing this account or its audience syncs"
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-[var(--brand-border)] hover:bg-[var(--brand-subtle)] hover:text-[var(--brand-text)] dark:border-slate-600 dark:text-slate-200"
                             >
                                 <Link2 size={14} />Reconnect
                             </button>
                             <button
                                 onClick={onRefresh}
                                 disabled={isLoadingInsights}
-                                className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-sm disabled:opacity-50"
+                                className="p-1 text-slate-400 hover:text-[var(--brand-text)] hover:bg-[var(--brand-subtle)] rounded-sm disabled:opacity-50"
                                 title="Refresh data"
                             >
                                 <RefreshCw size={16} className={isLoadingInsights ? 'animate-spin' : ''} />
                             </button>
-                            <button onClick={onEdit} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-sm" title="Edit credentials">
+                            <button onClick={onEdit} className="p-1 text-slate-400 hover:text-[var(--brand-text)] hover:bg-[var(--brand-subtle)] rounded-sm" title="Edit credentials">
                                 <Pencil size={16} />
                             </button>
                         </>
@@ -123,22 +123,22 @@ export function AdAccountCard({
 
             {/* Insights Row */}
             {!isPending && insights && (
-                <div className="mt-4 pt-4 border-t grid grid-cols-4 gap-4 text-sm">
+                <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
                     <div>
-                        <p className="text-xs text-gray-500 uppercase">Spend (30d)</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 uppercase">Spend (30d)</p>
                         <p className="font-semibold">{formatCurrency(insights.spend, insights.currency || 'USD')}</p>
                     </div>
                     <div>
-                        <p className="text-xs text-gray-500 uppercase">ROAS</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 uppercase">ROAS</p>
                         <p className="font-semibold">{(insights.roas || 0).toFixed(2)}x</p>
                     </div>
                     <div>
-                        <p className="text-xs text-gray-500 uppercase">Impressions</p>
-                        <p className="font-medium text-gray-700">{formatCompact(insights.impressions)}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 uppercase">Impressions</p>
+                        <p className="font-medium text-slate-700 dark:text-slate-200">{formatCompact(insights.impressions)}</p>
                     </div>
                     <div>
-                        <p className="text-xs text-gray-500 uppercase">Clicks</p>
-                        <p className="font-medium text-gray-700">{formatNumber(insights.clicks)}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 uppercase">Clicks</p>
+                        <p className="font-medium text-slate-700 dark:text-slate-200">{formatNumber(insights.clicks)}</p>
                     </div>
                 </div>
             )}

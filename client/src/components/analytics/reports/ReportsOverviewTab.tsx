@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { BarChart3, DollarSign, Package, ShoppingCart, TrendingUp, Users } from 'lucide-react';
 import { formatCompact, formatCurrency, formatNumber } from '../../../utils/format';
+import { Metric, MetricStrip } from '../../ui/MetricStrip';
 
 interface SalesData {
     date: string;
@@ -33,26 +34,13 @@ function MetricCard({ icon, label, value, helper, colorClass }: {
     colorClass: string;
 }) {
     return (
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs dark:border-slate-700 dark:bg-slate-800/70">
-            <div className="flex items-start justify-between gap-4">
-                <div>
-                    <p className="text-sm font-medium text-gray-500 dark:text-slate-400">{label}</p>
-                    <p className="mt-2 text-3xl font-bold tracking-tight text-gray-950 dark:text-white">{value}</p>
-                </div>
-                <div className={`rounded-xl p-2.5 ${colorClass}`}>{icon}</div>
-            </div>
-            <p className="mt-4 text-xs text-gray-400 dark:text-slate-500">{helper}</p>
-        </div>
+        <Metric label={<span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className={colorClass}>{icon}</span>{label}</span>} value={value} hint={helper} />
     );
 }
 
 function MetricSkeleton() {
     return (
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs dark:border-slate-700 dark:bg-slate-800/70">
-            <div className="h-4 w-28 animate-pulse rounded bg-gray-100 dark:bg-slate-700" />
-            <div className="mt-4 h-8 w-36 animate-pulse rounded bg-gray-100 dark:bg-slate-700" />
-            <div className="mt-5 h-3 w-44 animate-pulse rounded bg-gray-100 dark:bg-slate-700" />
-        </div>
+        <Metric label="Loading summary…" value={<span className="block h-6 w-24 animate-pulse rounded bg-gray-100 dark:bg-slate-700" />} />
     );
 }
 
@@ -66,7 +54,7 @@ export function ReportsOverviewTab({ isLoading, salesData, topProducts, customer
 
     return (
         <>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <MetricStrip label={isLoading ? 'Loading report summary' : 'Report summary'}>
                 {isLoading ? (
                     <>
                         <MetricSkeleton />
@@ -77,39 +65,39 @@ export function ReportsOverviewTab({ isLoading, salesData, topProducts, customer
                 ) : (
                     <>
                         <MetricCard
-                            icon={<DollarSign size={20} />}
+                            icon={<DollarSign size={14} />}
                             label="Total Revenue"
                             value={formatCurrency(totalRevenue, currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                            helper="Captured across the selected reporting window"
+                            helper="Selected period"
                             colorClass="bg-green-100 text-green-600 dark:bg-green-900/30"
                         />
                         <MetricCard
-                            icon={<ShoppingCart size={20} />}
+                            icon={<ShoppingCart size={14} />}
                             label="Orders"
                             value={formatNumber(totalOrders)}
-                            helper="Completed order volume for this period"
-                            colorClass="bg-blue-100 text-blue-600 dark:bg-blue-900/30"
+                            helper="Completed orders"
+                            colorClass="bg-[var(--brand-subtle)] text-[var(--brand-text)]"
                         />
                         <MetricCard
-                            icon={<TrendingUp size={20} />}
+                            icon={<TrendingUp size={14} />}
                             label="Avg Order Value"
                             value={formatCurrency(avgOrderValue, currency)}
-                            helper="Revenue divided by completed orders"
-                            colorClass="bg-purple-100 text-purple-600 dark:bg-purple-900/30"
+                            helper="Revenue ÷ completed orders"
+                            colorClass="bg-[var(--brand-subtle)] text-[var(--brand-text)]"
                         />
                         <MetricCard
-                            icon={<Users size={20} />}
+                            icon={<Users size={14} />}
                             label="New Customers"
                             value={formatNumber(newCustomersCount)}
-                            helper="Customers first seen in this window"
+                            helper="First seen this period"
                             colorClass="bg-orange-100 text-orange-600 dark:bg-orange-900/30"
                         />
                     </>
                 )}
-            </div>
+            </MetricStrip>
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-xs dark:border-slate-700 dark:bg-slate-800/70 lg:col-span-2">
+                <div className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900 lg:col-span-2">
                     <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <h3 className="text-lg font-bold text-gray-900 dark:text-white">Revenue Trend</h3>
@@ -121,7 +109,7 @@ export function ReportsOverviewTab({ isLoading, salesData, topProducts, customer
                             </span>
                         )}
                     </div>
-                    <div className="relative flex h-72 items-end justify-between gap-1 rounded-xl bg-linear-to-b from-gray-50 to-white p-4 dark:from-slate-900/60 dark:to-slate-800/40">
+                    <div className="relative flex h-72 items-end justify-between gap-1 rounded-lg bg-slate-50 p-4 dark:bg-slate-950">
                         {isLoading ? (
                             <div className="flex h-full w-full items-end gap-1">
                                 {Array.from({ length: 18 }).map((_, i) => (
@@ -152,7 +140,7 @@ export function ReportsOverviewTab({ isLoading, salesData, topProducts, customer
                     </div>
                 </div>
 
-                <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-xs dark:border-slate-700 dark:bg-slate-800/70">
+                <div className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
                     <div className="mb-6 flex items-start justify-between gap-4">
                         <div>
                             <h3 className="text-lg font-bold text-gray-900 dark:text-white">Top Selling Products</h3>

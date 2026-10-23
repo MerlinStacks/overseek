@@ -1,6 +1,7 @@
 import { useLayoutEffect } from 'react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
+import { createBrandTokens, isBrandColor } from '../../utils/brandColors';
 
 const owners = new Map<symbol, Record<string, string>>();
 let baseline: Array<[string, string, string]> | null = null;
@@ -30,13 +31,10 @@ function claimTokens(values: Record<string, string>) {
 export function ThemeInjector() {
     const { currentAccount } = useAccount(), { token, user } = useAuth();
     const raw = currentAccount?.appearance?.primaryColor;
-    const color = typeof raw === 'string' && /^#[0-9a-f]{6}$/i.test(raw) ? raw : null;
+    const color = isBrandColor(raw) ? raw : null;
     useLayoutEffect(() => {
         if (!token || !user?.id || !currentAccount?.id || !color) return;
-        const channels = [1, 3, 5].map(offset => parseInt(color.slice(offset, offset + 2), 16) / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
-        const luminance = channels[0] * .2126 + channels[1] * .7152 + channels[2] * .0722;
-        const values = { '--primary-color': color, '--primary-foreground': luminance > .179 ? '#000000' : '#ffffff' };
-        return claimTokens(values);
+        return claimTokens(createBrandTokens(color));
     }, [token, user?.id, currentAccount?.id, color]);
     return null;
 }

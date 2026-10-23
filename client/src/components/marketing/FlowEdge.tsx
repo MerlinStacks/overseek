@@ -74,7 +74,7 @@ export const FlowEdge = memo((props: EdgeProps) => {
                 <EdgeLabelRenderer>
                     <button
                         type="button"
-                        className={`nodrag nopan absolute h-8 w-8 rounded-full border border-blue-200 bg-white dark:bg-slate-900 text-sm font-bold text-blue-600 shadow-md focus-visible:ring-2 focus-visible:ring-indigo-500 transition-all ${isInsertVisible ? 'opacity-100 scale-100' : 'opacity-60 scale-95'}`}
+                className={`nodrag nopan absolute h-8 w-8 rounded-full border border-[var(--brand-border)] bg-white dark:bg-slate-900 text-sm font-bold text-[var(--brand-text)] shadow-md focus-visible:ring-2 focus-visible:ring-[var(--focus-color)] transition-all ${isInsertVisible ? 'opacity-100 scale-100' : 'opacity-60 scale-95'}`}
                         style={{
                             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
                         }}

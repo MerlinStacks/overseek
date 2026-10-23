@@ -72,7 +72,7 @@ export function VariantExpandedDetails({
                             type="button"
                             onClick={() => onFieldChange('manageStock', !v.manageStock)}
                             className={`px-2 py-1 rounded-full text-xs font-medium transition-colors ${v.manageStock
-                                ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                                ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)] border border-[var(--brand-border)]'
                                 : 'bg-gray-100 text-gray-500 border border-gray-200'
                                 }`}
                         >
@@ -131,13 +131,13 @@ export function VariantExpandedDetails({
                             <div>
                                 <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1">
                                     COGS (Cost)
-                                    {hasBom && <span className="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">BOM</span>}
+                                    {hasBom && <span className="text-[10px] text-[var(--brand-text)] bg-[var(--brand-subtle)] px-1.5 py-0.5 rounded border border-[var(--brand-border)]">BOM</span>}
                                     {!hasBom && hasGold && <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">Gold</span>}
                                 </label>
                                 {bomCogsLoading ? (
                                     <div className="w-full h-[34px] bg-gray-100 rounded-lg animate-pulse" />
                                 ) : hasBom ? (
-                                    <div className="w-full text-sm px-3 py-1.5 bg-purple-50/50 border border-purple-200 rounded-lg text-purple-800 font-medium">
+                                    <div className="w-full text-sm px-3 py-1.5 bg-[var(--brand-subtle)] border border-[var(--brand-border)] rounded-lg text-[var(--brand-text)] font-medium">
                                         {reportMoney(bomCogs ?? NaN, currency)}
                                     </div>
                                 ) : hasGold ? (
@@ -202,7 +202,7 @@ export function VariantExpandedDetails({
                     <VariantVideoEditor productId={productWooId} variationId={v.id} />
 
                     {/* BOM Panel */}
-                    <div className="border-l-2 border-blue-100 pl-4">
+                    <div className="border-l-2 border-[var(--brand-border)] pl-4">
                         <h4 className="text-sm font-semibold text-gray-800 mb-2">Components (BOM)</h4>
                         <BOMPanel
                             ref={bomPanelRef}

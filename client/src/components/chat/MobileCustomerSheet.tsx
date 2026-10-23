@@ -108,7 +108,7 @@ export function MobileCustomerSheet({ open, onClose, conversation }: MobileCusto
                         <div><dt className="text-xs text-slate-400">Orders</dt><dd className="mt-1 font-semibold">{customer?.ordersCount ?? 'Unavailable'}</dd></div>
                     </dl>
                     {customer?.id && (
-                        <Link to={`/m/customers/${encodeURIComponent(customer.id)}`} onClick={onClose} className="flex min-h-11 items-center rounded-xl px-3 text-sm font-medium text-indigo-200 hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-indigo-300">
+            <Link to={`/m/customers/${encodeURIComponent(customer.id)}`} onClick={onClose} className="flex min-h-11 items-center rounded-xl px-3 text-sm font-medium text-[var(--brand-text)] hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-[var(--focus-color)]">
                             View customer profile
                         </Link>
                     )}
@@ -124,7 +124,7 @@ export function MobileCustomerSheet({ open, onClose, conversation }: MobileCusto
                                 : current.orders.length === 0 ? <p role="status" className="text-sm text-slate-400">No orders found for this customer.</p>
                                     : <ul className="space-y-2">
                                         {current.orders.map(order => <li key={order.id}>
-                                            <Link to={`/m/orders/${encodeURIComponent(order.id)}`} onClick={onClose} className="block min-h-11 space-y-2 rounded-xl border border-white/10 bg-slate-950/50 p-3 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-indigo-300">
+                    <Link to={`/m/orders/${encodeURIComponent(order.id)}`} onClick={onClose} className="block min-h-11 space-y-2 rounded-xl border border-white/10 bg-slate-950/50 p-3 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-[var(--focus-color)]">
                                                 <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium">Order #{order.number || order.wooId || order.id}</span><span className="rounded-lg bg-white/5 px-2 py-1 text-xs capitalize text-slate-300">{order.status?.replace(/-/g, ' ') || 'Status unavailable'}</span></div>
                                                 <div className="flex flex-wrap justify-between gap-2 text-sm"><span className="text-slate-400">{orderDate(order.dateCreated)}</span><span>{money(order.total, order.currency || currentAccount?.currency)}</span></div>
                                             </Link>

@@ -434,7 +434,7 @@ const VisitorLogWidget = (_props: WidgetProps) => {
                                         <div className="flex items-center gap-2 min-w-0 flex-1">
                                             {/* Avatar with funnel dot */}
                                             <div className="relative shrink-0">
-                                                <div className="w-8 h-8 rounded-full bg-linear-to-br from-blue-400 to-blue-600 text-white flex items-center justify-center text-xs font-semibold shadow-xs">
+                                                <div className="w-8 h-8 rounded-full bg-[var(--brand-subtle)] text-[var(--brand-text)] flex items-center justify-center text-xs font-semibold">
                                                     {v.email ? v.email.charAt(0).toUpperCase() : <User className="w-4 h-4" />}
                                                 </div>
                                                 <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white dark:border-slate-800 ${funnel.dotColor}`} />

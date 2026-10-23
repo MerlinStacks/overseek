@@ -342,7 +342,7 @@ export function GeneralSettings() {
                 <button
                     onClick={handleSave}
                     disabled={isSaving}
-                    className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
+                    className="flex items-center gap-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] px-4 py-2 rounded-lg hover:bg-[var(--primary-hover)] transition-colors font-medium disabled:opacity-50"
                 >
                     {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
                     {isSaving ? 'Saving...' : 'Save Changes'}

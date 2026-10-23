@@ -175,7 +175,7 @@ export function NativeAudienceForm({ destinations, onCreated, onCancel, initialK
         <p className="text-xs">This creates an audience definition only. Membership refreshes within the platform; campaigns and budgets are not changed. Availability can take time and minimum sizes apply.</p>
         <div className="flex justify-end gap-3 border-t border-slate-200 pt-4 dark:border-slate-700">
             <button type="button" onClick={onCancel} disabled={busy} className="rounded-lg px-4 py-2">Cancel</button>
-            <button type="submit" disabled={busy || !valid} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-white disabled:opacity-50">{busy && <Loader2 size={16} className="animate-spin" />}{asSegment ? 'Create segment' : 'Create audience'}</button>
+            <button type="submit" disabled={busy || !valid} className="flex items-center gap-2 rounded-lg bg-[var(--primary-color)] px-4 py-2 text-[var(--primary-foreground)] disabled:opacity-50">{busy && <Loader2 size={16} className="animate-spin" />}{asSegment ? 'Create segment' : 'Create audience'}</button>
         </div>
     </form>;
 }

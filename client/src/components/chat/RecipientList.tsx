@@ -171,7 +171,7 @@ function ScopedRecipientList({
                     <button
                         type="button" aria-expanded={isExpanded} aria-controls={listId} aria-label={isExpanded ? 'Hide additional recipients' : `Show ${hiddenCount} additional recipients`}
                         onClick={() => setIsExpanded(!isExpanded)}
-                        className="flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-700 font-medium shrink-0"
+                        className="flex items-center gap-0.5 text-xs text-[var(--brand-text)] hover:text-[var(--brand-text)] font-medium shrink-0"
                     >
                         +{hiddenCount} more
                         {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}

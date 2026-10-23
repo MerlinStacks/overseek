@@ -56,7 +56,7 @@ export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) =>
                         value="SPECIFIC_PERIOD"
                         checked={delayMode === 'SPECIFIC_PERIOD'}
                         onChange={() => onUpdate('delayMode', 'SPECIFIC_PERIOD')}
-                        className="w-4 h-4 text-blue-600"
+                        className="w-4 h-4 text-[var(--brand-text)]"
                     />
                     <div>
                         <div className="font-medium text-gray-900">Delay for a specific period</div>
@@ -72,7 +72,7 @@ export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) =>
                         disabled
                         checked={delayMode === 'SPECIFIC_DATE'}
                         onChange={() => onUpdate('delayMode', 'SPECIFIC_DATE')}
-                        className="w-4 h-4 text-blue-600"
+                        className="w-4 h-4 text-[var(--brand-text)]"
                     />
                     <div>
                         <div className="font-medium text-gray-900">Delay until a specific date and time</div>
@@ -88,7 +88,7 @@ export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) =>
                         disabled
                         checked={delayMode === 'CUSTOM_FIELD'}
                         onChange={() => onUpdate('delayMode', 'CUSTOM_FIELD')}
-                        className="w-4 h-4 text-blue-600"
+                        className="w-4 h-4 text-[var(--brand-text)]"
                     />
                     <div>
                         <div className="font-medium text-gray-900">Delay until a custom field date</div>
@@ -106,14 +106,14 @@ export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) =>
                             min="1"
                             value={config.duration || 1}
                             onChange={(e) => handleDurationChange(e.target.value)}
-                            className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)]"
                             dir="ltr"
                             style={LTR_TEXT_STYLE}
                         />
                         <select
                             value={config.unit || 'hours'}
                             onChange={(e) => onUpdate('unit', e.target.value)}
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)]"
                         >
                             <option value="minutes">Minutes</option>
                             <option value="hours">Hours</option>
@@ -138,11 +138,11 @@ export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) =>
                     </div>
 
                     {/* Summary pill */}
-                    <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg border border-blue-100">
-                        <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center shrink-0">
-                            <span className="text-white text-[10px] font-bold">i</span>
+                    <div className="flex items-center gap-2 px-3 py-2 bg-[var(--brand-subtle)] rounded-lg border border-[var(--brand-border)]">
+                        <div className="w-4 h-4 rounded-full bg-[var(--primary-color)] flex items-center justify-center shrink-0">
+                            <span className="text-[var(--primary-foreground)] text-[10px] font-bold">i</span>
                         </div>
-                        <span className="text-xs text-blue-700">
+                        <span className="text-xs text-[var(--brand-text)]">
                             Delay of {config.duration || 1} {config.unit || 'hours'}
                             .
                         </span>
@@ -157,7 +157,7 @@ export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) =>
                         type="datetime-local"
                         value={config.specificDate || ''}
                         onChange={(e) => onUpdate('specificDate', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)]"
                         dir="ltr"
                         style={LTR_TEXT_STYLE}
                     />
@@ -170,7 +170,7 @@ export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) =>
                     <select
                         value={config.customFieldKey || ''}
                         onChange={(e) => onUpdate('customFieldKey', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)]"
                     >
                         <option value="">Select a date field...</option>
                         <option value="birthday">Birthday</option>

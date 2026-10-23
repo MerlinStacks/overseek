@@ -47,12 +47,12 @@ function SupplierCombobox({ value, suppliers, onChange, onCreateNew, disabled = 
         {invalid && <p role="status" className="text-xs text-amber-700 dark:text-amber-300">Some supplier records are invalid or ambiguous and cannot be selected.</p>}
         {open && !disabled && <div className="absolute z-50 w-full mt-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg max-h-64 overflow-y-auto">
             <ul id={`${id}-list`} role="listbox" aria-label={`${label} options`}>{visible.map((supplier, index) => <li id={`${id}-${index}`} key={supplier.id} role="option" aria-selected={supplier.id === value}
-                onPointerDown={event => event.preventDefault()} onMouseMove={() => setActive(index)} onClick={() => select(supplier)} className={`px-4 py-3 cursor-pointer flex justify-between gap-3 text-slate-900 dark:text-slate-100 ${index === active ? 'bg-blue-50 dark:bg-blue-950' : ''}`}>
+                    onPointerDown={event => event.preventDefault()} onMouseMove={() => setActive(index)} onClick={() => select(supplier)} className={`px-4 py-3 cursor-pointer flex justify-between gap-3 text-slate-900 dark:text-slate-100 ${index === active ? 'bg-[var(--brand-subtle)]' : ''}`}>
                 <span>{supplier.name}</span><span className="text-xs text-slate-500">{typeof supplier.currency === 'string' && /^[A-Z]{3}$/.test(supplier.currency) ? supplier.currency : 'Currency unavailable'}</span>
             </li>)}</ul>
             {!visible.length && <p role="status" className="p-4 text-sm text-slate-500">No suppliers found</p>}
             {matches.length > visible.length && <p className="p-2 text-xs text-slate-500">Showing the first 100 matches. Refine your search.</p>}
         </div>}
-        {onCreateNew && <button type="button" disabled={disabled} onClick={() => { if (!disabled) { close(); onCreateNew(); } }} className="mt-1 px-2 py-1 text-sm text-blue-600 dark:text-blue-300 disabled:opacity-50">Create New Supplier</button>}
+        {onCreateNew && <button type="button" disabled={disabled} onClick={() => { if (!disabled) { close(); onCreateNew(); } }} className="mt-1 px-2 py-1 text-sm text-[var(--brand-text)] disabled:opacity-50">Create New Supplier</button>}
     </div>;
 }

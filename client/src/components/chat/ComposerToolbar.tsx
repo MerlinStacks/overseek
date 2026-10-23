@@ -71,7 +71,7 @@ export function ComposerToolbar({
                     type="button"
                     onClick={onGenerateAIDraft}
                     disabled={isGeneratingDraft || isSending || isUploading || !!pendingSend}
-                    className="p-2 rounded-sm hover:bg-purple-50 text-purple-500 hover:text-purple-600 transition-colors disabled:opacity-50"
+                    className="p-2 rounded-sm hover:bg-[var(--brand-subtle)] text-[var(--brand-text)] hover:text-[var(--brand-text)] transition-colors disabled:opacity-50"
                     title="Generate AI Draft Reply"
                     aria-label="Generate AI draft reply"
                 >
@@ -82,7 +82,12 @@ export function ComposerToolbar({
                     onClick={onOpenCanned}
                     aria-expanded={showCanned}
                     disabled={isSending || !!pendingSend}
-                    className="p-2 rounded-sm hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                    className={cn(
+                        "p-2 rounded-sm transition-colors focus-visible:outline-2 focus-visible:outline-[var(--focus-color)] disabled:opacity-50",
+                        showCanned
+                            ? "bg-[var(--brand-subtle)] text-[var(--brand-text)] ring-1 ring-inset ring-[var(--brand-border)]"
+                            : "hover:bg-gray-100 text-gray-500 hover:text-gray-700"
+                    )}
                     title="Canned Responses"
                     aria-label="Insert canned response"
                 >
@@ -103,7 +108,7 @@ export function ComposerToolbar({
                     className={cn(
                         "p-2 rounded-sm transition-colors disabled:opacity-50",
                         stagedAttachments.length > 0
-                            ? "bg-blue-50 text-blue-600 hover:bg-blue-100"
+                            ? "bg-[var(--brand-subtle)] text-[var(--brand-text)] hover:bg-[var(--brand-subtle)]"
                             : "hover:bg-gray-100 text-gray-400 hover:text-gray-600"
                     )}
                     title="Attach File"
@@ -117,9 +122,9 @@ export function ComposerToolbar({
                         type="button"
                         onClick={() => onSignatureChange(!signatureEnabled)}
                         className={cn(
-                            "p-2 rounded-sm transition-colors",
+                            "p-2 rounded-sm transition-colors focus-visible:outline-2 focus-visible:outline-[var(--focus-color)]",
                             signatureEnabled && user?.emailSignature
-                                ? "text-blue-600 bg-blue-50 hover:bg-blue-100"
+                                ? "text-[var(--brand-text)] bg-[var(--brand-subtle)] hover:bg-[var(--brand-subtle)]"
                                 : "text-gray-400 hover:bg-gray-100 hover:text-gray-600",
                             !user?.emailSignature && "opacity-50 cursor-not-allowed"
                         )}
@@ -153,7 +158,7 @@ export function ComposerToolbar({
                         "flex items-center gap-2 px-3 py-2 rounded-l-lg font-medium text-sm transition-colors",
                         isInternal
                             ? "bg-yellow-500 text-white hover:bg-yellow-600"
-                            : "bg-blue-600 text-white hover:bg-blue-700",
+                            : "bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]",
                         "disabled:opacity-50 disabled:cursor-not-allowed"
                     )}
                 >
@@ -172,8 +177,8 @@ export function ComposerToolbar({
                         onClick={onOpenSchedule}
                         disabled={isSendDisabled}
                         className={cn(
-                            "px-2 py-2 rounded-r-lg font-medium text-sm transition-colors border-l border-blue-700",
-                            "bg-blue-600 text-white hover:bg-blue-700",
+                            "px-2 py-2 rounded-r-lg font-medium text-sm transition-colors border-l border-[var(--primary-foreground)]/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-color)]",
+                            "bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]",
                             "disabled:opacity-50 disabled:cursor-not-allowed"
                         )}
                         title="Schedule for later"

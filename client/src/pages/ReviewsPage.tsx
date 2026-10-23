@@ -561,7 +561,7 @@ export const ReviewsPage = () => {
                         <input
                             type="text"
                             placeholder="Search reviews..."
-                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500"
+                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-hidden focus:ring-2 focus:ring-[var(--focus-color)]"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
@@ -574,7 +574,7 @@ export const ReviewsPage = () => {
                         title="Review settings"
                         aria-haspopup="dialog"
                         aria-expanded={settingsOpen}
-                        className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border transition-colors ${settingsOpen ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}
+                        className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border transition-colors ${settingsOpen ? 'border-[var(--brand-border)] bg-[var(--brand-subtle)] text-[var(--brand-text)]' : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}
                     >
                         <Cog size={18} />
                     </button>}
@@ -582,7 +582,7 @@ export const ReviewsPage = () => {
                     <button
                         onClick={handleRematch}
                         disabled={isRematching || isSyncing}
-                        className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                        className="flex items-center gap-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] px-4 py-2 rounded-lg hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-50"
                         title="Re-link reviews to their matching orders"
                     >
                         <Link2 size={18} className={isRematching ? "animate-pulse" : ""} />
@@ -600,7 +600,7 @@ export const ReviewsPage = () => {
                 </div>
             </div>
 
-            <div className="bg-white/60 backdrop-blur-sm rounded-xl border border-gray-200/60 shadow-sm overflow-hidden">
+            <div className="bg-white/60 rounded-xl border border-gray-200/60 shadow-sm overflow-hidden">
                 <div className="flex items-center gap-1 p-1.5 overflow-x-auto" role="tablist" aria-label="Review status filters">
                     {statusTabs.map((status) => {
                         const isActive = statusFilter === status.value;
@@ -634,13 +634,13 @@ export const ReviewsPage = () => {
             </div>
 
             {selectedReviewIds.length > 0 && (
-                <div className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-                    <div className="font-medium text-blue-900">{selectedReviewIds.length} selected</div>
+                <div className="flex flex-col gap-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-subtle)] px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                    <div className="font-medium text-[var(--brand-text)]">{selectedReviewIds.length} selected</div>
                     <div className="flex flex-wrap items-center gap-2">
                         <select
                             value={bulkStatus}
                             onChange={(event) => setBulkStatus(event.target.value)}
-                            className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm outline-hidden focus:ring-2 focus:ring-blue-500"
+                            className="rounded-lg border border-[var(--brand-border)] bg-white px-3 py-2 text-sm outline-hidden focus:ring-2 focus:ring-[var(--focus-color)]"
                         >
                             <option value="approved">Publish</option>
                             <option value="hold">Move to pending</option>
@@ -651,7 +651,7 @@ export const ReviewsPage = () => {
                             type="button"
                             onClick={handleBulkModerate}
                             disabled={actionReviewId === 'bulk'}
-                            className="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                            className="rounded-lg bg-[var(--primary-color)] px-4 py-2 font-medium text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] disabled:opacity-50"
                         >
                             {actionReviewId === 'bulk' ? 'Updating...' : 'Apply'}
                         </button>
@@ -659,7 +659,7 @@ export const ReviewsPage = () => {
                             type="button"
                             onClick={() => setSelectedReviewIds([])}
                             disabled={actionReviewId === 'bulk'}
-                            className="rounded-lg border border-blue-200 bg-white px-4 py-2 text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                            className="rounded-lg border border-[var(--brand-border)] bg-white px-4 py-2 text-[var(--brand-text)] hover:bg-[var(--brand-subtle)] disabled:opacity-50"
                         >
                             Clear
                         </button>
@@ -677,7 +677,7 @@ export const ReviewsPage = () => {
                                     checked={allVisibleSelected}
                                     onChange={toggleAllVisibleReviews}
                                     aria-label="Select all visible reviews"
-                                    className="rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    className="rounded-sm border-gray-300 text-[var(--brand-text)] focus:ring-[var(--focus-color)]"
                                 />
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
@@ -715,7 +715,7 @@ export const ReviewsPage = () => {
                                             checked={selectedReviewSet.has(review.id)}
                                             onChange={() => toggleReviewSelection(review.id)}
                                             aria-label={`Select review by ${review.reviewer || 'customer'}`}
-                                            className="rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500"
+                                            className="rounded-sm border-gray-300 text-[var(--brand-text)] focus:ring-[var(--focus-color)]"
                                         />
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-900 font-medium">
@@ -728,7 +728,7 @@ export const ReviewsPage = () => {
                                             <div className="min-w-0">
                                                 <div className="truncate max-w-[220px]">{review.productName || 'Unknown Product'}</div>
                                                 {review.productUrl && (
-                                                    <a href={getSafeHref(review.productUrl)} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs font-normal text-blue-600 hover:underline">
+                                                    <a href={getSafeHref(review.productUrl)} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs font-normal text-[var(--brand-text)] hover:underline">
                                                         View product <ExternalLink size={11} />
                                                     </a>
                                                 )}
@@ -742,7 +742,7 @@ export const ReviewsPage = () => {
                                                     {review.customer ? (
                                                         <button
                                                             onClick={() => review.customer?.id && navigate(`/customers/${review.customer.id}`)}
-                                                            className="text-blue-600 hover:underline flex items-center gap-1"
+                                                            className="text-[var(--brand-text)] hover:underline flex items-center gap-1"
                                                         >
                                                             {review.customer.firstName ? `${review.customer.firstName} ${review.customer.lastName || ''}` : review.reviewer}
                                                             <ExternalLink size={12} />
@@ -761,7 +761,7 @@ export const ReviewsPage = () => {
                                                         >
                                                             <CheckCircle size={16} />
                                                         </button>
-                                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 bg-gray-800 text-white text-xs rounded-sm p-2 text-center whitespace-normal z-10 shadow-lg">
+                                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 bg-gray-800 text-white text-xs rounded-sm p-2 text-center whitespace-normal z-10 shadow-sm">
                                                             Verified Owner via Order #{review.order.number}
                                                         </div>
                                                     </div>
@@ -788,7 +788,7 @@ export const ReviewsPage = () => {
                                                         <button
                                                             type="button"
                                                             onClick={() => toggleReviewExpanded(review.id)}
-                                                            className="mt-1 text-xs font-medium text-blue-600 hover:underline"
+                                                            className="mt-1 text-xs font-medium text-[var(--brand-text)] hover:underline"
                                                         >
                                                             {isExpanded ? 'Show less' : 'Read more'}
                                                         </button>
@@ -804,7 +804,7 @@ export const ReviewsPage = () => {
                                                             type="button"
                                                             key={media.id || `${media.url}-${index}`}
                                                             onClick={() => setMediaViewer(media)}
-                                                            className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-gray-50 text-gray-500 hover:border-blue-300 hover:text-blue-600"
+                                                            className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-gray-50 text-gray-500 hover:border-[var(--brand-border)] hover:text-[var(--brand-text)]"
                                                             title={media.filename || media.url || 'Review media'}
                                                         >
                                                             {media.url && isImageMedia(media) ? (
@@ -819,10 +819,10 @@ export const ReviewsPage = () => {
                                                 </div>
                                             )}
                                             {review.replies && review.replies.length > 0 && (
-                                                <div className="space-y-2 rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                                                <div className="space-y-2 rounded-md bg-[var(--brand-subtle)] px-3 py-2 text-xs text-[var(--brand-text)]">
                                                     <div className="font-semibold">{review.replies.length === 1 ? 'Reply' : `${review.replies.length} replies`}</div>
                                                     {review.replies.map((reply, index) => (
-                                                        <div key={reply.id || `${reply.date || 'reply'}-${index}`} className="border-t border-blue-100 pt-2 first:border-t-0 first:pt-0">
+                                                        <div key={reply.id || `${reply.date || 'reply'}-${index}`} className="border-t border-[var(--brand-border)] pt-2 first:border-t-0 first:pt-0">
                                                             <div className="font-medium">{reply.author || 'Store'}</div>
                                                             <div className="line-clamp-2">{formatReviewText(reply.content)}</div>
                                                         </div>
@@ -872,7 +872,7 @@ export const ReviewsPage = () => {
                                                     const nextStatus = event.target.value;
                                                     if (nextStatus !== review.status) handleModerate(review.id, nextStatus);
                                                 }}
-                                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 outline-hidden hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 outline-hidden hover:bg-gray-50 focus:ring-2 focus:ring-[var(--focus-color)] disabled:opacity-50"
                                             >
                                                 <option value="approved">Published</option>
                                                 <option value="hold">Pending</option>
@@ -917,7 +917,7 @@ export const ReviewsPage = () => {
 
             {replyReview && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="presentation">
-                    <div className="max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-xl dark:bg-slate-900 dark:text-slate-100" role="dialog" aria-modal="true" aria-labelledby="review-reply-title">
+                    <div className="max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-sm dark:bg-slate-900 dark:text-slate-100" role="dialog" aria-modal="true" aria-labelledby="review-reply-title">
                         <div className="border-b border-gray-200 px-6 py-4 dark:border-slate-700">
                             <h2 id="review-reply-title" className="text-lg font-semibold text-gray-900 dark:text-slate-100">Reply to review</h2>
                             <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
@@ -939,7 +939,7 @@ export const ReviewsPage = () => {
                                     type="button"
                                     onClick={handleGenerateAIReply}
                                     disabled={isGeneratingReply || actionReviewId === replyReview.id}
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50 dark:border-purple-700 dark:bg-purple-950 dark:text-purple-200 dark:hover:bg-purple-900"
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--brand-border)] bg-[var(--brand-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--brand-text)] hover:bg-[var(--brand-subtle)] disabled:opacity-50 dark:hover:bg-[var(--brand-subtle)]"
                                 >
                                     {isGeneratingReply ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                                     {isGeneratingReply ? 'Generating options...' : replySuggestions.length ? 'Generate new options' : 'Generate 3 replies'}
@@ -953,9 +953,9 @@ export const ReviewsPage = () => {
                                         aria-pressed={selectedReplyOption === index}
                                         disabled={actionReviewId === replyReview.id}
                                         onClick={() => { setSelectedReplyOption(index); setReplyText(suggestion); }}
-                                        className={`rounded-lg border p-3 text-left text-sm transition-colors disabled:opacity-50 ${selectedReplyOption === index ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950' : 'border-gray-200 hover:border-indigo-400 dark:border-slate-700 dark:hover:border-indigo-400'}`}
+                                        className={`rounded-lg border p-3 text-left text-sm transition-colors disabled:opacity-50 ${selectedReplyOption === index ? 'border-[var(--primary-color)] bg-[var(--brand-subtle)]' : 'border-gray-200 hover:border-[var(--primary-color)] dark:border-slate-700 dark:hover:border-[var(--primary-color)]'}`}
                                     >
-                                        <span className="mb-2 block font-semibold text-indigo-700 dark:text-indigo-300">Option {index + 1}</span>
+                                        <span className="mb-2 block font-semibold text-[var(--brand-text)]">Option {index + 1}</span>
                                         <span className="whitespace-pre-wrap text-gray-700 dark:text-slate-200">{suggestion}</span>
                                     </button>
                                 ))}
@@ -964,7 +964,7 @@ export const ReviewsPage = () => {
                                     aria-pressed={selectedReplyOption === 'manual'}
                                     disabled={actionReviewId === replyReview.id}
                                     onClick={() => { setSelectedReplyOption('manual'); setReplyText(manualReplyText); }}
-                                    className={`rounded-lg border p-3 text-left text-sm font-medium sm:col-span-3 disabled:opacity-50 ${selectedReplyOption === 'manual' ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300' : 'border-gray-200 text-gray-700 hover:border-indigo-400 dark:border-slate-700 dark:text-slate-200'}`}
+                                    className={`rounded-lg border p-3 text-left text-sm font-medium sm:col-span-3 disabled:opacity-50 ${selectedReplyOption === 'manual' ? 'border-[var(--primary-color)] bg-[var(--brand-subtle)] text-[var(--brand-text)]' : 'border-gray-200 text-gray-700 hover:border-[var(--primary-color)] dark:border-slate-700 dark:text-slate-200'}`}
                                 >
                                     Write my own
                                 </button>
@@ -981,7 +981,7 @@ export const ReviewsPage = () => {
                                 disabled={actionReviewId === replyReview.id}
                                 maxLength={12000}
                                 rows={5}
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                                 placeholder="Write your reply or select an AI suggestion..."
                                 autoFocus
                             />
@@ -999,7 +999,7 @@ export const ReviewsPage = () => {
                                 type="button"
                                 onClick={handleReply}
                                 disabled={actionReviewId === replyReview.id || isGeneratingReply || !replyText.trim()}
-                                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                                className="rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] disabled:opacity-50"
                             >
                                 {actionReviewId === replyReview.id ? 'Posting...' : 'Post reply'}
                             </button>
@@ -1010,7 +1010,7 @@ export const ReviewsPage = () => {
 
             {editReview && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="presentation">
-                    <div className="w-full max-w-lg rounded-xl bg-white shadow-xl" role="dialog" aria-modal="true" aria-labelledby="review-edit-title">
+                    <div className="w-full max-w-lg rounded-xl bg-white shadow-sm" role="dialog" aria-modal="true" aria-labelledby="review-edit-title">
                         <div className="border-b border-gray-200 px-6 py-4">
                             <h2 id="review-edit-title" className="text-lg font-semibold text-gray-900">Edit review</h2>
                             <p className="mt-1 text-sm text-gray-500">
@@ -1024,7 +1024,7 @@ export const ReviewsPage = () => {
                                     <select
                                         value={editRating}
                                         onChange={(event) => setEditRating(Number(event.target.value))}
-                                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)]"
                                     >
                                         {[5, 4, 3, 2, 1].map((rating) => (
                                             <option key={rating} value={rating}>{rating} star{rating === 1 ? '' : 's'}</option>
@@ -1036,7 +1036,7 @@ export const ReviewsPage = () => {
                                     <select
                                         value={editStatus}
                                         onChange={(event) => setEditStatus(event.target.value)}
-                                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)]"
                                     >
                                         <option value="approved">Approved</option>
                                         <option value="hold">Pending</option>
@@ -1053,7 +1053,7 @@ export const ReviewsPage = () => {
                                 value={editContent}
                                 onChange={(event) => setEditContent(event.target.value)}
                                 rows={6}
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)]"
                                 autoFocus
                             />
                         </div>
@@ -1070,7 +1070,7 @@ export const ReviewsPage = () => {
                                 type="button"
                                 onClick={handleEditReview}
                                 disabled={actionReviewId === editReview.id || !editContent.trim()}
-                                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                                className="rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] disabled:opacity-50"
                             >
                                 {actionReviewId === editReview.id ? 'Saving...' : 'Save changes'}
                             </button>

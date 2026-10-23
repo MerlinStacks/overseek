@@ -81,7 +81,7 @@ function GoogleProductCategoryInput({
                 <div
                     id={listboxId}
                     role="listbox"
-                    className="absolute left-0 right-0 z-30 mt-1 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-xl dark:border-slate-600 dark:bg-slate-900"
+                    className="absolute left-0 right-0 z-30 mt-1 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-900"
                 >
                     {matchingOptions.map((option) => (
                         <button
@@ -94,7 +94,7 @@ function GoogleProductCategoryInput({
                                 onChange(`${option.id} - ${option.path}`);
                                 setIsOpen(false);
                             }}
-                            className="block w-full whitespace-normal px-3 py-2 text-left text-sm leading-5 text-slate-700 hover:bg-indigo-50 hover:text-indigo-900 dark:text-slate-200 dark:hover:bg-indigo-950/50 dark:hover:text-indigo-100"
+                            className="block w-full whitespace-normal px-3 py-2 text-left text-sm leading-5 text-slate-700 hover:bg-[var(--brand-subtle)] hover:text-[var(--brand-text)] dark:text-slate-200"
                         >
                             <span className="font-semibold">{option.id}</span>
                             <span> - {option.path}</span>
@@ -334,7 +334,7 @@ export const FeedWritesPanel = forwardRef<FeedWritesPanelRef, FeedWritesPanelPro
 
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="rounded-xl border border-slate-200 bg-white/80 p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800/80">
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
                         <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Feed Writes</h2>
@@ -348,12 +348,12 @@ export const FeedWritesPanel = forwardRef<FeedWritesPanelRef, FeedWritesPanelPro
                         aria-checked={data?.excludedFromFeeds === true}
                         disabled={!data || isSavingExclusion}
                         onClick={() => handleExclusionChange(!data?.excludedFromFeeds)}
-                        className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900/60 dark:hover:bg-slate-900"
+                        className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:hover:bg-slate-900"
                     >
                         <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Exclude from product feeds</span>
                         <span
                             aria-hidden="true"
-                            className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors ${data?.excludedFromFeeds ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+                            className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors ${data?.excludedFromFeeds ? 'bg-[var(--primary-color)]' : 'bg-slate-300 dark:bg-slate-600'}`}
                         >
                             <span className={`inline-block h-5 w-5 translate-y-0.5 rounded-full bg-white shadow transition-transform ${data?.excludedFromFeeds ? 'translate-x-5' : 'translate-x-0.5'}`} />
                         </span>
@@ -373,7 +373,7 @@ export const FeedWritesPanel = forwardRef<FeedWritesPanelRef, FeedWritesPanelPro
                             type="button"
                             onClick={() => handleChannelChange(channel.id)}
                             className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeChannel === channel.id
-                                ? 'bg-indigo-600 text-white'
+                                ? 'bg-[var(--primary-color)] text-[var(--primary-foreground)]'
                                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600'
                             }`}
                         >
@@ -384,8 +384,8 @@ export const FeedWritesPanel = forwardRef<FeedWritesPanelRef, FeedWritesPanelPro
             </div>
 
             {isLoading && (
-                <div className="flex min-h-48 items-center justify-center rounded-xl border border-slate-200 bg-white/80 dark:border-slate-700 dark:bg-slate-800/80">
-                    <Loader2 className="animate-spin text-indigo-600" size={28} />
+                <div className="flex min-h-48 items-center justify-center rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+                    <Loader2 className="animate-spin text-[var(--brand-text)]" size={28} />
                 </div>
             )}
 
@@ -398,7 +398,7 @@ export const FeedWritesPanel = forwardRef<FeedWritesPanelRef, FeedWritesPanelPro
             {!isLoading && !error && rows.map((row) => {
                 const columns = row.columns.filter((column) => isProductFeedWriteField(column.targetField));
                 return (
-                    <section key={row.rowId} className="rounded-xl border border-slate-200 bg-white/80 p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800/80">
+                    <section key={row.rowId} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800">
                         <div className="mb-5 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-4 dark:border-slate-700">
                             <div>
                                 <h3 className="font-semibold text-slate-900 dark:text-white">{row.name}</h3>
@@ -420,7 +420,7 @@ export const FeedWritesPanel = forwardRef<FeedWritesPanelRef, FeedWritesPanelPro
                                 const characterLimit = getFeedWriteCharacterLimit(column.targetField);
                                 const isOverCharacterLimit = characterLimit != null && value.length > characterLimit;
                                 const isAiRewriting = optimizingKey === draftKey;
-                                const inputClasses = `mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:bg-slate-900 dark:text-slate-100 ${isOverCharacterLimit
+                                const inputClasses = `mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)] dark:bg-slate-900 dark:text-slate-100 ${isOverCharacterLimit
                                     ? 'border-red-500 dark:border-red-500'
                                     : column.isMissingRequired
                                         ? 'border-amber-400 dark:border-amber-600'
@@ -438,7 +438,7 @@ export const FeedWritesPanel = forwardRef<FeedWritesPanelRef, FeedWritesPanelPro
                                                         type="button"
                                                         disabled={!!optimizingKey}
                                                         onClick={() => handleAiRewrite(row, column.targetField)}
-                                                        className="inline-flex items-center gap-1 rounded-md bg-violet-50 px-2 py-1 text-xs font-medium text-violet-700 transition-colors hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-violet-950/40 dark:text-violet-300 dark:hover:bg-violet-900/50"
+                                                        className="inline-flex items-center gap-1 rounded-md bg-[var(--brand-subtle)] px-2 py-1 text-xs font-medium text-[var(--brand-text)] transition-colors hover:bg-[var(--brand-subtle)] disabled:cursor-not-allowed disabled:opacity-50"
                                                     >
                                                         {isAiRewriting ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                                                         {isAiRewriting ? 'Rewriting...' : 'AI Rewrite'}
@@ -494,7 +494,7 @@ export const FeedWritesPanel = forwardRef<FeedWritesPanelRef, FeedWritesPanelPro
                                                 <button
                                                     type="button"
                                                     onClick={() => updateDraft(row, column.targetField, '')}
-                                                    className="inline-flex shrink-0 items-center gap-1 text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                                                    className="inline-flex shrink-0 items-center gap-1 text-[var(--brand-text)] hover:text-[var(--brand-text)] "
                                                 >
                                                     <RotateCcw size={12} /> Use matched
                                                 </button>

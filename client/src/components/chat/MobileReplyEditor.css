@@ -19,15 +19,21 @@
     color: #cbd5e1;
 }
 
-.mobile-reply-editor .rte-toolbar-btn.active {
-    background: #312e81;
-    color: #e0e7ff;
+.mobile-reply-editor .rte-toolbar-btn.active,
+.mobile-reply-editor .rte-toolbar-btn.active:hover {
+    background: var(--brand-subtle);
+    color: var(--brand-text);
+    box-shadow: inset 0 0 0 1px var(--brand-border);
 }
 
 .mobile-reply-editor .rte-toolbar-btn:hover { background: #334155; color: white; }
+.mobile-reply-editor .rte-toolbar-btn:focus-visible {
+    outline: 2px solid var(--focus-color);
+    outline-offset: 2px;
+}
 .mobile-reply-editor .rte-toolbar-group + .rte-toolbar-group { border-color: #334155; margin-left: 4px; padding-left: 4px; }
 .mobile-reply-editor .rte-placeholder { color: #94a3b8; font-size: 16px; }
-.mobile-reply-editor .rte-link { color: #a5b4fc; }
+.mobile-reply-editor .rte-link { color: var(--brand-text); }
 
 .mobile-reply-editor.is-expanded,
 .mobile-reply-editor.is-expanded .rich-text-editor {

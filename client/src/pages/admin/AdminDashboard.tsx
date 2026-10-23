@@ -5,6 +5,8 @@ import { isRecord } from '../../utils/responseValidation';
 import { useScopedMutation } from '../../hooks/useScopedMutation';
 import { api } from '../../services/api';
 import { useState } from 'react';
+import { workspaceStyles as ui } from '../../components/ui/workspaceStyles';
+import { Metric, MetricStrip } from '../../components/ui/MetricStrip';
 
 interface Stats { totalAccounts: number; totalUsers: number; activeSyncs: number; failedSyncs24h: number }
 function decodeStats(value: unknown): Stats {
@@ -35,12 +37,12 @@ function Dashboard({ token }: { token: string }) {
     return <main className="space-y-6 text-slate-900 dark:text-slate-100">
         <h1 className="text-2xl font-bold">System Overview</h1>
         {message && <p role="status">{message}</p>}{mutation.error && <p role="alert">{mutation.error}</p>}
-        <section className={card} aria-label="Admin statistics"><h2 className="font-semibold">Statistics</h2><button type="button" disabled={stats.busy || mutation.busy} onClick={() => void stats.refresh()}>Refresh statistics</button>
+        <section className="space-y-3" aria-label="Admin statistics"><h2 className="font-semibold">Statistics</h2><button className={ui.secondary} type="button" disabled={stats.busy || mutation.busy} onClick={() => void stats.refresh()}>Refresh statistics</button>
             {stats.busy && <p role="status">Loading statistics...</p>}{stats.error && <p role="alert">Statistics: {stats.error}</p>}
-            <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">{([['totalAccounts', 'Total Accounts'], ['totalUsers', 'Total Users'], ['activeSyncs', 'Active Syncs'], ['failedSyncs24h', 'Failed Syncs (24h)']] as const).map(([key, label]) => <div key={key}><dt>{label}</dt><dd className="text-3xl font-bold">{stats.data?.[key].toLocaleString() ?? 'Unavailable'}</dd></div>)}</dl>
-            <button type="button" disabled={!stats.data || !!stats.error || stats.busy || mutation.busy} onClick={() => void clear()}>{mutation.busy ? 'Clearing...' : 'Clear failed logs (all time)'}</button>
+            <MetricStrip label="Admin statistics summary">{([['totalAccounts', 'Total Accounts'], ['totalUsers', 'Total Users'], ['activeSyncs', 'Active Syncs'], ['failedSyncs24h', 'Failed Syncs (24h)']] as const).map(([key, label]) => <Metric key={key} label={label} value={stats.data?.[key].toLocaleString() ?? 'Unavailable'} />)}</MetricStrip>
+            <button className={ui.danger} type="button" disabled={!stats.data || !!stats.error || stats.busy || mutation.busy} onClick={() => void clear()}>{mutation.busy ? 'Clearing...' : 'Clear failed logs (all time)'}</button>
         </section>
-        <section className={card} aria-label="System health"><h2 className="font-semibold">System Health</h2><button type="button" disabled={health.busy} onClick={() => void health.refresh()}>Refresh health</button>
+        <section className={card} aria-label="System health"><h2 className="font-semibold">System Health</h2><button className={ui.secondary} type="button" disabled={health.busy} onClick={() => void health.refresh()}>Refresh health</button>
             {health.busy && <p role="status">Loading system health...</p>}{health.error && <p role="alert">System health: {health.error}</p>}
             {!health.data ? <p>Health unavailable</p> : <><p className="capitalize">{health.data.status} · v{health.data.version.app} · Up {health.data.version.uptimeFormatted}</p>
                 <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3">{Object.entries(health.data.services).map(([name, service]) => <div key={name}><dt className="capitalize">{name}</dt><dd>{service.status}{service.latencyMs === undefined ? '' : ` · ${service.latencyMs}ms`}{service.details ? ` · ${service.details}` : ''}</dd></div>)}</dl>

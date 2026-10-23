@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MobilePageHeader } from '../../components/mobile/MobilePageHeader';
+import { Metric, MetricStrip } from '../../components/ui/MetricStrip';
 import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -215,24 +216,10 @@ export function MobileCustomers() {
 
             {/* Stats Summary */}
             {customers.length > 0 && (
-                <div className="grid grid-cols-2 gap-3">
-                    <div className="mobile-panel p-4">
-                        <div className="mobile-brand-text flex items-center gap-2 mb-1">
-                            <Users size={16} />
-                            <span className="text-xs font-medium">Total</span>
-                        </div>
-                        <p className="text-xl font-bold text-white">{customers.length}</p>
-                    </div>
-                    <div className="mobile-panel p-4">
-                        <div className="flex items-center gap-2 text-slate-400 mb-1">
-                            <ShoppingBag size={16} />
-                            <span className="text-xs font-medium">Total Spent</span>
-                        </div>
-                        <p className="text-xl font-bold text-white">
-                            {formatAccountCurrency(customers.reduce((sum, c) => sum + c.totalSpent, 0))}
-                        </p>
-                    </div>
-                </div>
+                <MetricStrip label="Customer results summary" className="grid-cols-2">
+                    <Metric label="Total" value={customers.length} />
+                    <Metric label="Total Spent" value={formatAccountCurrency(customers.reduce((sum, c) => sum + c.totalSpent, 0))} />
+                </MetricStrip>
             )}
 
             {/* Customer List */}

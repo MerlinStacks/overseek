@@ -162,7 +162,7 @@ export const ReportsTable = ({ data, loading, activeView, dateRange = 'today' }:
         }
     };
 
-    if (loading) return <div className="p-12 text-center"><Loader2 className="animate-spin h-8 w-8 mx-auto text-blue-500" /></div>;
+    if (loading) return <div className="p-12 text-center"><Loader2 className="animate-spin h-8 w-8 mx-auto text-[var(--brand-text)]" /></div>;
 
     const columnCount = () => {
         if (isSearch) return 2;
@@ -187,7 +187,7 @@ export const ReportsTable = ({ data, loading, activeView, dateRange = 'today' }:
                             value={pageFilter}
                             onChange={e => setPageFilter(e.target.value)}
                             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm 
-                                       focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none
+                                focus:ring-2 focus:ring-[var(--brand-border)] focus:border-[var(--primary-color)] outline-none
                                        placeholder:text-gray-400 bg-white"
                         />
                         {pageFilter && (

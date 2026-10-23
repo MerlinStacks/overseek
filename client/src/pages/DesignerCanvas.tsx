@@ -425,8 +425,8 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                                 aria-pressed={isSelected}
                                 onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onSelect(l.i); } }}
                                 className={`bg-white border-2 rounded-lg group relative transition-all duration-150 ${isSelected
-                                    ? 'border-indigo-500 ring-2 ring-indigo-500/20 shadow-lg z-10'
-                                    : 'border-slate-200 hover:border-indigo-300 hover:shadow-md'
+                                    ? 'border-[var(--primary-color)] ring-2 ring-[var(--focus-color)] shadow-lg z-10'
+                                    : 'border-slate-200 hover:border-[var(--brand-border)] hover:shadow-md'
                                     }`}
                                 onClick={(e) => {
                                     e.stopPropagation();
@@ -435,10 +435,10 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                             >
                                 {/* Drag Handle */}
                                 <div className={`invoice-drag-handle absolute -top-px -left-px p-1.5 rounded-br-lg cursor-move z-10 transition-all ${isSelected
-                                    ? 'bg-indigo-500 opacity-100'
+                                    ? 'bg-[var(--primary-color)] opacity-100'
                                     : 'bg-slate-300 opacity-0 group-hover:opacity-100'
                                     }`}>
-                                    <GripVertical size={12} className={isSelected ? 'text-white' : 'text-slate-600'} />
+                                    <GripVertical size={12} className={isSelected ? 'text-[var(--primary-foreground)]' : 'text-slate-600'} />
                                 </div>
 
                                 {/* Item Content */}
@@ -454,8 +454,8 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                 {layout.length === 0 && (
                     <div className="absolute inset-0 flex items-center justify-center">
                         <div className="text-center p-8">
-                            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-linear-to-br from-indigo-100 to-purple-100 flex items-center justify-center">
-                                <Table size={32} className="text-indigo-500" />
+                            <div className="w-20 h-20 mx-auto mb-6 rounded-xl bg-[var(--brand-subtle)] flex items-center justify-center">
+                                <Table size={32} className="text-[var(--brand-text)]" />
                             </div>
                             <h3 className="text-lg font-bold text-slate-700 mb-2">Start Building Your Invoice</h3>
                             <p className="text-sm text-slate-500 max-w-sm mx-auto">

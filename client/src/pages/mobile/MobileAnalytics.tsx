@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Metric, MetricStrip } from '../../components/ui/MetricStrip';
 import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { TrendingUp, DollarSign, ShoppingCart, Users, Eye, ArrowUpRight, ArrowDownRight, ChevronRight } from 'lucide-react';
@@ -191,7 +192,7 @@ export function MobileAnalytics() {
                     {[...Array(3)].map((_, i) => <div key={i} className="h-10 w-24 bg-slate-700/50 rounded-full" />)}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                    {[...Array(6)].map((_, i) => <div key={i} className="h-32 bg-slate-800/50 border border-white/10 rounded-2xl" />)}
+                    {[...Array(6)].map((_, i) => <div key={i} className="h-16 bg-slate-800/50" />)}
                 </div>
             </div>
         );
@@ -227,19 +228,19 @@ export function MobileAnalytics() {
             {/* Live Visitors Banner */}
             <button
                 onClick={() => navigate('/m/live-visitors')}
-                className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl text-white shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-transform"
+                className="w-full flex items-center justify-between p-4 mobile-panel active:scale-[0.98] transition-transform"
             >
                 <div className="flex items-center gap-3">
                     <span className="relative flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-white" />
+                        <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-400" />
                     </span>
                     <div className="text-left">
-                        <p className="text-2xl font-bold">{liveCount}</p>
-                        <p className="text-sm text-green-100">Live visitors now</p>
+                        <p className="text-xl font-semibold">{liveCount}</p>
+                        <p className="text-sm text-slate-400">Live visitors now</p>
                     </div>
                 </div>
-                <ChevronRight size={24} className="text-green-200" />
+                <ChevronRight size={24} className="text-slate-400" />
             </button>
 
             <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
@@ -256,31 +257,15 @@ export function MobileAnalytics() {
                     </button>
                 ))}
             </div>
-            <div className="grid grid-cols-2 gap-3">
-                {metrics.map((metric, index) => {
-                    const Icon = metric.icon;
+            <MetricStrip label="Analytics summary" className="grid-cols-2">
+                {metrics.map((metric) => {
                     const isPositive = metric.change >= 0;
                     const TrendIcon = isPositive ? ArrowUpRight : ArrowDownRight;
                     return (
-                        <div
-                            key={metric.key}
-                            className="pwa-card p-4 animate-fade-slide-up"
-                            style={{ animationDelay: `${50 + index * 25}ms` }}
-                        >
-                            <div className="flex items-center justify-between mb-3">
-                                <div className={`p-2 rounded-xl ${metric.iconBg}`}>
-                                    <Icon size={18} className={metric.color} />
-                                </div>
-                                <div className={`flex items-center text-xs font-medium ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                    <TrendIcon size={14} />{Math.abs(metric.change).toFixed(1)}%
-                                </div>
-                            </div>
-                            <p className="text-2xl font-bold text-white">{metric.value}</p>
-                            <p className="text-xs text-slate-400 mt-1">{metric.label}</p>
-                        </div>
+                        <Metric key={metric.key} label={metric.label} value={metric.value} hint={<span className={`inline-flex items-center ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}><TrendIcon size={14} />{Math.abs(metric.change).toFixed(1)}%</span>} />
                     );
                 })}
-            </div>
+            </MetricStrip>
         </div>
     );
 }

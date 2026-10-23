@@ -10,7 +10,7 @@ export function WizardStepIndicator({ currentStep }: { currentStep: number }) {
         <ol className="space-y-4">{steps.map(step => {
             const state = step.id < currentStep ? 'Completed' : step.id === currentStep ? 'In Progress' : 'Not started';
             return <li key={step.id} aria-current={step.id === currentStep ? 'step' : undefined} className="flex items-center gap-3">
-                <span aria-hidden="true" className={`flex h-10 w-10 items-center justify-center rounded-xl ${step.id === currentStep ? 'bg-indigo-600 text-white' : step.id < currentStep ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>{step.id}</span>
+                <span aria-hidden="true" className={`flex h-10 w-10 items-center justify-center rounded-xl ${step.id === currentStep ? 'bg-[var(--primary-color)] text-[var(--primary-foreground)]' : step.id < currentStep ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>{step.id}</span>
                 <div><p className="font-semibold text-sm text-slate-900 dark:text-slate-100">{step.label}</p><p className="text-xs text-slate-500 dark:text-slate-400">{state}</p></div>
             </li>;
         })}</ol>

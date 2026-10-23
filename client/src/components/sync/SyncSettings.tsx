@@ -26,7 +26,7 @@ export function SyncSettings() {
                             return next;
                         })}
                         className={`rounded-lg px-4 py-2 text-sm font-medium ${view === value
-                            ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300'
+                            ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)]'
                             : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'}`}
                     >
                         {value === 'bom' ? 'BOM Inventory' : 'Overview & schedules'}

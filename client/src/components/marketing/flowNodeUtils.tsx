@@ -158,18 +158,18 @@ export function getActionLabel(config: unknown): string {
 }
 
 /**
- * Get gradient color for action type.
+ * Get the semantic action-type surface. The legacy helper name is retained.
  */
 export function getActionGradient(config: unknown): string {
     const actionType = asNodeConfig(config).actionType;
     switch (actionType) {
-        case 'GOAL': return 'bg-linear-to-br from-emerald-500 to-emerald-600';
-        case 'JUMP': return 'bg-linear-to-br from-red-500 to-red-600';
-        case 'EXIT': return 'bg-linear-to-br from-gray-500 to-gray-600';
-        case 'GENERATE_COUPON': return 'bg-linear-to-br from-amber-500 to-orange-600';
-        case 'ADD_ORDER_NOTE': return 'bg-linear-to-br from-sky-500 to-blue-600';
-        case 'UPDATE_ORDER_STATUS': return 'bg-linear-to-br from-cyan-500 to-teal-600';
-        case 'UNSUBSCRIBE': return 'bg-linear-to-br from-red-500 to-rose-600';
-        default: return 'bg-linear-to-br from-green-500 to-green-600';
+        case 'GOAL': return 'bg-emerald-600';
+        case 'JUMP': return 'bg-red-600';
+        case 'EXIT': return 'bg-gray-600';
+        case 'GENERATE_COUPON': return 'bg-amber-600';
+        case 'ADD_ORDER_NOTE': return 'bg-sky-600';
+        case 'UPDATE_ORDER_STATUS': return 'bg-cyan-600';
+        case 'UNSUBSCRIBE': return 'bg-red-600';
+        default: return 'bg-green-600';
     }
 }

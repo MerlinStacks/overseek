@@ -13,7 +13,7 @@ interface Props {
 export const VariantTableRow = memo(function VariantTableRow({ variant: v, isExpanded, onToggleExpand, onFieldChange, stockEditValue, onStockEditChange, onStockAdjust, onStockSave, isSavingStock, hasBOM, disabled, stockUnavailable, currency }: Props) {
     const locked = disabled || isSavingStock; const stock = parseVariantStock(stockEditValue);
     const image = getVariantImage(v); const inputClass = `${ui.input} px-2 py-1.5`;
-    return <tr className={`text-slate-900 transition-colors dark:text-slate-100 ${isExpanded ? 'bg-indigo-50/50 dark:bg-indigo-950/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
+    return <tr className={`text-slate-900 transition-colors dark:text-slate-100 ${isExpanded ? 'bg-[var(--brand-subtle)] ' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
         <td className="p-2"><button className={`${ui.secondary} p-1.5`} type="button" disabled={locked} aria-label={`${isExpanded ? 'Collapse' : 'Expand'} variant ${v.id}`} aria-expanded={isExpanded} onClick={onToggleExpand}><ChevronDown size={14} className={isExpanded ? '' : '-rotate-90'} /></button></td>
         <td className="px-2 py-3">{image ? <img src={image} alt="" className="size-12 rounded-lg border border-slate-200 object-cover dark:border-slate-700" loading="lazy" /> : <span className="flex size-12 items-center justify-center rounded-lg bg-slate-100 text-slate-400 dark:bg-slate-800"><Package size={18} /></span>}</td>
         <td className="max-w-48 break-words p-2 text-xs font-medium">{v.attributes?.map(attribute => `${attribute.name}: ${attribute.option}`).join(', ') || `#${v.id}`}</td>

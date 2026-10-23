@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { Metric, MetricStrip } from '../../ui/MetricStrip';
 import { useDeliveryLaunch } from '../../../hooks/useDeliveryLaunch';
 import { canActivate, isCutoverRecovery, preparationBlockReason, launchGuidance, type Attestation, type LegacyAttestation } from './launchApi';
 import { ReceiptRecovery } from './ReceiptRecovery';
@@ -95,7 +96,7 @@ function LaunchPanel({ accountId, token, canEdit, canInventory, canRead = true, 
         } finally { inFlight.current = false; setBusy(false); }
     };
     const controls = <div className="flex flex-wrap gap-2">
-        {canEdit && <button type="button" className="bg-indigo-600 text-white" disabled={activationBlocked} onClick={() => void queue('activate')}>Activate storefront estimates</button>}
+        {canEdit && <button type="button" className="rounded-lg px-3 py-2 bg-[var(--primary-color)] text-[var(--primary-foreground)]" disabled={activationBlocked} onClick={() => void queue('activate')}>Activate storefront estimates</button>}
         {canEdit && <button type="button" disabled={busy} onClick={() => void queue('disable')}>Disable storefront estimates</button>}
     </div>;
     return <section ref={element} aria-label="Delivery launch and recovery" className="space-y-3 rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-sm [&_button]:rounded-md [&_button]:border [&_button]:px-3 [&_button]:py-2 [&_button:disabled]:opacity-50">
@@ -135,14 +136,14 @@ function LaunchPanel({ accountId, token, canEdit, canInventory, canRead = true, 
             <h4 className="text-base font-semibold">Overview</h4>
             <div className="rounded-lg bg-indigo-50 p-3 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-200"><p className="font-semibold">Next step</p><p>{nextStep}</p></div>
             {status && <>
-                <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <MetricStrip label="Delivery launch status">
                     {[
                         ['Storefront estimates', status.active ? 'Active' : 'Inactive'],
                         ['Inventory receiving', status.receivingFrozen ? 'Frozen' : 'Not frozen'],
                         ['Unresolved receipts', status.unresolvedReceipts],
                         ['Unresolved legacy jobs', status.unresolvedLegacyJobs],
-                    ].map(([label, value]) => <div key={label} className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900"><dt className="text-slate-600 dark:text-slate-400">{label}</dt><dd className="mt-1 text-lg font-semibold">{value}</dd></div>)}
-                </dl>
+                    ].map(([label, value]) => <Metric key={label} label={label} value={value} />)}
+                </MetricStrip>
                 <details className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
                 <summary className="cursor-pointer font-medium">Technical diagnostics</summary>
                 <div className="mt-3 space-y-2 break-words text-slate-600 dark:text-slate-400">

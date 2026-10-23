@@ -25,12 +25,10 @@ export function InvoiceGenerationIssueModal({
     return (
         <Modal isOpen={!!issue} onClose={onClose} maxWidth="max-w-xl" title="Invoice recovery">
             {issue && (
-                <div className="relative overflow-hidden rounded-3xl border border-amber-200/80 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-1 shadow-xl dark:border-amber-500/30 dark:from-slate-900 dark:via-slate-900 dark:to-amber-950/40">
-                    <div className="absolute -right-16 -top-16 h-44 w-44 rounded-full bg-amber-300/30 blur-3xl dark:bg-amber-500/20" />
-                    <div className="absolute -bottom-20 -left-16 h-52 w-52 rounded-full bg-orange-300/20 blur-3xl dark:bg-orange-500/10" />
-                    <div className="relative rounded-[1.35rem] bg-white/85 p-6 backdrop-blur dark:bg-slate-900/80">
+                <div className="relative overflow-hidden rounded-xl border border-amber-200 bg-white p-1 dark:border-amber-800 dark:bg-slate-900">
+                    <div className="relative rounded-lg bg-white p-6 dark:bg-slate-900">
                         <div className="flex items-start gap-4">
-                            <div className="rounded-2xl bg-amber-100 p-3 text-amber-700 shadow-inner dark:bg-amber-500/15 dark:text-amber-300">
+                            <div className="rounded-xl bg-amber-100 p-3 text-amber-700 shadow-inner dark:bg-amber-500/15 dark:text-amber-300">
                                 {isMissingTemplate ? <Settings size={28} /> : <FileWarning size={28} />}
                             </div>
                             <div className="min-w-0 flex-1">
@@ -46,7 +44,7 @@ export function InvoiceGenerationIssueModal({
                             </div>
                         </div>
 
-                        <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50/90 p-4 dark:border-slate-700 dark:bg-slate-800/70">
+                        <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/90 p-4 dark:border-slate-700 dark:bg-slate-800">
                             <div className="flex gap-3 text-sm text-slate-700 dark:text-slate-200">
                                 <AlertTriangle className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" size={18} />
                                 <div>
@@ -59,7 +57,7 @@ export function InvoiceGenerationIssueModal({
                         </div>
 
                         {isRateLimited && (
-                            <div className="mt-4 flex items-center gap-2 rounded-2xl bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:bg-blue-500/10 dark:text-blue-200">
+                            <div className="mt-4 flex items-center gap-2 rounded-xl bg-[var(--brand-subtle)] px-4 py-3 text-sm text-[var(--brand-text)] ">
                                 <Clock3 size={16} />
                                 <span>Please wait {cooldownSeconds || issue.retryAfterSeconds || 1}s before trying again.</span>
                             </div>

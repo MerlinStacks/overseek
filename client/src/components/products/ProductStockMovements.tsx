@@ -73,10 +73,10 @@ function MovementHistory({ productId }: { productId: string }) {
     }, [productId, accountId, token, page, attempt]);
 
     return (
-        <section className="bg-white/70 dark:bg-slate-800/80 rounded-xl border border-gray-200 dark:border-slate-700 shadow-xs">
+        <section className="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 shadow-xs">
             <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
                 <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    <ArrowLeftRight size={16} className="text-indigo-600" /> Stock Movement
+                    <ArrowLeftRight size={16} className="text-[var(--brand-text)]" /> Stock Movement
                 </h3>
                 {!loading && !error && data && <span className="text-xs text-gray-500 dark:text-gray-400">{data.total} movements</span>}
             </div>
@@ -85,7 +85,7 @@ function MovementHistory({ productId }: { productId: string }) {
             ) : error ? (
                 <div role="alert" className="p-8 text-center text-gray-600 dark:text-gray-300">
                     <p>Unable to load stock movements.</p>
-                    <button onClick={() => { setLoading(true); setError(false); setAttempt(value => value + 1); }} className="mt-3 text-indigo-600 dark:text-indigo-400 underline">Try again</button>
+                    <button onClick={() => { setLoading(true); setError(false); setAttempt(value => value + 1); }} className="mt-3 text-[var(--brand-text)] underline">Try again</button>
                 </div>
             ) : !data?.movements.length ? (
                 <div className="p-8 text-center text-gray-500 dark:text-gray-400">No recorded stock movements for this product yet.</div>
@@ -105,7 +105,7 @@ function MovementHistory({ productId }: { productId: string }) {
                                         <td className={`px-4 py-3 font-semibold ${movement.quantity > 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{movement.quantity > 0 ? '+' : ''}{movement.quantity}</td>
                                         <td className="px-4 py-3">{movement.previousStock ?? '—'}</td>
                                         <td className="px-4 py-3">{movement.newStock ?? '—'}</td>
-                                        <td className="px-4 py-3">{movement.orderId ? <Link to={`/orders/${movement.orderId}`} className="text-indigo-600 dark:text-indigo-400 hover:underline">{movement.reference || `#${movement.orderId}`}</Link> : movement.reference || '—'}</td>
+                                        <td className="px-4 py-3">{movement.orderId ? <Link to={`/orders/${movement.orderId}`} className="text-[var(--brand-text)] hover:underline">{movement.reference || `#${movement.orderId}`}</Link> : movement.reference || '—'}</td>
                                     </tr>
                                 ))}
                             </tbody>

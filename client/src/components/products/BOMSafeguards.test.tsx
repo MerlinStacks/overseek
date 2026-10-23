@@ -33,7 +33,19 @@ describe('BOM values and controls', () => {
     });
     it('does not call unknown Woo stock out of sync or format malformed costs', () => {
         render(<BOMCostSummary totalCost={NaN} effectiveStock={0} currentWooStock={null} currency="EUR" isSyncing={false} syncStatus="idle" onSyncToWoo={vi.fn()} />);
-        expect(screen.getByText('Stock comparison unavailable')).toBeInTheDocument(); expect(screen.queryByText('Out of sync')).toBeNull(); expect(screen.getByText('Unavailable')).toBeInTheDocument(); expect(screen.getByRole('button')).toHaveAttribute('type', 'button');
+        expect(screen.getByText('Stock comparison unavailable')).toBeInTheDocument(); expect(screen.queryByText('Out of sync')).toBeNull(); expect(screen.getAllByText('Unavailable')).toHaveLength(2); expect(screen.getByRole('button')).toHaveAttribute('type', 'button');
+        expect(screen.getByLabelText('BOM summary')).toHaveClass('metric-strip');
+        expect(screen.getByText('Buildable units').nextElementSibling).toHaveTextContent('0');
+    });
+    it('keeps the stock sync action outside the slim summary and respects its disabled state', () => {
+        const sync = vi.fn();
+        const view = render(<BOMCostSummary totalCost={5} effectiveStock={3} currentWooStock={2} isSyncing={false} syncStatus="idle" onSyncToWoo={sync} disabled />);
+        expect(screen.getByText('Out of sync')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Sync to WooCommerce' })).toBeDisabled();
+        expect(screen.getByLabelText('BOM summary')).not.toContainElement(screen.getByRole('button'));
+        view.rerender(<BOMCostSummary totalCost={5} effectiveStock={3} currentWooStock={2} isSyncing={false} syncStatus="idle" onSyncToWoo={sync} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Sync to WooCommerce' }));
+        expect(sync).toHaveBeenCalledOnce();
     });
     it('preserves zero COGS, accepts numeric strings and never uses selling price as a cost', () => {
         render(<BOMSearchDropdown searchTerm="part" onSearchChange={vi.fn()} productId="parent" onAddProduct={vi.fn()} currency="EUR" searchResults={[{ id: 'zero', name: 'Zero cost', cogs: 0, price: 99 }, { id: 'unknown', name: 'Unknown cost', price: 99 }, { id: 'variants', name: 'Variants', searchableVariants: [{ wooId: 1, cogs: '2.50' as unknown as number }] }]} />);

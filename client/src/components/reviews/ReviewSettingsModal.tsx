@@ -67,7 +67,7 @@ export function ReviewSettingsModal({
                     </div>
                     <div>
                         <div className="mb-3 flex items-center gap-2">
-                            <ShieldCheck className="text-blue-600" size={19} />
+                            <ShieldCheck className="text-[var(--brand-text)]" size={19} />
                             <div>
                                 <h3 className="font-semibold text-slate-900 dark:text-white">Storefront trust badges</h3>
                                 <p className="text-sm text-slate-500 dark:text-slate-400">Show earned badges on review pages and review summary widgets.</p>
@@ -89,7 +89,7 @@ export function ReviewSettingsModal({
                                 },
                             ].map(({ key, icon: Icon, title, description }) => (
                                 <div key={key} className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
-                                    <Icon className="mt-0.5 shrink-0 text-blue-600" size={20} />
+                                    <Icon className="mt-0.5 shrink-0 text-[var(--brand-text)]" size={20} />
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-start justify-between gap-3">
                                             <div className="min-w-0 flex-1">
@@ -102,7 +102,7 @@ export function ReviewSettingsModal({
                                                 aria-checked={settings[key]}
                                                 aria-label={title}
                                                 onClick={() => onChange({ ...settings, [key]: !settings[key] })}
-                                                className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors ${settings[key] ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+                                                className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors ${settings[key] ? 'bg-[var(--primary-color)]' : 'bg-slate-300 dark:bg-slate-600'}`}
                                             >
                                                 <span className={`absolute left-0 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${settings[key] ? 'translate-x-5' : 'translate-x-0.5'}`} />
                                             </button>
@@ -115,7 +115,7 @@ export function ReviewSettingsModal({
 
                     <div>
                         <div className="mb-3 flex items-center gap-2">
-                            <SlidersHorizontal className="text-blue-600" size={19} />
+                            <SlidersHorizontal className="text-[var(--brand-text)]" size={19} />
                             <div>
                                 <h3 className="font-semibold text-slate-900 dark:text-white">New review moderation</h3>
                                 <p className="text-sm text-slate-500 dark:text-slate-400">Choose the initial publication status for incoming reviews.</p>
@@ -123,14 +123,14 @@ export function ReviewSettingsModal({
                         </div>
                         <div className="space-y-2">
                             {MODERATION_OPTIONS.map((option) => (
-                                <label key={option.value} className="flex cursor-pointer gap-3 rounded-xl border border-slate-200 p-3.5 has-checked:border-blue-500 has-checked:bg-blue-50/70 dark:border-slate-700 dark:has-checked:border-blue-500 dark:has-checked:bg-blue-950/20">
+                                <label key={option.value} className="flex cursor-pointer gap-3 rounded-xl border border-slate-200 p-3.5 has-checked:border-[var(--primary-color)] has-checked:bg-[var(--brand-subtle)] dark:border-slate-700 dark:has-checked:border-[var(--primary-color)] dark:has-checked:bg-[var(--brand-subtle)]">
                                     <input
                                         type="radio"
                                         name="review-moderation-mode"
                                         value={option.value}
                                         checked={settings.moderationMode === option.value}
                                         onChange={() => onChange({ ...settings, moderationMode: option.value })}
-                                        className="mt-1 h-4 w-4 border-slate-300 text-blue-600 focus:ring-blue-500"
+                                    className="mt-1 h-4 w-4 border-slate-300 text-[var(--brand-text)] focus:ring-[var(--focus-color)]"
                                     />
                                     <span>
                                         <span className="block font-medium text-slate-900 dark:text-white">{option.label}</span>
@@ -140,10 +140,10 @@ export function ReviewSettingsModal({
                             ))}
                         </div>
                         {settings.moderationMode === 'hold_below' && (
-                            <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50/60 p-4 dark:border-blue-900 dark:bg-blue-950/20">
+                            <div className="mt-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-subtle)] p-4">
                                 <div className="flex items-center justify-between gap-4">
                                     <label htmlFor="review-moderation-threshold" className="font-medium text-slate-900 dark:text-white">Hold reviews below</label>
-                                    <strong className="rounded-lg bg-white px-3 py-1 text-blue-700 shadow-sm dark:bg-slate-800 dark:text-blue-300">{settings.moderationThreshold} stars</strong>
+                                    <strong className="rounded-lg bg-white px-3 py-1 text-[var(--brand-text)] shadow-sm dark:bg-slate-800">{settings.moderationThreshold} stars</strong>
                                 </div>
                                 <input
                                     id="review-moderation-threshold"
@@ -153,7 +153,7 @@ export function ReviewSettingsModal({
                                     step="1"
                                     value={settings.moderationThreshold}
                                     onChange={(event) => onChange({ ...settings, moderationThreshold: Number(event.target.value) })}
-                                    className="mt-4 w-full accent-blue-600"
+                                    className="mt-4 w-full accent-[var(--primary-color)]"
                                 />
                                 <div className="mt-1 flex justify-between text-xs text-slate-500 dark:text-slate-400"><span>2 stars</span><span>5 stars</span></div>
                             </div>
@@ -161,7 +161,7 @@ export function ReviewSettingsModal({
                     </div>
 
                     <div className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
-                        <Flag className="mt-0.5 shrink-0 text-blue-600" size={20} />
+                        <Flag className="mt-0.5 shrink-0 text-[var(--brand-text)]" size={20} />
                         <div className="min-w-0 flex-1">
                             <div className="flex items-start justify-between gap-4">
                                 <div className="min-w-0 flex-1">
@@ -176,7 +176,7 @@ export function ReviewSettingsModal({
                                     aria-checked={settings.showCountryFlags}
                                     aria-label="Show customer country flags"
                                     onClick={() => onChange({ ...settings, showCountryFlags: !settings.showCountryFlags })}
-                                    className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors ${settings.showCountryFlags ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+                                    className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors ${settings.showCountryFlags ? 'bg-[var(--primary-color)]' : 'bg-slate-300 dark:bg-slate-600'}`}
                                 >
                                     <span className={`absolute left-0 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${settings.showCountryFlags ? 'translate-x-5' : 'translate-x-0.5'}`} />
                                 </button>
@@ -186,7 +186,7 @@ export function ReviewSettingsModal({
 
                     <div>
                         <div className="mb-3 flex items-center gap-2">
-                            <UserRound className="text-blue-600" size={19} />
+                            <UserRound className="text-[var(--brand-text)]" size={19} />
                             <div>
                                 <label htmlFor="reviewer-name-display" className="font-semibold text-slate-900 dark:text-white">Reviewer name display</label>
                                 <p className="text-sm text-slate-500 dark:text-slate-400">Choose how customer names appear publicly on review cards.</p>
@@ -196,7 +196,7 @@ export function ReviewSettingsModal({
                             id="reviewer-name-display"
                             value={settings.reviewerNameDisplay}
                             onChange={(event) => onChange({ ...settings, reviewerNameDisplay: event.target.value as ReviewerNameDisplay })}
-                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-hidden focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)] dark:border-slate-600 dark:bg-slate-800 dark:text-white"
                         >
                             {NAME_DISPLAY_OPTIONS.map((option) => (
                                 <option key={option.value} value={option.value}>{option.label} — {option.example}</option>
@@ -208,7 +208,7 @@ export function ReviewSettingsModal({
                         <button type="button" onClick={onClose} disabled={isSaving} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700">
                             Cancel
                         </button>
-                        <button type="button" onClick={onSave} disabled={isSaving} className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+                    <button type="button" onClick={onSave} disabled={isSaving} className="inline-flex items-center rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] disabled:opacity-50">
                             {isSaving && <Loader2 className="mr-2 animate-spin" size={16} />}
                             {isSaving ? 'Saving…' : 'Save settings'}
                         </button>

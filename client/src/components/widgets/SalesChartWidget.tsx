@@ -210,7 +210,7 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
                 <h3 className={widgetTitleClass}>
                     Sales Trend {currentAccount?.revenueTaxInclusive !== false ? '(Tax Inclusive)' : '(Tax Exclusive)'}
                 </h3>
-                <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-blue-400 to-violet-500 shadow-blue-500/20`}>
+                <div className={widgetHeaderIconBadgeClass}>
                     <BarChart3 size={16} />
                 </div>
             </div>

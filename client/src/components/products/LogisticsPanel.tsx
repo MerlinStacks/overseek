@@ -40,9 +40,9 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
                 <StockManagementPanel ref={stockPanelRef} productWooId={productWooId} />
             )}
 
-            <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4 flex items-center gap-2">
-                    <Package size={16} className="text-blue-600" />
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-slate-100 uppercase tracking-wide mb-4 flex items-center gap-2">
+                    <Package size={16} className="text-[var(--brand-text)]" />
                     Inventory &amp; Shipping
                 </h3>
 
@@ -57,7 +57,7 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
                             type="button"
                             onClick={() => onChange({ manageStock: !formData.manageStock })}
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${formData.manageStock
-                                ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                                ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)] border border-[var(--brand-border)]'
                                 : 'bg-gray-100 text-gray-500 border border-gray-200'
                                 }`}
                         >
@@ -83,7 +83,7 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
                                 <select
                                     value={formData.stockStatus}
                                     onChange={(e) => onChange({ stockStatus: e.target.value })}
-                                    className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
+                                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] outline-hidden transition-all"
                                 >
                                     <option value="instock">In Stock</option>
                                     <option value="outofstock">Out of Stock</option>
@@ -96,7 +96,7 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
                                 <select
                                     value={formData.backorders}
                                     onChange={(e) => onChange({ backorders: e.target.value as 'no' | 'notify' | 'yes' })}
-                                    className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
+                                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] outline-hidden transition-all"
                                 >
                                     <option value="no">Do not allow</option>
                                     <option value="notify">Allow, but notify customer</option>
@@ -108,7 +108,7 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
 
                     {/* Variable product notice */}
                     {hasVariants && formData.manageStock && (
-                        <p className="text-xs text-blue-600 bg-blue-50 rounded-lg p-3 border border-blue-100">
+                        <p className="text-xs text-[var(--brand-text)] bg-[var(--brand-subtle)] rounded-lg p-3 border border-[var(--brand-border)]">
                             Stock is managed per-variant. Go to the <strong>Variations</strong> tab to edit stock for each variant.
                         </p>
                     )}
@@ -121,7 +121,7 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
                                 value={formData.binLocation}
                                 onChange={(e) => onChange({ binLocation: e.target.value })}
                                 placeholder="e.g. A-12-4"
-                                className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
+                                className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] outline-hidden transition-all"
                             />
                         </div>
                     </div>
@@ -139,7 +139,7 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
                                 step="0.01"
                                 value={formData.weight}
                                 onChange={(e) => onChange({ weight: e.target.value })}
-                                className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
+                                className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] outline-hidden transition-all"
                             />
                         </div>
                         <div>
@@ -149,7 +149,7 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
                                 step="0.01"
                                 value={formData.length}
                                 onChange={(e) => onChange({ length: e.target.value })}
-                                className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
+                                className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] outline-hidden transition-all"
                             />
                         </div>
                         <div>
@@ -159,7 +159,7 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
                                 step="0.01"
                                 value={formData.width}
                                 onChange={(e) => onChange({ width: e.target.value })}
-                                className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
+                                className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] outline-hidden transition-all"
                             />
                         </div>
                         <div>
@@ -169,7 +169,7 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
                                 step="0.01"
                                 value={formData.height}
                                 onChange={(e) => onChange({ height: e.target.value })}
-                                className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
+                                className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] outline-hidden transition-all"
                             />
                         </div>
                     </div>

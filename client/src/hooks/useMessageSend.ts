@@ -274,6 +274,7 @@ export function useMessageSend({
         const startSeconds = Math.ceil(UNDO_DELAY_MS / 1000);
 
         const timeout = setTimeout(async () => {
+            clearInterval(countdownInterval);
             setIsSending(true);
             try {
                 await onSendMessage(finalContent, 'AGENT', isInternal, channel, emailAccountId, clientRequestId);

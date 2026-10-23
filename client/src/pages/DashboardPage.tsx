@@ -336,7 +336,7 @@ function ScopedDashboardPage() {
     if (isLoading) return <DashboardPageSkeleton />;
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
             {saveError && <p role="alert" className="text-amber-800 dark:text-amber-200">{saveError} <button type="button" onClick={() => { cancelSave(); void fetchLayout(); }}>Discard local layout changes and reload</button></p>}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
@@ -351,7 +351,7 @@ function ScopedDashboardPage() {
                             value={dateOption}
                             onChange={(e) => setDateOption(e.target.value as DateRangeOption)}
                             aria-label="Date range"
-                            className="bg-transparent border-r border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200 outline-hidden focus:bg-slate-50 dark:focus:bg-slate-700/50 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500/50"
+                                className="bg-transparent border-r border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200 outline-hidden focus:bg-slate-50 dark:focus:bg-slate-700/50 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--focus-color)]"
                         >
                             <option value="today">Today</option>
                             <option value="yesterday">Yesterday</option>
@@ -365,7 +365,7 @@ function ScopedDashboardPage() {
                             value={comparisonOption}
                             onChange={(e) => setComparisonOption(e.target.value as ComparisonOption)}
                             aria-label="Comparison period"
-                            className="bg-transparent px-4 py-2.5 text-sm text-slate-500 dark:text-slate-400 outline-hidden focus:bg-slate-50 dark:focus:bg-slate-700/50 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500/50"
+                                className="bg-transparent px-4 py-2.5 text-sm text-slate-500 dark:text-slate-400 outline-hidden focus:bg-slate-50 dark:focus:bg-slate-700/50 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--focus-color)]"
                         >
                             <option value="none">No Comparison</option>
                             <option value="smart">Smart Comparison</option>
@@ -409,14 +409,14 @@ function ScopedDashboardPage() {
                             title={isLayoutLocked ? 'Unlock to add widgets' : 'Add Widget'}
                             className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all duration-200 ${isLayoutLocked
                                 ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-not-allowed shadow-none'
-                                : 'bg-gradient-to-r from-blue-500 to-violet-600 hover:from-blue-600 hover:to-violet-700 text-white shadow-lg shadow-blue-500/25 hover:shadow-blue-500/35 hover:-translate-y-0.5'
+                                    : 'bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] focus-visible:ring-2 focus-visible:ring-[var(--focus-color)]'
                                 }`}
                         >
                             <Plus size={16} /> Add Widget
                         </button>
 
                         {showAddWidget && (
-                            <div id="dashboard-widget-menu" className="absolute top-full right-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 z-50 overflow-hidden animate-scale-in">
+                            <div id="dashboard-widget-menu" className="absolute top-full right-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 z-50 overflow-hidden">
                                 <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
                                     <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Available Widgets</span>
                                 </div>
@@ -427,7 +427,7 @@ function ScopedDashboardPage() {
                                             <button
                                                 key={key}
                                                 onClick={() => addWidget(key)}
-                                                className="w-full text-left px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                                                    className="w-full text-left px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-[var(--brand-subtle)] hover:text-[var(--brand-text)] transition-colors"
                                             >
                                                 {entry.label}
                                             </button>
@@ -482,7 +482,7 @@ function ScopedDashboardPage() {
                                         type="button"
                                         aria-label="Drag widget"
                                         title="Drag Widget"
-                                        className="drag-handle p-1 cursor-move opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 dark:bg-slate-700/80 rounded-sm text-gray-500 dark:text-slate-400 pointer-events-auto shadow-xs hover:bg-white dark:hover:bg-slate-600 focus-visible:ring-2 focus-visible:ring-indigo-500/50"
+                                        className="drag-handle p-1 cursor-move opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity bg-white dark:bg-slate-700 rounded-sm text-gray-500 dark:text-slate-400 pointer-events-auto shadow-xs hover:bg-white dark:hover:bg-slate-600 focus-visible:ring-2 focus-visible:ring-[var(--focus-color)]"
                                     >
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="12" r="1" /><circle cx="9" cy="5" r="1" /><circle cx="9" cy="19" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="5" r="1" /><circle cx="15" cy="19" r="1" /></svg>
                                     </button>

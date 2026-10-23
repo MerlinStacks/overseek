@@ -117,7 +117,7 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
     };
 
     return (
-        <header className="h-14 md:h-16 header-frosted px-4 md:px-8 flex items-center justify-between sticky top-0 z-40">
+        <header className="h-14 md:h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 md:px-8 flex items-center justify-between sticky top-0 z-40">
             <div className="flex items-center gap-4 md:gap-8">
                 {/* Hamburger Menu Button (Mobile) */}
                 {showMenuButton && (
@@ -135,7 +135,7 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
                 {/* Search Trigger Button */}
                 <button
                     onClick={openSearch}
-                    className="hidden md:flex items-center gap-3 w-72 pl-4 pr-3 py-2 text-sm bg-gray-50 hover:bg-gray-100 border border-transparent hover:border-gray-200 rounded-full transition-all cursor-pointer group"
+                    className="hidden md:flex items-center gap-3 w-72 pl-4 pr-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors cursor-pointer group"
                     type="button"
                 >
                     <Search className="text-gray-400 group-hover:text-gray-500" size={18} />
@@ -149,6 +149,7 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
                     <div className="relative" ref={notificationsRef}>
                         {/* Notification Bell */}
                         <button
+                            aria-label="Notifications" aria-expanded={showNotifications}
                             onClick={() => setShowNotifications(!showNotifications)}
                             className={`text-gray-400 hover:text-gray-600 relative ${showNotifications ? 'text-gray-600 bg-gray-100 rounded-lg p-1' : ''}`}
                         >
@@ -162,11 +163,11 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
 
                         {/* Notification Dropdown */}
                         {showNotifications && (
-                            <div className="absolute top-12 right-0 w-80 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
-                                <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                                    <h3 className="font-semibold text-gray-900 text-sm">Notifications</h3>
+                            <div className="absolute top-12 right-0 w-80 max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
+                                <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800">
+                                    <h3 className="font-semibold text-slate-900 dark:text-slate-100 text-sm">Notifications</h3>
                                     {unreadCount > 0 && (
-                                        <button onClick={markAllRead} className="text-xs text-blue-600 hover:text-blue-700 font-medium">
+                                        <button onClick={markAllRead} className="text-xs text-[var(--brand-text)] hover:underline font-medium">
                                             Mark all read
                                         </button>
                                     )}
@@ -176,12 +177,12 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
                                         <div className="p-8 text-center text-gray-500 text-sm">No new notifications</div>
                                     ) : (
                                         notifications.map(n => (
-                                            <div key={n.id} className={`p-4 border-b border-gray-50 hover:bg-gray-50 transition-colors ${!n.isRead ? 'bg-blue-50/50' : ''}`}>
+                                            <div key={n.id} className={`p-4 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${!n.isRead ? 'bg-[var(--brand-subtle)]' : ''}`}>
                                                 <div className="flex justify-between items-start mb-1">
-                                                    <span className="text-sm font-medium text-gray-900">{n.title}</span>
+                                                    <span className="text-sm font-medium text-slate-900 dark:text-slate-100">{n.title}</span>
                                                     <span className="text-[10px] text-gray-400">{new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                                 </div>
-                                                <p className="text-xs text-gray-600 leading-relaxed">{n.message}</p>
+                                                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">{n.message}</p>
                                             </div>
                                         ))
                                     )}
@@ -190,7 +191,7 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
                         )}
                     </div>
 
-                    <Link to="/help" className="text-gray-400 hover:text-gray-600">
+                    <Link to="/help" aria-label="Help center" className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-200">
                         <HelpCircle size={20} />
                     </Link>
 
@@ -198,6 +199,7 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
                     {/* User Dropdown */}
                     <div className="relative" ref={userMenuRef}>
                         <button
+                            aria-label="User menu" aria-expanded={isUserMenuOpen}
                             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                             className="flex items-center gap-3 pl-2 hover:bg-gray-50 rounded-lg p-1 transition-colors"
                         >
@@ -214,16 +216,16 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
                         </button>
 
                         {isUserMenuOpen && (
-                            <div className="absolute top-12 right-0 w-56 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
-                                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-                                    <p className="text-sm font-medium text-gray-900 truncate">{user?.fullName || 'User'}</p>
+                            <div className="absolute top-12 right-0 w-56 bg-white dark:bg-slate-900 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
+                                <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+                                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{user?.fullName || 'User'}</p>
                                     <p className="text-xs text-gray-500 truncate">{user?.email}</p>
                                 </div>
                                 <div className="py-1">
                                     {user?.isSuperAdmin && (
                                         <a
                                             href="/admin"
-                                            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                                            className="flex items-center gap-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                                         >
                                             <Shield size={16} className="text-gray-400" />
                                             Super Admin
@@ -231,7 +233,7 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
                                     )}
                                     <a
                                         href="/profile"
-                                        className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                                        className="flex items-center gap-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                                     >
                                         <User size={16} className="text-gray-400" />
                                         Profile

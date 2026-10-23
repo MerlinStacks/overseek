@@ -328,7 +328,7 @@ export function ConversationList({
                     <div className="flex items-center gap-1">{onCompose && (
                         <button
                             onClick={onCompose}
-                            className="p-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                        className="p-1.5 rounded-md bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] transition-colors"
                             title="Compose new email"
                         >
                             <Plus size={16} />
@@ -340,14 +340,14 @@ export function ConversationList({
                                 onClick={() => setShowLabelFilter(!showLabelFilter)}
                                 className={cn(
                                     "p-1.5 rounded-sm hover:bg-gray-100",
-                                    selectedLabelId ? "text-indigo-600 bg-indigo-50" : "text-gray-500"
+                                    selectedLabelId ? "text-[var(--brand-text)] bg-[var(--brand-subtle)]" : "text-gray-500"
                                 )}
                                 title="Filter by label"
                             >
                                 <Tag size={16} />
                             </button>
                             {showLabelFilter && (
-                                <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-20 py-1">
+                                <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-sm z-20 py-1">
                                     <button
                                         onClick={() => { setSelectedLabelId(null); setShowLabelFilter(false); }}
                                         className={cn(
@@ -395,7 +395,7 @@ export function ConversationList({
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder="Search, attachment:invoice, file:pdf..."
-                        className="w-full pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--focus-color)] focus:border-transparent"
                     />
                     {isSearching && (
                         <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 animate-spin" />
@@ -431,7 +431,7 @@ export function ConversationList({
                                 onClick={() => onFilterChange?.('mine')}
                                 className={cn(
                                     "flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors",
-                                    filter === 'mine' ? "bg-white text-blue-600 shadow-xs" : "text-gray-600 hover:text-gray-900"
+                                    filter === 'mine' ? "bg-white text-[var(--brand-text)] shadow-xs" : "text-gray-600 hover:text-gray-900"
                                 )}
                             >
                                 Mine {counts.mine > 0 && <span className="ml-1 text-gray-400">{counts.mine}</span>}
@@ -440,7 +440,7 @@ export function ConversationList({
                                 onClick={() => onFilterChange?.('unassigned')}
                                 className={cn(
                                     "flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors",
-                                    filter === 'unassigned' ? "bg-white text-blue-600 shadow-xs" : "text-gray-600 hover:text-gray-900"
+                                    filter === 'unassigned' ? "bg-white text-[var(--brand-text)] shadow-xs" : "text-gray-600 hover:text-gray-900"
                                 )}
                             >
                                 Unassigned {counts.unassigned > 0 && <span className="ml-1 text-gray-400">{counts.unassigned}</span>}
@@ -449,7 +449,7 @@ export function ConversationList({
                                 onClick={() => onFilterChange?.('all')}
                                 className={cn(
                                     "flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors",
-                                    filter === 'all' ? "bg-white text-blue-600 shadow-xs" : "text-gray-600 hover:text-gray-900"
+                                    filter === 'all' ? "bg-white text-[var(--brand-text)] shadow-xs" : "text-gray-600 hover:text-gray-900"
                                 )}
                             >
                                 All {counts.all > 0 && <span className="ml-1 text-gray-400">{counts.all}</span>}
@@ -490,7 +490,7 @@ export function ConversationList({
                         }}
                         components={{
                             Footer: () => (!isSearchMode && (hasMore || isLoadingMore)) ? (
-                                <div className="w-full py-3 text-sm text-indigo-600 flex items-center justify-center gap-2">
+                                <div className="w-full py-3 text-sm text-[var(--brand-text)] flex items-center justify-center gap-2">
                                     <Loader2 size={14} className={cn(isLoadingMore ? 'animate-spin' : '')} />
                                     {isLoadingMore ? 'Loading...' : 'Scroll for more'}
                                 </div>

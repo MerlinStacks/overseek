@@ -141,10 +141,10 @@ export function AbandonedCartsPage() {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-4">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-950 dark:text-white">
+                    <h1 className="text-2xl font-semibold tracking-tight text-slate-950 dark:text-white">
                         Recoverable Carts <span className="text-sm font-medium text-slate-500 dark:text-slate-400">({data.total} Results)</span>
                     </h1>
                     <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Carts with contact details that have been inactive for at least 30 minutes.</p>
@@ -166,14 +166,14 @@ export function AbandonedCartsPage() {
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
                     placeholder="Search..."
-                    className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm text-slate-900 outline-hidden focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:ring-blue-500/20"
+                    className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm text-slate-900 outline-hidden focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)] dark:border-slate-700 dark:bg-slate-900 dark:text-white "
                 />
             </div>
 
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-slate-100 text-sm dark:divide-slate-800">
-                        <thead className="bg-slate-100/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
+                        <thead className="bg-slate-100/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                             <tr>
                                 <th className="w-10 px-4 py-3"><input type="checkbox" className="rounded border-slate-300" aria-label="Select all carts" /></th>
                                 <th className="w-8 px-2 py-3"></th>
@@ -214,9 +214,9 @@ export function AbandonedCartsPage() {
                                     <td className="px-2 py-3 align-top text-slate-400"><MoreVertical className="h-4 w-4" /></td>
                                     <td className="px-4 py-3 align-top">
                                         <div className="flex items-start gap-3">
-                                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-xs font-bold text-white">{initials(cart)}</div>
+                                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--primary-color)] text-xs font-bold text-[var(--primary-foreground)]">{initials(cart)}</div>
                                             <div className="min-w-0">
-                                                <button onClick={() => setSelectedVisitorId(cart.visitorId)} className="font-semibold text-blue-700 hover:underline dark:text-blue-400">
+                                                <button onClick={() => setSelectedVisitorId(cart.visitorId)} className="font-semibold text-[var(--brand-text)] hover:underline ">
                                                     {cart.customerName || '-'}
                                                 </button>
                                                 <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Last Active: {formatDistanceToNow(new Date(cart.lastActiveAt), { addSuffix: true })}</div>
@@ -241,7 +241,7 @@ export function AbandonedCartsPage() {
                                             </div>
                                         ) : cart.flowSentAt ? (
                                             <div className="space-y-1">
-                                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-[var(--brand-subtle)] px-2.5 py-1 text-xs font-semibold text-[var(--brand-text)] ">
                                                     <MailCheck className="h-3.5 w-3.5" />
                                                     Flow sent
                                                 </span>
@@ -253,7 +253,7 @@ export function AbandonedCartsPage() {
                                             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">Not sent</span>
                                         )}
                                     </td>
-                                    <td className="px-4 py-3 align-top text-blue-700 dark:text-blue-400">{itemSummary(cart.cartItems)}</td>
+                                    <td className="px-4 py-3 align-top text-[var(--brand-text)] ">{itemSummary(cart.cartItems)}</td>
                                     <td className="px-4 py-3 align-top text-right">
                                         <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">{formatCurrency(cart.cartValue, cart.currency)}</span>
                                     </td>

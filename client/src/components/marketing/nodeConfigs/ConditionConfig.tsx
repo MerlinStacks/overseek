@@ -709,7 +709,7 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                     type="button"
                     onClick={() => onUpdate('matchType', 'all')}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${(config.matchType || 'all') === 'all'
-                        ? 'bg-blue-100 text-blue-700 border border-blue-300'
+                        ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)] border border-[var(--brand-border)]'
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                         }`}
                 >
@@ -719,7 +719,7 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                     type="button"
                     onClick={() => onUpdate('matchType', 'any')}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${config.matchType === 'any'
-                        ? 'bg-blue-100 text-blue-700 border border-blue-300'
+                        ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)] border border-[var(--brand-border)]'
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                         }`}
                 >
@@ -734,7 +734,7 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                         type="button"
                         onClick={() => setActiveGroup(group.id)}
                         className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${activeGroup === group.id
-                            ? 'bg-blue-50 text-blue-700 border border-blue-300'
+                            ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)] border border-[var(--brand-border)]'
                             : 'bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100'
                             }`}
                     >
@@ -745,7 +745,7 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
             </div>
 
             {activeGroup === 'artwork' && (
-                <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-800 border border-blue-200">
+                <div className="bg-[var(--brand-subtle)] p-3 rounded-lg text-sm text-[var(--brand-text)] border border-[var(--brand-border)]">
                     Tip: use <strong>Proof Version = 2</strong> to send only the second proof email, or <strong>Proof Version &gt; 1</strong> for V2 and later.
                 </div>
             )}

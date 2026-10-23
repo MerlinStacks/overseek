@@ -49,12 +49,10 @@ export function DashboardSkeleton() {
                 {[...Array(4)].map((_, i) => (
                     <div
                         key={i}
-                        className="pwa-card p-4 space-y-3"
+                        className="space-y-1 py-2"
                     >
-                        <Skeleton variant="circle" width={32} height={32} />
-                        <Skeleton className="h-8 w-20" />
+                        <Skeleton className="h-6 w-20" />
                         <Skeleton className="h-4 w-16" />
-                        <Skeleton className="h-8 w-full" />
                     </div>
                 ))}
             </div>

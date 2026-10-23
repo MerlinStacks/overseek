@@ -110,13 +110,14 @@ function ScoreCard({ summary, isSelected, onClick }: {
     return (
         <button
             onClick={onClick}
-            className={`text-left w-full rounded-xl border p-4 transition-all ${
+            aria-pressed={isSelected}
+            className={`metric-strip-item text-left w-full transition-colors ${
                 isSelected
-                    ? 'border-blue-400 dark:border-blue-500 shadow-md ring-2 ring-blue-400/30 dark:ring-blue-500/30'
-                    : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'
-            } bg-white dark:bg-slate-800`}
+                ? 'bg-[var(--brand-subtle)] ring-1 ring-inset ring-[var(--brand-border)]'
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
         >
-            <div className="flex items-start justify-between mb-3">
+            <div className="flex flex-wrap items-start justify-between gap-1 mb-2">
                 <div>
                     <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-gray-500 dark:text-slate-400 tracking-widest uppercase">{summary.metric}</span>
@@ -125,7 +126,7 @@ function ScoreCard({ summary, isSelected, onClick }: {
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={e => e.stopPropagation()}
-                            className="text-gray-400 hover:text-blue-500 transition-colors"
+                        className="text-gray-400 hover:text-[var(--brand-text)] transition-colors"
                         >
                             <ExternalLink size={10} />
                         </a>
@@ -137,8 +138,8 @@ function ScoreCard({ summary, isSelected, onClick }: {
                 </span>
             </div>
 
-            <div className="mb-3">
-                <span className={`text-2xl font-bold ${summary.sampleCount > 0 ? rating.text : 'text-gray-400 dark:text-slate-500'}`}>
+            <div className="mb-2">
+                <span className={`text-xl font-semibold tabular-nums ${summary.sampleCount > 0 ? rating.text : 'text-gray-400 dark:text-slate-500'}`}>
                     {summary.sampleCount > 0 ? formatValue(summary.metric, summary.p75) : '—'}
                 </span>
                 {summary.sampleCount > 0 && (
@@ -371,8 +372,8 @@ export function WebVitalsView() {
             <div className="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-5">
                 <div className="flex items-center justify-between flex-wrap gap-3">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-100 dark:bg-blue-500/20 rounded-lg">
-                            <Gauge className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    <div className="p-2 bg-[var(--brand-subtle)] rounded-lg">
+                        <Gauge className="w-5 h-5 text-[var(--brand-text)]" />
                         </div>
                         <div>
                             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Real User Performance</h2>
@@ -402,7 +403,7 @@ export function WebVitalsView() {
                             onClick={() => setPageType(f.key)}
                             className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
                                 pageType === f.key
-                                    ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300'
+                                    ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)]'
                                     : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400 hover:bg-gray-200 dark:hover:bg-slate-600'
                             }`}
                         >
@@ -426,7 +427,7 @@ export function WebVitalsView() {
             ) : (
                 <>
                     {/* Score Cards */}
-                    <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                    <div className="metric-strip" role="group" aria-label="Web vitals summary">
                         {METRICS.map(metric => {
                             const summary = summaries.find(s => s.metric === metric) || {
                                 metric,

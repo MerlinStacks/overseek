@@ -223,24 +223,24 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
 
     return (
         <div className="space-y-4">
-            <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-4">
+            <div className="rounded-xl border border-[var(--brand-border)] bg-[var(--brand-subtle)] p-4">
                 <div className="flex items-start justify-between gap-4">
                     <div>
-                        <h4 className="text-sm font-semibold text-indigo-950">Email step setup</h4>
-                        <p className="mt-1 text-xs text-indigo-800">Complete these fields, then preview and send a test before activating the flow.</p>
+                        <h4 className="text-sm font-semibold text-[var(--brand-text)]">Email step setup</h4>
+                        <p className="mt-1 text-xs text-[var(--brand-text)]">Complete these fields, then preview and send a test before activating the flow.</p>
                     </div>
-                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-indigo-700 shadow-xs">{completedSetupSteps}/{setupSteps.length}</span>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-[var(--brand-text)] shadow-xs">{completedSetupSteps}/{setupSteps.length}</span>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                     {setupSteps.map((step) => (
-                        <div key={step.label} className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${step.done ? 'border-emerald-200 bg-white text-emerald-700' : 'border-indigo-100 bg-white/70 text-indigo-700'}`}>
+                        <div key={step.label} className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${step.done ? 'border-emerald-200 bg-white text-emerald-700' : 'border-[var(--brand-border)] bg-white/70 text-[var(--brand-text)]'}`}>
                             {step.done ? <CheckCircle size={14} /> : <Circle size={14} />}
                             <span>{step.label}</span>
                         </div>
                     ))}
                 </div>
-                {readinessIssues.length > 0 && <details className="mt-3 border-t border-indigo-100 pt-2">
-                    <summary className="cursor-pointer text-xs font-medium text-indigo-900">Readiness: {readinessIssues.filter(issue => issue.severity === 'blocking').length} blockers · {readinessIssues.filter(issue => issue.severity === 'warning').length} suggestions</summary>
+                {readinessIssues.length > 0 && <details className="mt-3 border-t border-[var(--brand-border)] pt-2">
+                    <summary className="cursor-pointer text-xs font-medium text-[var(--brand-text)]">Readiness: {readinessIssues.filter(issue => issue.severity === 'blocking').length} blockers · {readinessIssues.filter(issue => issue.severity === 'warning').length} suggestions</summary>
                     <ul className="mt-2 space-y-1">{readinessIssues.map(issue => <li key={issue.id}><button type="button" onClick={() => focusIssue(issue.id)} className={`text-left text-xs underline underline-offset-2 ${issue.severity === 'blocking' ? 'text-red-700' : 'text-amber-800'}`}>{issue.severity === 'blocking' ? 'Required' : 'Suggestion'}: {issue.message}</button></li>)}</ul>
                 </details>}
             </div>
@@ -259,7 +259,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                         value={config.to || '{{customer.email}}'}
                         onChange={(e) => onUpdate('to', sanitizeBidiText(e.target.value))}
                         placeholder="{{customer.email}}"
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)]"
                         dir="ltr"
                         style={LTR_TEXT_STYLE}
                     />
@@ -286,7 +286,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                         value={config.subject || ''}
                         onChange={(e) => onUpdate('subject', sanitizeBidiText(e.target.value))}
                         placeholder="Thank you {{customer.firstName}}, Order {{order.number}} has been confirmed."
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)]"
                         dir="ltr"
                         style={LTR_TEXT_STYLE}
                     />
@@ -310,7 +310,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                         value={config.previewText || ''}
                         onChange={(e) => onUpdate('previewText', sanitizeBidiText(e.target.value))}
                         placeholder="This is your order confirmation email, let's double check everything."
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)]"
                         dir="ltr"
                         style={LTR_TEXT_STYLE}
                     />
@@ -325,8 +325,8 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                 </div>
             </div>
 
-            <div className="space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
-                <label htmlFor="flow-email-category" className="block text-sm font-medium text-blue-900">Delivery Category</label>
+            <div className="space-y-2 rounded-lg border border-[var(--brand-border)] bg-[var(--brand-subtle)] p-3">
+                <label htmlFor="flow-email-category" className="block text-sm font-medium text-[var(--brand-text)]">Delivery Category</label>
                 <select
                     id="flow-email-category"
                     value={emailCategory}
@@ -334,12 +334,12 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                         const nextValue = e.target.value === 'TRANSACTIONAL' ? 'TRANSACTIONAL' : 'MARKETING';
                         updateMany({ emailCategory: nextValue, isTransactional: nextValue === 'TRANSACTIONAL' });
                     }}
-                    className="w-full rounded-lg border border-blue-200 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded-lg border border-[var(--brand-border)] px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--focus-color)]"
                 >
                     <option value="MARKETING">Marketing</option>
                     <option value="TRANSACTIONAL">Transactional</option>
                 </select>
-                <p className="text-xs text-blue-800">
+                <p className="text-xs text-[var(--brand-text)]">
                     Marketing emails honor unsubscribe preferences. Transactional emails can still be sent for important order or account updates.
                 </p>
             </div>
@@ -359,7 +359,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                             onChange={() => {
                                 onUpdate('templateType', 'visual');
                             }}
-                            className="h-4 w-4 text-blue-600"
+                            className="h-4 w-4 text-[var(--brand-text)]"
                         />
                         <span className="text-sm text-gray-700">Visual Builder</span>
                         <span className="rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700">New</span>
@@ -374,7 +374,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                                 if (config.htmlContent && !window.confirm('Rich Text may remove layout and styling from this email. Use Raw HTML to preserve the markup. Continue?')) return;
                                 onUpdate('templateType', 'richtext');
                             }}
-                            className="h-4 w-4 text-blue-600"
+                            className="h-4 w-4 text-[var(--brand-text)]"
                         />
                         <span className="text-sm text-gray-700">Rich Text</span>
                     </label>
@@ -385,7 +385,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                             value="html"
                             checked={templateType === 'html'}
                             onChange={() => onUpdate('templateType', 'html')}
-                            className="h-4 w-4 text-blue-600"
+                            className="h-4 w-4 text-[var(--brand-text)]"
                         />
                         <span className="text-sm text-gray-700">Raw HTML</span>
                     </label>
@@ -408,8 +408,8 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
             {templateType === 'visual' && (
                 <div className="flex flex-wrap items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex justify-center">
-                        <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-3 shadow-sm">
-                            <svg className="h-8 w-8 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="rounded-lg border border-[var(--brand-border)] bg-[var(--brand-subtle)] p-3 shadow-sm">
+                            <svg className="h-8 w-8 text-[var(--brand-text)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth="1.5" />
                                 <path d="M3 9h18M9 21V9" strokeWidth="1.5" />
                             </svg>
@@ -452,7 +452,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                         onChange={(e) => handleHtmlChange(e.target.value)}
                         placeholder={'<html>\n  <body>\n    Your email HTML here...\n  </body>\n</html>'}
                         rows={10}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)]"
                     />
                 </div>
             )}
@@ -470,7 +470,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                     type="button"
                     onClick={handlePreviewAndTest}
                     disabled={!config.htmlContent}
-                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-colors hover:bg-[var(--primary-hover)] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     Preview and Test
                 </button>
@@ -490,7 +490,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                     type="checkbox"
                     checked={config.appendUtm !== false}
                     onChange={(e) => onUpdate('appendUtm', e.target.checked)}
-                    className="h-4 w-4 rounded text-blue-600"
+                    className="h-4 w-4 rounded text-[var(--brand-text)]"
                 />
                 <span className="text-sm text-gray-700">Automatically append UTM parameters to email links</span>
             </label>
@@ -504,7 +504,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                             value={config.campaignSource || ''}
                             onChange={(e) => onUpdate('campaignSource', sanitizeBidiText(e.target.value))}
                             placeholder=""
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--focus-color)]"
                             dir="ltr"
                             style={LTR_TEXT_STYLE}
                         />
@@ -520,7 +520,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                             value={config.campaignMedium || 'Email'}
                             onChange={(e) => onUpdate('campaignMedium', sanitizeBidiText(e.target.value))}
                             placeholder="Email"
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--focus-color)]"
                             dir="ltr"
                             style={LTR_TEXT_STYLE}
                         />
@@ -536,7 +536,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                             value={config.campaignName || ''}
                             onChange={(e) => onUpdate('campaignName', sanitizeBidiText(e.target.value))}
                             placeholder=""
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--focus-color)]"
                             dir="ltr"
                             style={LTR_TEXT_STYLE}
                         />
@@ -552,7 +552,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                             value={config.campaignTerm || ''}
                             onChange={(e) => onUpdate('campaignTerm', sanitizeBidiText(e.target.value))}
                             placeholder="Enter UTM term"
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--focus-color)]"
                             dir="ltr"
                             style={LTR_TEXT_STYLE}
                         />
@@ -567,7 +567,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                             value={config.campaignContent || ''}
                             onChange={(e) => onUpdate('campaignContent', sanitizeBidiText(e.target.value))}
                             placeholder="Enter UTM content"
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--focus-color)]"
                             dir="ltr"
                             style={LTR_TEXT_STYLE}
                         />
@@ -582,7 +582,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                     type="checkbox"
                     checked={config.overrideFrom || false}
                     onChange={(e) => onUpdate('overrideFrom', e.target.checked)}
-                    className="h-4 w-4 rounded text-blue-600"
+                    className="h-4 w-4 rounded text-[var(--brand-text)]"
                 />
                 <span className="text-sm text-gray-700">Override From Name, From Email and Reply To Email</span>
             </label>
@@ -596,7 +596,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                             value={config.fromName || ''}
                             onChange={(e) => onUpdate('fromName', sanitizeBidiText(e.target.value))}
                             placeholder="Your Company"
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--focus-color)]"
                             dir="ltr"
                             style={LTR_TEXT_STYLE}
                         />
@@ -608,7 +608,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                             value={config.fromEmail || ''}
                             onChange={(e) => onUpdate('fromEmail', sanitizeBidiText(e.target.value))}
                             placeholder="hello@example.com"
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--focus-color)]"
                             dir="ltr"
                             style={LTR_TEXT_STYLE}
                         />
@@ -620,7 +620,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                             value={config.replyToEmail || ''}
                             onChange={(e) => onUpdate('replyToEmail', sanitizeBidiText(e.target.value))}
                             placeholder="reply@example.com"
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--focus-color)]"
                             dir="ltr"
                             style={LTR_TEXT_STYLE}
                         />
@@ -677,8 +677,8 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
             )}
 
             {showPreflightModal && (
-                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-xs">
-                    <div className="w-full max-w-xl rounded-xl bg-white p-6 shadow-2xl">
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 ">
+                    <div className="w-full max-w-xl rounded-xl bg-white p-6 shadow-sm">
                         <h3 className="text-lg font-semibold text-gray-900">Preflight Check</h3>
                         <p className="mt-1 text-sm text-gray-500">We found a few things to review before preview/testing.</p>
 
@@ -720,7 +720,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                                     setShowPreflightModal(false);
                                     setShowPreview(true);
                                 }}
-                                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 Continue to Preview
                             </button>
@@ -730,8 +730,8 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
             )}
 
             {showMergeTagModal && (
-                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-xs">
-                    <div className="w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl">
+                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 ">
+                    <div className="w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-sm">
                         <div className="flex items-center gap-4 border-b border-gray-200 px-5 py-4">
                             <h3 className="text-2xl font-medium text-gray-900">Merge Tags</h3>
                             <div className="ml-auto flex w-full max-w-xs items-center gap-2 rounded-lg border border-gray-300 px-3 py-2">

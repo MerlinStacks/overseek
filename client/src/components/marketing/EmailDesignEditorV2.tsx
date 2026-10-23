@@ -1343,7 +1343,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
     }, [undo, redo, closing, selectedBlockId, previewSurface, setDirtyDesign]);
 
     return (
-        <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/55 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/55 ">
             <div className="flex h-full flex-col overflow-hidden bg-slate-100 dark:bg-slate-950">
                 <header className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-slate-200 bg-white px-4 py-2 dark:border-slate-800 dark:bg-slate-900">
                     <div className="flex min-w-0 items-center gap-3 border-r border-slate-200 pr-4 dark:border-slate-800">
@@ -1360,7 +1360,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                                 value={design.document.meta.previewText || ''}
                                 onChange={(event) => setDirtyDesign((draft) => { draft.document.meta.previewText = sanitizeBidiText(event.target.value); })}
                                 placeholder="Add a Preview Text"
-                                className="mt-0.5 block w-full border-0 bg-transparent p-0 text-sm text-indigo-500 placeholder:text-indigo-500 focus:ring-0 dark:text-indigo-300"
+                                className="mt-0.5 block w-full border-0 bg-transparent p-0 text-sm text-[var(--brand-text)] placeholder:text-[var(--brand-text)] focus:ring-0"
                                 dir="ltr"
                                 style={LTR_TEXT_STYLE}
                             />
@@ -1369,16 +1369,16 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                     </div>
                     <div className="flex items-center justify-center gap-2">
                         <div className="flex rounded-lg border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
-                            <button onClick={() => setPreviewSurface('canvas')} className={`rounded-md px-2.5 py-2 text-xs font-semibold ${previewSurface === 'canvas' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`} title="Edit layout" aria-label="Edit layout">Edit layout</button>
-                            <button onClick={() => setPreviewSurface('html')} className={`rounded-md px-2.5 py-2 text-xs font-semibold ${previewSurface === 'html' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`} title="Delivery preview" aria-label="Delivery preview">Delivery preview</button>
+                            <button type="button" aria-pressed={previewSurface === 'canvas'} onClick={() => setPreviewSurface('canvas')} className={`rounded-md px-2.5 py-2 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-[var(--focus-color)] ${previewSurface === 'canvas' ? 'bg-[var(--primary-color)] text-[var(--primary-foreground)]' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`} title="Edit layout" aria-label="Edit layout">Edit layout</button>
+                            <button type="button" aria-pressed={previewSurface === 'html'} onClick={() => setPreviewSurface('html')} className={`rounded-md px-2.5 py-2 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-[var(--focus-color)] ${previewSurface === 'html' ? 'bg-[var(--primary-color)] text-[var(--primary-foreground)]' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`} title="Delivery preview" aria-label="Delivery preview">Delivery preview</button>
                         </div>
                         <div className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
-                            <button onClick={() => setPreviewDeviceId('desktop')} className={`rounded-md p-2 ${previewDeviceId === 'desktop' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`} title="Desktop preview" aria-label="Desktop preview"><Monitor size={16} /></button>
+                            <button type="button" aria-pressed={previewDeviceId === 'desktop'} onClick={() => setPreviewDeviceId('desktop')} className={`rounded-md p-2 focus-visible:outline-2 focus-visible:outline-[var(--focus-color)] ${previewDeviceId === 'desktop' ? 'bg-[var(--primary-color)] text-[var(--primary-foreground)]' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`} title="Desktop preview" aria-label="Desktop preview"><Monitor size={16} /></button>
                             <Smartphone size={16} className="ml-1 text-slate-400" aria-hidden="true" />
                             <select
                                 value={previewDeviceId}
                                 onChange={(event) => setPreviewDeviceId(event.target.value as PreviewDeviceId)}
-                                className="rounded-md border-0 bg-transparent px-2 py-2 text-xs font-semibold text-slate-600 focus:ring-2 focus:ring-indigo-500 dark:text-slate-300"
+                                className="rounded-md border-0 bg-transparent px-2 py-2 text-xs font-semibold text-slate-600 focus:ring-2 focus:ring-[var(--focus-color)] dark:text-slate-300"
                                 aria-label="Preview device"
                             >
                                 {PREVIEW_DEVICES.map((device) => (
@@ -1412,7 +1412,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                             <div className={leftSidebarMode === 'builder' ? 'contents' : 'hidden xl:contents'}>
                                 <div className="m-3 grid grid-cols-3 rounded-lg bg-slate-100 p-1 text-sm dark:bg-slate-800">
                                     {(['structure', 'blocks', 'layouts'] as BuilderTab[]).map((tab) => (
-                                        <button key={tab} onClick={() => setBuilderTab(tab)} className={`rounded-md px-3 py-2 capitalize transition ${builderTab === tab ? 'bg-white text-slate-950 shadow-md dark:bg-slate-950 dark:text-white' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'}`}>{tab}</button>
+                                        <button type="button" aria-pressed={builderTab === tab} key={tab} onClick={() => setBuilderTab(tab)} className={`rounded-md px-3 py-2 capitalize transition-colors focus-visible:outline-2 focus-visible:outline-[var(--focus-color)] ${builderTab === tab ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)] ring-1 ring-inset ring-[var(--brand-border)]' : 'text-slate-500 hover:bg-white hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100'}`}>{tab}</button>
                                     ))}
                                 </div>
 
@@ -1599,7 +1599,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                                         </div>
                                     ))}
                                 </div>
-                                <button type="button" onClick={saveSelectedSectionPreset} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-200"><Layers size={14} />Save as reusable section</button>
+                                <button type="button" onClick={saveSelectedSectionPreset} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--brand-border)] bg-[var(--brand-subtle)] px-3 py-2 text-sm font-semibold text-[var(--brand-text)] hover:bg-[var(--brand-subtle)]"><Layers size={14} />Save as reusable section</button>
                                 <SharedSections section={selectedSection} onInsert={insertBrandSection} onLink={linkBrandSection} onRefresh={refreshBrandSection} />
                             </div>
                         )}
@@ -1607,10 +1607,10 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                         {leftSidebarMode === 'checklist' && <div className="min-h-0 flex-1 overflow-auto p-4"><PanelHeader title="Preflight checklist" onClose={() => setLeftSidebarMode('builder')} /><ChecklistPanel issues={issues} groupedIssues={groupedIssues} /></div>}
                         {leftSidebarMode === 'history' && <div className="min-h-0 flex-1 overflow-auto p-4"><PanelHeader title="Version history" onClose={() => setLeftSidebarMode('builder')} /><HistoryPanel snapshots={snapshots} onRestore={(snapshot) => { setDesign(cloneDesign(snapshot.design)); setSelectedSectionId(snapshot.design.document.sections[0]?.id || ''); setSelectedBlockId(null); }} /></div>}
                         {leftSidebarMode === 'test' && <div className="min-h-0 flex-1 overflow-auto p-4"><PanelHeader title="Send test email" onClose={() => setLeftSidebarMode('builder')} /><div className="space-y-3"><Field label="Recipient" value={testEmail} onChange={setTestEmail} type="email" />
-                            {recentRecipients.length > 0 && <div className="flex flex-wrap gap-2">{recentRecipients.map((recipient) => <button key={recipient} onClick={() => setTestEmail(recipient)} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 dark:bg-slate-800 dark:text-slate-300">{recipient}</button>)}</div>}
+                            {recentRecipients.length > 0 && <div className="flex flex-wrap gap-2">{recentRecipients.map((recipient) => <button key={recipient} onClick={() => setTestEmail(recipient)} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 hover:bg-[var(--brand-subtle)] hover:text-[var(--brand-text)] dark:bg-slate-800 dark:text-slate-300">{recipient}</button>)}</div>}
                             {testStatus && <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">{testStatus}</p>}
-                            {missingEmailAccount && <button onClick={() => { window.location.href = '/settings?tab=email'; }} className="inline-flex w-full items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">Set up email account</button>}
-                            <button onClick={sendTestEmail} disabled={sendingTest} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60">{sendingTest ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}Send test</button></div></div>}
+                            {missingEmailAccount && <button onClick={() => { window.location.href = '/settings?tab=email'; }} className="inline-flex w-full items-center justify-center rounded-lg border border-[var(--brand-border)] bg-[var(--brand-subtle)] px-4 py-2 text-sm font-semibold text-[var(--brand-text)] hover:bg-[var(--brand-subtle)]">Set up email account</button>}
+                                        <button onClick={sendTestEmail} disabled={sendingTest} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] disabled:opacity-60">{sendingTest ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}Send test</button></div></div>}
                     </aside>
 
                     <main className="min-h-0 overflow-auto bg-slate-200/70 p-4 dark:bg-slate-950">
@@ -1662,7 +1662,7 @@ function Field({ label, value, onChange, type = 'text' }: { label: string; value
     return (
         <label className="block">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
-            <input type={type} value={value} onChange={(event) => onChange(sanitizeBidiText(event.target.value))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" dir="ltr" style={LTR_TEXT_STYLE} />
+            <input type={type} value={value} onChange={(event) => onChange(sanitizeBidiText(event.target.value))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)] dark:border-slate-700 dark:bg-slate-800 dark:text-white" dir="ltr" style={LTR_TEXT_STYLE} />
         </label>
     );
 }
@@ -1673,7 +1673,7 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
             <div className="flex gap-2">
                 <input type="color" value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-12 rounded-lg border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-800" />
-                <input value={value} onChange={(event) => onChange(sanitizeBidiText(event.target.value))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" dir="ltr" style={LTR_TEXT_STYLE} />
+            <input value={value} onChange={(event) => onChange(sanitizeBidiText(event.target.value))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)] dark:border-slate-700 dark:bg-slate-800 dark:text-white" dir="ltr" style={LTR_TEXT_STYLE} />
             </div>
         </label>
     );
@@ -1688,7 +1688,7 @@ function FourSideField({ label, values, onChange }: { label: string; values: [nu
                 {values.map((value, index) => (
                     <label key={`${label}-${sideLabels[index]}`} className="block">
                         <span className="mb-1 block text-[10px] uppercase tracking-wide text-slate-400">{sideLabels[index]}</span>
-                        <input type="number" value={String(value)} onChange={(event) => onChange(index, event.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                    <input type="number" value={String(value)} onChange={(event) => onChange(index, event.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-2 text-sm focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)] dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
                     </label>
                 ))}
             </div>
@@ -1705,7 +1705,7 @@ function ToggleField({ label, checked, onChange }: { label: string; checked: boo
                 role="switch"
                 aria-checked={checked}
                 onClick={() => onChange(!checked)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${checked ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${checked ? 'bg-[var(--primary-color)]' : 'bg-slate-300 dark:bg-slate-600'}`}
             >
                 <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${checked ? 'translate-x-5' : 'translate-x-1'}`} />
             </button>
@@ -1722,7 +1722,7 @@ function StructureSkeleton({ preset, onAdd }: { preset: StructurePreset; onAdd: 
                 event.dataTransfer.effectAllowed = 'copy';
             }}
             onClick={onAdd}
-            className="w-full rounded-lg border border-slate-200 bg-white p-2 transition hover:border-indigo-300 hover:bg-indigo-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-indigo-950/30"
+            className="w-full rounded-lg border border-slate-200 bg-white p-2 transition hover:border-[var(--brand-border)] hover:bg-[var(--brand-subtle)] dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-[var(--brand-subtle)]"
             title="Drag structure into the email"
         >
             <div className="flex h-9 overflow-hidden rounded-md border border-dashed border-slate-500 dark:border-slate-500">
@@ -1738,7 +1738,7 @@ function SelectField({ label, value, options, onChange }: { label: string; value
     return (
         <label className="block">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
-            <select value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
+            <select value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)] dark:border-slate-700 dark:bg-slate-800 dark:text-white">
                 {options.map((option) => <option key={option} value={option}>{option}</option>)}
             </select>
         </label>
@@ -1749,7 +1749,7 @@ function LabeledSelectField({ label, value, options, onChange }: { label: string
     return (
         <label className="block">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
-            <select value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
+            <select value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)] dark:border-slate-700 dark:bg-slate-800 dark:text-white">
                 {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
         </label>
@@ -1778,7 +1778,7 @@ function LinkedFourSideField({ label, values, onChange, defaultLinked = true }: 
                                     }
                                     onChange(index, nextValue);
                                 }}
-                                className="w-full rounded-lg border border-slate-300 px-2 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                        className="w-full rounded-lg border border-slate-300 px-2 py-2 text-sm focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                             />
                             <span className="mt-1 block text-[10px] uppercase tracking-wide text-slate-400">{sideLabels[index]}</span>
                         </label>
@@ -1930,12 +1930,12 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
                         <Upload size={18} />
                     </div>
                     <p className="text-sm font-semibold text-slate-900">Add Image</p>
-                    <p className="mt-1 text-xs text-slate-700">Select files from your library or <button type="button" onClick={() => setShowUrlInput((current) => !current)} className="font-medium text-blue-700 underline underline-offset-2">Insert From URL</button></p>
+                    <p className="mt-1 text-xs text-slate-700">Select files from your library or <button type="button" onClick={() => setShowUrlInput((current) => !current)} className="font-medium text-[var(--brand-text)] underline underline-offset-2">Insert From URL</button></p>
                     <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isUploading}
-                        className="mt-3 inline-flex items-center justify-center rounded-md border border-blue-600 bg-white px-4 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="mt-3 inline-flex items-center justify-center rounded-md border border-[var(--primary-color)] bg-white px-4 py-1.5 text-xs font-semibold text-[var(--brand-text)] hover:bg-[var(--brand-subtle)] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         {isUploading ? 'Uploading...' : 'Upload Image'}
                     </button>
@@ -2089,7 +2089,7 @@ function LinkListEditor({ links, onChange, onSaveDefaults }: { links: Array<{ la
                 </div>
             ))}
             <button onClick={() => onChange([...links, { label: 'New Link', href: '{{store_url}}' }])} className="w-full rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">Add link</button>
-            {onSaveDefaults && <button onClick={onSaveDefaults} className="w-full rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700">Save as account social defaults</button>}
+                    {onSaveDefaults && <button onClick={onSaveDefaults} className="w-full rounded-lg bg-[var(--primary-color)] px-3 py-2 text-sm font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]">Save as account social defaults</button>}
         </div>
     );
 }
@@ -2120,7 +2120,7 @@ function SocialLinksEditor({ links, onChange, onSaveDefaults }: { links: Array<{
                 </div>
             ))}
             <button onClick={() => onChange([...links, { label: 'Facebook', href: '#', iconStyle: 'solid' }])} className="w-full rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">Add social profile</button>
-            <button onClick={onSaveDefaults} className="w-full rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700">Save as account social defaults</button>
+            <button onClick={onSaveDefaults} className="w-full rounded-lg bg-[var(--primary-color)] px-3 py-2 text-sm font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]">Save as account social defaults</button>
         </div>
     );
 }
@@ -2131,7 +2131,7 @@ function ListEditor({ items, onChange }: { items: string[]; onChange: (items: st
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">List items</p>
             {items.map((item, index) => (
                 <div key={index} className="flex gap-2">
-                    <input value={item} onChange={(event) => onChange(items.map((value, itemIndex) => itemIndex === index ? sanitizeBidiText(event.target.value) : value))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" dir="ltr" style={LTR_TEXT_STYLE} />
+                    <input value={item} onChange={(event) => onChange(items.map((value, itemIndex) => itemIndex === index ? sanitizeBidiText(event.target.value) : value))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)] dark:border-slate-700 dark:bg-slate-800 dark:text-white" dir="ltr" style={LTR_TEXT_STYLE} />
                     <button onClick={() => onChange(items.filter((_, itemIndex) => itemIndex !== index))} className="rounded-lg border border-red-200 px-2 text-sm text-red-600 hover:bg-red-50">Remove</button>
                 </div>
             ))}
@@ -2144,7 +2144,7 @@ function TextArea({ label, value, onChange }: { label: string; value: string; on
     return (
         <label className="block">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
-            <textarea value={value} onChange={(event) => onChange(sanitizeBidiText(event.target.value))} rows={8} className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" dir="ltr" style={LTR_TEXT_STYLE} />
+            <textarea value={value} onChange={(event) => onChange(sanitizeBidiText(event.target.value))} rows={8} className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)] dark:border-slate-700 dark:bg-slate-800 dark:text-white" dir="ltr" style={LTR_TEXT_STYLE} />
         </label>
     );
 }
@@ -2169,7 +2169,7 @@ function HistoryPanel({ snapshots, onRestore }: { snapshots: Snapshot[]; onResto
             <p className="font-semibold text-slate-900 dark:text-white">Version history</p>
             {snapshots.length === 0 ? <p className="text-sm text-slate-500">Autosave will create the first snapshot.</p> : snapshots.map((snapshot) => (
                 <button key={snapshot.id} onClick={() => onRestore(snapshot)} className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800">
-                    {new Date(snapshot.createdAt).toLocaleString()} <span className="text-indigo-600">Restore</span>
+                    {new Date(snapshot.createdAt).toLocaleString()} <span className="text-[var(--brand-text)]">Restore</span>
                 </button>
             ))}
         </div>

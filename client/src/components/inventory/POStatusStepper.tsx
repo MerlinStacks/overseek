@@ -56,7 +56,7 @@ export function POStatusStepper({ status, onStatusChange, disabled = false }: PO
                             className={`
                                 relative flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all
                                 ${isCompleted ? 'bg-green-500 border-green-500 text-white' : ''}
-                                ${isCurrent ? 'bg-blue-500 border-blue-500 text-white ring-4 ring-blue-100' : ''}
+                                ${isCurrent ? 'bg-[var(--primary-color)] border-[var(--primary-color)] text-[var(--primary-foreground)] ring-4 ring-[var(--focus-color)]' : ''}
                                 ${isUpcoming ? 'bg-white border-gray-300 text-gray-400' : ''}
                                 ${isClickable ? 'cursor-pointer hover:scale-110' : 'cursor-default'}
                             `}
@@ -73,7 +73,7 @@ export function POStatusStepper({ status, onStatusChange, disabled = false }: PO
                                 {step.label}
                             </p>
                             {isCurrent && (
-                                <p className="text-xs text-blue-600">Current Status</p>
+                                <p className="text-xs text-[var(--brand-text)]">Current Status</p>
                             )}
                             {isCompleted && (
                                 <p className="text-xs text-green-600">Completed</p>

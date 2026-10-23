@@ -19,7 +19,7 @@ interface ValidationState {
 
 /**
  * Modal for changing user password with real-time validation
- * and premium glassmorphism styling.
+ * and accessible, theme-aware styling.
  */
 export function ChangePasswordModal(props: ChangePasswordModalProps) {
     const { token } = useAuth();
@@ -132,8 +132,8 @@ function ChangePasswordContent({ isOpen, onClose, token }: ChangePasswordModalPr
             onClose={handleClose}
             title={
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/25">
-                        <Lock size={18} className="text-white" />
+                    <div className="w-10 h-10 rounded-lg bg-[var(--brand-subtle)] text-[var(--brand-text)] flex items-center justify-center">
+                        <Lock size={18} />
                     </div>
                     <span>Change Password</span>
                 </div>
@@ -256,7 +256,7 @@ function ChangePasswordContent({ isOpen, onClose, token }: ChangePasswordModalPr
                 <button
                     type="submit"
                     disabled={!isFormValid || isLoading || success}
-                    className="w-full btn-gradient btn-shimmer py-3 rounded-xl font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] py-3 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                     {isLoading ? (
                         <>

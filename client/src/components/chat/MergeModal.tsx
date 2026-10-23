@@ -118,7 +118,7 @@ export function MergeModal({ isOpen, onClose, onMerge, currentConversationId }: 
             onClose={onClose}
             title={
                 <div className="flex items-center gap-2">
-                    <Merge size={18} className="text-blue-600" />
+                    <Merge size={18} className="text-[var(--brand-text)]" />
                     <span>Merge Conversation</span>
                 </div>
             }
@@ -133,7 +133,7 @@ export function MergeModal({ isOpen, onClose, onMerge, currentConversationId }: 
                         placeholder="Search conversations..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] focus:border-transparent"
                     />
                 </div>
             </div>
@@ -142,7 +142,7 @@ export function MergeModal({ isOpen, onClose, onMerge, currentConversationId }: 
             <div className="max-h-80 overflow-y-auto -mx-6 px-6">
                 {isLoading ? (
                     <div className="flex items-center justify-center py-8">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[var(--primary-color)]"></div>
                     </div>
                 ) : filteredConversations.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
@@ -157,7 +157,7 @@ export function MergeModal({ isOpen, onClose, onMerge, currentConversationId }: 
                                 disabled={isMerging}
                                 className={cn(
                                     "w-full flex items-start gap-3 px-4 py-3 transition-colors text-left",
-                                    "hover:bg-blue-50",
+                                    "hover:bg-[var(--brand-subtle)]",
                                     isMerging && "opacity-50 cursor-not-allowed"
                                 )}
                             >

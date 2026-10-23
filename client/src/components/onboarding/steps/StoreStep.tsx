@@ -190,7 +190,7 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
         <div className="space-y-6">
             {/* Header */}
             <div className="text-center pb-4 border-b border-gray-100">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-100 text-blue-600 mb-4">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-[var(--brand-subtle)] text-[var(--brand-text)] mb-4">
                     <Store size={32} />
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900">Connect Your Store</h2>
@@ -213,7 +213,7 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
                             onChange={(e) => handleChange('name', e.target.value)}
                             placeholder="My Awesome Store"
                             disabled={connectionVerified}
-                            className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors ${connectionVerified ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                            className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--brand-border)] focus:border-[var(--primary-color)] outline-none transition-colors ${connectionVerified ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                         />
                     </div>
                     <div>
@@ -225,7 +225,7 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
                             value={draft.store.domain}
                             onChange={(e) => handleChange('domain', e.target.value)}
                             placeholder="https://mystore.com"
-                            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+                            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--brand-border)] focus:border-[var(--primary-color)] outline-none transition-colors"
                         />
                     </div>
                 </div>
@@ -248,7 +248,7 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
                                 onChange={(e) => handleChange('wooUrl', e.target.value)}
                                 placeholder="https://mystore.com"
                                 disabled={connectionVerified}
-                                className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors ${connectionVerified ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                            className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--brand-border)] focus:border-[var(--primary-color)] outline-none transition-colors ${connectionVerified ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                             />
                         </div>
                         <div>
@@ -261,7 +261,7 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
                                 onChange={(e) => handleChange('wooConsumerKey', e.target.value)}
                                 placeholder="ck_xxxxxxxxxxxxxxxxxxxxxxxx"
                                 disabled={connectionVerified}
-                                className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors font-mono text-sm ${connectionVerified ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--brand-border)] focus:border-[var(--primary-color)] outline-none transition-colors font-mono text-sm ${connectionVerified ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                             />
                         </div>
                         <div>
@@ -274,7 +274,7 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
                                 onChange={(e) => handleChange('wooConsumerSecret', e.target.value)}
                                 placeholder="cs_xxxxxxxxxxxxxxxxxxxxxxxx"
                                 disabled={connectionVerified}
-                                className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors font-mono text-sm ${connectionVerified ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--brand-border)] focus:border-[var(--primary-color)] outline-none transition-colors font-mono text-sm ${connectionVerified ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                             />
                         </div>
                     </div>
@@ -323,7 +323,7 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
                     type="button"
                     onClick={onNext}
                     disabled={!canContinue || isSubmitting}
-                    className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-semibold shadow-lg shadow-blue-500/25"
+                            className="flex items-center gap-2 px-6 py-3 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-semibold focus-visible:outline-[var(--focus-color)]"
                 >
                     Continue
                     <ArrowRight size={18} />

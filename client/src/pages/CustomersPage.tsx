@@ -260,10 +260,10 @@ export function CustomersPage() {
     }, [debouncedQuery, statusFilter, page, searchParams, setSearchParams]);
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="min-w-0 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h1 className="text-xl md:text-2xl font-bold text-gray-900">Contacts</h1>
+                    <h1 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-slate-100">Contacts</h1>
                     <p className="text-sm text-gray-500">Manage customers, email preferences, and blocked contacts</p>
                 </div>
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
@@ -279,7 +279,7 @@ export function CustomersPage() {
                         <input
                             type="text"
                             placeholder="Search contacts..."
-                            className="w-full sm:w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500"
+                            className="w-full sm:w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-hidden focus:ring-2 focus:ring-[var(--focus-color)]"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
@@ -305,7 +305,7 @@ export function CustomersPage() {
                             setPage(1);
                         }}
                         className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${statusFilter === value
-                            ? 'border-blue-600 bg-blue-50 text-blue-700'
+                            ? 'border-[var(--primary-color)] bg-[var(--brand-subtle)] text-[var(--brand-text)]'
                             : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
                             }`}
                     >
@@ -340,7 +340,7 @@ export function CustomersPage() {
                                         <button
                                             type="button"
                                             onClick={() => void fetchContacts()}
-                                            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                                            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-colors hover:bg-[var(--primary-hover)]"
                                         >
                                             <RefreshCw size={15} />
                                             Retry
@@ -362,7 +362,7 @@ export function CustomersPage() {
                                     const statusBadge = getContactStatusBadge(contact.contactStatus);
                                     return <tr
                                         key={`${contact.isCustomer ? 'customer' : 'contact'}-${contact.id}`}
-                                        className={`${contact.isCustomer ? 'cursor-pointer' : ''} hover:bg-gray-50 transition-colors focus-within:bg-blue-50`}
+                                        className={`${contact.isCustomer ? 'cursor-pointer' : ''} hover:bg-gray-50 transition-colors focus-within:bg-[var(--brand-subtle)]`}
                                         onClick={() => {
                                             if (contact.isCustomer) navigate(`/customers/${encodeURIComponent(contact.id)}`, { state: { contactsPath: `${location.pathname}${location.search}` } });
                                         }}
@@ -379,7 +379,7 @@ export function CustomersPage() {
 
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3" title={contact.email}>
-                                                <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">
+                                                <div className="w-10 h-10 rounded-full bg-[var(--brand-subtle)] text-[var(--brand-text)] flex items-center justify-center font-bold text-sm">
                                                     {contact.firstName?.[0] || contact.email[0]?.toUpperCase()}{contact.lastName?.[0]}
                                                 </div>
                                                 <div>

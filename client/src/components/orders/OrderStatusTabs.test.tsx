@@ -16,6 +16,8 @@ it('keeps selected zero/custom filters and masks old counts immediately on scope
     const select = vi.fn(), view = render(<OrderStatusTabs selectedStatus="CUSTOM" onStatusChange={select} />);
     const selected = await screen.findByRole('button', { name: /custom/i });
     expect(selected).toHaveAttribute('aria-pressed', 'true');
+    expect(selected).toHaveClass('bg-[var(--primary-color)]', 'text-[var(--primary-foreground)]');
+    expect(selected).not.toHaveClass('bg-indigo-700', 'text-white');
     fireEvent.click(selected); expect(select).toHaveBeenCalledWith('custom');
     await screen.findAllByText('3');
     m.account = 'b'; vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));

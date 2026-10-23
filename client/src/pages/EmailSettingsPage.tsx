@@ -269,7 +269,7 @@ function ScopedEmailSettings() {
                             type="checkbox"
                             checked={subscribeNewCustomersByDefault}
                             onChange={(event) => setSubscribeNewCustomersByDefault(event.target.checked)}
-                            className="mt-1 size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    className="mt-1 size-4 rounded border-gray-300 text-[var(--brand-text)] focus:ring-[var(--focus-color)]"
                         />
                         <span className="text-sm text-gray-600">
                             Allow new customers to receive marketing emails automatically. When disabled, marketing flow emails are blocked until the customer explicitly subscribes.
@@ -288,7 +288,7 @@ function ScopedEmailSettings() {
                                     onChange={(event) => setEmailLists((current) => current.map((item) => item.id === list.id
                                         ? { ...item, isDefault: event.target.checked }
                                         : item))}
-                                    className="mt-0.5 size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    className="mt-0.5 size-4 rounded border-gray-300 text-[var(--brand-text)] focus:ring-[var(--focus-color)]"
                                 />
                                 <span>
                                     <span className="block text-sm font-medium text-gray-800">{list.name}</span>
@@ -304,7 +304,7 @@ function ScopedEmailSettings() {
                     <button
                         onClick={handleSaveMarketingDefaults}
                         disabled={isSavingMarketing || !hasPermission('manage_marketing')}
-                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
+                                className="rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-colors hover:bg-[var(--primary-hover)] disabled:opacity-60"
                     >
                         {isSavingMarketing ? 'Saving...' : 'Save Marketing Defaults'}
                     </button>
@@ -322,7 +322,7 @@ function ScopedEmailSettings() {
                                 type="checkbox"
                                 checked={settings.bounceTrackingEnabled}
                                 onChange={(e) => setSettings((prev) => ({ ...prev, bounceTrackingEnabled: e.target.checked }))}
-                                className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            className="mt-1 h-4 w-4 rounded border-gray-300 text-[var(--brand-text)] focus:ring-[var(--focus-color)]"
                             />
                             <span className="text-sm text-gray-600">
                                 Enable to capture bounced emails from the email service and mark contacts as bounced.
@@ -376,7 +376,7 @@ function ScopedEmailSettings() {
                         <button
                             onClick={handleSave}
                             disabled={isSaving}
-                            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
+                            className="rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-colors hover:bg-[var(--primary-hover)] disabled:opacity-60"
                         >
                             {isSaving ? 'Saving...' : 'Save'}
                         </button>
@@ -401,7 +401,7 @@ function ScopedEmailSettings() {
                     <button
                         onClick={handleSaveFooter}
                         disabled={isSavingFooter || !hasPermission('manage_email_settings')}
-                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
+                            className="rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-colors hover:bg-[var(--primary-hover)] disabled:opacity-60"
                     >
                         {isSavingFooter ? 'Saving...' : 'Save Footer'}
                     </button>

@@ -22,7 +22,7 @@ function AccountAdSpend({ className = '', dateRange, token, accountId }: WidgetP
     return <section aria-label="Ad spend" className={`${widgetCardClass} h-full w-full p-6 space-y-4 ${className}`}>
         <h3 className={widgetTitleClass}>Ad Spend</h3>
         {loading ? <p role="status">Loading ad metrics...</p> : error || !data ? <p role="alert">Could not load ad spend. <button type="button" onClick={retry}>Retry ad spend</button></p> : data.hasData === false ? <p>No connected advertising accounts.</p> : <>
-            <p className="text-3xl font-semibold text-slate-900 dark:text-white">{data.spend == null ? 'Unavailable' : reportMoney(data.spend, data.currency ?? undefined)}</p>
+            <p className="text-xl font-semibold tabular-nums text-slate-900 dark:text-white">{data.spend == null ? 'Unavailable' : reportMoney(data.spend, data.currency ?? undefined)}</p>
             <dl className="flex justify-between text-slate-900 dark:text-white"><div><dt>ROAS</dt><dd>{data.roas == null ? 'Unavailable' : `${data.roas.toFixed(2)}x`}</dd></div><div><dt>Clicks</dt><dd>{data.clicks == null ? 'Unavailable' : data.clicks.toLocaleString()}</dd></div></dl>
         </>}
     </section>;

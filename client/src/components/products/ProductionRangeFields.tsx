@@ -42,7 +42,7 @@ export function ProductionRangeFields({ label, value, onChange, inherited, disab
     } else if (blank && !inherited) hint = 'No product production range set.';
 
     return (
-        <fieldset aria-busy={!!loading} className="space-y-2 rounded-lg border border-gray-200 dark:border-slate-700 bg-white/50 dark:bg-slate-800/50 p-3">
+        <fieldset aria-busy={!!loading} className="space-y-2 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-3">
             <legend className="px-1 text-xs font-semibold text-gray-700 dark:text-slate-200">{label}</legend>
             <div className="grid grid-cols-2 gap-3 max-w-md">
                 {(['min', 'max'] as const).map(key => (
@@ -59,7 +59,7 @@ export function ProductionRangeFields({ label, value, onChange, inherited, disab
                             aria-invalid={!!message}
                             aria-describedby={`${id}-hint${message ? ` ${id}-error` : ''}`}
                             onChange={event => { if (value && !blocked) onChange({ ...value, [key]: event.target.value }); }}
-                            className="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                     </div>
                 ))}
@@ -68,7 +68,7 @@ export function ProductionRangeFields({ label, value, onChange, inherited, disab
             <p className="text-xs text-gray-500 dark:text-slate-400">Business days using the production calendar and cutoff. Transit time is additional.</p>
             {message && <p id={`${id}-error`} role="alert" className="text-xs text-red-600 dark:text-red-400">{message}</p>}
             {onRetry && (error || unavailable) && !loading && (
-                <button type="button" onClick={onRetry} disabled={disabled} className="text-xs text-blue-600 dark:text-blue-400 underline disabled:opacity-50">Retry loading production range</button>
+                <button type="button" onClick={onRetry} disabled={disabled} className="text-xs text-[var(--brand-text)] underline disabled:opacity-50">Retry loading production range</button>
             )}
         </fieldset>
     );

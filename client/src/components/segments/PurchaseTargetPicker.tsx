@@ -47,12 +47,12 @@ export function PurchaseTargetPicker({ kind, value, label, onChange }: Props) {
 
     if (value) return <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800">
         <span className="truncate">{label || `${kind === 'product' ? 'Product' : 'Category'} #${value}`}</span>
-        <button type="button" onClick={() => { setQuery(''); onChange(''); }} className="shrink-0 text-indigo-600 dark:text-indigo-400">Change</button>
+        <button type="button" onClick={() => { setQuery(''); onChange(''); }} className="shrink-0 text-[var(--brand-text)]">Change</button>
     </div>;
 
     return <div className="min-w-0 space-y-2">
         <input aria-label={`Search ${kind}`} placeholder={`Search ${kind === 'product' ? 'products by name or SKU' : 'categories'}…`} value={query} onChange={event => setQuery(event.target.value)}
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800" />
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] dark:border-slate-600 dark:bg-slate-800" />
         <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-200 bg-white text-sm dark:border-slate-700 dark:bg-slate-800">
             {loading ? <p className="p-2 text-gray-500" role="status">Searching…</p> : error ? <p className="p-2 text-red-600" role="alert">Could not load {kind === 'product' ? 'products' : 'categories'}. Change the search to retry.</p> : options.length ? options.map(option =>
                 <button key={option.id} type="button" onClick={() => onChange(option.id, option.name)} className="block w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-slate-700">{option.name} <span className="text-xs text-gray-400">#{option.id}</span></button>

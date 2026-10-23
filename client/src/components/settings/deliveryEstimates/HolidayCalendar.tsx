@@ -56,7 +56,7 @@ export function HolidayCalendar({ closures, onChange, timezone, scope }: {
                 return <button key={date} type="button" data-date={date} aria-pressed={closed}
                     disabled={!closure && closures.length >= 3660}
                     aria-label={`${fullDate(parseDate(date))}${closed ? `: ${title} closure${closure?.label ? `, ${closure.label}` : ''}` : ': No closure'}`}
-                    className={`text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600 ${closed ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-900'}`}
+                    className={`rounded-md text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-color)] ${closed ? 'bg-[var(--primary-color)] text-[var(--primary-foreground)]' : 'bg-white dark:bg-slate-900'}`}
                     onClick={() => toggle(date)} onKeyDown={event => {
                         const next = parseDate(date);
                         const shift = ({ ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7, Home: -next.getUTCDay(), End: 6 - next.getUTCDay() } as Record<string, number>)[event.key];

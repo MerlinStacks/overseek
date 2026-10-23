@@ -11,6 +11,7 @@
  */
 
 import { useState } from 'react';
+import { Metric, MetricStrip } from '../ui/MetricStrip';
 import {
     Search, TrendingUp, MousePointerClick, Eye, ArrowUpDown,
     Loader2, Link2, BarChart3, ChevronDown, ChevronUp
@@ -70,13 +71,13 @@ export function ProductSearchInsightsPanel({ permalink }: Props) {
     };
 
     return (
-        <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-md rounded-xl shadow-xs border border-white/50 dark:border-slate-700/40 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Header */}
-            <div className="p-6 border-b border-gray-100 dark:border-slate-700/40 bg-white/50 dark:bg-slate-800/40">
+            <div className="p-6 border-b border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800">
                 <div className="flex items-center justify-between mb-5">
                     <div>
                         <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 flex items-center gap-2">
-                            <BarChart3 className="text-blue-600 dark:text-blue-400" size={20} />
+                            <BarChart3 className="text-[var(--brand-text)]" size={20} />
                             Organic Search Insights
                         </h3>
                         <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
@@ -90,7 +91,7 @@ export function ProductSearchInsightsPanel({ permalink }: Props) {
 
                 {/* Summary Cards */}
                 {summary && (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <MetricStrip label="Product search summary">
                         <SummaryCard
                             label="Clicks"
                             value={summary.totalClicks.toLocaleString()}
@@ -115,7 +116,7 @@ export function ProductSearchInsightsPanel({ permalink }: Props) {
                             icon={ArrowUpDown}
                             color="amber"
                         />
-                    </div>
+                    </MetricStrip>
                 )}
             </div>
 
@@ -155,8 +156,8 @@ export function ProductSearchInsightsPanel({ permalink }: Props) {
 /* ─────────────────────────────────────── Sub-components ─── */
 
 const COLOR_MAP = {
-    blue: 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400',
-    violet: 'bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400',
+    blue: 'bg-[var(--brand-subtle)] text-[var(--brand-text)]',
+    violet: 'bg-[var(--brand-subtle)] text-[var(--brand-text)]',
     emerald: 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400',
     amber: 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400',
 } as const;
@@ -165,13 +166,7 @@ function SummaryCard({ label, value, icon: Icon, color }: {
     label: string; value: string; icon: React.ElementType; color: keyof typeof COLOR_MAP;
 }) {
     return (
-        <div className={`rounded-lg px-4 py-3 ${COLOR_MAP[color]} bg-opacity-50`}>
-            <div className="flex items-center gap-2 mb-1">
-                <Icon size={14} />
-                <span className="text-xs font-semibold uppercase tracking-wide opacity-80">{label}</span>
-            </div>
-            <span className="text-xl font-black">{value}</span>
-        </div>
+        <Metric label={<span className="flex items-center gap-2"><Icon size={14} className={COLOR_MAP[color]} />{label}</span>} value={value} />
     );
 }
 
@@ -243,10 +238,10 @@ function ConnectPrompt() {
     };
 
     return (
-        <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-md rounded-xl shadow-xs border border-white/50 dark:border-slate-700/40 p-8">
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 p-8">
             <div className="flex flex-col items-center justify-center py-8">
-                <div className="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-violet-500/20 dark:from-blue-500/10 dark:to-violet-500/10 rounded-2xl flex items-center justify-center mb-4">
-                    <Search className="w-8 h-8 text-blue-500 dark:text-blue-400" />
+                <div className="w-16 h-16 bg-[var(--brand-subtle)] rounded-xl flex items-center justify-center mb-4">
+                    <Search className="w-8 h-8 text-[var(--brand-text)]" />
                 </div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-2">
                     Connect Search Console
@@ -258,7 +253,7 @@ function ConnectPrompt() {
                     type="button"
                     onClick={handleConnect}
                     disabled={loading}
-                    className="btn-gradient btn-shimmer flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
+                    className="bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
                 >
                     {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
                     Connect Search Console
@@ -272,9 +267,9 @@ function ConnectPrompt() {
 /** Empty state when GSC is connected but no data exists for this URL */
 function EmptyState() {
     return (
-        <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-md rounded-xl shadow-xs border border-white/50 dark:border-slate-700/40 p-8">
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 p-8">
             <div className="flex flex-col items-center justify-center py-8">
-                <div className="w-16 h-16 bg-gray-100 dark:bg-slate-700/50 rounded-2xl flex items-center justify-center mb-4">
+                <div className="w-16 h-16 bg-gray-100 dark:bg-slate-700/50 rounded-xl flex items-center justify-center mb-4">
                     <BarChart3 className="w-8 h-8 text-gray-400 dark:text-slate-500" />
                 </div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-2">
@@ -291,7 +286,7 @@ function EmptyState() {
 /** Skeleton loading state */
 function LoadingSkeleton() {
     return (
-        <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-md rounded-xl shadow-xs border border-white/50 dark:border-slate-700/40 p-6 animate-pulse">
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 p-6 animate-pulse">
             <div className="flex items-center gap-3 mb-5">
                 <div className="w-5 h-5 bg-gray-200 dark:bg-slate-700 rounded" />
                 <div className="h-5 w-48 bg-gray-200 dark:bg-slate-700 rounded" />

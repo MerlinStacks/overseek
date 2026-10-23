@@ -62,7 +62,11 @@ describe('mobile homepage metrics', () => {
     it('removes metric graphs and stops requesting chart and inventory data', async () => {
         await renderDashboard();
         for (const name of [/Orders today/, /Revenue today/]) {
-            expect(screen.getByRole('button', { name }).querySelector('svg path[fill^="url("]')).toBeNull();
+            const metric = screen.getByRole('button', { name });
+            expect(metric.querySelector('svg path[fill^="url("]')).toBeNull();
+            expect(metric.closest('.mobile-metric-strip')).not.toBeNull();
+            expect(metric.querySelector('.text-xl')).not.toBeNull();
+            expect(metric.querySelector('.text-3xl')).toBeNull();
         }
         const urls = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
         expect(urls.some(url => url.includes('sales-chart') || url.includes('inventory/health'))).toBe(false);

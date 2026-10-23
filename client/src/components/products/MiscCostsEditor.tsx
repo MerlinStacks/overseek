@@ -48,7 +48,7 @@ export const MiscCostsEditor: React.FC<MiscCostsEditorProps> = ({ value = [], on
                                 type="text"
                                 value={item.note}
                                 onChange={(e) => handleChange(index, 'note', e.target.value)}
-                                className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] outline-none transition-all"
                                 placeholder="Description (e.g. Shipping)"
                             />
                         </div>
@@ -63,7 +63,7 @@ export const MiscCostsEditor: React.FC<MiscCostsEditorProps> = ({ value = [], on
                                     const amount = e.target.value === '' ? 0 : e.target.valueAsNumber;
                                     if (Number.isFinite(amount)) handleChange(index, 'amount', amount);
                                 }}
-                                className="w-full text-sm pl-10 pr-2 py-1.5 border border-gray-200 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                className="w-full text-sm pl-10 pr-2 py-1.5 border border-gray-200 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] outline-none transition-all"
                                 placeholder="0.00"
                             />
                         </div>
@@ -81,7 +81,7 @@ export const MiscCostsEditor: React.FC<MiscCostsEditorProps> = ({ value = [], on
             <button
                 type="button"
                 onClick={handleAdd}
-                className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 px-2 py-1 hover:bg-blue-50 rounded-md transition-colors"
+                className="flex items-center gap-1.5 text-xs font-medium text-[var(--brand-text)] hover:text-[var(--brand-text)] px-2 py-1 hover:bg-[var(--brand-subtle)] rounded-md transition-colors"
             >
                 <Plus size={14} />
                 Add Cost

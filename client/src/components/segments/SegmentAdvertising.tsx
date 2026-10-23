@@ -77,7 +77,7 @@ export function SegmentAdvertising({ segment, onRefresh }: {
     return <div className="space-y-5 text-sm text-slate-700 dark:text-slate-200">
         <p>Keep <strong>{segment.name}</strong> up to date in Meta Custom Audiences or Google Customer Match. Membership is refreshed every 5 minutes as the rules change. Platforms may take longer to process updates.</p>
         <p>Email-only matching is the default. Optional enhanced matching includes hashed phone/name and platform-required country/postal codes when available. Platform terms, account eligibility and minimum audience sizes still apply. Counts below are submitted profiles, not matched or reachable people.</p>
-        {(destinations.find(destination => destination.id === destinationId)?.platform === 'GOOGLE' || segment.audienceSyncs?.some(sync => sync.platform === 'GOOGLE')) && <p className="rounded-lg bg-indigo-50 p-3 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-100">Google customer lists use the Data Manager API. Enable it in the OAuth client’s Google Cloud project, then reconnect Google Ads in Settings to grant the new permission. Accepted uploads remain Processing until Google confirms completion; this can take longer than the five-minute sync interval.</p>}
+        {(destinations.find(destination => destination.id === destinationId)?.platform === 'GOOGLE' || segment.audienceSyncs?.some(sync => sync.platform === 'GOOGLE')) && <p className="rounded-lg bg-[var(--brand-subtle)] p-3 text-[var(--brand-text)]">Google customer lists use the Data Manager API. Enable it in the OAuth client’s Google Cloud project, then reconnect Google Ads in Settings to grant the new permission. Accepted uploads remain Processing until Google confirms completion; this can take longer than the five-minute sync interval.</p>}
         <label className="flex items-start gap-2"><input type="checkbox" checked={includeSubscribers} onChange={event => { setIncludeSubscribers(event.target.checked); setConsent(false); }} /><span>Also include subscribed members of active email lists who match these rules, even without a customer record. This only expands advertising audiences, not customer previews or broadcasts. Email subscription alone is not advertising consent.</span></label>
         <label className="flex items-start gap-2"><input type="checkbox" checked={enhancedMatching} onChange={event => { setEnhancedMatching(event.target.checked); setConsent(false); }} /><span>Enable enhanced matching using available phone, name and address identifiers.</span></label>
         <label className="flex items-start gap-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
@@ -89,7 +89,7 @@ export function SegmentAdvertising({ segment, onRefresh }: {
                 <option value="">Select advertising account</option>
                 {destinations.map(destination => <option key={destination.id} value={destination.id}>{destination.platform} · {destination.name || destination.externalId}</option>)}
             </select>
-            <button disabled={busy || !consent || !destinationId} onClick={() => void mutate('audiences', 'POST', { adAccountId: destinationId, consentConfirmed: consent, includeSubscribers, enhancedMatching })} className="rounded-lg bg-indigo-600 px-4 py-2 text-white disabled:opacity-50">Enable / update sync</button>
+            <button disabled={busy || !consent || !destinationId} onClick={() => void mutate('audiences', 'POST', { adAccountId: destinationId, consentConfirmed: consent, includeSubscribers, enhancedMatching })} className="rounded-lg bg-[var(--primary-color)] px-4 py-2 text-[var(--primary-foreground)] disabled:opacity-50">Enable / update sync</button>
         </div>}
         <div className="space-y-3">
             {(segment.audienceSyncs || []).map(sync => <div key={sync.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
@@ -99,8 +99,8 @@ export function SegmentAdvertising({ segment, onRefresh }: {
                 {sync.platform === 'GOOGLE' && sync.status === 'PROCESSING' && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Waiting for Google Data Manager processing. Overseek will check the request again automatically.</p>}
                 {sync.lastError && <p className="mt-2 text-red-600 dark:text-red-400">{sync.lastError}</p>}
                 <div className="mt-2 flex flex-wrap gap-4">
-                    {sync.status === 'FAILED' && sync.autoSyncEnabled && <button disabled={busy} onClick={() => void mutate(`audiences/${sync.id}`, 'PATCH', { enabled: true })} className="font-medium text-indigo-600 dark:text-indigo-300 disabled:opacity-50">Retry sync</button>}
-                    <button disabled={busy || (!sync.autoSyncEnabled && !consent)} onClick={() => void mutate(`audiences/${sync.id}`, 'PATCH', { enabled: !sync.autoSyncEnabled })} className="font-medium text-indigo-600 dark:text-indigo-300 disabled:opacity-50">{sync.autoSyncEnabled ? 'Pause sync' : 'Resume sync'}</button>
+                    {sync.status === 'FAILED' && sync.autoSyncEnabled && <button disabled={busy} onClick={() => void mutate(`audiences/${sync.id}`, 'PATCH', { enabled: true })} className="font-medium text-[var(--brand-text)] disabled:opacity-50">Retry sync</button>}
+                    <button disabled={busy || (!sync.autoSyncEnabled && !consent)} onClick={() => void mutate(`audiences/${sync.id}`, 'PATCH', { enabled: !sync.autoSyncEnabled })} className="font-medium text-[var(--brand-text)] disabled:opacity-50">{sync.autoSyncEnabled ? 'Pause sync' : 'Resume sync'}</button>
                 </div>
             </div>)}
         </div>

@@ -17,7 +17,7 @@ describe('Modal sheet', () => {
         dialog = screen.getByRole('dialog', { name: 'Example' });
         expect(dialog.parentElement).toHaveClass('z-[90]', 'items-end');
         expect(dialog.parentElement).toHaveStyle({ height: '800px', top: '0px' });
-        expect(dialog).toHaveClass('max-h-[min(100%,48rem)]', 'bg-slate-900', 'rounded-t-3xl');
+        expect(dialog).toHaveClass('max-h-[min(100%,48rem)]', 'bg-slate-900', 'rounded-t-xl');
         expect(dialog.lastElementChild).toHaveClass('min-h-0', 'overflow-y-auto', 'overscroll-contain', 'pb-[max(1.5rem,env(safe-area-inset-bottom))]');
         act(() => { viewport.height = 320; viewport.offsetTop = 100; viewport.dispatchEvent(new Event('resize')); });
         expect(dialog.parentElement).toHaveStyle({ height: '320px', top: '100px' });

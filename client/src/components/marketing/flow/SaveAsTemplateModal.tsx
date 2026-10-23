@@ -62,8 +62,8 @@ export function SaveAsTemplateModal({ content, designJson, initialSubject, onSav
     };
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-xs">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 ">
+            <div className="bg-white rounded-xl shadow-sm w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b">
                     <div className="flex items-center gap-3">

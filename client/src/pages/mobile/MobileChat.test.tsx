@@ -42,9 +42,9 @@ describe('MobileChat composer', () => {
         render(<MemoryRouter><MobileChat /></MemoryRouter>);
         const content = screen.getByText('A reply to the customer');
         const bubble = body.startsWith('<') ? content.parentElement!.parentElement! : content.parentElement!;
-        expect(bubble).toHaveClass('bg-blue-600', 'text-white');
-        expect(bubble).not.toHaveClass('mobile-brand-solid');
-        expect(bubble.children[1]).toHaveClass('text-blue-50');
+        expect(bubble).toHaveClass('mobile-brand-solid');
+        expect(bubble.children[1]).toHaveClass('text-current');
+        expect(bubble.closest('.mobile-companion')).toHaveStyle('--mobile-brand: #2563eb; --mobile-brand-foreground: #ffffff');
     });
 
     it.each(['inbound', 'outbound'])('keeps failed %s message timestamps readable on the error surface', (direction) => {

@@ -63,7 +63,7 @@ export function HelpArticle() {
             <div className="max-w-3xl mx-auto py-20 text-center">
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">Oops!</h2>
                 <p className="text-gray-500 mb-6">Article not found or unavailable.</p>
-                <button type="button" onClick={() => navigate('/help')} className="text-blue-600 hover:text-blue-700 font-medium flex items-center justify-center gap-2 mx-auto">
+                    <button type="button" onClick={() => navigate('/help')} className="text-[var(--brand-text)] hover:underline font-medium flex items-center justify-center gap-2 mx-auto">
                     <ArrowLeft size={16} /> Back to Help Center
                 </button>
             </div>
@@ -83,11 +83,11 @@ export function HelpArticle() {
                 Back to Help Center
             </button>
 
-            <article className="bg-white dark:bg-slate-800 rounded-2xl shadow-xs border border-gray-100 dark:border-slate-700 overflow-hidden">
+            <article className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
                 {/* Article Header */}
                 <div className="p-6 md:p-12 border-b border-gray-50 dark:border-slate-700 bg-linear-to-b from-white to-gray-50/20 dark:from-slate-800 dark:to-slate-800">
                     <div className="flex items-center gap-2 mb-6">
-                        <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-semibold tracking-wide uppercase">
+                            <span className="px-2.5 py-1 rounded-md bg-[var(--brand-subtle)] text-[var(--brand-text)] text-xs font-medium">
                             {article.collection?.title || 'Guide'}
                         </span>
                         <span className="text-gray-400 text-xs">•</span>
@@ -123,7 +123,7 @@ export function HelpArticle() {
                             <button type="button" onClick={() => window.print()} aria-label="Print article" className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors" title="Print">
                                 <Printer size={18} />
                             </button>
-                            <button type="button" onClick={() => void share()} aria-label="Share article" className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Share">
+                        <button type="button" onClick={() => void share()} aria-label="Share article" className="p-2 text-gray-400 hover:text-[var(--brand-text)] hover:bg-[var(--brand-subtle)] rounded-lg transition-colors" title="Share">
                                 <Share2 size={18} />
                             </button>
                         </div>
@@ -141,7 +141,7 @@ export function HelpArticle() {
 
                 <div className="bg-gray-50 dark:bg-slate-900 p-8 text-center border-t border-gray-100 dark:border-slate-700">
                     <p className="text-gray-900 dark:text-slate-100 font-medium mb-4">Need more help?</p>
-                    <Link to="/help" className="text-blue-600 dark:text-blue-300 underline">Browse the Help Center for related guides</Link>
+                    <Link to="/help" className="text-[var(--brand-text)] underline">Browse the Help Center for related guides</Link>
                 </div>
             </article>
         </div>

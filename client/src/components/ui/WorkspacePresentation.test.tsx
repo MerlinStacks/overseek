@@ -32,7 +32,7 @@ it('groups outgoing/incoming email controls while keeping saved secrets blank', 
     const imap = screen.getByRole('region', { name: 'IMAP configuration' });
     expect(within(smtp).getByLabelText(/SMTP Password/)).toHaveValue('');
     expect(within(imap).getByLabelText(/IMAP Password/)).toHaveValue('');
-    expect(screen.getByRole('button', { name: 'Save reviewed account' })).toHaveClass('bg-indigo-600');
+    expect(screen.getByRole('button', { name: 'Save reviewed account' })).toHaveClass('bg-[var(--primary-color)]', 'text-[var(--primary-foreground)]');
     expect(m.fetch).not.toHaveBeenCalled();
 });
 it('locks all email configuration inputs and actions while saving', () => {

@@ -47,7 +47,7 @@ export const UrlBuilder = () => {
                     </div>
                 ))}
                 {error && <p id={`${id}-error`} role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
-                <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700">Generate URL</button>
+                <button type="submit" className="bg-[var(--primary-color)] text-[var(--primary-foreground)] px-4 py-2 rounded-lg font-medium hover:bg-[var(--primary-hover)] focus-visible:outline-[var(--focus-color)]">Generate URL</button>
                 {generated && (
                     <div role="status" className="mt-6 p-4 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-200 dark:border-slate-700">
                         <p className="text-xs font-semibold uppercase tracking-wider mb-2">Generated URL</p>

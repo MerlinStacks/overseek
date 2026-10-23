@@ -269,7 +269,7 @@ export function ContactPanel({ conversation, smsIdentifier, messageCount, onSele
     return (
         <div className="w-80 border-l border-gray-200 bg-white hidden lg:flex flex-col overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-100 bg-white/95 backdrop-blur">
+            <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-100 bg-white/95 ">
                 <span className="text-sm font-semibold text-gray-700 tracking-[0.01em]">Contact</span>
                 <button className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 transition-colors">
                     <MoreVertical size={16} />
@@ -277,21 +277,21 @@ export function ContactPanel({ conversation, smsIdentifier, messageCount, onSele
             </div>
 
             {/* Contact Card */}
-            <div className="p-4 border-b border-gray-100 bg-gradient-to-b from-white to-gray-50/35">
+                <div className="p-4 border-b border-gray-100 bg-white dark:border-slate-700 dark:bg-slate-800">
                 <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold shadow-sm">
+                    <div className="w-12 h-12 rounded-full bg-[var(--primary-color)] flex items-center justify-center text-[var(--primary-foreground)] font-semibold shadow-sm">
                         {initials}
                     </div>
                     <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-gray-900 truncate leading-tight">{name}</h3>
                         {email && (
-                            <a href={`mailto:${email}`} className="text-sm text-blue-600 hover:underline flex items-center gap-1 truncate mt-0.5">
+                            <a href={`mailto:${email}`} className="text-sm text-[var(--brand-text)] hover:underline flex items-center gap-1 truncate mt-0.5">
                                 <Mail size={12} />
                                 {email}
                             </a>
                         )}
                         {phone && (
-                            <a href={`tel:${phone}`} className="text-sm text-blue-600 hover:underline flex items-center gap-1 truncate mt-0.5">
+                            <a href={`tel:${phone}`} className="text-sm text-[var(--brand-text)] hover:underline flex items-center gap-1 truncate mt-0.5">
                                 <Phone size={12} />
                                 {phone}
                             </a>
@@ -301,7 +301,7 @@ export function ContactPanel({ conversation, smsIdentifier, messageCount, onSele
                         <Link
                             to={`/customers/${encodeURIComponent(customer.id)}`}
                             aria-label={`View ${name} customer page`}
-                            className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-600 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-600 shadow-sm transition-colors hover:border-[var(--brand-border)] hover:bg-[var(--brand-subtle)] hover:text-[var(--brand-text)]"
                         >
                             View customer
                             <ExternalLink size={11} aria-hidden="true" />
@@ -429,7 +429,7 @@ export function ContactPanel({ conversation, smsIdentifier, messageCount, onSele
                 </Section>
 
                 {/* Auto-reopen notice */}
-                <div className="mx-3 my-3 px-3 py-2.5 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-700">
+                <div className="mx-3 my-3 px-3 py-2.5 bg-[var(--brand-subtle)] border border-[var(--brand-border)] rounded-lg text-xs text-[var(--brand-text)]">
                     <strong>Note:</strong> Resolved conversations will automatically reopen when the customer replies.
                 </div>
 

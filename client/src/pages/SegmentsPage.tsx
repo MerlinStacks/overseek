@@ -261,7 +261,7 @@ export function SegmentsPage({ embedded = false }: SegmentsPageProps) {
                             <input
                                 id="segment-name"
                                 type="text"
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                                 placeholder="e.g. VIP Customers"
                                 value={segmentName}
                                 onChange={e => setSegmentName(e.target.value)}
@@ -272,7 +272,7 @@ export function SegmentsPage({ embedded = false }: SegmentsPageProps) {
                             <input
                                 id="segment-description"
                                 type="text"
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                                 placeholder="Customers who spent over $500"
                                 value={segmentDesc}
                                 onChange={e => setSegmentDesc(e.target.value)}
@@ -310,12 +310,12 @@ export function SegmentsPage({ embedded = false }: SegmentsPageProps) {
                             value={searchQuery}
                             onChange={(event) => setSearchQuery(event.target.value)}
                             placeholder="Search segments..."
-                            className="min-h-10 w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm outline-hidden focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                        className="min-h-10 w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm outline-hidden focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)]"
                         />
                     </div>
                     <button
                     onClick={() => setCreateKind('choose')}
-                    className="flex min-h-10 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white transition-colors hover:bg-indigo-700"
+                    className="flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[var(--primary-color)] px-4 py-2 font-medium text-[var(--primary-foreground)] transition-colors hover:bg-[var(--primary-hover)]"
                 >
                     <Plus size={18} />
                     Create segment
@@ -346,7 +346,7 @@ export function SegmentsPage({ embedded = false }: SegmentsPageProps) {
                         <p className="text-sm mb-6">Create your first segment to start targeting customers.</p>
                         <button
                             onClick={() => setCreateKind('choose')}
-                            className="text-blue-600 hover:underline"
+                            className="text-[var(--brand-text)] hover:underline"
                         >
                             Create Segment
                         </button>
@@ -364,14 +364,14 @@ export function SegmentsPage({ embedded = false }: SegmentsPageProps) {
             <Modal isOpen={createKind !== null} onClose={() => setCreateKind(null)} title={createKind === 'choose' ? 'Create segment' : createKind === 'LOOKALIKE' ? 'Create lookalike segment' : 'Create website segment'} maxWidth="max-w-2xl">
                 {createKind === 'choose' ? <div className="space-y-3 text-sm">
                     <p className="mb-4 text-gray-500">Choose how this segment’s membership is determined.</p>
-                    <button onClick={() => { setCreateKind(null); setSegmentName(''); setSegmentDesc(''); setIsCreating(true); }} className="flex w-full items-start gap-3 rounded-xl border border-gray-200 p-4 text-left hover:border-indigo-300 hover:bg-indigo-50 dark:border-slate-700 dark:hover:bg-slate-900">
-                        <Users className="shrink-0 text-indigo-600" size={22} /><span><strong className="block">Customer segment</strong>{' '}<span className="text-gray-500">Rules based on purchases, spend and engagement. Preview members, send emails and sync to Meta or Google.</span></span>
+                    <button onClick={() => { setCreateKind(null); setSegmentName(''); setSegmentDesc(''); setIsCreating(true); }} className="flex w-full items-start gap-3 rounded-xl border border-gray-200 p-4 text-left hover:border-[var(--brand-border)] hover:bg-[var(--brand-subtle)] dark:border-slate-700 dark:hover:bg-slate-900">
+                        <Users className="shrink-0 text-[var(--brand-text)]" size={22} /><span><strong className="block">Customer segment</strong>{' '}<span className="text-gray-500">Rules based on purchases, spend and engagement. Preview members, send emails and sync to Meta or Google.</span></span>
                     </button>
-                    <button onClick={() => setCreateKind('WEBSITE')} className="flex w-full items-start gap-3 rounded-xl border border-gray-200 p-4 text-left hover:border-indigo-300 hover:bg-indigo-50 dark:border-slate-700 dark:hover:bg-slate-900">
-                        <Globe className="shrink-0 text-indigo-600" size={22} /><span><strong className="block">Website segment</strong>{' '}<span className="text-gray-500">Consented website visitors matched by Meta pixel events or Google URL rules. Membership updates in the platform.</span></span>
+                    <button onClick={() => setCreateKind('WEBSITE')} className="flex w-full items-start gap-3 rounded-xl border border-gray-200 p-4 text-left hover:border-[var(--brand-border)] hover:bg-[var(--brand-subtle)] dark:border-slate-700 dark:hover:bg-slate-900">
+                        <Globe className="shrink-0 text-[var(--brand-text)]" size={22} /><span><strong className="block">Website segment</strong>{' '}<span className="text-gray-500">Consented website visitors matched by Meta pixel events or Google URL rules. Membership updates in the platform.</span></span>
                     </button>
-                    <button onClick={() => setCreateKind('LOOKALIKE')} className="flex w-full items-start gap-3 rounded-xl border border-gray-200 p-4 text-left hover:border-indigo-300 hover:bg-indigo-50 dark:border-slate-700 dark:hover:bg-slate-900">
-                        <Copy className="shrink-0 text-indigo-600" size={22} /><span><strong className="block">Lookalike segment</strong>{' '}<span className="text-gray-500">Find similar people in Meta using a successfully synced customer segment or an existing website segment.</span></span>
+                    <button onClick={() => setCreateKind('LOOKALIKE')} className="flex w-full items-start gap-3 rounded-xl border border-gray-200 p-4 text-left hover:border-[var(--brand-border)] hover:bg-[var(--brand-subtle)] dark:border-slate-700 dark:hover:bg-slate-900">
+                        <Copy className="shrink-0 text-[var(--brand-text)]" size={22} /><span><strong className="block">Lookalike segment</strong>{' '}<span className="text-gray-500">Find similar people in Meta using a successfully synced customer segment or an existing website segment.</span></span>
                     </button>
                 </div> : createKind && <>
                     {!platform.data?.destinations.some(destination => createKind !== 'LOOKALIKE' || destination.platform === 'META') && <p className="mb-4 text-sm text-amber-700">{platform.isLoading ? 'Loading connected accounts…' : 'Connect an eligible advertising account in Settings first.'}</p>}
@@ -420,7 +420,7 @@ export function SegmentsPage({ embedded = false }: SegmentsPageProps) {
                                     {previewCustomers.map(customer => (
                                         <tr
                                             key={customer.id}
-                                            className="border-t border-gray-100 hover:bg-blue-50/60 cursor-pointer"
+                                            className="border-t border-gray-100 hover:bg-[var(--brand-subtle)] cursor-pointer"
                                             onClick={(event) => handleCustomerRowClick(event, customer.id)}
                                             onMouseDown={(event) => handleCustomerRowAuxClick(event, customer.id)}
                                         >

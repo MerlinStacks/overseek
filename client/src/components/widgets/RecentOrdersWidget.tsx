@@ -122,7 +122,7 @@ export function RecentOrdersWidget({ className }: WidgetProps) {
         <div className={`${widgetCardClass} h-full w-full p-5 flex flex-col overflow-hidden ${className || ''}`}>
             <div className={widgetHeaderRowClass}>
                 <h3 className={widgetTitleClass}>Recent Orders</h3>
-                <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-amber-400 to-orange-500 shadow-amber-500/20`}>
+                <div className={widgetHeaderIconBadgeClass}>
                     <ShoppingBag size={16} />
                 </div>
             </div>
@@ -140,7 +140,7 @@ export function RecentOrdersWidget({ className }: WidgetProps) {
                             <div>
                                 <p className="text-xs text-slate-400 dark:text-slate-500 mb-0.5 font-mono">#{order.id}</p>
                                 {order.customer_id && order.customer_id > 0 ? (
-                                    <Link to={`/customers/${order.customer_id}`} className="font-medium text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                    <Link to={`/customers/${order.customer_id}`} className="font-medium text-slate-900 dark:text-white hover:text-[var(--brand-text)] focus-visible:outline-[var(--focus-color)] transition-colors">
                                         {order.billing?.first_name || 'Guest'} {order.billing?.last_name}
                                     </Link>
                                 ) : (

@@ -1,7 +1,7 @@
 /**
  * SeoPage — Standalone page for SEO keyword insights and tracking.
  *
- * Premium design: gradient header, glass pill tabs, animated tab content.
+ * Search workspace with neutral panels and business-branded navigation.
  * Why a separate page: SEO tracking has enough depth to warrant its own
  * space separate from the Marketing hub.
  *
@@ -78,14 +78,14 @@ function ScopedSeoPage() {
             {status.error && <p role="alert">Search Console status unavailable. <button type="button" onClick={() => void status.refetch()}>Retry status</button></p>}
             {error && <p role="alert">{error}</p>}
             {/* Hero Header with mesh background */}
-            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 via-blue-50/50 to-violet-50/30 dark:from-slate-900 dark:via-blue-950/30 dark:to-violet-950/20 border border-slate-200/60 dark:border-slate-700/40 px-8 py-8">
+            <div className="relative overflow-hidden rounded-xl bg-slate-50       border border-slate-200/60 dark:border-slate-700/40 px-8 py-8">
                 {/* Decorative gradient orbs */}
-                <div className="absolute -top-20 -right-20 w-64 h-64 bg-blue-400/10 dark:bg-blue-500/5 rounded-full blur-3xl" />
-                <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-violet-400/10 dark:bg-violet-500/5 rounded-full blur-3xl" />
+                <div className="absolute -top-20 -right-20 w-64 h-64 bg-[var(--brand-subtle)] rounded-full blur-3xl" />
+                <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-[var(--brand-subtle)] rounded-full blur-3xl" />
 
                 <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex flex-col gap-2">
-                        <h1 className="text-3xl font-bold tracking-tight text-gradient">
+                        <h1 className="text-3xl font-bold tracking-tight text-[var(--brand-text)]">
                             SEO & Organic Search
                         </h1>
                         <p className="text-slate-500 dark:text-slate-400 max-w-lg">
@@ -98,14 +98,14 @@ function ScopedSeoPage() {
                         <div className="shrink-0">
                             {sites.length === 1 ? (
                                 /* Single site: static badge */
-                                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/70 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/60 dark:border-slate-700/40 text-sm font-medium text-slate-700 dark:text-slate-300">
-                                    <Globe size={14} className="text-blue-500" />
+                                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/40 text-sm font-medium text-slate-700 dark:text-slate-300">
+                                    <Globe size={14} className="text-[var(--brand-text)]" />
                                     {prettySiteUrl(sites[0].siteUrl)}
                                 </div>
                             ) : (
                                 /* Multiple sites: dropdown selector */
                                 <div className="relative inline-flex items-center">
-                                    <Globe size={14} className="absolute left-3 text-blue-500 pointer-events-none z-10" />
+                                    <Globe size={14} className="absolute left-3 text-[var(--brand-text)] pointer-events-none z-10" />
                                     <select
                                         id="seo-domain-selector"
                                         aria-label="Search Console property for overview and suggestions"
@@ -115,7 +115,7 @@ function ScopedSeoPage() {
                                             const url = e.target.value;
                                             void changeSite(url);
                                         }}
-                                        className="appearance-none pl-8 pr-8 py-2 rounded-xl bg-white/70 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/60 dark:border-slate-700/40 text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer hover:border-blue-300 dark:hover:border-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                                    className="appearance-none pl-8 pr-8 py-2 rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/40 text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer hover:border-[var(--brand-border)] dark:hover:border-[var(--primary-color)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--focus-color)]"
                                     >
                                         {sites.map((site: { id: string; siteUrl: string }) => (
                                             <option key={site.id} value={site.siteUrl}>
@@ -132,7 +132,7 @@ function ScopedSeoPage() {
             </div>
 
             {/* Glass Pill Tabs */}
-            <div className="flex bg-slate-100/80 dark:bg-slate-800/60 backdrop-blur-sm p-1 rounded-xl border border-slate-200/50 dark:border-slate-700/40 w-fit">
+            <div className="flex bg-slate-100/80 dark:bg-slate-800/60 p-1 rounded-xl border border-slate-200/50 dark:border-slate-700/40 w-fit">
                 {tabs.map(tab => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;

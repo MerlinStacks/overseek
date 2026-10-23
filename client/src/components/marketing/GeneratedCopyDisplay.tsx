@@ -32,7 +32,7 @@ function CopyItem({ text, itemKey, copiedItems, onCopy, isMultiline }: CopyItemP
                 <button
                     type="button" aria-label={`${copiedItems.has(itemKey) ? 'Copied' : 'Copy'} ${itemKey.startsWith('h-') ? 'headline' : itemKey.startsWith('d-') ? 'description' : 'primary text'} ${Number(itemKey.slice(2)) + 1}`}
                     onClick={() => onCopy(text, itemKey)}
-                    className="p-1.5 text-gray-400 hover:text-white focus-visible:outline-2 focus-visible:outline-violet-400 transition-colors"
+                        className="p-1.5 text-gray-400 hover:text-white focus-visible:outline-2 focus-visible:outline-[var(--focus-color)] transition-colors"
                 >
                     {copiedItems.has(itemKey) ? (
                         <Check className="w-4 h-4 text-green-400" />
@@ -67,7 +67,7 @@ export function GeneratedCopyDisplay({
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${generatedCopy.source === 'ai'
-                            ? 'bg-violet-500/20 text-violet-400'
+                            ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)]'
                             : 'bg-gray-600/20 text-gray-400'
                         }`}>
                         {generatedCopy.source === 'ai' ? 'AI Generated' : 'Template'}

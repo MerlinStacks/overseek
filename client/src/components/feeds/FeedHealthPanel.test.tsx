@@ -16,6 +16,12 @@ describe('feed health UI', () => {
     it('shows counts, exclusions, actionable context and local-only export history', () => {
         render(<FeedHealthResults report={report} />);
         expect(screen.getByText('Included rows')).toBeInTheDocument();
+        const summary = screen.getByLabelText('Feed validation summary');
+        expect(summary.tagName).toBe('DL');
+        expect(summary).toHaveClass('metric-strip');
+        expect(summary.querySelectorAll('.metric-strip-item')).toHaveLength(4);
+        expect(summary.querySelector('dt')).toHaveTextContent('Included rows');
+        expect(summary.querySelector('dd')).toHaveTextContent('2');
         expect(screen.getByText('Out of stock: 1')).toBeInTheDocument();
         expect(screen.getByText(/Blue mug \(v:1-11\)/)).toBeInTheDocument();
         expect(screen.getByText('Invalid barcode check digit.')).toBeInTheDocument();

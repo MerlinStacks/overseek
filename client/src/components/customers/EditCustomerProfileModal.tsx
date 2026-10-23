@@ -139,7 +139,7 @@ export function EditCustomerProfileModal({ isOpen, initialValues, isSaving, erro
                     aria-describedby={showError ? errorId : undefined}
                     onBlur={() => setTouched(current => ({ ...current, [name]: true }))}
                     onChange={event => updateField(name, event.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[var(--primary-color)] focus:outline-none"
                 />
                 {showError && <span id={errorId} className="mt-1 block text-sm text-red-700">{fieldError}</span>}
             </label>
@@ -209,7 +209,7 @@ export function EditCustomerProfileModal({ isOpen, initialValues, isSaving, erro
                 </div>
                 <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
                     <button type="button" onClick={requestClose} disabled={isSaving} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium disabled:opacity-50">Cancel</button>
-                    <button type="submit" disabled={isSaving || !isDirty} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+                    <button type="submit" disabled={isSaving || !isDirty} className="rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] disabled:opacity-50">
                         {isSaving ? 'Saving...' : 'Save profile'}
                     </button>
                 </div>

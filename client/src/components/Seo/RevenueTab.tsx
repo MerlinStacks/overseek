@@ -1,5 +1,6 @@
 /** Displays stored keyword estimates without inventing missing attribution metrics. */
 import { Loader2, DollarSign } from 'lucide-react';
+import { Metric, MetricStrip } from '../ui/MetricStrip';
 import { useKeywordRevenue, type KeywordRevenue } from '../../hooks/useSeoKeywords';
 
 function available(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value) && value >= 0; }
@@ -22,17 +23,17 @@ export function RevenueTab() {
         </div>
         {isLoading ? <div role="status" aria-label="Loading keyword revenue" className="flex justify-center py-12"><Loader2 aria-hidden="true" className="animate-spin motion-reduce:animate-none" /></div>
             : error ? <div role="alert">Could not load keyword revenue. <button type="button" onClick={() => void refetch()}>Retry revenue</button></div>
-            : keywords.length === 0 ? <div className="glass-panel rounded-2xl text-center py-14 px-6"><DollarSign aria-hidden="true" className="mx-auto mb-3 text-slate-400" /><p>No keyword revenue estimates available.</p></div>
+            : keywords.length === 0 ? <div className="border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 rounded-xl text-center py-14 px-6"><DollarSign aria-hidden="true" className="mx-auto mb-3 text-slate-400" /><p>No keyword revenue estimates available.</p></div>
             : <>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <MetricStrip label="Keyword revenue estimates">
                     {[
                         ['Sum of keyword estimates (may overlap)', metric(sum(keywords, 'estimatedRevenue'), true)],
                         ['Reported Clicks', metric(sum(keywords, 'clicks'))],
                         ['Reported Conversions', metric(sum(keywords, 'conversions'))],
-                    ].map(([label, value]) => <div key={label} className="glass-panel p-4 rounded-xl"><p className="text-xs text-slate-500 dark:text-slate-400">{label}</p><p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{value}</p></div>)}
-                </div>
+                    ].map(([label, value]) => <Metric key={label} label={label} value={value} />)}
+                </MetricStrip>
                 <p className="text-sm text-slate-500 dark:text-slate-400">Unavailable means the metric was not measured or returned, not zero.</p>
-                <div className="glass-panel rounded-2xl overflow-x-auto">
+                <div className="border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 rounded-xl overflow-x-auto">
                     <table className="w-full text-sm text-slate-700 dark:text-slate-200">
                         <caption className="sr-only">Keyword revenue estimates and available metrics</caption>
                         <thead><tr>{['Keyword', 'Clicks', 'Sessions', 'Conversions', 'Estimated Revenue', 'Revenue/Click'].map(label => <th scope="col" key={label} className="p-4 text-left">{label}</th>)}</tr></thead>

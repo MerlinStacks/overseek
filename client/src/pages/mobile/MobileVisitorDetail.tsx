@@ -324,7 +324,7 @@ export function MobileVisitorDetail() {
             {/* Profile Card */}
             <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
                 <div className="flex items-center gap-3 mb-4">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">
+                    <div className="w-12 h-12 rounded-full mobile-brand-soft flex items-center justify-center font-semibold">
                         {visitorName.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1">

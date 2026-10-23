@@ -37,12 +37,13 @@
     font-size: 14px;
     border: 1px solid #e5e7eb;
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.5);
+    background: white;
+    color: #111827;
 }
 
 .rich-text-editor.variant-standard .rich-text-editor-root:focus {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: var(--focus-color);
+    box-shadow: 0 0 0 3px var(--brand-subtle);
 }
 
 .rich-text-editor.variant-standard .rte-toolbar {
@@ -129,8 +130,8 @@
 }
 
 .rte-toolbar-btn.active {
-    background: #e0e7ff;
-    color: #4f46e5;
+    background: var(--brand-subtle);
+    color: var(--brand-text);
 }
 
 .rte-toolbar-btn:disabled {
@@ -150,8 +151,8 @@
 
 .rte-toolbar-select:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: var(--focus-color);
+    box-shadow: 0 0 0 3px var(--brand-subtle);
 }
 
 /* ========== Text Formatting ========== */
@@ -301,7 +302,8 @@
 }
 
 .rte-link-modal {
-    background: white;
+    background: var(--surface, white);
+    color: var(--surface-text, #111827);
     border-radius: 12px;
     padding: 20px;
     width: 400px;
@@ -313,7 +315,7 @@
     font-size: 16px;
     font-weight: 600;
     margin: 0 0 16px 0;
-    color: #111827;
+    color: var(--surface-text, #111827);
 }
 
 .rte-link-modal input {
@@ -328,8 +330,8 @@
 }
 
 .rte-link-modal input:focus {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: var(--focus-color);
+    box-shadow: 0 0 0 3px var(--brand-subtle);
 }
 
 .rte-link-modal-actions {
@@ -358,13 +360,13 @@
 }
 
 .rte-link-modal-btn.confirm {
-    background: #3b82f6;
-    border: 1px solid #3b82f6;
-    color: white;
+    background: var(--primary-color);
+    border: 1px solid var(--primary-color);
+    color: var(--primary-foreground);
 }
 
 .rte-link-modal-btn.confirm:hover {
-    background: #2563eb;
+    background: var(--primary-hover);
 }
 
 /* ========== Internal Mode (for inbox) ========== */
@@ -410,9 +412,40 @@
 
 .rte-emoji-btn:hover {
     background: #f3f4f6;
-    transform: scale(1.15);
 }
 
 .rte-emoji-btn:active {
     transform: scale(0.95);
+}
+
+/* Editor chrome follows the workspace; authored document formatting stays intact. */
+.dark .rich-text-editor.variant-standard .rte-toolbar,
+.dark .rich-text-editor.variant-full .rte-toolbar,
+.dark .rte-toolbar-select,
+.dark .rte-link-modal input,
+.dark .rte-link-modal-btn.cancel,
+.dark .rte-emoji-picker {
+    background: var(--surface);
+    border-color: var(--surface-border);
+    color: var(--surface-text);
+}
+
+/* Authored documents keep a light canvas even when workspace chrome is dark. */
+.dark .rich-text-editor.variant-standard .rich-text-editor-root,
+.dark .rich-text-editor.variant-full .rich-text-editor-root {
+    background: white;
+    color: #111827;
+    border-color: var(--surface-border);
+}
+
+.dark .rte-toolbar-btn { color: var(--surface-text); }
+.dark .rte-toolbar-btn:hover,
+.dark .rte-emoji-btn:hover { background: var(--surface-muted); }
+.dark .rte-toolbar-btn.active { background: var(--brand-subtle); color: var(--brand-text); }
+
+.rte-toolbar-btn:focus-visible,
+.rte-link-modal-btn:focus-visible,
+.rte-emoji-btn:focus-visible {
+    outline: 2px solid var(--focus-color);
+    outline-offset: 2px;
 }

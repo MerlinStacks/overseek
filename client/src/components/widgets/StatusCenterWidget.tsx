@@ -162,7 +162,7 @@ function ScopedStatusCenter({ accountId, token, className }: { accountId: string
                     className={`w-full p-3 flex items-center gap-3 text-left ${hasDetails ? 'cursor-pointer hover:bg-white/40 dark:hover:bg-black/10' : 'cursor-default'} transition-colors`}
                     disabled={!hasDetails}
                 >
-                    <div className={`p-2.5 rounded-lg bg-white/60 dark:bg-slate-800/60 shadow-sm ${config.color}`}>
+                    <div className={`p-2.5 rounded-lg bg-white dark:bg-slate-800 ${config.color}`}>
                         <ItemIcon size={18} />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -196,7 +196,7 @@ function ScopedStatusCenter({ accountId, token, className }: { accountId: string
                                     const displayValue = displayDetail(detailKey, value, section.details);
 
                                     return (
-                                        <div key={detailKey} className="bg-white/60 dark:bg-slate-800/60 rounded-md px-2.5 py-1.5 backdrop-blur-sm">
+                                        <div key={detailKey} className="bg-white dark:bg-slate-800 rounded-md px-2.5 py-1.5">
                                             <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold">{label}</p>
                                             <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate" title={displayValue}>{displayValue}</p>
                                         </div>
@@ -214,8 +214,8 @@ function ScopedStatusCenter({ accountId, token, className }: { accountId: string
         return (
             <div className={`${widgetCardClass} p-6 ${className || ''}`}>
                 <div className="flex items-center gap-3 mb-5">
-                    <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                        <Activity className="text-blue-600 dark:text-blue-400 animate-pulse" size={20} />
+                    <div className="p-2 bg-[var(--brand-subtle)] rounded-lg">
+                        <Activity className="text-[var(--brand-text)] animate-pulse" size={20} />
                     </div>
                     <h3 className={`${widgetTitleClass} text-lg`}>Status Center</h3>
                 </div>
@@ -233,7 +233,7 @@ function ScopedStatusCenter({ accountId, token, className }: { accountId: string
             <div className={`${widgetCardClass} p-6 ${className || ''}`}>
                 <div className="flex items-center gap-3 mb-4">
                     <div className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg">
-                        <Activity className="text-blue-600 dark:text-blue-400" size={20} />
+                        <Activity className="text-[var(--brand-text)]" size={20} />
                     </div>
                     <h3 className={`${widgetTitleClass} text-lg`}>Status Center</h3>
                 </div>
@@ -246,7 +246,7 @@ function ScopedStatusCenter({ accountId, token, className }: { accountId: string
                         type="button"
                         disabled={isLoading}
                         onClick={fetchStatus}
-                        className="mt-4 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-sm"
+                        className="mt-4 px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] bg-[var(--primary-color)] hover:bg-[var(--primary-hover)] focus-visible:outline-[var(--focus-color)] rounded-lg transition-colors disabled:opacity-50"
                     >
                         Try again
                     </button>
@@ -266,7 +266,7 @@ function ScopedStatusCenter({ accountId, token, className }: { accountId: string
             <div className={`px-5 py-4 ${overallConfig.bgColor} border-b ${overallConfig.borderColor}`}>
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <div className={`p-2.5 rounded-xl bg-white/70 dark:bg-slate-800/70 shadow-sm ${overallConfig.color}`}>
+                        <div className={`p-2.5 rounded-lg bg-white dark:bg-slate-800 ${overallConfig.color}`}>
                             <Activity size={22} />
                         </div>
                         <div>
@@ -313,7 +313,7 @@ function ScopedStatusCenter({ accountId, token, className }: { accountId: string
                 </p>
                 <a
                     href="/settings?tab=sync"
-                    className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center gap-1 transition-colors"
+                    className="text-[10px] font-semibold text-[var(--brand-text)] hover:underline focus-visible:outline-[var(--focus-color)] flex items-center gap-1 transition-colors"
                 >
                     Settings <ExternalLink size={10} />
                 </a>

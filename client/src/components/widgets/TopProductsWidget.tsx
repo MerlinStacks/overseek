@@ -81,7 +81,7 @@ export function TopProductsWidget({ className, dateRange }: WidgetProps) {
         <div className={`${widgetCardClass} h-full w-full p-5 flex flex-col overflow-hidden ${className || ''}`}>
             <div className={widgetHeaderRowClass}>
                 <h3 className={widgetTitleClass}>Top Products</h3>
-                <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-violet-400 to-purple-600 shadow-purple-500/20`}>
+                <div className={widgetHeaderIconBadgeClass}>
                     <Package size={16} />
                 </div>
             </div>
@@ -97,9 +97,9 @@ export function TopProductsWidget({ className, dateRange }: WidgetProps) {
                     products.map((product, idx) => (
                         <div key={`${product.name}-${idx}`} className={`flex justify-between items-center text-sm ${widgetListRowClass} hover:bg-slate-50 dark:hover:bg-slate-700/50`}>
                             <div className="flex gap-3 items-center overflow-hidden">
-                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${idx === 0 ? 'bg-gradient-to-br from-amber-400 to-amber-500 text-white shadow-sm' :
-                                    idx === 1 ? 'bg-gradient-to-br from-slate-300 to-slate-400 text-white shadow-sm' :
-                                        idx === 2 ? 'bg-gradient-to-br from-orange-300 to-orange-400 text-white shadow-sm' :
+                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${idx === 0 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' :
+                                    idx === 1 ? 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200' :
+                                        idx === 2 ? 'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300' :
                                             'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                                     }`}>
                                     {idx + 1}

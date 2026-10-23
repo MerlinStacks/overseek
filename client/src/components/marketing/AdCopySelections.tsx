@@ -27,7 +27,7 @@ export function ToneSelection({ tonePresets, selectedTone, onSelect }: ToneSelec
                         key={tone.id}
                         onClick={() => onSelect(tone.id)}
                         className={`w-full p-3 rounded-lg border text-left transition-all ${selectedTone === tone.id
-                                ? 'border-violet-500 bg-violet-500/10 text-white'
+                                ? 'border-[var(--primary-color)] bg-[var(--brand-subtle)] text-[var(--brand-text)]'
                                 : 'border-gray-700 bg-gray-800/50 text-gray-300 hover:border-gray-600'
                             }`}
                     >

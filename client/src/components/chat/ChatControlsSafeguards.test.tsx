@@ -21,7 +21,7 @@ describe('bulk selection isolation', () => {
             { id: 'a', customer: 'Alex', subject: 'Order question', channel: 'EMAIL' },
             { id: 'b', customer: 'Alex', subject: 'Delivery question', channel: 'CHAT' },
         ]} />);
-        expect(screen.getByRole('button', { name: 'Close' })).toHaveClass('bg-indigo-600');
+        expect(screen.getByRole('button', { name: 'Close' })).toHaveClass('bg-[var(--primary-color)]');
         expect(screen.getByRole('button', { name: 'Merge' })).toHaveClass('bg-red-50');
         expect(screen.getByRole('button', { name: 'Assign' })).toBeDisabled();
         fireEvent.click(screen.getByRole('button', { name: 'Merge' }));

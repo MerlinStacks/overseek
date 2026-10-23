@@ -147,8 +147,8 @@ export function LiveAnalyticsPage() {
     return (
         <div className="flex flex-col h-[calc(100vh-4rem)] -m-8 overflow-hidden bg-gray-50">
             {/* Horizontal Tabs Header */}
-            <div className="bg-white border-b border-gray-200 px-6 py-4">
-                <div className="flex items-center justify-between mb-4">
+            <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                     <h1 className="text-xl font-bold text-gray-900 capitalize">{activeView.replace('-', ' ')}</h1>
 
                     {/* Date Range Picker (Only for reports) */}
@@ -156,7 +156,7 @@ export function LiveAnalyticsPage() {
                         <select
                             value={dateRange}
                             onChange={e => setDateRange(e.target.value)}
-                            className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-hidden"
+                        className="border border-gray-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-900 focus:ring-2 focus:ring-[var(--focus-color)] outline-hidden"
                         >
                             <option value="today">Today</option>
                             <option value="yesterday">Yesterday</option>
@@ -167,17 +167,17 @@ export function LiveAnalyticsPage() {
                 </div>
 
                 {/* Tabs */}
-                <div className="flex flex-wrap gap-6">
+                <div className="flex flex-wrap gap-x-4 gap-y-2">
                     {MENUS.map((menu, i) => (
-                        <div key={i} className="flex items-center gap-2">
+                        <div key={i} className="flex flex-wrap items-center gap-2">
                             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-2">{menu.title}</span>
-                            <div className="flex items-center gap-1">
+                            <div className="flex flex-wrap items-center gap-1">
                                 {menu.items.map(item => (
                                     <button
                                         key={item.id}
                                         onClick={() => setActiveView(item.id)}
                                         className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${activeView === item.id
-                                            ? 'bg-blue-50 text-blue-600'
+                                    ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)]'
                                             : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                                             }`}
                                     >
@@ -192,7 +192,7 @@ export function LiveAnalyticsPage() {
             </div>
 
             {/* Main Content */}
-            <main className="flex-1 overflow-auto p-8">
+            <main className="flex-1 overflow-auto p-4">
                 {activeView === 'overview' && (
                     <AnalyticsOverview
                         visitors={visitors}

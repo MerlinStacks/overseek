@@ -11,8 +11,7 @@ import { getSafeHref } from '../utils/url';
 import { DateTimeSettings } from '../components/settings/DateTimeSettings';
 
 /**
- * User profile page with premium styling, dark mode support,
- * and micro-animations for a polished user experience.
+ * User profile with opaque workspace surfaces and dark mode support.
  */
 export function UserProfilePage() {
     const { user, logout, updateUser, token } = useAuth();
@@ -100,15 +99,15 @@ export function UserProfilePage() {
     };
 
     return (
-        <div className="p-8 max-w-4xl mx-auto animate-fade-slide-up">
+        <div className="p-0 sm:p-4 max-w-4xl mx-auto">
             {/* Page Header */}
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex flex-wrap gap-4 items-center justify-between mb-6">
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">User Profile</h1>
 
                 {!isEditing ? (
                     <button
                         onClick={() => setIsEditing(true)}
-                        className="btn-gradient btn-shimmer px-5 py-2.5 text-sm font-semibold rounded-xl"
+                        className="bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] px-5 py-2.5 text-sm font-semibold rounded-lg"
                     >
                         Edit Profile
                     </button>
@@ -123,7 +122,7 @@ export function UserProfilePage() {
                         </button>
                         <button
                             onClick={handleSave}
-                            className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2 shadow-lg shadow-emerald-500/25"
+                            className="px-4 py-2.5 bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] rounded-lg text-sm font-semibold transition-colors flex items-center gap-2"
                             disabled={isLoading}
                         >
                             {isLoading ? (
@@ -138,20 +137,18 @@ export function UserProfilePage() {
             </div>
 
             {/* Main Profile Card */}
-            <div className="card-premium overflow-hidden">
-                {/* Gradient Banner */}
-                <div className="h-36 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 relative overflow-hidden">
-                    <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAxOGMzLjMxNCAwIDYgMi42ODYgNiA2cy0yLjY4NiA2LTYgNi02LTIuNjg2LTYtNiAyLjY4Ni02IDYtNiIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMSkiIHN0cm9rZS13aWR0aD0iMiIvPjwvZz48L3N2Zz4=')] opacity-30"></div>
-                </div>
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
+                {/* Account-brand header */}
+                <div className="h-24 bg-[var(--brand-subtle)] border-b border-[var(--brand-border)]" />
 
-                <div className="px-8 pb-8">
+                <div className="px-4 pb-6 sm:px-6">
                     {/* Avatar & Quick Info */}
-                    <div className="relative flex justify-between items-end -mt-14 mb-8">
-                        <div className="flex items-end gap-6">
+                    <div className="relative flex flex-wrap gap-4 justify-between items-end -mt-10 mb-8">
+                        <div className="flex flex-wrap items-end gap-4 min-w-0">
                             {/* Avatar with upload */}
                             <div className="relative group">
-                                <div className="w-28 h-28 rounded-2xl bg-white dark:bg-slate-800 p-1.5 shadow-xl ring-4 ring-white dark:ring-slate-900">
-                                    <div className="w-full h-full rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center overflow-hidden">
+                                <div className="w-24 h-24 rounded-xl bg-white dark:bg-slate-800 p-1 ring-4 ring-white dark:ring-slate-800">
+                                    <div className="w-full h-full rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center overflow-hidden">
                                         <img
                                             src={getAvatarUrl()}
                                             alt="Avatar"
@@ -160,6 +157,7 @@ export function UserProfilePage() {
                                     </div>
                                 </div>
                                 <button
+                                    aria-label="Upload profile photo"
                                     onClick={() => fileInputRef.current?.click()}
                                     disabled={isUploadingAvatar}
                                     className={`absolute -bottom-1 -right-1 w-9 h-9 rounded-xl flex items-center justify-center shadow-lg transition-all duration-200 ${uploadSuccess
@@ -292,10 +290,10 @@ export function UserProfilePage() {
                                 {/* Change Password Button */}
                                 <button
                                     onClick={() => setIsPasswordModalOpen(true)}
-                                    className="flex items-center gap-3 w-full p-3 bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 rounded-xl transition-all duration-200 group"
+                                    className="flex items-center gap-3 w-full p-3 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors group"
                                 >
-                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/25">
-                                        <Lock className="text-white" size={18} />
+                                    <div className="w-10 h-10 rounded-lg bg-[var(--brand-subtle)] flex items-center justify-center">
+                                        <Lock className="text-[var(--brand-text)]" size={18} />
                                     </div>
                                     <div className="text-left">
                                         <div className="text-sm font-medium text-gray-900 dark:text-white">Change Password</div>
@@ -320,7 +318,7 @@ export function UserProfilePage() {
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">Store Name</label>
-                                            <div className="text-gray-900 dark:text-white font-medium">{currentAccount.name}</div>
+                                            <div className="text-gray-900 dark:text-white font-medium">{currentAccount.appearance?.appName?.trim() || currentAccount.name}</div>
                                         </div>
                                     </div>
 
@@ -340,7 +338,7 @@ export function UserProfilePage() {
                                     {/* Access Role */}
                                     <div>
                                         <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">My Access</label>
-                                        <span className="inline-flex items-center px-3 py-1 rounded-lg text-xs font-semibold bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/25">
+                                        <span className="inline-flex items-center px-3 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
                                             Owner
                                         </span>
                                     </div>
@@ -392,7 +390,7 @@ export function UserProfilePage() {
                                 </p>
                             </div>
                         ) : (
-                            <div className="glass-panel rounded-xl p-5 min-h-[80px]">
+                            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 p-5 min-h-[80px]">
                                 {user.emailSignature ? (
                                     <div
                                         className="text-sm text-gray-700 dark:text-slate-300"

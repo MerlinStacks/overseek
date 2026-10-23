@@ -14,7 +14,7 @@ export function ReportsDateSelector({ dateOption, onChange }: ReportsDateSelecto
                 aria-label="Reporting date range"
                 value={dateOption}
                 onChange={(e) => onChange(e.target.value as DateRangeOption)}
-                className="rounded-md bg-white px-3 py-1.5 text-xs font-medium text-gray-900 shadow-xs outline-hidden dark:bg-slate-700 dark:text-slate-100"
+                className="rounded-md bg-white px-3 py-1.5 text-xs font-medium text-gray-900 outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--focus-color)] dark:bg-slate-700 dark:text-slate-100"
             >
                 <option value="today">Today</option>
                 <option value="yesterday">Yesterday</option>

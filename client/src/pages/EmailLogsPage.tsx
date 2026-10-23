@@ -35,7 +35,7 @@ export function EmailLogsPage() {
                             aria-pressed={channel === value}
                             disabled={!emailEnabled && value !== 'sms'}
                             onClick={() => selectChannel(value)}
-                            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-indigo-500 disabled:cursor-not-allowed disabled:opacity-40 ${channel === value ? 'bg-indigo-600 text-white shadow-xs' : 'text-gray-600 hover:bg-white dark:text-gray-300 dark:hover:bg-slate-700'}`}
+                            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-[var(--focus-color)] disabled:cursor-not-allowed disabled:opacity-40 ${channel === value ? 'bg-[var(--primary-color)] text-[var(--primary-foreground)] shadow-xs' : 'text-gray-600 hover:bg-white dark:text-gray-300 dark:hover:bg-slate-700'}`}
                         >
                             {value.toUpperCase()}
                         </button>

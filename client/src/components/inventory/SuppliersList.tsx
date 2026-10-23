@@ -167,15 +167,15 @@ function ScopedSuppliersList() {
         }
     }
 
-    if (loading) return <div className="p-8 text-center"><Loader2 className="animate-spin inline text-blue-600" /></div>;
+    if (loading) return <div className="p-8 text-center"><Loader2 className="animate-spin inline text-[var(--brand-text)]" /></div>;
 
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center bg-gray-50 p-4 rounded-lg border border-gray-200">
+        <div className="min-w-0 space-y-6">
+            <div className="flex flex-wrap gap-3 justify-between items-center bg-gray-50 p-4 rounded-lg border border-gray-200">
                 <h2 className="text-lg font-semibold text-gray-800">Stock & Suppliers</h2>
                 <button
                     onClick={() => setIsCreating(true)}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition"
+                    className="bg-[var(--primary-color)] text-[var(--primary-foreground)] px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-[var(--primary-hover)] transition"
                 >
                     <Plus size={16} /> Add Supplier
                 </button>
@@ -187,14 +187,14 @@ function ScopedSuppliersList() {
                 {suppliers.map(supplier => (
                     <div key={supplier.id} className="bg-white border rounded-xl overflow-hidden shadow-xs">
                         <div
-                            className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+                            className="p-4 flex flex-wrap gap-3 items-center justify-between cursor-pointer hover:bg-gray-50"
                             onClick={() => setExpandedSupplier(expandedSupplier === supplier.id ? null : supplier.id)}
                         >
-                            <div className="flex items-center gap-3">
+                            <div className="flex min-w-0 items-center gap-3">
                                 {expandedSupplier === supplier.id ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                                 <div>
-                                    <div className="font-medium text-gray-900">{supplier.name}</div>
-                                    <div className="text-xs text-gray-500 mt-0.5 flex gap-3">
+                                    <div className="font-medium text-gray-900 break-words">{supplier.name}</div>
+                                    <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-3 gap-y-1">
                                         <span>{supplier.currency}</span>
                                         <span>• {supplier.items?.length || 0} items</span>
                                         {supplier.paymentTerms && <span>• {supplier.paymentTerms}</span>}
@@ -204,11 +204,11 @@ function ScopedSuppliersList() {
                                     </div>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <span className="text-sm text-gray-500">{supplier.email || '-'}</span>
+                            <div className="flex min-w-0 items-center gap-3">
+                                <span className="min-w-0 break-all text-sm text-gray-500">{supplier.email || '-'}</span>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); startEdit(supplier); }}
-                                    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition"
+                                    className="p-1.5 text-gray-400 hover:text-[var(--brand-text)] hover:bg-[var(--brand-subtle)] rounded transition"
                                     title="Edit Supplier"
                                 >
                                     <Pencil size={16} />
@@ -225,9 +225,9 @@ function ScopedSuppliersList() {
 
                         {/* Edit Form (inline) */}
                         {editingId === supplier.id && (
-                            <div className="bg-blue-50 border-t border-blue-200 p-4">
+                            <div className="bg-[var(--brand-subtle)] border-t border-[var(--brand-border)] p-4">
                                 <div className="flex items-center justify-between mb-3">
-                                    <h4 className="font-semibold text-blue-900">Edit Supplier</h4>
+                                    <h4 className="font-semibold text-[var(--brand-text)]">Edit Supplier</h4>
                                     <button onClick={cancelEdit} className="text-gray-500 hover:text-gray-700">
                                         <X size={18} />
                                     </button>
@@ -256,7 +256,7 @@ function ScopedSuppliersList() {
                                     <button
                                         onClick={handleUpdateSupplier}
                                         disabled={isSaving}
-                                        className="px-4 py-1.5 bg-blue-600 text-white rounded-sm text-sm flex items-center gap-1 disabled:opacity-50"
+                                        className="px-4 py-1.5 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-sm text-sm flex items-center gap-1 disabled:opacity-50"
                                     >
                                         {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
                                         Save
@@ -266,8 +266,8 @@ function ScopedSuppliersList() {
                         )}
 
                         {expandedSupplier === supplier.id && (
-                            <div className="bg-gray-50 border-t p-4">
-                                <table className="w-full text-sm">
+                            <div className="max-w-full overflow-x-auto bg-gray-50 border-t p-4">
+                                <table className="w-full min-w-[560px] text-sm">
                                     <thead>
                                         <tr className="text-left text-gray-500 border-b">
                                             <th className="pb-2">Material / Component</th>
@@ -309,7 +309,7 @@ function ScopedSuppliersList() {
                                 ) : (
                                     <button
                                         onClick={(e) => { e.stopPropagation(); setAddingItemTo(supplier.id); }}
-                                        className="mt-4 text-blue-600 text-sm font-medium flex items-center gap-1 hover:underline"
+                                        className="mt-4 text-[var(--brand-text)] text-sm font-medium flex items-center gap-1 hover:underline"
                                     >
                                         <Plus size={14} /> Add Material to Catalog
                                     </button>

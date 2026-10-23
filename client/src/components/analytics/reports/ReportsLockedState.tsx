@@ -8,7 +8,7 @@ interface ReportsLockedStateProps {
 
 export function ReportsLockedState({ title, description, colorClass }: ReportsLockedStateProps) {
     return (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-6 py-20 text-center dark:border-slate-700 dark:bg-slate-900/50">
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 px-6 py-16 text-center dark:border-slate-700 dark:bg-slate-900">
             <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${colorClass}`}>
                 <Lock size={32} aria-hidden="true" />
             </div>

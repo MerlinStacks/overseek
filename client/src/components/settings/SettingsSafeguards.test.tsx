@@ -15,11 +15,11 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('gold settings', () => {
     it('distinguishes save actions from provider refresh and labels all controls without making requests', () => {
         render(<GoldPriceSettings />);
-        expect(screen.getByRole('button', { name: 'Save All Prices' })).toHaveClass('bg-indigo-600');
+        expect(screen.getByRole('button', { name: 'Save All Prices' })).toHaveClass('bg-[var(--primary-color)]', 'text-[var(--primary-foreground)]');
         expect(screen.getByRole('button', { name: 'Save Margin' })).toHaveClass('border-slate-200');
         expect(screen.getByRole('button', { name: 'Refresh from Market' })).toHaveClass('border-slate-200');
         expect(screen.getByText(/Refresh from Market requests a provider refresh/)).toBeInTheDocument();
-        expect(screen.getByLabelText('18ct Gold Price')).toHaveClass('focus:ring-2');
+        expect(screen.getByLabelText('18ct Gold Price')).toHaveClass('focus:outline-2');
         screen.getAllByRole('button').forEach(button => expect(button).toHaveAttribute('type', 'button'));
         expect(m.fetch).not.toHaveBeenCalled();
     });

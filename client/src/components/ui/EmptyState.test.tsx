@@ -8,6 +8,7 @@ describe('empty state action', () => {
         render(<form onSubmit={submit}><EmptyState icon={null} title="No data" action={{ label: 'Refresh', onClick: action }} /></form>);
         const button = screen.getByRole('button', { name: 'Refresh' }); fireEvent.click(button);
         expect(action).toHaveBeenCalledOnce(); expect(submit).not.toHaveBeenCalled();
-        expect(button).toHaveClass('motion-reduce:transition-none', 'motion-reduce:transform-none');
+        expect(button).toHaveClass('motion-reduce:transition-none', 'bg-[var(--primary-color)]', 'text-[var(--primary-foreground)]');
+        expect(button.className).not.toMatch(/gradient|translate|shadow-lg/);
     });
 });

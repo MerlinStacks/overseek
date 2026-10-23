@@ -38,8 +38,8 @@ export function MobileSettings() {
                     label: 'Push Notifications',
                     description: 'Manage notification preferences',
                     icon: Bell,
-                    iconColor: 'text-purple-400',
-                    iconBg: 'bg-purple-500/20'
+                    iconColor: 'text-slate-400',
+                    iconBg: 'mobile-icon'
                 }
             ]
         },
@@ -51,16 +51,16 @@ export function MobileSettings() {
                     label: 'Products & Inventory',
                     description: 'Manage stock settings',
                     icon: Package,
-                    iconColor: 'text-orange-400',
-                    iconBg: 'bg-orange-500/20'
+                    iconColor: 'text-slate-400',
+                    iconBg: 'mobile-icon'
                 },
                 {
                     id: 'inbox',
                     label: 'Inbox Settings',
                     description: 'Chat and inbox preferences',
                     icon: MessageSquare,
-                    iconColor: 'text-emerald-400',
-                    iconBg: 'bg-emerald-500/20'
+                    iconColor: 'text-slate-400',
+                    iconBg: 'mobile-icon'
                 }
             ]
         },
@@ -69,11 +69,11 @@ export function MobileSettings() {
             items: [
                 {
                     id: 'website',
-                    label: currentAccount?.name || 'Store',
+                    label: currentAccount?.appearance?.appName?.trim() || currentAccount?.name || 'Store',
                     description: currentAccount?.wooUrl || 'No website configured',
                     icon: Globe,
-                    iconColor: 'text-blue-400',
-                    iconBg: 'bg-blue-500/20'
+                    iconColor: 'mobile-brand-text',
+                    iconBg: 'mobile-brand-soft'
                 }
             ]
         }
@@ -153,7 +153,7 @@ export function MobileSettings() {
                 <button
                     onClick={handleSync}
                     disabled={syncing}
-                    className="mt-4 w-full py-3.5 bg-white/20 hover:bg-white/30 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50"
+                    className="mt-4 w-full py-3 mobile-brand-solid hover:bg-[var(--primary-hover)] rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
                 >
                     {syncing ? (
                         <>
@@ -214,7 +214,7 @@ export function MobileSettings() {
                         onClick={() => setShowSwitcher(false)}
                     />
                     {/* Modal */}
-                    <div className="relative w-full max-w-md bg-slate-900 border-t border-white/10 rounded-t-3xl p-6 pb-8 animate-fade-slide-up">
+                    <div className="relative w-full max-w-md bg-slate-900 border-t border-white/10 rounded-t-xl p-6 pb-8 animate-fade-slide-up">
                         <div className="w-12 h-1 bg-slate-700 rounded-full mx-auto mb-4" />
                         <h2 className="text-lg font-bold text-white mb-4">Switch Store</h2>
                         <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -237,7 +237,7 @@ export function MobileSettings() {
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <p className={`font-medium truncate ${currentAccount?.id === account.id ? 'mobile-brand-text' : 'text-white'}`}>
-                                            {account.name}
+                                            {account.appearance?.appName?.trim() || account.name}
                                         </p>
                                         <p className="text-sm text-slate-500 truncate">{account.wooUrl}</p>
                                     </div>

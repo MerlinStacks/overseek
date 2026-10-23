@@ -12,6 +12,21 @@ import { InventoryForecastPage } from './InventoryForecastPage';
 beforeEach(() => { mocks.request.mockReset(); mocks.account = { id: 'a', timezone: 'UTC' }; });
 afterEach(cleanup);
 
+it('presents forecasts in one slim summary while retaining risk filter controls', async () => {
+    mocks.request.mockImplementation(async (url: string) => url.includes('sku-forecasts') ? [] : { critical: [], high: [], medium: [], summary: { totalAtRisk: 0, criticalCount: 0, highCount: 0, mediumCount: 0 } });
+    render(<MemoryRouter><InventoryForecastPage /></MemoryRouter>);
+    const summary = await screen.findByLabelText('Inventory forecast summary');
+    expect(summary.tagName).toBe('DL');
+    expect(summary).toHaveClass('metric-strip');
+    expect(screen.getByText('Avg Confidence').nextElementSibling).toHaveTextContent('0%');
+    const critical = screen.getByText('Critical Risk').nextElementSibling!;
+    expect(critical.querySelector('span')).toHaveClass('text-red-700', 'dark:text-red-300', 'text-xl');
+    expect(critical.parentElement).not.toHaveClass('rounded-xl', 'p-4');
+    fireEvent.click(screen.getByRole('button', { name: 'HIGH', exact: true }));
+    expect(screen.getByRole('button', { name: 'HIGH', exact: true })).toHaveClass('bg-[var(--primary-color)]');
+    expect(summary).not.toContainElement(screen.getByRole('button', { name: 'HIGH', exact: true }));
+});
+
 it('uses authenticated shared requests and explains why planning is unavailable on retry', async () => {
     mocks.request.mockRejectedValue(new Error('BOM forecast unavailable: cyclic component references detected'));
     render(<MemoryRouter><InventoryForecastPage /></MemoryRouter>);

@@ -88,7 +88,7 @@ function ScopedEmailPreview({ html, subject, previewText, category, onPreviewed,
         <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="text-sm font-semibold text-gray-900">Preview & test</h4>
             <div role="group" aria-label="Preview device" className="flex gap-1">
-                {['Desktop', 'Mobile'].map(device => <button key={device} type="button" aria-pressed={mobile === (device === 'Mobile')} onClick={() => setMobile(device === 'Mobile')} className={`rounded px-2 py-1 text-xs ${mobile === (device === 'Mobile') ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700'}`}>{device}</button>)}
+                {['Desktop', 'Mobile'].map(device => <button key={device} type="button" aria-pressed={mobile === (device === 'Mobile')} onClick={() => setMobile(device === 'Mobile')} className={`rounded px-2 py-1 text-xs ${mobile === (device === 'Mobile') ? 'bg-[var(--primary-color)] text-[var(--primary-foreground)]' : 'bg-white text-gray-700'}`}>{device}</button>)}
             </div>
         </div>
         <label className="block text-xs font-medium text-gray-700">Preview customer/order
@@ -106,7 +106,7 @@ function ScopedEmailPreview({ html, subject, previewText, category, onPreviewed,
         </> : <p role="status" className="py-8 text-center text-sm text-gray-500">{html ? 'Loading preview…' : 'Add content to preview your email.'}</p>}
         <form onSubmit={event => { event.preventDefault(); void sendTest(); }} className="flex flex-wrap gap-2">
             <input type="email" required aria-label="Test email recipient" placeholder="Test recipient email" value={to} onChange={event => setTo(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-            <button type="submit" disabled={!preview || previewScope !== scope || sending || !to.trim() || !subject?.trim()} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{sending ? 'Sending…' : 'Send test'}</button>
+            <button type="submit" disabled={!preview || previewScope !== scope || sending || !to.trim() || !subject?.trim()} className="rounded-lg bg-[var(--primary-color)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] disabled:opacity-50">{sending ? 'Sending…' : 'Send test'}</button>
         </form>
         {notice && <p role="status" className="text-xs text-green-700">{notice}</p>}
     </section>;

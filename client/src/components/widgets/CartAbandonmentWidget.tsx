@@ -51,7 +51,7 @@ function AccountCart({ className, dateRange, token, accountId }: WidgetProps & {
             <div className={`${widgetCardClass} h-full w-full p-5 flex flex-col ${className || ''}`}>
                 <div className={widgetHeaderRowClass}>
                     <h3 className={widgetTitleClass}>Cart Abandonment</h3>
-                    <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-rose-400 to-red-500`}>
+                    <div className={widgetHeaderIconBadgeClass}>
                         <ShoppingCart size={16} />
                     </div>
                 </div>
@@ -69,7 +69,7 @@ function AccountCart({ className, dateRange, token, accountId }: WidgetProps & {
             <div className={`${widgetCardClass} h-full w-full p-5 flex flex-col ${className || ''}`}>
                 <div className={widgetHeaderRowClass}>
                     <h3 className={widgetTitleClass}>Cart Abandonment</h3>
-                    <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-rose-400 to-red-500`}>
+                    <div className={widgetHeaderIconBadgeClass}>
                         <ShoppingCart size={16} />
                     </div>
                 </div>
@@ -94,23 +94,23 @@ function AccountCart({ className, dateRange, token, accountId }: WidgetProps & {
                         {data.overallAbandonmentRate}% overall rate
                     </p>
                 </div>
-                <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-rose-400 to-red-500 shadow-red-500/20`}>
+                <div className={widgetHeaderIconBadgeClass}>
                     <TrendingDown size={16} />
                 </div>
             </div>
 
             {/* Stats Summary */}
-            <div className="grid grid-cols-3 gap-2 mb-4">
-                <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-2 text-center">
-                    <p className="text-lg font-bold text-slate-900 dark:text-white">{data.totalAddToCarts}</p>
+            <div className="metric-strip mb-3" role="group" aria-label="Cart activity summary">
+                <div className="metric-strip-item">
+                    <p className="text-xl font-semibold tabular-nums text-slate-900 dark:text-white">{data.totalAddToCarts}</p>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400">Add to Cart</p>
                 </div>
-                <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-2 text-center">
-                    <p className="text-lg font-bold text-emerald-600">{data.totalPurchases}</p>
+                <div className="metric-strip-item">
+                    <p className="text-xl font-semibold tabular-nums text-emerald-600">{data.totalPurchases}</p>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400">Purchased</p>
                 </div>
-                <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-2 text-center">
-                    <p className="text-lg font-bold text-rose-500">{data.totalRemoves}</p>
+                <div className="metric-strip-item">
+                    <p className="text-xl font-semibold tabular-nums text-rose-500">{data.totalRemoves}</p>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400">Removed</p>
                 </div>
             </div>
@@ -121,7 +121,7 @@ function AccountCart({ className, dateRange, token, accountId }: WidgetProps & {
                     type="button" aria-pressed={activeTab === 'abandoned'}
                     onClick={() => setActiveTab('abandoned')}
                     className={`flex-1 text-xs py-1.5 px-2 rounded-md transition-colors flex items-center justify-center gap-1 ${activeTab === 'abandoned'
-                            ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
+                            ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)]'
                             : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
                         }`}
                 >
@@ -132,7 +132,7 @@ function AccountCart({ className, dateRange, token, accountId }: WidgetProps & {
                     type="button" aria-pressed={activeTab === 'quickRemove'}
                     onClick={() => setActiveTab('quickRemove')}
                     className={`flex-1 text-xs py-1.5 px-2 rounded-md transition-colors flex items-center justify-center gap-1 ${activeTab === 'quickRemove'
-                            ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
+                            ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)]'
                             : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
                         }`}
                 >
@@ -190,7 +190,7 @@ function AccountCart({ className, dateRange, token, accountId }: WidgetProps & {
             {/* Footer */}
             <a
                 href="/analytics"
-                className="mt-3 flex items-center justify-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 pt-2 border-t border-slate-100 dark:border-slate-700"
+                className="mt-3 flex items-center justify-center gap-1 text-xs font-medium text-[var(--brand-text)] hover:underline focus-visible:outline-[var(--focus-color)] pt-2 border-t border-slate-100 dark:border-slate-700"
             >
                 View Full Analytics <ArrowRight size={12} />
             </a>

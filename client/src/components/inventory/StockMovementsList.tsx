@@ -90,7 +90,7 @@ export function StockMovementsList() {
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
                             placeholder="Search product, SKU, BOM or reference"
-                            className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm outline-hidden focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm outline-hidden focus:ring-2 focus:ring-[var(--focus-color)]"
                         />
                     </div>
                     <button
@@ -107,7 +107,7 @@ export function StockMovementsList() {
 
             <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xs">
                 {isLoading ? (
-                    <div className="p-12 text-center"><Loader2 className="inline animate-spin text-blue-600" /></div>
+                    <div className="p-12 text-center"><Loader2 className="inline animate-spin text-[var(--brand-text)]" /></div>
                 ) : error ? (
                     <div className="p-10 text-center text-sm text-red-600">{error}</div>
                 ) : filtered.length === 0 ? (

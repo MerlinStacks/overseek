@@ -201,6 +201,17 @@ describe('CustomerDetailsPage', () => {
         expect(screen.getAllByText('Unverified').length).toBeGreaterThan(1);
     });
 
+    it('keeps contact totals in a compact summary including unknown last activity', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(customerResponse));
+        renderPage();
+        const summary = await screen.findByLabelText('Contact summary');
+        expect(summary.tagName).toBe('DL');
+        expect(summary).toHaveClass('metric-strip');
+        expect(summary.querySelectorAll('.metric-strip-item')).toHaveLength(4);
+        expect(screen.getByText('Last Active').nextElementSibling).toHaveTextContent('N/A');
+        expect(screen.getByText('Total Spent').parentElement).not.toHaveClass('p-6', 'rounded-xl');
+    });
+
     it('renders orders as links and converts HTML inbox previews to plain text', async () => {
         vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(customerResponse));
         renderPage();

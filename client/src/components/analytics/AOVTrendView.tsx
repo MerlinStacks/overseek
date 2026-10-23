@@ -4,6 +4,7 @@ import { useAccount } from '../../context/AccountContext';
 import { useScopedRequest } from '../../hooks/useScopedRequest';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { record, rows, label, metric, count, money, validDays } from './analyticsRead';
+import { Metric, MetricStrip } from '../ui/MetricStrip';
 
 function decodeTrend(value: unknown) {
     const points = rows(value).map(row => {
@@ -44,7 +45,7 @@ function AOVContent({ days, accountId, token, currency }: { days: number; accoun
                 {plotted.map(point => <circle key={point.date} cx={point.x} cy={point.y} r="1.5" fill="currentColor" className="text-indigo-500"><title>{point.date}: {money(point.aov, currency)} ({point.orders} orders)</title></circle>)}
             </svg>
             <p className="text-xs text-slate-500 dark:text-slate-400">{points[0].date} – {points[points.length - 1].date}</p>
-            <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-3"><p className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900/50">Highest AOV: {money(max, currency)}</p><p className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900/50">Order-weighted average: {money(average!, currency)}</p><p className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900/50">Lowest AOV: {money(min, currency)}</p></div>
+            <MetricStrip label="AOV trend summary"><Metric label="Highest AOV" value={money(max, currency)} /><Metric label="Order-weighted average" value={money(average!, currency)} /><Metric label="Lowest AOV" value={money(min, currency)} /></MetricStrip>
         </>}
     </CardContent></Card>;
 }

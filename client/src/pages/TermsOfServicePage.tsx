@@ -16,18 +16,18 @@ export function TermsOfServicePage() {
                     </Link>
                 </div>
 
-                <div className="bg-white dark:bg-slate-900 shadow-xl rounded-2xl overflow-hidden">
-                    <div className="bg-indigo-600 px-8 py-10 text-white">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+                    <div className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-8 py-8 text-slate-900 dark:text-slate-100">
                         <div className="flex items-center gap-3 mb-4">
-                            <div className="p-2 bg-white/20 rounded-lg">
-                                <FileText className="w-8 h-8 text-white" />
+                            <div className="p-2 bg-[var(--brand-subtle)] text-[var(--brand-text)] rounded-lg">
+                                <FileText className="w-8 h-8" />
                             </div>
                             <h1 className="text-3xl font-bold">Terms of Service</h1>
                         </div>
-                        {hasRevision && <p className="text-indigo-100 text-lg">Last updated: <time dateTime={revision}>{revision}</time></p>}
+                        {hasRevision && <p className="text-slate-500 dark:text-slate-400 text-sm">Last updated: <time dateTime={revision}>{revision}</time></p>}
                     </div>
 
-                    <div className="p-8 prose prose-indigo dark:prose-invert max-w-none">
+                    <div className="p-8 prose dark:prose-invert max-w-none prose-a:text-[var(--brand-text)]">
                         <p className="lead text-gray-600 dark:text-slate-300">
                             Welcome to {siteConfig.appName}. By accessing or using our services, you agree to be bound by these Terms of Service. Please read them carefully.
                         </p>
@@ -86,7 +86,7 @@ export function TermsOfServicePage() {
 
                         <h2>7. Data and Privacy</h2>
                         <p>
-                            Your use of the Service is also governed by our <Link to="/privacy-policy" className="text-indigo-600 hover:underline">Privacy Policy</Link>. By using the Service, you consent to our collection and use of data as described therein.
+                            Your use of the Service is also governed by our <Link to="/privacy-policy" className="text-[var(--brand-text)] hover:underline">Privacy Policy</Link>. By using the Service, you consent to our collection and use of data as described therein.
                         </p>
 
                         <h2>8. Limitation of Liability</h2>

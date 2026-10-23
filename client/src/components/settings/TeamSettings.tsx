@@ -8,9 +8,9 @@ import { isRecord } from '../../utils/responseValidation';
 interface Role { id: string; name: string }
 interface Member { userId: string; role: string; roleId: string | null; maxRole: Role | null; user: { fullName: string | null; email: string; avatarUrl?: string | null } }
 const baseRoles = ['ADMIN', 'STAFF', 'VIEWER'];
-const inputClass = 'block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-slate-600 dark:bg-slate-900';
-const primaryButton = 'rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-indigo-500 disabled:opacity-50';
-const secondaryButton = 'rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-indigo-500 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-700';
+const inputClass = 'block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-color)] dark:border-slate-600 dark:bg-slate-900';
+const primaryButton = 'rounded-lg bg-[var(--primary-color)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-colors hover:bg-[var(--primary-hover)] focus-visible:outline-2 focus-visible:outline-[var(--brand-text)] disabled:opacity-50';
+const secondaryButton = 'rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-[var(--brand-text)] disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-700';
 function decodeMembers(value: unknown): Member[] {
     if (!Array.isArray(value) || !value.every(item => isRecord(item) && typeof item.userId === 'string' && ['OWNER', ...baseRoles].includes(String(item.role)) && (item.roleId == null || typeof item.roleId === 'string') && (item.maxRole == null || (isRecord(item.maxRole) && typeof item.maxRole.id === 'string' && typeof item.maxRole.name === 'string')) && isRecord(item.user) && typeof item.user.email === 'string' && ['fullName', 'avatarUrl'].every(key => item.user && ((item.user as Record<string, unknown>)[key] == null || typeof (item.user as Record<string, unknown>)[key] === 'string')))) throw new Error('Invalid members');
     return value;

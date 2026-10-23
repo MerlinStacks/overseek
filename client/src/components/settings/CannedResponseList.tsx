@@ -65,13 +65,13 @@ export function CannedResponseList({
                                 key={response.id}
                                 className={cn(
                                     "bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-3 hover:border-gray-300 transition-colors",
-                                    editingId === response.id && "ring-2 ring-blue-500/20 border-blue-500"
+                                    editingId === response.id && "ring-2 ring-[var(--brand-border)] border-[var(--primary-color)]"
                                 )}
                             >
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 mb-1">
-                                            <code className="px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded text-xs font-mono">
+                                            <code className="px-1.5 py-0.5 bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300 rounded text-xs font-mono">
                                                 /{response.shortcut}
                                             </code>
                                             {response.label && (
@@ -94,7 +94,7 @@ export function CannedResponseList({
                                         />
                                     </div>
                                     <div className="flex items-center gap-1 shrink-0">
-                                        <button type="button" aria-label={`Edit response /${response.shortcut}`} onClick={() => onEdit(response)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="Edit">
+                                        <button type="button" aria-label={`Edit response /${response.shortcut}`} onClick={() => onEdit(response)} className="p-1.5 text-gray-400 hover:text-[var(--brand-text)] hover:bg-[var(--brand-subtle)] rounded-md transition-colors" title="Edit">
                                             <Edit2 size={14} />
                                         </button>
                                         <button type="button" aria-label={`Delete response /${response.shortcut}`} onClick={() => onDelete(response.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Delete">

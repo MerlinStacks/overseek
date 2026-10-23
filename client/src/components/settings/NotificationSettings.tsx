@@ -186,7 +186,7 @@ function NotificationSettingsPanel() {
                         disabled={isLoading || isSaving || testStatus === 'sending' || (!isSubscribed && permissionState === 'denied')}
                         className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${isSubscribed
                             ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                            : 'bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]'
                             } disabled:opacity-50`}
                     >
                         {isLoading || isSaving ? (

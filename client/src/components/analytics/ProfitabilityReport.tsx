@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { formatDateTimeSafe } from '../../utils/format';
 import { reportMoney, useReportRequest } from './useReportRequest';
+import { Metric, MetricStrip } from '../ui/MetricStrip';
 
 interface ProfitItem {
     orderId: string; orderNumber: string; date: string; productId: number; variationId: number;
@@ -38,9 +39,9 @@ function AccountProfitability({ startDate, endDate, token, accountId, currency }
     if (error || !data) return <p role="alert">Could not load profitability. <button type="button" onClick={retry}>Retry profitability</button></p>;
     const columns: Array<[SortColumn | 'quantity', string]> = [['date', 'Date'], ['name', 'Product'], ['quantity', 'Qty'], ['revenue', 'Revenue'], ['cost', 'COGS'], ['profit', 'Profit'], ['margin', 'Margin %']];
     return <section aria-label="Profitability report" className="space-y-4 text-slate-900 dark:text-slate-100">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {(['revenue', 'cost', 'profit', 'margin'] as const).map(key => <div key={key} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4"><p className="text-sm text-slate-500 dark:text-slate-400">{{ revenue: 'Total Revenue', cost: 'Total Cost (COGS)', profit: 'Gross Profit', margin: 'Overall Margin' }[key]}</p><p className="text-2xl font-semibold">{key === 'margin' ? `${data.summary.margin.toFixed(1)}%` : reportMoney(data.summary[key], currency)}</p></div>)}
-        </div>
+        <MetricStrip label="Profitability summary">
+            {(['revenue', 'cost', 'profit', 'margin'] as const).map(key => <Metric key={key} label={{ revenue: 'Total Revenue', cost: 'Total Cost (COGS)', profit: 'Gross Profit', margin: 'Overall Margin' }[key]} value={key === 'margin' ? `${data.summary.margin.toFixed(1)}%` : reportMoney(data.summary[key], currency)} />)}
+        </MetricStrip>
         <h2 className="text-xl font-bold">Profitability Breakdown</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">Gross profit per sold item. Amounts are labelled with account currency; no currency conversion is performed here.</p>
         <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700"><table className="w-full text-left text-sm"><caption className="sr-only">Profitability per sold item</caption>

@@ -387,7 +387,7 @@ export function SocialChannelsSettings() {
                         <button
                             onClick={saveSmsSettings}
                             disabled={smsLoading}
-                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                            className="flex items-center gap-2 px-4 py-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] disabled:opacity-50"
                         >
                             {smsLoading ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
                             Save Twilio Settings
@@ -428,7 +428,7 @@ export function SocialChannelsSettings() {
                             <button
                                 onClick={() => connectPlatform('meta')}
                                 disabled={!!connecting}
-                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                                className="flex items-center gap-2 px-4 py-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] disabled:opacity-50"
                             >
                                 {connecting === 'meta' ? (
                                     <Loader2 className="animate-spin" size={16} />

@@ -250,7 +250,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                     </label>
                     <button
                         onClick={() => setShowCreate(true)}
-                        className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                    className="flex items-center gap-2 rounded-lg bg-[var(--primary-color)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]"
                     >
                         <Plus size={16} /> New Flow
                     </button>
@@ -274,7 +274,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                                 />
                             </div>
                             <div className="flex gap-2">
-                                <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-sm">Create & Edit</button>
+                                <button type="submit" className="bg-[var(--primary-color)] text-[var(--primary-foreground)] px-4 py-2 rounded-sm">Create & Edit</button>
                                 <button type="button" onClick={() => { setShowCreate(false); setNewFlowName(''); }} className="px-4 py-2 text-gray-500">Cancel</button>
                             </div>
                         </form>
@@ -298,7 +298,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                                 {flows.map(flow => (
                                     <tr key={flow.id} className="h-10 hover:bg-slate-50">
                                         <td className="max-w-[320px] px-3 py-1.5 align-middle">
-                                            <button onClick={() => onEdit(flow.id, flow.name)} className="truncate font-semibold text-blue-700 hover:text-blue-900 hover:underline">
+                                            <button onClick={() => onEdit(flow.id, flow.name)} className="truncate font-semibold text-[var(--brand-text)] hover:text-[var(--brand-text)] hover:underline">
                                                 {flow.name}
                                             </button>
                                         </td>
@@ -334,7 +334,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                                         </td>
                                         <td className="px-3 py-1.5 align-middle">
                                             <div className="flex items-center justify-end gap-1">
-                                                <button onClick={() => onEdit(flow.id, flow.name)} className="rounded-md px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 hover:text-blue-800">
+                                                <button onClick={() => onEdit(flow.id, flow.name)} className="rounded-md px-2 py-1 text-xs font-medium text-[var(--brand-text)] hover:bg-[var(--brand-subtle)] hover:text-[var(--brand-text)]">
                                                     Edit
                                                 </button>
                                                 <button onClick={() => setPendingDelete({ id: flow.id, name: flow.name })} className="rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-600">

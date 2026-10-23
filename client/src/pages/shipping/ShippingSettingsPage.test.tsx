@@ -36,7 +36,7 @@ it('groups settings without omitting advanced fields or enabling carrier actions
     expect(screen.getByLabelText('wooFulfillmentBehavior')).toHaveValue('keep_in_dispatch');
     expect(screen.getByLabelText('trackingSyncEnabled')).not.toBeChecked();
     fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Unsaved draft' } });
-    expect(screen.getByRole('button', { name: 'Save reviewed settings' })).toHaveClass('bg-indigo-600');
+    expect(screen.getByRole('button', { name: 'Save reviewed settings' })).toHaveClass('bg-[var(--primary-color)]', 'text-[var(--primary-foreground)]');
     expect(screen.getByRole('button', { name: 'Review saved-credential test' })).toBeDisabled();
     expect(fetch.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
 });

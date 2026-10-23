@@ -5,11 +5,11 @@
  * keyword movement insights, and AI recommendations.
  * Shows a connect prompt when Search Console isn't linked yet.
  *
- * Why glassmorphism cards: matches the app-wide premium design system
- * using glass-panel utility, Card component, and slate palette.
+ * Neutral, bordered panels keep keyword reporting consistent with the workspace.
  */
 
 import { useState } from 'react';
+import { Metric, MetricStrip } from '../ui/MetricStrip';
 import {
     TrendingUp, Target, Search, Sparkles,
     ArrowUpRight, ArrowDown, ExternalLink, Loader2, Link2, AlertTriangle
@@ -89,9 +89,9 @@ function ConnectPrompt() {
             description="Link your Search Console to get AI-powered keyword recommendations, discover low-hanging fruit opportunities, and track trending search queries."
             actionLabel="Connect Search Console"
             icon={Search}
-            iconClassName="text-blue-500 dark:text-blue-400"
-            iconWrapClassName="bg-gradient-to-br from-blue-500/20 to-violet-500/20 dark:from-blue-500/10 dark:to-violet-500/10 animate-float"
-            buttonClassName="btn-gradient btn-shimmer"
+            iconClassName="text-[var(--brand-text)]"
+            iconWrapClassName="bg-[var(--brand-subtle)] "
+            buttonClassName="bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] "
         />
     );
 }
@@ -109,7 +109,7 @@ function ReconnectPrompt() {
             actionLabel="Reconnect Search Console"
             icon={AlertTriangle}
             iconClassName="text-amber-500 dark:text-amber-400"
-            iconWrapClassName="bg-gradient-to-br from-amber-500/20 to-red-500/20 dark:from-amber-500/10 dark:to-red-500/10"
+            iconWrapClassName="bg-amber-500/20    "
             buttonClassName="bg-amber-500 hover:bg-amber-600 text-white transition-colors"
         />
     );
@@ -147,7 +147,7 @@ function SearchConsoleActionPrompt({
 
     return (
         <div className="flex flex-col items-center justify-center py-20 px-6">
-            <div className={`w-20 h-20 rounded-3xl flex items-center justify-center mb-6 ${iconWrapClassName}`}>
+            <div className={`w-20 h-20 rounded-xl flex items-center justify-center mb-6 ${iconWrapClassName}`}>
                 <Icon className={`w-10 h-10 ${iconClassName}`} />
             </div>
             <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">{title}</h3>
@@ -178,27 +178,17 @@ function SummaryBar({ siteUrl }: { siteUrl?: string }) {
         : '0';
 
     const stats = [
-        { label: 'Total Clicks', value: totalClicks.toLocaleString(), color: 'from-blue-500 to-blue-600' },
-        { label: 'Impressions', value: totalImpressions.toLocaleString(), color: 'from-violet-500 to-violet-600' },
-        { label: 'Avg CTR', value: `${avgCtr}%`, color: 'from-emerald-500 to-emerald-600' },
-        { label: 'Avg Position', value: avgPos, color: 'from-amber-500 to-amber-600' },
-        { label: 'Tracked Queries', value: data.count.toString(), color: 'from-rose-500 to-rose-600' },
+        { label: 'Total Clicks', value: totalClicks.toLocaleString() },
+        { label: 'Impressions', value: totalImpressions.toLocaleString() },
+        { label: 'Avg CTR', value: `${avgCtr}%` },
+        { label: 'Avg Position', value: avgPos },
+        { label: 'Tracked Queries', value: data.count.toString() },
     ];
 
     return (
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-            {stats.map((s, i) => (
-                <div
-                    key={s.label}
-                    className={`glass-panel rounded-2xl p-4 relative overflow-hidden animate-fade-slide-up animation-delay-${i * 100}`}
-                >
-                    {/* Subtle colored accent */}
-                    <div className={`absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r ${s.color}`} />
-                    <p className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide font-medium">{s.label}</p>
-                    <p className="text-2xl font-bold text-slate-900 dark:text-slate-100 mt-1">{s.value}</p>
-                </div>
-            ))}
-        </div>
+        <MetricStrip label="Search query summary">
+            {stats.map(s => <Metric key={s.label} label={s.label} value={s.value} />)}
+        </MetricStrip>
     );
 }
 
@@ -237,7 +227,7 @@ function LowHangingFruitPanel({ siteUrl }: { siteUrl?: string }) {
                                 <tr key={item.query} className="border-b border-slate-50 dark:border-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-700/30 transition-colors">
                                     <td className="py-2.5 font-medium text-slate-900 dark:text-slate-200">{item.query}</td>
                                     <td className="py-2.5 text-right">
-                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-[var(--brand-subtle)] text-[var(--brand-text)]">
                                             #{Math.round(item.position)}
                                         </span>
                                     </td>
@@ -293,7 +283,7 @@ function TrendingPanel({ siteUrl }: { siteUrl?: string }) {
                                     {item.positionChange > 0 ? '+' : '-'}{Math.abs(item.positionChange).toFixed(1)} pos
                                 </span>
                                 <span className={`text-xs px-1.5 py-0.5 rounded ${item.impressionGrowthPct > 0
-                                    ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30'
+                                    ? 'text-[var(--brand-text)] bg-[var(--brand-subtle)]'
                                     : 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50'
                                     }`}>
                                     {item.impressionGrowthPct > 0 ? '+' : ''}{item.impressionGrowthPct}% imp
@@ -320,8 +310,8 @@ function KeywordGapsPanel({ siteUrl }: { siteUrl?: string }) {
             title="Keyword Candidates"
             subtitle="Terms absent from the returned query sample, not proven visibility gaps"
             icon={Search}
-            iconColor="text-purple-500 dark:text-purple-400"
-            iconBg="bg-purple-100 dark:bg-purple-900/30"
+            iconColor="text-[var(--brand-text)]"
+            iconBg="bg-[var(--brand-subtle)]"
             loading={isLoading}
         >
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -361,8 +351,8 @@ function AIRecommendationsPanel({ siteUrl }: { siteUrl?: string }) {
             title="AI Recommendations"
             subtitle="Strategic keyword opportunities powered by AI"
             icon={Sparkles}
-            iconColor="text-indigo-500 dark:text-indigo-400"
-            iconBg="bg-indigo-100 dark:bg-indigo-900/30"
+            iconColor="text-[var(--brand-text)]"
+            iconBg="bg-[var(--brand-subtle)]"
             loading={isLoading}
         >
             <div className="space-y-4">
@@ -371,8 +361,8 @@ function AIRecommendationsPanel({ siteUrl }: { siteUrl?: string }) {
                     return (
                         <div key={i} className="border border-slate-100 dark:border-slate-700/50 rounded-xl p-4 hover:border-slate-200 dark:hover:border-slate-600 hover:shadow-sm transition-all duration-200">
                             <div className="flex items-start gap-3">
-                                <div className="w-8 h-8 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
-                                    <Icon className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
+                                <div className="w-8 h-8 bg-[var(--brand-subtle)] rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                                    <Icon className="w-4 h-4 text-[var(--brand-text)]" />
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -387,7 +377,7 @@ function AIRecommendationsPanel({ siteUrl }: { siteUrl?: string }) {
                                     <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">{item.description}</p>
                                     <div className="flex flex-wrap gap-1.5 mb-2">
                                         {item.keywords.map(kw => (
-                                            <span key={kw} className="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 px-2 py-1 rounded-md font-medium">
+                                            <span key={kw} className="text-xs bg-[var(--brand-subtle)] text-[var(--brand-text)] px-2 py-1 rounded-md font-medium">
                                                 {kw}
                                             </span>
                                         ))}
@@ -418,7 +408,7 @@ function PanelCard({ title, subtitle, icon: Icon, iconColor, iconBg, loading, ch
     children: React.ReactNode;
 }) {
     return (
-        <div className="glass-panel rounded-2xl p-6">
+        <div className="border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 rounded-xl p-6">
             <div className="flex items-center gap-3 mb-5">
                 <div className={`w-10 h-10 ${iconBg} rounded-xl flex items-center justify-center`}>
                     <Icon className={`w-5 h-5 ${iconColor}`} />

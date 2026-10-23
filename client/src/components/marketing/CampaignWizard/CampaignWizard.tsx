@@ -171,8 +171,8 @@ function ScopedCampaignWizard({ isOpen, onClose, onSuccess }: CampaignWizardProp
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 ">
+            <div className="bg-white rounded-xl shadow-sm w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
 
                 {/* Header */}
                 <div className="px-8 py-5 border-b border-gray-100 flex items-center justify-between bg-white z-10">
@@ -223,7 +223,7 @@ function ScopedCampaignWizard({ isOpen, onClose, onSuccess }: CampaignWizardProp
                         <button
                             type="button"
                             onClick={handleNext}
-                            className="flex items-center gap-2 px-6 py-2.5 bg-gray-900 text-white font-medium rounded-xl hover:bg-gray-800 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+                            className="flex items-center gap-2 px-6 py-2.5 bg-gray-900 text-white font-medium rounded-xl hover:bg-gray-800 transition-all shadow-sm hover:shadow-sm hover:-translate-y-0.5"
                         >
                             Next Step
                             <ArrowRight size={18} />
@@ -233,7 +233,7 @@ function ScopedCampaignWizard({ isOpen, onClose, onSuccess }: CampaignWizardProp
                             type="button"
                             onClick={handleLaunch}
                             disabled={loading || created}
-                            className="flex items-center gap-2 px-8 py-2.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-all shadow-lg shadow-green-500/30 hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed"
+                            className="flex items-center gap-2 px-8 py-2.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-all shadow-sm shadow-green-500/30 hover:shadow-sm hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed"
                         >
                             {loading ? (
                                 <>

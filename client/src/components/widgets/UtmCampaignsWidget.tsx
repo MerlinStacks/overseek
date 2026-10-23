@@ -74,7 +74,7 @@ export function UtmCampaignsWidget({ className, dateRange }: WidgetProps) {
                     <h3 className={widgetTitleClass}>UTM Campaigns</h3>
                     <p className={widgetMicroLabelClass}>Traffic and conversions for selected dates</p>
                 </div>
-                <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-cyan-400 to-blue-600 shadow-blue-500/20`}>
+                <div className={widgetHeaderIconBadgeClass}>
                     <Megaphone size={16} />
                 </div>
             </div>
@@ -87,20 +87,20 @@ export function UtmCampaignsWidget({ className, dateRange }: WidgetProps) {
                 <WidgetEmptyState message="No UTM campaign traffic found" className="flex-1" />
             ) : (
                 <>
-                    <div className="grid grid-cols-2 gap-3 mb-4">
-                        <div className="rounded-xl bg-blue-50 p-3 dark:bg-blue-500/10">
+                    <div className="metric-strip mb-3" role="group" aria-label="Campaign summary">
+                        <div className="metric-strip-item">
                             <div className="flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-300">
                                 <MousePointerClick size={13} /> Traffic
                             </div>
-                            <div className="mt-1 text-2xl font-bold text-blue-700 dark:text-blue-200">
+                            <div className="mt-1 text-xl font-semibold tabular-nums text-blue-700 dark:text-blue-200">
                                 {data.totalTraffic.toLocaleString()}
                             </div>
                         </div>
-                        <div className="rounded-xl bg-emerald-50 p-3 dark:bg-emerald-500/10">
+                        <div className="metric-strip-item">
                             <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-300">
                                 <ShoppingBag size={13} /> Conversions
                             </div>
-                            <div className="mt-1 text-2xl font-bold text-emerald-700 dark:text-emerald-200">
+                            <div className="mt-1 text-xl font-semibold tabular-nums text-emerald-700 dark:text-emerald-200">
                                 {data.totalConversions.toLocaleString()}
                             </div>
                         </div>

@@ -53,6 +53,6 @@ function ContextEditor({ accountId, token, onClose, onSaved }: Omit<AdContextMod
         <p className="text-xs text-slate-500 dark:text-slate-400 text-right">{context.length}/1000 characters</p>
         <p className="text-sm">Mention upcoming promotions, seasonal priorities, margin preferences, or products to avoid.</p>
         {saveError && <p role="alert">Could not save business context. Your notes are retained; check their status before retrying.</p>}
-        <div className="flex justify-end gap-3"><button type="button" onClick={onClose}>Cancel</button><button type="button" disabled={saving || context.length > 1000} onClick={() => void save()} className="px-4 py-2 rounded-lg bg-indigo-600 text-white disabled:opacity-50">{saving ? 'Saving...' : 'Save Context'}</button></div>
+        <div className="flex justify-end gap-3"><button type="button" onClick={onClose}>Cancel</button><button type="button" disabled={saving || context.length > 1000} onClick={() => void save()} className="px-4 py-2 rounded-lg bg-[var(--primary-color)] text-[var(--primary-foreground)] disabled:opacity-50">{saving ? 'Saving...' : 'Save Context'}</button></div>
     </div>;
 }

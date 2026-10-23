@@ -49,7 +49,7 @@ function EventObservation({ event }: { event: Event }) {
             </div>
             {(payload?.productName || payload?.name || event.pageTitle) && <p className="mt-1 break-words text-sm font-medium">{payload?.productName || payload?.name || event.pageTitle}</p>}
             {(payload?.term || payload?.searchQuery) && <p className="mt-1 break-words text-sm text-violet-700 dark:text-violet-300">“{payload.term || payload.searchQuery}”</p>}
-            {event.url && (href ? <a className="mt-1 flex min-w-0 items-center gap-1 text-xs text-indigo-600 hover:underline dark:text-indigo-400" href={href} target="_blank" rel="noopener noreferrer" title={event.url}><span className="truncate">{event.url}</span><ExternalLink size={11} className="shrink-0" aria-hidden="true" /></a> : <p className={`mt-1 break-all text-xs ${muted}`}>{event.url}</p>)}
+        {event.url && (href ? <a className="mt-1 flex min-w-0 items-center gap-1 text-xs text-[var(--brand-text)] hover:underline" href={href} target="_blank" rel="noopener noreferrer" title={event.url}><span className="truncate">{event.url}</span><ExternalLink size={11} className="shrink-0" aria-hidden="true" /></a> : <p className={`mt-1 break-all text-xs ${muted}`}>{event.url}</p>)}
             {payload && <div className={`mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs ${muted}`}>
                 {payload.sku && <span className="break-all">SKU: {payload.sku}</span>}
                 {payload.quantity != null && <span>Quantity: {payload.quantity}</span>}
@@ -74,7 +74,7 @@ function VisitSection({ visit, latest }: { visit: Visit; latest: boolean }) {
     const seconds = Math.floor((Date.parse(visit.endedAt) - Date.parse(visit.startedAt)) / 1000);
     const interval = seconds >= 3600 ? `${Math.floor(seconds / 3600)}h ${Math.floor(seconds % 3600 / 60)}m` : seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
     return <section aria-label={visit.visitNumber !== undefined ? `Visit #${visit.visitNumber}` : `Visit ${visit.id}`} className="min-w-0 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
-        <button type="button" aria-expanded={expanded} aria-controls={contentId} onClick={() => setExpanded(value => !value)} className="flex w-full items-start gap-2 bg-slate-50 px-3 py-3 text-left transition-colors hover:bg-slate-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-500 dark:bg-slate-900/50 dark:hover:bg-slate-700/50">
+        <button type="button" aria-expanded={expanded} aria-controls={contentId} onClick={() => setExpanded(value => !value)} className="flex w-full items-start gap-2 bg-slate-50 px-3 py-3 text-left transition-colors hover:bg-slate-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-color)] dark:bg-slate-900 dark:hover:bg-slate-700">
             <ChevronDown size={16} aria-hidden="true" className={`mt-0.5 shrink-0 text-slate-400 transition-transform ${expanded ? '' : '-rotate-90'}`} />
             <span className="min-w-0 flex-1"><span className="flex flex-wrap items-center gap-2"><span className="break-all text-sm font-semibold">{visit.visitNumber !== undefined ? `Visit #${visit.visitNumber}` : 'Visit'}</span>{latest && <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">Latest</span>}</span><time dateTime={visit.startedAt} className={`mt-1 block text-xs ${muted}`}>{formatDateTimeSafe(visit.startedAt)}</time></span>
             <span className={`shrink-0 text-right text-[11px] ${muted}`}><span className="block">{visit.events.length} {visit.events.length === 1 ? 'event' : 'events'}</span><span className="mt-1 block" title="Observed interval, not engaged time">{interval} interval</span></span>
@@ -97,13 +97,13 @@ function VisitorProfile({ data, visitorId }: { data: VisitorObservation; visitor
     const sectionTitle = 'text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500';
     return <div className="min-w-0 space-y-5">
         <header className="flex min-w-0 items-center gap-3">
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400"><User size={24} aria-hidden="true" /></div>
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-[var(--brand-subtle)] text-[var(--brand-text)]"><User size={24} aria-hidden="true" /></div>
             <div className="min-w-0"><h2 className="break-all text-lg font-semibold">{session.email || 'Anonymous visitor'}</h2><p className={`mt-1 break-all font-mono text-[11px] ${muted}`}>Visitor {visitorId}</p></div>
         </header>
-        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50"><dt className={`text-xs ${muted}`}>Recorded events</dt><dd className="mt-1 text-xl font-semibold tabular-nums">{data.stats.totalEvents.toLocaleString()}</dd></div>
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50"><dt className={`text-xs ${muted}`}>Recorded visits</dt><dd className="mt-1 text-xl font-semibold tabular-nums">{data.stats.totalVisits?.toLocaleString() ?? '—'}</dd></div>
-            <div className="col-span-2 rounded-xl border border-slate-100 bg-slate-50 p-3 sm:col-span-1 dark:border-slate-700 dark:bg-slate-900/50"><dt className={`flex items-center gap-1 text-xs ${muted}`}><Clock size={12} aria-hidden="true" />Last activity</dt><dd className="mt-2 text-xs font-medium"><time dateTime={session.lastActiveAt}>{formatDateTimeSafe(session.lastActiveAt)}</time></dd></div>
+        <dl className="metric-strip" aria-label="Visitor activity summary">
+            <div className="metric-strip-item"><dt className={`text-xs ${muted}`}>Recorded events</dt><dd className="mt-1 text-xl font-semibold tabular-nums">{data.stats.totalEvents.toLocaleString()}</dd></div>
+            <div className="metric-strip-item"><dt className={`text-xs ${muted}`}>Recorded visits</dt><dd className="mt-1 text-xl font-semibold tabular-nums">{data.stats.totalVisits?.toLocaleString() ?? '—'}</dd></div>
+            <div className="metric-strip-item"><dt className={`flex items-center gap-1 text-xs ${muted}`}><Clock size={12} aria-hidden="true" />Last activity</dt><dd className="mt-1 text-xs font-medium"><time dateTime={session.lastActiveAt}>{formatDateTimeSafe(session.lastActiveAt)}</time></dd></div>
         </dl>
         <div className="grid min-w-0 gap-5 md:grid-cols-[220px_minmax(0,1fr)]">
             <aside aria-label="Visitor details" className="min-w-0 space-y-5 rounded-xl bg-slate-50 p-4 dark:bg-slate-900/50">

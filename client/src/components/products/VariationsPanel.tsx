@@ -235,14 +235,14 @@ const ScopedVariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelProp
     };
 
     return (
-        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {stockMutation.error && <p role="alert">{stockMutation.error}</p>}{expansion.error && <p role="alert">{expansion.error}</p>}
             {!bomCogsLoading && !!token && !!accountId && variants.some(variant => bomExistsMap[variant.id] === undefined) && <p role="alert">Some BOM status checks failed; stock editing is locked for those variants. <button type="button" disabled={stockMutation.busy} onClick={() => setBomAttempt(value => value + 1)}>Retry BOM checks</button></p>}
-            <div className="px-6 py-4 border-b border-gray-100/50 bg-white/30 flex justify-between items-center">
+            <div className="px-6 py-4 border-b border-gray-100/50 bg-white dark:bg-slate-800/30 flex justify-between items-center">
                 <div className="flex items-center gap-2">
-                    <Layers size={16} className="text-blue-600" />
-                    <h3 className="font-bold text-gray-900 uppercase tracking-wide text-sm">Variations</h3>
-                    <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-medium">{product.variations?.length || 0}</span>
+                    <Layers size={16} className="text-[var(--brand-text)]" />
+                    <h3 className="font-bold text-gray-900 dark:text-slate-100 uppercase tracking-wide text-sm">Variations</h3>
+                    <span className="bg-[var(--brand-subtle)] text-[var(--brand-text)] px-2 py-0.5 rounded-full text-xs font-medium">{product.variations?.length || 0}</span>
                 </div>
             </div>
             <div className="p-0 overflow-x-auto overflow-y-visible">

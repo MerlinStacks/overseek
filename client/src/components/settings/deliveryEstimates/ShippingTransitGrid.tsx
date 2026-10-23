@@ -35,7 +35,7 @@ export function ShippingTransitGrid({ settings, onChange, discovery, unconfigure
                     <td className="p-2 min-w-56">
                         <p className="font-medium">{displayTitle(row)}</p>
                         <details open={row.mappingKind === 'exact_rate' && !row.rateId ? true : undefined} className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                            <summary className="cursor-pointer w-fit rounded focus-visible:outline-2 focus-visible:outline-indigo-500">Advanced mapping</summary>
+                            <summary className="cursor-pointer w-fit rounded focus-visible:outline-2 focus-visible:outline-[var(--focus-color)]">Advanced mapping</summary>
                             <div className="mt-2 max-w-sm space-y-2">
                         <p>{row.methodId} · Instance #{row.instanceId}</p>
                         <p>Exact options require the full Woo rate ID, not a title or rule number. Exact overrides win. Renaming an option in WooCommerce may change its ID.</p>
@@ -79,8 +79,8 @@ export function ShippingTransitGrid({ settings, onChange, discovery, unconfigure
                     <td className="p-2">
                         <label className="relative inline-flex h-6 w-11 cursor-pointer align-middle">
                             <input className="peer sr-only" aria-label={`Enable row ${index + 1}`} role="switch" type="checkbox" checked={row.enabled} disabled={!!unconfiguredKey(row)} onChange={e => update(index, { enabled: e.target.checked })} />
-                            <span aria-hidden="true" className="absolute inset-0 rounded-full bg-slate-300 transition-colors dark:bg-slate-600 peer-checked:bg-indigo-600 peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-500 peer-focus-visible:ring-offset-2 peer-disabled:opacity-40 peer-disabled:cursor-not-allowed" />
-                            <span aria-hidden="true" className="pointer-events-none absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-5 peer-disabled:opacity-60" />
+                            <span aria-hidden="true" className="absolute inset-0 rounded-full bg-slate-300 transition-colors dark:bg-slate-600 peer-checked:bg-[var(--primary-color)] peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--focus-color)] peer-focus-visible:ring-offset-2 peer-disabled:opacity-40 peer-disabled:cursor-not-allowed" />
+                            <span aria-hidden="true" className="pointer-events-none absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white peer-checked:bg-[var(--primary-foreground)] shadow-sm transition-transform peer-checked:translate-x-5 peer-disabled:opacity-60" />
                         </label>
                         <div className="max-w-56 text-xs text-amber-800 dark:text-amber-300 space-y-1">
                         {unconfiguredKey(row) && <><p>Unconfigured: 0 days is a draft placeholder, not a verified estimate.</p><button type="button"

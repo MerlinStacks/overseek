@@ -75,7 +75,7 @@ export function BOMSyncPage() {
     });
 
     return (
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-4">
             {/* Header */}
             <div className="flex flex-wrap gap-4 justify-between items-end border-b border-slate-200 dark:border-slate-700 pb-4">
                 <div>
@@ -128,7 +128,7 @@ export function BOMSyncPage() {
                         disabled={isSyncing || isLoadingPending || Boolean(loadError) || stats.needsSync === 0}
                         className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${stats.needsSync === 0
                             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                            : 'bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]'
                             }`}
                     >
                         {isSyncing ? (
@@ -150,18 +150,18 @@ export function BOMSyncPage() {
 
             {/* Sync Progress Bar */}
             {syncProgress && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="bg-[var(--brand-subtle)] border border-[var(--brand-border)] rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-blue-700">
+                        <span className="text-sm font-medium text-[var(--brand-text)]">
                             Syncing products...
                         </span>
-                        <span className="text-sm text-blue-600">
+                        <span className="text-sm text-[var(--brand-text)]">
                             {syncProgress.current} / {syncProgress.total}
                         </span>
                     </div>
-                    <div className="w-full bg-blue-200 rounded-full h-2">
+                    <div className="w-full bg-[var(--brand-subtle)] rounded-full h-2">
                         <div
-                            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                            className="bg-[var(--primary-color)] h-2 rounded-full transition-all duration-300"
                             style={{ width: `${syncProgress.total > 0 ? (syncProgress.current / syncProgress.total) * 100 : 0}%` }}
                         />
                     </div>

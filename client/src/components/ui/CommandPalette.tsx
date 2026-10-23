@@ -189,17 +189,14 @@ export function CommandPalette() {
             onOpenChange={(open) => !open && close()}
             label="Global Command Menu"
             shouldFilter={false}
-            className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-slate-900/40 backdrop-blur-sm transition-all animate-in fade-in duration-200"
+            className="fixed inset-0 z-[100] flex items-start justify-center px-4 pt-[15vh] bg-slate-900/40 animate-in fade-in duration-150 motion-reduce:animate-none"
             onClick={(e) => {
                 if (e.target === e.currentTarget) close();
             }}
         >
-            <div className="w-full max-w-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl rounded-2xl shadow-2xl shadow-black/20 border border-slate-200/50 dark:border-slate-800 overflow-hidden animate-in zoom-in-95 duration-200 ring-1 ring-black/5 dark:ring-white/5 relative transform">
-                {/* Gradient accent top line */}
-                <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r transition-all duration-500 ${semanticMode ? 'from-purple-500 via-fuchsia-500 to-purple-500' : 'from-blue-500 via-cyan-500 to-blue-500'}`} />
-
-                <div className="flex items-center border-b border-slate-200/60 dark:border-slate-800 px-5 pt-3 pb-2">
-                    <Search className={`w-5 h-5 mr-3 transition-colors ${semanticMode ? 'text-purple-500' : 'text-slate-400'}`} />
+            <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <div className="flex items-center border-b border-slate-200 dark:border-slate-700 px-5 pt-3 pb-2">
+                    <Search className="w-5 h-5 mr-3 text-slate-500 dark:text-slate-400" />
                     <Command.Input
                         value={query}
                         onValueChange={setQuery}
@@ -210,13 +207,14 @@ export function CommandPalette() {
                         <button
                             type="button"
                             onClick={() => setSemanticMode(!semanticMode)}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${semanticMode
-                                ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30'
+                            aria-pressed={semanticMode}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${semanticMode
+                                ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)] border border-[var(--brand-border)]'
                                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
                                 }`}
                             title="Toggle AI Smart Search"
                         >
-                            <Sparkles size={12} className={semanticMode ? 'animate-pulse' : ''} />
+                            <Sparkles size={12} />
                             AI
                         </button>
                         <kbd className="hidden sm:inline-flex h-6 select-none items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-2 font-mono text-[10px] font-medium text-slate-500 dark:text-slate-400 pointer-events-none">
@@ -230,7 +228,7 @@ export function CommandPalette() {
                 <Command.List className="max-h-[60vh] overflow-y-auto p-2 scroll-py-2 custom-scrollbar">
                     {loading && (
                         <div className="py-8 text-center text-sm text-slate-500 dark:text-slate-400 flex items-center justify-center gap-2">
-                            <div className={`w-5 h-5 border-2 rounded-full animate-spin border-t-transparent ${semanticMode ? 'border-purple-500' : 'border-blue-500'}`} />
+                            <div className="w-5 h-5 border-2 rounded-full animate-spin motion-reduce:animate-none border-[var(--brand-text)] border-t-transparent" />
                             {semanticMode ? 'AI Searching...' : 'Searching...'}
                         </div>
                     )}
@@ -294,7 +292,7 @@ export function CommandPalette() {
                                         })}
                                     >
                                         {result.type === 'product' ? (
-                                            <Package className="w-4 h-4 mr-3 text-blue-500 dark:text-blue-400" />
+                                            <Package className="w-4 h-4 mr-3 text-slate-500 dark:text-slate-400" />
                                         ) : result.type === 'customer' ? (
                                             <Users className="w-4 h-4 mr-3 text-amber-500 dark:text-amber-400" />
                                         ) : (
@@ -311,17 +309,17 @@ export function CommandPalette() {
                     )}
 
                     {semanticResults.length > 0 && (
-                        <Command.Group heading="AI Smart Matches" className="text-xs font-semibold text-purple-600 dark:text-purple-400 mt-2 px-2 uppercase tracking-wider py-2">
+                        <Command.Group heading="AI Smart Matches" className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-2 px-2 py-2">
                             <div className="space-y-1">
                                 {semanticResults.map((result) => (
                                     <CommandItem
                                         key={`semantic-${result.id}`}
                                         onSelect={() => runCommand(() => navigate(`/inventory/product/${result.id}`))}
                                     >
-                                        <Sparkles className="w-4 h-4 mr-3 text-purple-500 dark:text-purple-400" />
+                                        <Sparkles className="w-4 h-4 mr-3 text-[var(--brand-text)]" />
                                         <div className="flex flex-col flex-1">
                                             <span className="font-medium text-slate-900 dark:text-white">{result.title}</span>
-                                            <span className="text-xs text-purple-600 dark:text-purple-300 font-normal">{result.subtitle}</span>
+                                            <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">{result.subtitle}</span>
                                         </div>
                                     </CommandItem>
                                 ))}
@@ -339,7 +337,7 @@ function CommandItem({ children, onSelect }: { children: React.ReactNode, onSele
     return (
         <Command.Item
             onSelect={onSelect}
-            className="flex items-center px-4 py-3.5 rounded-xl text-sm text-slate-700 dark:text-slate-300 cursor-pointer select-none aria-selected:bg-blue-50 dark:aria-selected:bg-blue-900/20 aria-selected:text-blue-700 dark:aria-selected:text-blue-400 data-[selected=true]:bg-blue-50 dark:data-[selected=true]:bg-blue-900/20 data-[selected=true]:text-blue-700 dark:data-[selected=true]:text-blue-400 transition-colors"
+            className="flex items-center px-4 py-3 rounded-lg text-sm text-slate-700 dark:text-slate-300 cursor-pointer select-none aria-selected:bg-[var(--brand-subtle)] aria-selected:text-[var(--brand-text)] data-[selected=true]:bg-[var(--brand-subtle)] data-[selected=true]:text-[var(--brand-text)] transition-colors"
         >
             <>{children}</>
         </Command.Item>

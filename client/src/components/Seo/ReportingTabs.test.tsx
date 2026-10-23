@@ -21,6 +21,10 @@ describe('SEO report state accuracy', () => {
         mocks.revenue.data = { keywords: [{ keyword: 'Query', estimatedRevenue: 20, sessions: null, conversions: null }] };
         render(<RevenueTab />);
         expect(screen.getByRole('heading', { name: 'Estimated Keyword Revenue' })).toBeInTheDocument();
+        const summary = screen.getByLabelText('Keyword revenue estimates');
+        expect(summary).toHaveClass('metric-strip');
+        expect(summary.querySelectorAll('dt')).toHaveLength(3);
+        expect(summary.querySelectorAll('.text-xl')).toHaveLength(3);
         expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(2); expect(screen.getAllByText('20.00')).toHaveLength(2);
         expect(screen.getByText(/Currency and reporting period are not recorded/)).toBeInTheDocument();
         expect(screen.queryByText('Total Organic Revenue')).toBeNull();

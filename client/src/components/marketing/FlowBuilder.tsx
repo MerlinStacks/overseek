@@ -106,7 +106,7 @@ function FlowHealthPanel({ issues, onOpenTest }: { issues: FlowIssue[]; onOpenTe
     const visibleIssues = issues.slice(0, 5);
 
     return (
-        <div className="w-80 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur-sm">
+        <div className="w-80 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-sm ">
             <div className="flex items-start justify-between gap-3">
                 <div>
                     <div className="text-sm font-semibold text-slate-900">Flow Health</div>
@@ -118,7 +118,7 @@ function FlowHealthPanel({ issues, onOpenTest }: { issues: FlowIssue[]; onOpenTe
                 <button
                     type="button"
                     onClick={onOpenTest}
-                    className="rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                    className="rounded-md border border-[var(--brand-border)] bg-[var(--brand-subtle)] px-2.5 py-1.5 text-xs font-semibold text-[var(--brand-text)] hover:bg-[var(--brand-subtle)]"
                 >
                     Test Path
                 </button>
@@ -158,8 +158,8 @@ function FlowPathTestModal({ nodes, edges, issues, onClose, flowId }: { nodes: N
     });
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-xs">
-            <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 ">
+            <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-sm">
                 <div className="border-b px-6 py-4">
                     <div className="text-lg font-semibold text-slate-900">Test This Path</div>
                     <p className="text-sm text-slate-500">{flowId ? 'Evaluate conditions using the production condition evaluator. No actions are executed.' : 'Client-side preview using the first YES/default route. No emails are sent.'}</p>
@@ -187,10 +187,10 @@ function FlowPathTestModal({ nodes, edges, issues, onClose, flowId }: { nodes: N
                             {emailSteps.length === 0 ? <div className="text-sm text-slate-500">No email steps on this path.</div> : emailSteps.map((node) => {
                                 const config = ((node.data as Record<string, unknown>).config || {}) as Record<string, unknown>;
                                 return (
-                                    <div key={node.id} className="rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-sm">
-                                        <div className="font-semibold text-indigo-950">{String((node.data as Record<string, unknown>).label || 'Send Email')}</div>
-                                        <div className="mt-1 text-xs text-indigo-900">To: {String(config.to || '{{customer.email}}').replace(/{{\s*customer\.email\s*}}/g, 'alex@example.com')}</div>
-                                        <div className="text-xs text-indigo-900">Subject: {String(config.subject || 'Missing subject').replace(/{{\s*customer\.firstName\s*}}/g, 'Alex')}</div>
+                                    <div key={node.id} className="rounded-lg border border-[var(--brand-border)] bg-[var(--brand-subtle)] px-3 py-2 text-sm">
+                                        <div className="font-semibold text-[var(--brand-text)]">{String((node.data as Record<string, unknown>).label || 'Send Email')}</div>
+                                        <div className="mt-1 text-xs text-[var(--brand-text)]">To: {String(config.to || '{{customer.email}}').replace(/{{\s*customer\.email\s*}}/g, 'alex@example.com')}</div>
+                                        <div className="text-xs text-[var(--brand-text)]">Subject: {String(config.subject || 'Missing subject').replace(/{{\s*customer\.firstName\s*}}/g, 'Alex')}</div>
                                     </div>
                                 );
                             })}
@@ -999,7 +999,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
                     <MiniMap pannable zoomable className="!bg-white/90 !border !border-gray-200 !rounded-lg" />
                     <Background color="#e2e8f0" gap={16} />
                     <Panel position="top-left">
-                        <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-sm p-1 rounded-lg shadow-xs border border-slate-200">
+                        <div className="flex items-center gap-1.5 bg-white/95 p-1 rounded-lg shadow-xs border border-slate-200">
                             <button
                                 type="button"
                                 className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${flowDensity === 'comfortable' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}

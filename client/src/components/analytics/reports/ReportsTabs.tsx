@@ -60,8 +60,9 @@ export function ReportsTabs({ activeTab, isAdvancedReportsEnabled, onChangeTab, 
                     <button
                         key={tab.value}
                         onClick={tab.onClick}
-                        className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all ${isActive
-                            ? 'bg-white text-gray-900 shadow-xs dark:bg-slate-700 dark:text-white'
+                        aria-pressed={isActive}
+                        className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-[var(--focus-color)] ${isActive
+                            ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)]'
                             : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
                             }`}
                     >

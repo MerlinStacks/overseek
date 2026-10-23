@@ -95,7 +95,7 @@ function KeywordGroupsContent() {
                 <button
                     type="button" disabled={saving} aria-expanded={showCreate}
                     onClick={() => setShowCreate(!showCreate)}
-                    className="btn-gradient btn-shimmer flex items-center gap-1.5 px-4 py-2 text-sm rounded-xl font-semibold"
+                    className="bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] flex items-center gap-1.5 px-4 py-2 text-sm rounded-xl font-semibold"
                 >
                     <Plus className="w-4 h-4" />
                     New Group
@@ -104,7 +104,7 @@ function KeywordGroupsContent() {
 
             {/* Create Form */}
             {showCreate && (
-                <div className="glass-panel rounded-xl p-4 space-y-3 animate-fade-slide-up">
+                <div className="border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 rounded-xl p-4 space-y-3 animate-fade-slide-up">
                     <div className="flex items-center gap-3">
                         <input
                             aria-label="Group name" disabled={saving}
@@ -123,7 +123,7 @@ function KeywordGroupsContent() {
                             type="button"
                             onClick={handleCreate}
                             disabled={!newName.trim() || createGroup.isPending || saving}
-                            className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
+                            className="px-4 py-1.5 text-sm bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] disabled:opacity-50 transition-colors font-medium"
                         >
                             {createGroup.isPending ? 'Creating...' : 'Create'}
                         </button>
@@ -152,8 +152,8 @@ function KeywordGroupsContent() {
                     <Loader2 className="w-6 h-6 text-slate-400 animate-spin" />
                 </div>
             ) : groupError ? null : groups.length === 0 ? (
-                <div className="glass-panel rounded-2xl text-center py-14 px-6">
-                    <FolderOpen className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-3 animate-float" />
+                <div className="border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 rounded-xl text-center py-14 px-6">
+                    <FolderOpen className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-3 " />
                     <p className="text-sm text-slate-500 dark:text-slate-400">No groups yet.</p>
                     <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Create groups to organize your keywords by category.</p>
                 </div>
@@ -162,7 +162,7 @@ function KeywordGroupsContent() {
                     {groups.map((group: KeywordGroup) => (
                         <div
                             key={group.id}
-                            className="glass-panel rounded-xl p-4 hover:shadow-md transition-all duration-200 group/card"
+                            className="border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 rounded-xl p-4 hover:shadow-md transition-all duration-200 group/card"
                         >
                             <div className="flex items-center justify-between mb-3">
                                 <div className="flex items-center gap-2.5">
@@ -173,7 +173,7 @@ function KeywordGroupsContent() {
                                     <button
                                         type="button" disabled={saving} aria-label={`Assign keywords to ${group.name}`}
                                         onClick={() => { setAssigningGroup(assigningGroup === group.id ? null : group.id); setSelectedKeywordIds([]); }}
-                                        className="p-1.5 text-slate-400 hover:text-blue-500 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all"
+                                        className="p-1.5 text-slate-400 hover:text-[var(--brand-text)] rounded-lg hover:bg-[var(--brand-subtle)] dark:hover:bg-[var(--brand-subtle)] transition-all"
                                         title="Assign keywords"
                                     >
                                         <Tag className="w-3.5 h-3.5" />
@@ -191,22 +191,11 @@ function KeywordGroupsContent() {
                                     </button>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-3 gap-2 text-center">
-                                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-2">
-                                    <p className="text-xs text-slate-500 dark:text-slate-400">Keywords</p>
-                                    <p className="text-lg font-bold text-slate-900 dark:text-slate-100">{group.keywordCount}</p>
-                                </div>
-                                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-2">
-                                    <p className="text-xs text-slate-500 dark:text-slate-400">Avg Pos</p>
-                                    <p className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                                        {group.avgPosition ? `#${Math.round(group.avgPosition)}` : '—'}
-                                    </p>
-                                </div>
-                                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-2">
-                                    <p className="text-xs text-slate-500 dark:text-slate-400">Clicks</p>
-                                    <p className="text-lg font-bold text-slate-900 dark:text-slate-100">{group.totalClicks ?? 'Unavailable'}</p>
-                                </div>
-                            </div>
+                            <dl aria-label={`${group.name} metrics`} className="flex flex-wrap gap-x-4 gap-y-2 border-t border-slate-100 pt-2 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                                <div><dt className="inline">Keywords </dt><dd className="inline font-semibold tabular-nums text-slate-900 dark:text-slate-100">{group.keywordCount}</dd></div>
+                                <div><dt className="inline">Avg Pos </dt><dd className="inline font-semibold tabular-nums text-slate-900 dark:text-slate-100">{group.avgPosition ? `#${Math.round(group.avgPosition)}` : '—'}</dd></div>
+                                <div><dt className="inline">Clicks </dt><dd className="inline font-semibold tabular-nums text-slate-900 dark:text-slate-100">{group.totalClicks ?? 'Unavailable'}</dd></div>
+                            </dl>
                         </div>
                     ))}
                 </div>
@@ -214,7 +203,7 @@ function KeywordGroupsContent() {
 
             {/* Keyword Assignment Panel */}
             {assigningGroup && (
-                <div className="glass-panel rounded-xl p-4 space-y-3 animate-fade-slide-up">
+                <div className="border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 rounded-xl p-4 space-y-3 animate-fade-slide-up">
                     <div className="flex items-center justify-between">
                         <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                             Assign keywords to {groups.find((g: KeywordGroup) => g.id === assigningGroup)?.name}
@@ -224,7 +213,7 @@ function KeywordGroupsContent() {
                                 type="button"
                                 onClick={() => handleAssign(assigningGroup)}
                                 disabled={selectedKeywordIds.length === 0 || assignKeywords.isPending || saving || !!keywordError}
-                                className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
+                                className="px-3 py-1.5 text-xs bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] disabled:opacity-50 transition-colors font-medium"
                             >
                                 {assignKeywords.isPending ? 'Saving...' : `Assign ${selectedKeywordIds.length} keywords`}
                             </button>
@@ -244,7 +233,7 @@ function KeywordGroupsContent() {
                                     type="checkbox"
                                     checked={selectedKeywordIds.includes(kw.id)}
                                     onChange={() => toggleKeyword(kw.id)}
-                                    className="rounded border-slate-300 dark:border-slate-600 text-blue-600"
+                                    className="rounded border-slate-300 dark:border-slate-600 text-[var(--brand-text)]"
                                 />
                                 <span className="text-sm text-slate-700 dark:text-slate-300">{kw.keyword}</span>
                                 {kw.groupName && (

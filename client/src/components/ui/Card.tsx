@@ -2,39 +2,24 @@ import * as React from 'react';
 import { cn } from '../../utils/cn';
 
 interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
-    /** Enable glass morphism effect */
+    /** @deprecated Retained for compatibility; cards always use opaque surfaces. */
     glass?: boolean;
-    /** Show gradient accent bar at top */
+    /** Show a restrained brand border at the top. */
     accent?: boolean;
-    /** Disable hover lift effect */
+    /** @deprecated Cards no longer lift on hover. */
     noHover?: boolean;
 }
 
 /**
- * Card - Premium card component with glassmorphism and hover effects.
- * Use `glass` prop for translucent glass effect, `accent` for gradient top bar.
+ * Card - Opaque, bordered workspace surface. Legacy appearance props remain compatible.
  */
 export const Card = React.forwardRef<HTMLDivElement, CardProps>(
-    ({ className, glass, accent, noHover, ...props }, ref) => (
+    ({ className, glass: _glass, accent, noHover: _noHover, ...props }, ref) => (
         <div
             ref={ref}
             className={cn(
-                // Base styles
-                "rounded-2xl border text-card-foreground overflow-hidden",
-                // Light mode
-                "bg-white border-slate-200/80",
-                // Dark mode
-                "dark:bg-slate-800/90 dark:border-slate-700/50",
-                // Shadow & transitions
-                "shadow-[0_1px_3px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03)]",
-                "transition-all duration-300 ease-out motion-reduce:transition-none motion-reduce:transform-none",
-                // Hover effect (unless disabled)
-                !noHover && "hover:shadow-[0_10px_40px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)] hover:-translate-y-0.5",
-                !noHover && "dark:hover:shadow-[0_10px_40px_rgba(0,0,0,0.3),0_4px_12px_rgba(0,0,0,0.2)]",
-                // Glass effect
-                glass && "bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-white/40 dark:border-slate-600/40",
-                // Accent bar
-                accent && "relative before:absolute before:top-0 before:left-0 before:right-0 before:h-1 before:bg-gradient-to-r before:from-blue-500 before:to-violet-500 before:rounded-t-2xl",
+                "rounded-xl border bg-white text-slate-900 overflow-hidden border-slate-200 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700 shadow-xs",
+                accent && "border-t-2 border-t-[var(--brand-border)]",
                 className
             )}
             {...props}
@@ -59,7 +44,7 @@ export const CardTitle = React.forwardRef<HTMLHeadingElement, React.HTMLAttribut
         <h3
             ref={ref}
             className={cn(
-                "text-xl font-semibold leading-none tracking-tight",
+                "text-base font-semibold leading-snug",
                 "text-slate-900 dark:text-slate-100",
                 className
             )}
@@ -93,7 +78,7 @@ export const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<
             ref={ref}
             className={cn(
                 "flex items-center p-6 pt-0",
-                "border-t border-slate-100 dark:border-slate-700/50 mt-4 pt-4",
+                "border-t border-slate-100 dark:border-slate-700 mt-4 pt-4",
                 className
             )}
             {...props}

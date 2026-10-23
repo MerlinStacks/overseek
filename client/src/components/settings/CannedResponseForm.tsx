@@ -64,7 +64,7 @@ export function CannedResponseForm({
                     <button
                         type="button" onClick={() => { if (valid) onSave(); }}
                         disabled={!valid}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex items-center gap-1.5 px-4 py-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg text-sm font-medium hover:bg-[var(--primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {editingId ? <Save size={14} /> : <Plus size={14} />}
                         {editingId ? 'Save' : 'Add'}

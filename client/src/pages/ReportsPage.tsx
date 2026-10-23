@@ -232,7 +232,7 @@ function ScopedReportsPage() {
                             <ReportsLockedState
                                 title="Advanced Reports Required"
                                 description="The Report Library contains powerful pre-built analysis templates. Enable the Advanced Reports feature to access this library."
-                                colorClass="bg-blue-100 text-blue-600"
+                            colorClass="bg-[var(--brand-subtle)] text-[var(--brand-text)]"
                             />
                         ) : (
                             <div className="flex min-w-0 flex-col gap-6 lg:h-[calc(100vh-14rem)] lg:flex-row lg:items-start">
@@ -252,15 +252,15 @@ function ScopedReportsPage() {
                                             onTemplateSaved={handleTemplateSaved}
                                         />
                                     ) : (
-                                        <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/60 p-8 text-center text-gray-400 dark:border-slate-700 dark:bg-slate-900/40">
-                                            <div className="mb-4 rounded-2xl bg-white p-4 shadow-xs dark:bg-slate-800">
+                            <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 p-8 text-center text-gray-400 dark:border-slate-700 dark:bg-slate-900">
+                                <div className="mb-4 rounded-lg bg-white p-3 dark:bg-slate-800">
                                                 <FileText size={48} className="text-gray-300" />
                                             </div>
                                             <p className="text-lg font-semibold text-gray-700 dark:text-slate-200">Choose a report or build a new one</p>
                                             <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-slate-400">Select a system template from the library, open one of your saved reports, or start a custom report from scratch.</p>
                                             <button
                                                 onClick={enterCustomBuilder}
-                                                className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-blue-700"
+                                    className="mt-6 inline-flex items-center gap-2 rounded-lg bg-[var(--primary-color)] px-4 py-2.5 text-sm font-semibold text-[var(--primary-foreground)] transition-colors hover:bg-[var(--primary-hover)] focus-visible:outline-[var(--focus-color)]"
                                             >
                                                 <Plus size={16} />
                                                 Build Custom Report
@@ -279,7 +279,7 @@ function ScopedReportsPage() {
                             <ReportsLockedState
                                 title="Custom Builder Locked"
                                 description="Build your own custom reports and dashboards with the Advanced Reports addon."
-                                colorClass="bg-purple-100 text-purple-600"
+                            colorClass="bg-[var(--brand-subtle)] text-[var(--brand-text)]"
                             />
                         ) : (
                             <ReportBuilder

@@ -26,18 +26,24 @@ const toFiniteNumber = (value: unknown): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const isInclusiveDisplayValue = (value: unknown): boolean => {
-  if (typeof value !== 'string') return false;
+const parseTaxDisplayValue = (value: unknown): boolean | undefined => {
+  if (typeof value !== 'string') return undefined;
   const normalized = value.trim().toLowerCase();
-  return normalized === 'incl' || normalized === 'include' || normalized === 'inclusive' || normalized === 'yes';
+  if (['incl', 'include', 'inclusive', 'yes'].includes(normalized)) return true;
+  if (['excl', 'exclude', 'exclusive', 'no'].includes(normalized)) return false;
+  return undefined;
 };
 
 export const shouldDisplayInvoicePricesIncludingTax = (order: InvoiceTaxDisplayOrderLike | null | undefined): boolean => {
   if (!order) return false;
 
-  if (order.display_prices_including_tax === true || order.displayPricesIncludingTax === true) return true;
-  if (isInclusiveDisplayValue(order.tax_display_cart) || isInclusiveDisplayValue(order.taxDisplayCart)) return true;
-  if (isInclusiveDisplayValue(order.tax_display_shop) || isInclusiveDisplayValue(order.taxDisplayShop)) return true;
+  // Display preferences override the tax mode used when entering catalogue prices.
+  const explicit = order.display_prices_including_tax ?? order.displayPricesIncludingTax;
+  if (typeof explicit === 'boolean') return explicit;
+  for (const value of [order.tax_display_cart, order.taxDisplayCart, order.tax_display_shop, order.taxDisplayShop]) {
+    const display = parseTaxDisplayValue(value);
+    if (display !== undefined) return display;
+  }
 
   return order.prices_include_tax === true || order.pricesIncludeTax === true;
 };

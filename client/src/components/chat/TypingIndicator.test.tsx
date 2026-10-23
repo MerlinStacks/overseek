@@ -8,6 +8,9 @@ describe('typing status', () => {
         expect(screen.getByRole('status')).toHaveTextContent('Alice is typing');
         expect(screen.queryByText('ME')).toBeNull();
         expect(document.querySelectorAll('.motion-reduce\\:animate-none')).toHaveLength(3);
+        for (const dot of document.querySelectorAll('.animate-bounce')) {
+            expect(dot).toHaveClass('bg-[var(--primary-foreground)]');
+        }
     });
     it.each([[false, 'Customer'], [true, 'Agent']])('uses a sensible unnamed participant fallback', (isAgent, name) => {
         render(<TypingIndicator name=" " isAgent={isAgent} />);

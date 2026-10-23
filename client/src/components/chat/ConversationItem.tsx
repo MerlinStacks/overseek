@@ -85,10 +85,10 @@ export const ConversationItem = memo(function ConversationItem({
             className={cn(
                 "flex gap-3 p-3 cursor-pointer border-b border-gray-100 transition-colors",
                 isSelected
-                    ? "bg-blue-50 border-l-2 border-l-blue-600"
+                    ? "bg-[var(--brand-subtle)] border-l-2 border-l-[var(--primary-color)]"
                     : "hover:bg-gray-50 border-l-2 border-l-transparent",
-                isUnread && !isSelected && "bg-blue-50/50",
-                isBulkSelected && "bg-indigo-50"
+                isUnread && !isSelected && "bg-[var(--brand-subtle)]",
+                isBulkSelected && "bg-[var(--brand-subtle)]"
             )}
         >
             {/* Checkbox for bulk selection */}
@@ -100,26 +100,26 @@ export const ConversationItem = memo(function ConversationItem({
                 className="p-0.5 rounded hover:bg-gray-200 transition-colors shrink-0 self-start mt-2"
             >
                 {isBulkSelected ? (
-                    <CheckSquare size={16} className="text-indigo-600" />
+                    <CheckSquare size={16} className="text-[var(--brand-text)]" />
                 ) : (
                     <Square size={16} className="text-gray-400" />
                 )}
             </button>
             {/* Avatar */}
             <div className={cn(
-                "w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-medium shrink-0",
-                isSelected ? "bg-blue-600" : "bg-gray-500"
+                "w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium shrink-0",
+                isSelected ? "bg-[var(--primary-color)] text-[var(--primary-foreground)]" : "bg-gray-500 text-white"
             )}>
                 {initials}
             </div>
 
             {/* Content */}
-            <button type="button" disabled={isSelectionMode} aria-label={`Open conversation with ${displayName}`} aria-pressed={isSelected} onClick={select} onFocus={() => onPreload?.(conv.id)} className="flex-1 min-w-0 text-left rounded focus-visible:ring-2 focus-visible:ring-indigo-500 dark:bg-slate-900 dark:text-slate-100">
+            <button type="button" disabled={isSelectionMode} aria-label={`Open conversation with ${displayName}`} aria-pressed={isSelected} onClick={select} onFocus={() => onPreload?.(conv.id)} className="flex-1 min-w-0 text-left rounded focus-visible:ring-2 focus-visible:ring-[var(--focus-color)] dark:bg-slate-900 dark:text-slate-100">
                 {/* Sender row */}
                 <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 min-w-0">
                         {isUnread && (
-                            <span className="w-2 h-2 bg-blue-500 rounded-full shrink-0" />
+                            <span className="w-2 h-2 bg-[var(--primary-color)] rounded-full shrink-0" />
                         )}
                         {isEmail && <Mail size={12} className="text-gray-400 shrink-0" />}
                         <span className={cn(

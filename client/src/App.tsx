@@ -118,8 +118,9 @@ const MobileShareHandler = lazy(() => import('./pages/mobile/MobileShareHandler'
 // Loading fallback for lazy routes
 function PageLoader() {
     return (
-        <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+        <div role="status" className="flex items-center justify-center gap-3 h-64 text-sm text-slate-500 dark:text-slate-400">
+            <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-2 border-slate-200 border-t-[var(--primary-color)] dark:border-slate-700 dark:border-t-[var(--primary-color)]" />
+            Loading workspace…
         </div>
     );
 }
@@ -130,9 +131,9 @@ function PageLoader() {
 export function AccountGuard({ children }: { children: React.ReactNode }) {
     const { accounts, isLoading, loadError, hasLoaded, refreshAccounts } = useAccount();
 
-    if (isLoading) return <div>Loading...</div>;
+    if (isLoading) return <PageLoader />;
 
-    if (!loadError && !hasLoaded) return <div>Loading...</div>;
+    if (!loadError && !hasLoaded) return <PageLoader />;
 
     // Only a successful empty response should enter setup.
     if (!loadError && hasLoaded && accounts.length === 0) {
@@ -144,7 +145,7 @@ export function AccountGuard({ children }: { children: React.ReactNode }) {
             {loadError && (
                 <div role="alert" className="m-4 rounded-xl border border-slate-200 bg-white p-4 text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
                     <p>{loadError}</p>
-                    <button type="button" onClick={() => void refreshAccounts()} className="mt-3 rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700">
+                    <button type="button" onClick={() => void refreshAccounts()} className="mt-3 rounded-lg border border-[var(--primary-foreground)]/20 bg-[var(--primary-color)] px-4 py-2 text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-color)]">
                         Retry
                     </button>
                 </div>

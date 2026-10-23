@@ -118,7 +118,7 @@ describe('MobileCustomerSheet', () => {
         const { rerender, container } = render(view({ onClose }));
         const dialog = screen.getByRole('dialog', { name: 'Customer details' });
         expect(dialog).toHaveAttribute('aria-modal', 'true');
-        expect(dialog).toHaveClass('bg-slate-900', 'rounded-t-3xl');
+        expect(dialog).toHaveClass('bg-slate-900', 'rounded-t-xl');
         expect(dialog.parentElement).toHaveClass('z-[90]', 'items-end');
         expect(dialog.querySelector('style')).toBeNull();
         expect(container).toHaveAttribute('aria-hidden', 'true');

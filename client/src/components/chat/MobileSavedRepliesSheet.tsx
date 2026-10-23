@@ -28,7 +28,7 @@ export function MobileSavedRepliesSheet({ responses, onSelect, onClose, loading,
                 value={query}
                 onChange={event => setQuery(event.target.value)}
                 placeholder="Search by shortcut, label or message"
-                className="my-3 min-h-11 w-full rounded-xl border border-slate-600 bg-slate-950 px-3 text-base text-white focus:outline-2 focus:outline-indigo-400"
+                className="my-3 min-h-11 w-full rounded-xl border border-slate-600 bg-slate-950 px-3 text-base text-white focus:outline-2 focus:outline-[var(--focus-color)]"
             />
             <p className="mb-3 text-xs text-slate-400">Inserts into your draft, never sends automatically</p>
             {loading ? <p role="status" className="py-6 text-slate-300">Loading saved replies…</p> : error ? <div role="alert" className="py-6 text-rose-200">
@@ -37,7 +37,7 @@ export function MobileSavedRepliesSheet({ responses, onSelect, onClose, loading,
             </div> : matches.length ? <ul className="space-y-2">
                 {matches.map(response => <li key={response.id}>
                     <button type="button" onClick={() => onSelect(response)} className="w-full rounded-xl border border-white/10 bg-slate-950/50 p-4 text-left active:bg-slate-800">
-                        <span className="text-sm font-semibold text-indigo-200">/{response.shortcut}</span>
+                        <span className="text-sm font-semibold text-[var(--brand-text)]">/{response.shortcut}</span>
                         {response.label?.name && <span className="ml-2 text-xs text-slate-400">{response.label.name}</span>}
                         <p className="mt-2 line-clamp-4 break-words text-sm leading-relaxed text-slate-200">{htmlToPreviewText(response.content)}</p>
                     </button>

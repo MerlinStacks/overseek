@@ -61,7 +61,7 @@ function ResetPasswordForm({ token }: { token: string }) {
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
-            <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-6">
+            <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6">
                 <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Choose a new password</h1>
                 <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">Create a new password for your account.</p>
 
@@ -81,7 +81,7 @@ function ResetPasswordForm({ token }: { token: string }) {
                             required
                             value={newPassword}
                             onChange={(e) => setNewPassword(e.target.value)}
-                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-slate-900 dark:text-slate-100"
+                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[var(--brand-border)] focus:border-[var(--primary-color)]"
                         />
                     </div>
 
@@ -96,21 +96,21 @@ function ResetPasswordForm({ token }: { token: string }) {
                             required
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
-                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-slate-900 dark:text-slate-100"
+                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[var(--brand-border)] focus:border-[var(--primary-color)]"
                         />
                     </div>
 
                     <button
                         type="submit"
                         disabled={loading || !validToken || !!message}
-                        className="w-full rounded-lg bg-indigo-600 text-white py-2.5 font-medium disabled:opacity-60"
+                        className="w-full rounded-lg bg-[var(--primary-color)] text-[var(--primary-foreground)] py-2.5 font-medium hover:bg-[var(--primary-hover)] focus-visible:outline-[var(--focus-color)] disabled:opacity-60"
                     >
                         {loading ? 'Resetting...' : 'Reset password'}
                     </button>
                 </form>
 
                 <div className="mt-4 text-sm text-slate-600 dark:text-slate-400">
-                    <Link to="/login" className="text-indigo-600 dark:text-indigo-400">Back to login</Link>
+                    <Link to="/login" className="text-[var(--brand-text)] hover:underline">Back to login</Link>
                 </div>
             </div>
         </div>

@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Metric, MetricStrip } from '../ui/MetricStrip';
 import DOMPurify from 'dompurify';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
@@ -9,10 +10,6 @@ import {
     Loader2,
     ChevronLeft,
     ChevronRight,
-    DollarSign,
-    MousePointerClick,
-    Eye,
-    Target,
     RefreshCw,
     Lightbulb,
     ChevronDown,
@@ -210,7 +207,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, platform = 'GOOGL
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-64">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                <Loader2 className="w-8 h-8 animate-spin text-[var(--brand-text)]" />
             </div>
         );
     }
@@ -249,7 +246,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, platform = 'GOOGL
                     <button
                         onClick={() => { void fetchData(); void fetchSuggestions(); }}
                         aria-label="Refresh performance"
-                        className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                        className="p-2 text-gray-500 hover:text-[var(--brand-text)] hover:bg-[var(--brand-subtle)] rounded-lg"
                     >
                         <RefreshCw size={18} />
                     </button>
@@ -268,7 +265,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, platform = 'GOOGL
                     {onReconnect && (
                         <button
                             onClick={onReconnect}
-                            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 shrink-0"
+                            className="flex items-center gap-1.5 px-4 py-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] text-sm font-medium rounded-lg hover:bg-[var(--primary-hover)] shrink-0"
                         >
                             <RefreshCw size={14} />
                             Reconnect
@@ -279,14 +276,14 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, platform = 'GOOGL
 
             {!error && <>
             {/* Recommendations are scoped to the selected account and reporting period. */}
-            <div className="bg-linear-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-200 shadow-xs overflow-hidden">
+            <div className="bg-[var(--brand-subtle)] rounded-xl border border-[var(--brand-border)] shadow-xs overflow-hidden">
                 <div className="p-4 flex items-center justify-between">
                     <button
                         onClick={() => setShowSuggestions(!showSuggestions)}
                         className="flex items-center gap-3 hover:opacity-80 transition-opacity"
                     >
-                        <div className="p-2 bg-purple-500 rounded-lg">
-                            <Lightbulb size={20} className="text-white" />
+                        <div className="p-2 bg-[var(--primary-color)] rounded-lg">
+                            <Lightbulb size={20} className="text-[var(--primary-foreground)]" />
                         </div>
                         <div className="text-left">
                             <h3 className="font-semibold text-gray-900">Performance Recommendations</h3>
@@ -297,14 +294,14 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, platform = 'GOOGL
                         <button
                             onClick={() => void fetchSuggestions()}
                             disabled={loadingSuggestions}
-                            className="p-2 text-purple-600 hover:bg-purple-100 rounded-lg transition-colors disabled:opacity-50"
+                            className="p-2 text-[var(--brand-text)] hover:bg-[var(--brand-subtle)] rounded-lg transition-colors disabled:opacity-50"
                             title="Refresh suggestions"
                         >
                             <RefreshCw size={18} className={loadingSuggestions ? 'animate-spin' : ''} />
                         </button>
                         <button
                             onClick={() => setShowSuggestions(!showSuggestions)}
-                            className="p-2 text-gray-500 hover:bg-purple-100 rounded-lg transition-colors"
+                            className="p-2 text-gray-500 hover:bg-[var(--brand-subtle)] rounded-lg transition-colors"
                         >
                             {showSuggestions ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                         </button>
@@ -314,7 +311,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, platform = 'GOOGL
                 {showSuggestions && suggestions && (
                     <div className="px-4 pb-4 space-y-3">
                         {suggestions.suggestions?.map((suggestion: string, i: number) => (
-                            <div key={i} className="bg-white p-4 rounded-lg border border-purple-100">
+                            <div key={i} className="bg-white p-4 rounded-lg border border-[var(--brand-border)]">
                                 <p className="text-gray-800" dangerouslySetInnerHTML={{
                                     __html: DOMPurify.sanitize(
                                         suggestion.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'),
@@ -325,12 +322,12 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, platform = 'GOOGL
                         ))}
 
                         {suggestions.action_items && suggestions.action_items.length > 0 && (
-                            <div className="bg-white p-4 rounded-lg border border-purple-100">
+                            <div className="bg-white p-4 rounded-lg border border-[var(--brand-border)]">
                                 <h4 className="font-medium text-gray-900 mb-2">Quick Action Items:</h4>
                                 <ul className="space-y-1">
                                     {suggestions.action_items.map((item: string, i: number) => (
                                         <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
-                                            <span className="text-purple-500 mt-1">•</span>
+                                            <span className="text-[var(--brand-text)] mt-1">•</span>
                                             {item}
                                         </li>
                                     ))}
@@ -350,61 +347,15 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, platform = 'GOOGL
             </div>
 
             {/* Summary Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-4">
-                <div className="bg-white p-4 rounded-xl border shadow-xs">
-                    <div className="flex items-center gap-2 text-gray-500 text-xs uppercase mb-1">
-                        <DollarSign size={14} />
-                        Total Spend
-                    </div>
-                    <div className="text-2xl font-bold text-gray-900">
-                        {formatCurrency(totals.spend, campaigns[0]?.currency)}
-                    </div>
-                </div>
-                <div className="bg-white p-4 rounded-xl border shadow-xs">
-                    <div className="flex items-center gap-2 text-gray-500 text-xs uppercase mb-1">
-                        <Eye size={14} />
-                        Impressions
-                    </div>
-                    <div className="text-2xl font-bold text-gray-900">
-                        {formatNumber(totals.impressions)}
-                    </div>
-                </div>
-                <div className="bg-white p-4 rounded-xl border shadow-xs">
-                    <div className="flex items-center gap-2 text-gray-500 text-xs uppercase mb-1">
-                        <MousePointerClick size={14} />
-                        Clicks
-                    </div>
-                    <div className="text-2xl font-bold text-gray-900">
-                        {formatNumber(totals.clicks)}
-                    </div>
-                </div>
-                <div className="bg-white p-4 rounded-xl border shadow-xs">
-                    <div className="flex items-center gap-2 text-gray-500 text-xs uppercase mb-1">
-                        <Target size={14} />
-                        {platform === 'META' ? 'Purchases' : 'Conversions'}
-                    </div>
-                    <div className="text-2xl font-bold text-gray-900">
-                        {formatNumber(totals.conversions)}
-                    </div>
-                </div>
-                <div className="bg-white p-4 rounded-xl border shadow-xs">
-                    <div className="text-gray-500 text-xs uppercase mb-1">{platform === 'META' ? 'Purchase Revenue' : 'Conversion Value'}</div>
-                    <div className="text-2xl font-bold text-gray-900">{formatCurrency(totals.conversionsValue, campaigns[0]?.currency)}</div>
-                </div>
-                <div className="bg-white p-4 rounded-xl border shadow-xs">
-                    <div className="text-gray-500 text-xs uppercase mb-1">{platform === 'META' ? 'Cost per Purchase' : 'Cost per Conversion'}</div>
-                    <div className="text-2xl font-bold text-gray-900">{totals.conversions > 0 ? formatCurrency(totals.spend / totals.conversions, campaigns[0]?.currency) : '—'}</div>
-                </div>
-                <div className="bg-white p-4 rounded-xl border shadow-xs">
-                    <div className="flex items-center gap-2 text-gray-500 text-xs uppercase mb-1">
-                        <TrendingUp size={14} />
-                        ROAS
-                    </div>
-                    <div className="text-2xl font-bold text-gray-900">
-                        {totals.spend > 0 ? (totals.conversionsValue / totals.spend).toFixed(2) : '0.00'}x
-                    </div>
-                </div>
-            </div>
+            <MetricStrip label="Campaign performance">
+                <Metric label="Total Spend" value={formatCurrency(totals.spend, campaigns[0]?.currency)} />
+                <Metric label="Impressions" value={formatNumber(totals.impressions)} />
+                <Metric label="Clicks" value={formatNumber(totals.clicks)} />
+                <Metric label={platform === 'META' ? 'Purchases' : 'Conversions'} value={formatNumber(totals.conversions)} />
+                <Metric label={platform === 'META' ? 'Purchase Revenue' : 'Conversion Value'} value={formatCurrency(totals.conversionsValue, campaigns[0]?.currency)} />
+                <Metric label={platform === 'META' ? 'Cost per Purchase' : 'Cost per Conversion'} value={totals.conversions > 0 ? formatCurrency(totals.spend / totals.conversions, campaigns[0]?.currency) : '—'} />
+                <Metric label="ROAS" value={`${totals.spend > 0 ? (totals.conversionsValue / totals.spend).toFixed(2) : '0.00'}x`} />
+            </MetricStrip>
 
             {/* Campaigns Table */}
             <div className="flex flex-wrap items-center gap-3">
@@ -459,7 +410,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, platform = 'GOOGL
                                 return (
                                     <Fragment key={campaign.campaignId}>
                                         <tr
-                                            className={`hover:bg-gray-50 cursor-pointer ${isExpanded ? 'bg-blue-50' : ''}`}
+                                            className={`hover:bg-gray-50 cursor-pointer ${isExpanded ? 'bg-[var(--brand-subtle)]' : ''}`}
                                             onClick={() => toggleCampaign(campaign.campaignId)}
                                         >
                                             <td className="px-2 py-3 text-gray-400">

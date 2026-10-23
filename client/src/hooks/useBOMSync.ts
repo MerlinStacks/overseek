@@ -377,7 +377,7 @@ export function useBOMSync(): UseBOMSyncReturn {
         try {
             const items: DeactivatedItem[] = []; const seen = new Set<string>(); let cursor: string | null = null;
             for (let page = 0; page < 50; page++) {
-            const res = await fetch(`/api/inventory/bom/deactivated-items${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, {
+            const res: Response = await fetch(`/api/inventory/bom/deactivated-items${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, {
                 signal,
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -385,7 +385,7 @@ export function useBOMSync(): UseBOMSyncReturn {
                 }
             });
             if (res.ok) {
-                const data = await res.json();
+                const data: { items: DeactivatedItem[]; nextCursor?: unknown } = await res.json();
                 if (signal.aborted) return;
                 if (!Array.isArray(data.items) || data.items.length > 200) throw new Error('Invalid deactivated component page');
                 items.push(...data.items);

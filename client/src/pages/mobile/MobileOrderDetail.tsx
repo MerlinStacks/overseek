@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Metric, MetricStrip } from '../../components/ui/MetricStrip';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Logger } from '../../utils/logger';
@@ -474,11 +475,11 @@ export function MobileOrderDetail() {
                 <p className="mb-2 text-xs font-medium text-slate-400">Order details</p>
                 <h1 className="text-3xl font-semibold tracking-tight text-white">{order.orderNumber}</h1>
                 <p className="mt-1 text-sm text-slate-400">{formatDate(order.createdAt)} · {order.customer.name}</p>
-                <div className="mt-5 grid grid-cols-3 gap-2">
-                    <div className="rounded-2xl bg-white/[0.06] p-3 ring-1 ring-white/10"><p className="text-xl font-black text-white">{formatCurrency(order.total)}</p><p className="text-[11px] font-medium text-slate-400">Total</p></div>
-                    <div className="rounded-2xl bg-white/[0.06] p-3 ring-1 ring-white/10"><p className="text-xl font-black text-white">{order.lineItems.length}</p><p className="text-[11px] font-medium text-slate-400">Items</p></div>
-                    <div className="rounded-2xl bg-white/[0.06] p-3 ring-1 ring-white/10"><p className="text-xl font-black text-white">{order.trackingItems.length}</p><p className="text-[11px] font-medium text-slate-400">Tracking</p></div>
-                </div>
+                <MetricStrip label="Order summary" className="mt-3">
+                    <Metric label="Total" value={formatCurrency(order.total)} />
+                    <Metric label="Items" value={order.lineItems.length} />
+                    <Metric label="Tracking" value={order.trackingItems.length} />
+                </MetricStrip>
             </div>
 
             <div className="mobile-panel sticky top-2 z-10 grid grid-cols-3 gap-2 p-2">

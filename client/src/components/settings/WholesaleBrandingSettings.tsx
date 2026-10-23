@@ -2,7 +2,7 @@ import { Loader2, RefreshCw } from 'lucide-react';
 import type { WholesaleBranding, WholesaleBrandingImportCandidates } from '../../types/wholesaleCatalog';
 import type { BrandingCandidateKind } from '../wholesale/wholesaleEditorHelpers';
 
-const inputClass = 'mt-1 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100';
+const inputClass = 'mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--brand-border)] disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100';
 
 interface WholesaleBrandingSettingsProps {
     value: WholesaleBranding;
@@ -24,10 +24,10 @@ export function WholesaleBrandingSettings({ value, onChange, loading, canEdit, i
     const detail = (key: string) => String(value.businessDetails[key] || '');
     const setDetail = (key: string, fieldValue: string) => onChange({ ...value, businessDetails: { ...value.businessDetails, [key]: fieldValue } });
 
-    return <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 dark:border-slate-700 dark:bg-slate-900/30">
+    return <section className="rounded-lg border border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div><h3 className="font-semibold text-slate-900 dark:text-white">Catalog details</h3><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Extra business and typography details used in wholesale catalogs. Your name, logo and primary colour are inherited automatically.</p></div>
-            {canEdit && <button type="button" disabled={importing} onClick={onImport} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-indigo-300 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 disabled:opacity-50 dark:border-indigo-800 dark:bg-slate-900 dark:text-indigo-300">{importing ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />} Pull from store website</button>}
+            {canEdit && <button type="button" disabled={importing} onClick={onImport} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-[var(--brand-border)] bg-white px-4 py-2 text-sm font-semibold text-[var(--brand-text)] disabled:opacity-50 dark:bg-slate-900">{importing ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />} Pull from store website</button>}
         </div>
         {importWarning && <div role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">{importWarning}</div>}
         {candidates && <CandidateReview candidates={candidates} sources={sources} onApply={onApplyCandidate} />}

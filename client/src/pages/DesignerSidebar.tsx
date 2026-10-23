@@ -20,14 +20,14 @@ const ICONS: Record<string, LucideIcon> = {
 };
 
 const COLORS: Record<string, { bg: string; hover: string; icon: string }> = {
-    row: { bg: 'bg-violet-50', hover: 'hover:border-violet-400', icon: 'text-violet-600' },
+    row: { bg: 'bg-[var(--brand-subtle)]', hover: 'hover:border-[var(--primary-color)]', icon: 'text-[var(--brand-text)]' },
     header: { bg: 'bg-slate-50', hover: 'hover:border-slate-400', icon: 'text-slate-600' },
-    text: { bg: 'bg-blue-50', hover: 'hover:border-blue-400', icon: 'text-blue-600' },
-    image: { bg: 'bg-purple-50', hover: 'hover:border-purple-400', icon: 'text-purple-600' },
-    customer_details: { bg: 'bg-indigo-50', hover: 'hover:border-indigo-400', icon: 'text-indigo-600' },
-    order_table: { bg: 'bg-emerald-50', hover: 'hover:border-emerald-400', icon: 'text-emerald-600' },
-    totals: { bg: 'bg-amber-50', hover: 'hover:border-amber-400', icon: 'text-amber-600' },
-    payment_block: { bg: 'bg-cyan-50', hover: 'hover:border-cyan-400', icon: 'text-cyan-600' },
+    text: { bg: 'bg-[var(--brand-subtle)]', hover: 'hover:border-[var(--primary-color)]', icon: 'text-[var(--brand-text)]' },
+    image: { bg: 'bg-[var(--brand-subtle)]', hover: 'hover:border-[var(--primary-color)]', icon: 'text-[var(--brand-text)]' },
+    customer_details: { bg: 'bg-[var(--brand-subtle)]', hover: 'hover:border-[var(--primary-color)]', icon: 'text-[var(--brand-text)]' },
+    order_table: { bg: 'bg-[var(--brand-subtle)]', hover: 'hover:border-[var(--primary-color)]', icon: 'text-[var(--brand-text)]' },
+    totals: { bg: 'bg-[var(--brand-subtle)]', hover: 'hover:border-[var(--primary-color)]', icon: 'text-[var(--brand-text)]' },
+    payment_block: { bg: 'bg-[var(--brand-subtle)]', hover: 'hover:border-[var(--primary-color)]', icon: 'text-[var(--brand-text)]' },
     footer: { bg: 'bg-slate-50', hover: 'hover:border-slate-400', icon: 'text-slate-600' }
 };
 
@@ -37,12 +37,12 @@ const COLORS: Record<string, { bg: string; hover: string; icon: string }> = {
  */
 export function DesignerSidebar({ onAddItem }: DesignerSidebarProps) {
     return (
-        <div className="w-72 bg-white/70 dark:bg-slate-800/90 dark:text-slate-100 backdrop-blur-xs border-r border-slate-200/60 dark:border-slate-700 flex flex-col">
+        <div className="w-72 bg-white dark:bg-slate-800 dark:text-slate-100 border-r border-slate-200/60 dark:border-slate-700 flex flex-col">
             {/* Header */}
             <div className="px-5 py-4 border-b border-slate-100">
                 <div className="flex items-center gap-2">
-                    <LayoutTemplate size={16} className="text-indigo-500" />
-                    <h3 className="font-bold text-slate-700 text-sm tracking-wide">Components</h3>
+                    <LayoutTemplate size={16} className="text-[var(--brand-text)]" />
+                    <h3 className="font-semibold text-slate-700 dark:text-slate-100 text-sm">Components</h3>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">Drag or click to add</p>
             </div>
@@ -58,14 +58,14 @@ export function DesignerSidebar({ onAddItem }: DesignerSidebarProps) {
                             <button
                                 type="button"
                                 key={item.id}
-                                className={`w-full text-left flex items-center gap-4 p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl cursor-pointer shadow-xs hover:shadow-md focus-visible:outline-2 focus-visible:outline-indigo-500 ${colors.hover} transition-all motion-reduce:transition-none duration-200 group active:scale-[0.98]`}
+                                className={`w-full text-left flex items-center gap-4 p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg cursor-pointer focus-visible:outline-2 focus-visible:outline-[var(--focus-color)] ${colors.hover} transition-colors motion-reduce:transition-none`}
                                 onClick={() => onAddItem(item.type)}
                                 draggable={true}
                                 onDragStart={(e) => {
                                     e.dataTransfer.setData("text/plain", item.type);
                                 }}
                             >
-                                <div className={`w-10 h-10 ${colors.bg} rounded-lg flex items-center justify-center transition-transform group-hover:scale-110`}>
+                                <div className={`w-10 h-10 ${colors.bg} rounded-lg flex items-center justify-center`}>
                                     <Icon size={20} className={colors.icon} />
                                 </div>
                                 <div className="flex-1">
@@ -90,9 +90,9 @@ export function DesignerSidebar({ onAddItem }: DesignerSidebarProps) {
 
             {/* Tips Section */}
             <div className="p-4 border-t border-slate-100">
-                <div className="p-4 bg-linear-to-br from-indigo-50 to-purple-50 rounded-xl border border-indigo-100">
-                    <p className="font-semibold text-indigo-700 text-xs mb-1.5">Quick Tip</p>
-                    <p className="text-xs text-indigo-600/80 leading-relaxed">
+                <div className="p-4 bg-[var(--brand-subtle)] rounded-xl border border-[var(--brand-border)]">
+                    <p className="font-semibold text-[var(--brand-text)] text-xs mb-1.5">Quick Tip</p>
+                    <p className="text-xs text-[var(--brand-text)] leading-relaxed">
                         Click components to add them. Drag to reorder and resize on canvas.
                     </p>
                 </div>

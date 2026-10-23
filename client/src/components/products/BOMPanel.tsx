@@ -77,7 +77,7 @@ const BOMScopes = forwardRef<BOMPanelRef, Omit<ScopeProps, 'scope'>>(function BO
         const result = await transition.run(async () => { if (!child.current || !await child.current.save()) throw new Error('BOM not saved'); }, 'Could not save this BOM. Resolve its errors before changing scope.');
         if (result.ok) setScope(next);
     };
-    return <section className={`${ui.card} space-y-4 text-slate-900 dark:text-slate-100`}><h3 className="flex items-center gap-2 font-semibold"><Layers size={18} className="text-indigo-500" />BOM Configuration</h3>
+    return <section className={`${ui.card} space-y-4 text-slate-900 dark:text-slate-100`}><h3 className="flex items-center gap-2 font-semibold"><Layers size={18} className="text-[var(--brand-text)]" />BOM Configuration</h3>
         {props.fixedVariationId === undefined && <label className={`${ui.label} max-w-md`}>BOM scope<select disabled={busy || transition.busy} className={ui.input} value={scope} onChange={event => void changeScope(Number(event.target.value))}><option value={0}>Main Product</option>{props.variants?.map(variant => <option key={variant.id} value={variant.id}>Variant #{variant.id} {variant.sku}</option>)}</select></label>}
         {transition.error && <p role="alert" className={ui.alert}>{transition.error}</p>}
         <LoadedBOM key={scope} {...props} scope={scope} ref={child} onBusyChange={setBusy} />

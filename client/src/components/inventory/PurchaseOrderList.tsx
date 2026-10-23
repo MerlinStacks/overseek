@@ -12,6 +12,7 @@ import { isRecord } from '../../utils/responseValidation';
 import { formatDateSafe } from '../../utils/format';
 import { DataNote } from '../ui/DataNote';
 import { Pagination } from '../ui/Pagination';
+import { Metric, MetricStrip } from '../ui/MetricStrip';
 import { workspaceStyles as ui } from '../ui/workspaceStyles';
 
 const statuses = ['DRAFT', 'ORDERED', 'RECEIVED', 'CANCELLED'];
@@ -82,15 +83,15 @@ function Page({ token, accountId, page, status, setStatus, setPage, receive }: {
     useEffect(() => subscribeToCrossTabEvents(event => { if (event.resource === 'purchase-order' && event.accountId === accountId) retry(); }), [accountId, retry]);
     const data = !read.loading && !read.error && read.data?.page === page && read.data.limit === 25 ? read.data : null;
     const summaries = data ? [
-        { label: 'Matching orders', value: data.total, Icon: Package, tone: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300' },
-        { label: 'Ordered on this page', value: data.orders.filter(row => row.status === 'ORDERED').length, Icon: Clock, tone: 'bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-300' },
-        { label: 'Drafts on this page', value: data.orders.filter(row => row.status === 'DRAFT').length, Icon: FileText, tone: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' },
-        { label: 'Received on this page', value: data.orders.filter(row => row.status === 'RECEIVED').length, Icon: CheckCircle2, tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-300' },
+        { label: 'Matching orders', value: data.total, Icon: Package, tone: 'text-[var(--brand-text)]' },
+        { label: 'Ordered on this page', value: data.orders.filter(row => row.status === 'ORDERED').length, Icon: Clock, tone: 'text-blue-600 dark:text-blue-300' },
+        { label: 'Drafts on this page', value: data.orders.filter(row => row.status === 'DRAFT').length, Icon: FileText, tone: 'text-slate-600 dark:text-slate-300' },
+        { label: 'Received on this page', value: data.orders.filter(row => row.status === 'RECEIVED').length, Icon: CheckCircle2, tone: 'text-emerald-600 dark:text-emerald-300' },
     ] : [];
     const toolbar = <>
         <div aria-label="Purchase order filters and summary" className="flex min-w-0 flex-wrap items-end gap-3">
             <label className={`${ui.label} w-full sm:w-40 sm:shrink-0`}>Status<select className={ui.input} value={status} onChange={event => setStatus(event.target.value)}><option value="">All orders</option>{statuses.map(value => <option key={value} value={value}>{statusLabels[value]}</option>)}</select></label>
-            {data && <dl aria-label="Purchase order summary" className="grid w-full min-w-0 grid-cols-2 gap-2 sm:grid-cols-4 xl:w-auto xl:min-w-[560px] xl:flex-1">{summaries.map(({ label, value, Icon, tone }) => <div className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-800" key={label}><span aria-hidden="true" className={`shrink-0 rounded-lg p-1.5 ${tone}`}><Icon size={15} /></span><div className="min-w-0"><dt className="text-[11px] leading-tight text-slate-500 dark:text-slate-400">{label}</dt><dd className="mt-0.5 text-base font-semibold leading-tight tabular-nums">{value.toLocaleString()}</dd></div></div>)}</dl>}
+            {data && <MetricStrip label="Purchase order summary" className="w-full xl:w-auto xl:flex-1">{summaries.map(({ label, value, Icon, tone }) => <Metric key={label} label={<span className="inline-flex items-center gap-1.5"><Icon size={13} aria-hidden="true" />{label}</span>} value={value.toLocaleString()} valueClassName={tone} />)}</MetricStrip>}
             {receive.allowed && <Link className={`${ui.primary} sm:ml-auto`} to="/inventory/purchase-orders/new"><Plus size={16} aria-hidden="true" />New Purchase Order</Link>}
         </div>
         <DataNote title="Purchase-order amounts and dates">Order currency and actual receipt dates are unavailable. Amounts are not aggregated; a creation date does not establish when goods were received.</DataNote>

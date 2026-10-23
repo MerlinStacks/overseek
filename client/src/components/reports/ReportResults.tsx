@@ -2,6 +2,7 @@ import { BarChart3, Download, FileText, AlertCircle } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { ReportResult, METRIC_OPTIONS } from '../../types/analytics';
+import { Metric, MetricStrip } from '../ui/MetricStrip';
 
 interface ReportResultsProps {
     results: ReportResult[];
@@ -121,13 +122,13 @@ export function ReportResults({
     }, {} as Record<string, number>);
 
     return (
-        <div className={`min-w-0 flex min-h-[400px] flex-1 flex-col overflow-hidden ${viewMode ? 'bg-white/50 backdrop-blur-xl rounded-2xl border border-white/20 shadow-lg p-6' : ''}`}>
+        <div className={`min-w-0 flex min-h-[400px] flex-1 flex-col overflow-hidden ${viewMode ? 'bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6' : ''}`}>
 
             {/* Header */}
             <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                     <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                        {viewMode && <BarChart3 className="text-blue-600" size={24} />}
+                        {viewMode && <BarChart3 className="text-[var(--brand-text)]" size={24} />}
                         {viewMode ? 'Report Analysis' : 'Results'}
                     </h3>
                     {results.length > 0 && (
@@ -171,21 +172,14 @@ export function ReportResults({
             ) : (
                 <>
                     {/* Summary Cards */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                    <MetricStrip label="Custom report summary" className="mb-4">
                         {metrics.slice(0, 4).map(m => {
                             const metricInfo = METRIC_OPTIONS.find(mi => mi.value === m);
                             return (
-                                <div key={m} className="bg-linear-to-br from-gray-50 to-white p-4 rounded-xl border border-gray-100 shadow-xs">
-                                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                        {metricInfo?.label || m}
-                                    </div>
-                                    <div className="text-xl font-bold text-gray-900">
-                                        {formatValue(m, totals[m])}
-                                    </div>
-                                </div>
+                                <Metric key={m} label={metricInfo?.label || m} value={formatValue(m, totals[m])} />
                             );
                         })}
-                    </div>
+                    </MetricStrip>
 
                     {/* Data Table */}
                     <div className="min-w-0 flex-1 overflow-x-auto rounded-xl border border-gray-200 shadow-xs">
@@ -206,7 +200,7 @@ export function ReportResults({
                                 {results.map((row, i) => (
                                     <tr
                                         key={i}
-                                        className={`hover:bg-blue-50/30 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
+                                    className={`hover:bg-[var(--brand-subtle)] transition-colors ${i % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50 dark:bg-slate-800'}`}
                                     >
                                         <td className="max-w-[28rem] break-words px-6 py-4 text-sm font-medium text-gray-900">
                                             {row.dimension}

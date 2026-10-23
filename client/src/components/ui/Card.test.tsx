@@ -10,8 +10,12 @@ describe('card primitives', () => {
         expect(ref.current).toBe(screen.getByRole('heading', { level: 3 }));
         expect(ref.current?.tagName).toBe('H3');
     });
-    it('retains custom props and reduced-motion overrides', () => {
+    it('retains custom props while legacy glass and hover options stay opaque and static', () => {
         render(<Card data-testid="card" glass accent className="custom">Content</Card>);
-        expect(screen.getByTestId('card')).toHaveClass('custom', 'motion-reduce:transition-none', 'motion-reduce:transform-none');
+        const card = screen.getByTestId('card');
+        expect(card).toHaveClass('custom', 'bg-white', 'dark:bg-slate-800', 'border-t-[var(--brand-border)]');
+        expect(card.className).not.toMatch(/backdrop|gradient|translate|hover:shadow/);
+        expect(card).not.toHaveAttribute('glass');
+        expect(card).not.toHaveAttribute('noHover');
     });
 });

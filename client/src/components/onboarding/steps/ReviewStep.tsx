@@ -9,6 +9,7 @@ import React from 'react';
 import { CheckCircle, SkipForward, ArrowLeft, Rocket, Store, Plug, Mail, TrendingUp, AlertCircle } from 'lucide-react';
 import { OnboardingStepProps, ONBOARDING_STEPS } from '../types';
 import { useAccount } from '../../../context/AccountContext';
+import { Metric, MetricStrip } from '../../ui/MetricStrip';
 
 interface IntegrationStatus {
     step: number;
@@ -71,7 +72,7 @@ export function ReviewStep({ draft, setDraft: _setDraft, onNext, onBack, isSubmi
         <div className="space-y-6">
             {/* Header */}
             <div className="text-center pb-4 border-b border-gray-100">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 text-white mb-4">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-[var(--brand-subtle)] text-[var(--brand-text)] mb-4">
                     <Rocket size={32} />
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Review Setup</h2>
@@ -81,16 +82,10 @@ export function ReviewStep({ draft, setDraft: _setDraft, onNext, onBack, isSubmi
             </div>
 
             {/* Summary Stats */}
-            <div className="grid grid-cols-2 gap-4">
-                <div className="bg-green-50 rounded-xl p-4 border border-green-200 text-center">
-                    <div className="text-3xl font-bold text-green-600">{completedCount}</div>
-                    <div className="text-sm text-green-700">Integrations Ready</div>
-                </div>
-                <div className="bg-amber-50 rounded-xl p-4 border border-amber-200 text-center">
-                    <div className="text-3xl font-bold text-amber-600">{skippedCount}</div>
-                    <div className="text-sm text-amber-700">Skipped (Optional)</div>
-                </div>
-            </div>
+            <MetricStrip label="Integration setup summary" className="grid-cols-2">
+                <Metric label="Integrations Ready" value={completedCount} valueClassName="text-green-700 dark:text-green-300" />
+                <Metric label="Skipped (Optional)" value={skippedCount} valueClassName="text-amber-700 dark:text-amber-300" />
+            </MetricStrip>
 
             {/* Integration List */}
             <div className="space-y-3">
@@ -156,9 +151,9 @@ export function ReviewStep({ draft, setDraft: _setDraft, onNext, onBack, isSubmi
 
             {/* Skipped Items Notice */}
             {skippedCount > 0 && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex gap-3">
-                    <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                    <div className="text-sm text-blue-800">
+                <div className="bg-[var(--brand-subtle)] border border-[var(--brand-border)] rounded-lg p-4 flex gap-3">
+                    <AlertCircle className="w-5 h-5 text-[var(--brand-text)] flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-[var(--brand-text)]">
                         <p className="font-medium">Some integrations were skipped</p>
                         <p className="mt-1 opacity-90">
                             You can complete these from Settings. Features that depend on skipped integrations remain unavailable until configured.
@@ -183,7 +178,7 @@ export function ReviewStep({ draft, setDraft: _setDraft, onNext, onBack, isSubmi
                     type="button"
                     onClick={onNext}
                     disabled={isSubmitting || !storeReady}
-                    className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 transition-all font-bold shadow-lg shadow-purple-500/25"
+                    className="flex items-center gap-2 px-6 py-3 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] disabled:opacity-50 transition-colors font-semibold focus-visible:outline-[var(--focus-color)]"
                 >
                     {isSubmitting ? (
                         <>

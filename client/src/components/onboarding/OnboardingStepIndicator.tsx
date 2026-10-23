@@ -9,7 +9,7 @@ export function OnboardingStepIndicator({ currentStep, completedSteps, skippedSt
             const skipped = step.skippable && skippedSteps.includes(step.id);
             const completed = !skipped && completedSteps.includes(step.id);
             const status = current ? 'In Progress' : skipped ? 'Skipped' : completed ? 'Completed' : 'Not started';
-            return <li key={step.id} aria-current={current ? 'step' : undefined}><button type="button" disabled={disabled || !onStepClick || current || (!completed && !skipped)} onClick={() => onStepClick?.(step.id)} className="w-full text-left p-3 border rounded-xl disabled:cursor-default border-slate-200 dark:border-slate-700">
+            return <li key={step.id} aria-current={current ? 'step' : undefined}><button type="button" disabled={disabled || !onStepClick || current || (!completed && !skipped)} onClick={() => onStepClick?.(step.id)} className={`w-full text-left p-3 border rounded-lg disabled:cursor-default focus-visible:outline-[var(--focus-color)] ${current ? 'bg-[var(--brand-subtle)] border-[var(--brand-border)] text-[var(--brand-text)]' : 'border-slate-200 dark:border-slate-700'}`}>
                 <span className="font-medium">{step.id}. {step.label}</span><span className="block text-xs text-slate-500 dark:text-slate-400">{status}</span>
             </button></li>;
         })}</ol>

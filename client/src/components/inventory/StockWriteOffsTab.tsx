@@ -3,6 +3,7 @@ import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import { formatCurrency, formatDateTime } from '../../utils/format';
+import { Metric, MetricStrip } from '../ui/MetricStrip';
 import { StockSyncBadge, StockWriteOffEditor, writeOffButton, writeOffInput } from './StockWriteOffEditor';
 import { reasons, writeOffCsv, type WriteOff, type WriteOffList, type WriteOffRequest } from './stockWriteOffs';
 
@@ -99,9 +100,9 @@ function WriteOffWorkspace({ accountId, token, currency }: { accountId: string; 
         {loading && <p role="status">Loading write-offs…</p>}
         {opening && <p role="status">Opening write-off…</p>}
         {data && <>
-            <div className="grid gap-3 sm:grid-cols-3">{[
+            <MetricStrip label="Finalized write-off summary">{[
                 ['Finalized loss', formatCurrency(data.summary.totalCost, currency)], ['Units written off', data.summary.quantity.toLocaleString()], ['Finalized write-offs', data.summary.count.toLocaleString()]
-            ].map(([label, value]) => <div key={label} className="rounded-xl border border-slate-200 bg-white/80 p-4 dark:border-slate-700 dark:bg-slate-800/80"><p className="text-sm">{label}</p><p className="text-2xl font-semibold">{value}</p></div>)}</div>
+            ].map(([label, value]) => <Metric key={label} label={label} value={value} />)}</MetricStrip>
             <p className="text-xs">Finalized totals across all pages matching the selected filters.</p>
             {data.items.length === 0 ? <p className="py-8 text-center">No write-offs match these filters.</p> : <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700"><table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 dark:bg-slate-800"><tr>{['Reference', 'Status / sync', 'Reason', 'Date', `Loss (${currency})`, 'Action'].map(label => <th key={label} className="p-3">{label}</th>)}</tr></thead>

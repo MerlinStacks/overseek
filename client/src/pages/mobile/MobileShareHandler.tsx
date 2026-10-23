@@ -38,7 +38,7 @@ export default function MobileShareHandler() {
 
     return (
         <div className="min-h-screen bg-slate-900 text-white flex flex-col">
-            <header className="sticky top-0 z-20 bg-slate-800/80 backdrop-blur-xl border-b border-white/10 px-4 py-3 flex items-center gap-3">
+            <header className="sticky top-0 z-20 bg-slate-800 border-b border-white/10 px-4 py-3 flex items-center gap-3">
                 <button type="button" aria-label="Back to dashboard" onClick={() => navigate('/m/dashboard', { replace: true })}
                     className="p-2 -ml-2 rounded-lg hover:bg-white/10 transition-colors">
                     <ArrowLeft aria-hidden="true" className="w-5 h-5" />
@@ -51,7 +51,7 @@ export default function MobileShareHandler() {
                         <p role="alert">{error}</p>
                         {hasContent && <>
                             <pre aria-label="Shared content" className="whitespace-pre-wrap break-words select-all rounded-lg bg-slate-800 p-4">{[subject, body].filter(Boolean).join('\n\n')}</pre>
-                            <button type="button" onClick={() => { setFailure(null); setRetry(value => value + 1); }} className="px-4 py-2 bg-indigo-500 rounded-lg">Retry saving</button>
+                            <button type="button" onClick={() => { setFailure(null); setRetry(value => value + 1); }} className="px-4 py-2 mobile-brand-solid rounded-lg">Retry saving</button>
                         </>}
                     </div>
                 ) : hasContent ? (
@@ -64,7 +64,7 @@ export default function MobileShareHandler() {
                         <Mail aria-hidden="true" className="w-8 h-8 text-indigo-400 mx-auto mb-4" />
                         <h2 className="text-xl font-semibold mb-2">No Content Received</h2>
                         <p className="text-slate-400 mb-6">No shared content was detected. Would you like to compose a new message?</p>
-                        <button type="button" onClick={compose} className="w-full py-3 px-4 bg-indigo-500 hover:bg-indigo-600 rounded-xl font-medium transition-colors">Compose New Message</button>
+                        <button type="button" onClick={compose} className="w-full py-3 px-4 mobile-brand-solid hover:bg-[var(--primary-hover)] rounded-lg font-medium transition-colors">Compose New Message</button>
                     </div>
                 )}
             </div>

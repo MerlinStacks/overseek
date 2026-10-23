@@ -280,7 +280,7 @@ export function AdminAccountsPage() {
                                     <div className="flex items-center justify-end gap-2">
                                         <button
                                             onClick={() => handleImpersonate(account.id)}
-                                            className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                                                className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-[var(--brand-text)] bg-[var(--brand-subtle)] rounded-lg hover:opacity-90 transition-colors"
                                         >
                                             <LogIn size={14} />
                                             Impersonate
@@ -302,8 +302,8 @@ export function AdminAccountsPage() {
 
             {/* Delete Confirmation Modal */}
             {deleteTarget && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs">
-                    <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-md mx-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 w-full max-w-md mx-4">
                         <h2 className="text-lg font-bold text-slate-900 mb-2">Delete Account</h2>
                         <p className="text-sm text-slate-600 mb-4">
                             This action is <span className="font-semibold text-red-600">irreversible</span>. All data associated with this account will be permanently deleted.

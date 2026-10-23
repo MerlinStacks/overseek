@@ -107,7 +107,7 @@ function ScopedChatHeader({
             {mutation.error && !showBlockConfirm && <p role="alert">{mutation.error}</p>}
             {/* Left - Sender Info */}
             <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium">
+                <div className="w-8 h-8 rounded-full bg-[var(--primary-color)] flex items-center justify-center text-[var(--primary-foreground)] text-xs font-medium">
                     {recipientName ? recipientName.charAt(0).toUpperCase() : 'C'}
                 </div>
                 <RecipientList
@@ -164,7 +164,7 @@ function ScopedChatHeader({
                                 "flex items-center gap-1.5 px-3 py-1.5 rounded-l-lg text-sm font-medium transition-colors",
                                 isOpen
                                     ? "bg-green-600 text-white hover:bg-green-700"
-                                    : "bg-blue-600 text-white hover:bg-blue-700",
+                            : "bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]",
                                 isUpdatingStatus && "opacity-50 cursor-not-allowed"
                             )}
                         >
@@ -179,7 +179,7 @@ function ScopedChatHeader({
                                 "px-2 py-1.5 rounded-r-lg border-l transition-colors",
                                 isOpen
                                     ? "bg-green-600 text-white hover:bg-green-700 border-green-700"
-                                    : "bg-blue-600 text-white hover:bg-blue-700 border-blue-700"
+                            : "bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] border-[var(--brand-border)]"
                             )}
                         >
                             <ChevronDown size={14} />
@@ -188,7 +188,7 @@ function ScopedChatHeader({
 
                     {/* Dropdown Menu */}
                     {showActionsMenu && (
-                        <div id={statusMenuId} role="group" aria-label="Status options" className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg shadow-lg z-20">
+                        <div id={statusMenuId} role="group" aria-label="Status options" className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg shadow-sm z-20">
                             <button
                                 type="button" disabled={locked}
                                 onClick={() => {
@@ -222,7 +222,7 @@ function ScopedChatHeader({
                     aria-label="Search messages"
                     className={cn(
                         "p-1.5 rounded-sm transition-colors",
-                        showSearch ? "bg-blue-100 text-blue-600" : "hover:bg-gray-100 text-gray-500"
+                        showSearch ? "bg-[var(--brand-subtle)] text-[var(--brand-text)]" : "hover:bg-gray-100 text-gray-500"
                     )}
                     title="Search messages"
                 >
@@ -242,7 +242,7 @@ function ScopedChatHeader({
 
                     {/* More Options Dropdown */}
                     {showMoreMenu && (
-                        <div id={moreMenuId} role="group" aria-label="Conversation options" className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg shadow-lg z-20">
+                        <div id={moreMenuId} role="group" aria-label="Conversation options" className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg shadow-sm z-20">
                             <button
                                 type="button" disabled={locked}
                                 onClick={() => {

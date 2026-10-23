@@ -330,7 +330,7 @@ export function NewEmailModal({
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="bg-white rounded-xl shadow-sm w-full max-w-2xl max-h-[90vh] flex flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
                     <h2 className="text-lg font-semibold text-gray-900">{composeMode === 'SMS' ? 'New SMS' : 'New Email'}</h2>
@@ -352,7 +352,7 @@ export function NewEmailModal({
                             value={to}
                             onChange={(e) => setTo(e.target.value)}
                             placeholder={composeMode === 'EMAIL' ? 'recipient@example.com' : '+61400111222'}
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] outline-none"
                         />
                     </div>
 
@@ -363,7 +363,7 @@ export function NewEmailModal({
                             <select
                                 value={composeMode}
                                 onChange={(e) => setComposeMode(e.target.value as ComposeMode)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] outline-none bg-white"
                             >
                                 <option value="EMAIL">Email</option>
                                 {smsEnabled && <option value="SMS">SMS</option>}
@@ -372,7 +372,7 @@ export function NewEmailModal({
                                 <select
                                     value={emailAccountId}
                                     onChange={(e) => setEmailAccountId(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] outline-none bg-white"
                                 >
                                     {emailAccounts.length === 0 ? (
                                         <option value="">No email accounts configured</option>
@@ -401,7 +401,7 @@ export function NewEmailModal({
                                 value={subject}
                                 onChange={(e) => setSubject(e.target.value)}
                                 placeholder="Enter your email subject here"
-                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] outline-none"
                             />
                         </div>
                     )}
@@ -429,7 +429,7 @@ export function NewEmailModal({
                                 value={cc}
                                 onChange={(e) => setCc(e.target.value)}
                                 placeholder="email1@example.com, email2@example.com"
-                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)] outline-none"
                             />
                         </div>
                     )}
@@ -445,7 +445,7 @@ export function NewEmailModal({
                                     <button
                                         key={r.id}
                                         onClick={() => handleSelectCanned(r)}
-                                        className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-0"
+                                        className="w-full text-left px-3 py-2 hover:bg-[var(--brand-subtle)] transition-colors border-b border-gray-50 last:border-0"
                                     >
                                         <span className="text-xs font-mono bg-gray-100 px-1.5 py-0.5 rounded-sm text-gray-600">
                                             /{r.shortcut}
@@ -479,7 +479,7 @@ export function NewEmailModal({
                                             type="button"
                                             onClick={handleAIAssist}
                                             disabled={isGeneratingAI || composeMode === 'SMS'}
-                                            className="p-2 rounded-sm hover:bg-purple-50 text-purple-500 hover:text-purple-600 transition-colors disabled:opacity-50"
+                                            className="p-2 rounded-sm hover:bg-[var(--brand-subtle)] text-[var(--brand-text)] hover:text-[var(--brand-text)] transition-colors disabled:opacity-50"
                                             title="Generate AI Draft"
                                             aria-label="Generate AI draft email"
                                         >
@@ -547,7 +547,7 @@ export function NewEmailModal({
                             </div>
                             <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
                                 <div
-                                    className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-200"
+                                    className="h-full bg-[var(--primary-color)] rounded-full transition-all duration-200"
                                     style={{ width: `${uploadProgress}%` }}
                                 />
                             </div>
@@ -591,7 +591,7 @@ export function NewEmailModal({
                     <button
                         onClick={handleSend}
                         disabled={isSending || (composeMode === 'EMAIL' && emailAccounts.length === 0)}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex items-center gap-2 px-4 py-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {isSending ? (
                             <>

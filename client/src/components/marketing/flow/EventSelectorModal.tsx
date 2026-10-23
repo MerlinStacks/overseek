@@ -141,8 +141,8 @@ export const EventSelectorModal: React.FC<EventSelectorModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 ">
+            <div className="bg-white rounded-xl shadow-sm w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 <div className="flex items-center justify-between px-6 py-4 border-b">
                     <h2 className="text-lg font-semibold text-gray-900">Select an Event</h2>
                     <div className="flex items-center gap-3">
@@ -153,7 +153,7 @@ export const EventSelectorModal: React.FC<EventSelectorModalProps> = ({
                                 placeholder="Search..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent w-40"
+                                className="pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-[var(--focus-color)] focus:border-transparent w-40"
                             />
                         </div>
                         <button
@@ -177,7 +177,7 @@ export const EventSelectorModal: React.FC<EventSelectorModalProps> = ({
                                         setSelectedEvent(null);
                                     }}
                                     className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-left transition-colors ${activeCategory === category.id
-                                        ? 'bg-white text-blue-600 font-medium border-r-2 border-blue-600'
+                                        ? 'bg-white text-[var(--brand-text)] font-medium border-r-2 border-[var(--primary-color)]'
                                         : 'text-gray-600 hover:bg-gray-100'
                                         }`}
                                 >
@@ -205,7 +205,7 @@ export const EventSelectorModal: React.FC<EventSelectorModalProps> = ({
                                                 key={event.id}
                                                 onClick={() => setSelectedEvent(event)}
                                                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-full transition-all ${selectedEvent?.id === event.id
-                                                    ? 'bg-blue-50 border-blue-400 text-blue-700 ring-2 ring-blue-200'
+                                                    ? 'bg-[var(--brand-subtle)] border-[var(--primary-color)] text-[var(--brand-text)] ring-2 ring-[var(--focus-color)]'
                                                     : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50'
                                                     }`}
                                             >
@@ -235,7 +235,7 @@ export const EventSelectorModal: React.FC<EventSelectorModalProps> = ({
                     <button
                         onClick={handleDone}
                         disabled={!selectedEvent}
-                        className="px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                            className="px-5 py-2 text-sm font-medium text-[var(--primary-foreground)] bg-[var(--primary-color)] rounded-lg hover:bg-[var(--primary-hover)] disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                     >
                         Done
                     </button>

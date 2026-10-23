@@ -102,7 +102,7 @@ function AssignModalContent({ isOpen, onClose, onAssign, currentAssigneeId, toke
             onClose={onClose}
             title={
                 <div className="flex items-center gap-2">
-                    <Users size={18} className="text-blue-600" />
+                    <Users size={18} className="text-[var(--brand-text)]" />
                     <span>Assign Conversation</span>
                 </div>
             }
@@ -113,7 +113,7 @@ function AssignModalContent({ isOpen, onClose, onAssign, currentAssigneeId, toke
             <div className="max-h-80 overflow-y-auto -mx-6 px-6">
                 {isLoading ? (
                     <div className="flex items-center justify-center py-8">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[var(--primary-color)]"></div>
                     </div>
                 ) : loadError ? (
                     <div><p role="alert">Could not load team members.</p><button type="button" onClick={() => { setIsLoading(true); setRetry(value => value + 1); }}>Retry loading team</button></div>
@@ -131,8 +131,8 @@ function AssignModalContent({ isOpen, onClose, onAssign, currentAssigneeId, toke
                                 disabled={isAssigning || member.id === currentAssigneeId}
                                 className={cn(
                                     "w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
-                                    "hover:bg-blue-50 dark:hover:bg-slate-700 text-left",
-                                    member.id === currentAssigneeId && "bg-blue-50",
+                                    "hover:bg-[var(--brand-subtle)] dark:hover:bg-slate-700 text-left",
+                                    member.id === currentAssigneeId && "bg-[var(--brand-subtle)]",
                                     isAssigning && "opacity-50 cursor-not-allowed"
                                 )}
                             >
@@ -143,7 +143,7 @@ function AssignModalContent({ isOpen, onClose, onAssign, currentAssigneeId, toke
                                         className="w-9 h-9 rounded-full object-cover"
                                     />
                                 ) : (
-                                    <div aria-hidden="true" className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-medium">
+                                    <div aria-hidden="true" className="w-9 h-9 rounded-full bg-[var(--primary-color)] flex items-center justify-center text-[var(--primary-foreground)] text-sm font-medium">
                                         {getInitials(member)}
                                     </div>
                                 )}
@@ -156,7 +156,7 @@ function AssignModalContent({ isOpen, onClose, onAssign, currentAssigneeId, toke
                                     )}
                                 </div>
                                 {member.id === currentAssigneeId && (
-                                    <Check size={16} className="text-blue-600" />
+                                    <Check size={16} className="text-[var(--brand-text)]" />
                                 )}
                             </button>
                         ))}

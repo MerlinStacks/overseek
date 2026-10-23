@@ -112,7 +112,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                     <select
                         value={selectedActionType}
                         onChange={(e) => onUpdate('actionType', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)]"
                     >
                         {ACTION_TYPES.map(t => (
                             <option key={t.value} value={t.value}>{t.label}</option>
@@ -161,7 +161,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                             onChange={(e) => onUpdate('smsMessage', sanitizeBidiText(e.target.value))}
                             placeholder="Hi {{customer.firstName}}, thanks for your order!"
                             rows={3}
-                            className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${smsMetrics.overLimit ? 'border-red-300' : 'border-gray-300'}`}
+                            className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--focus-color)] ${smsMetrics.overLimit ? 'border-red-300' : 'border-gray-300'}`}
                             dir="ltr"
                             style={LTR_TEXT_STYLE}
                         />
@@ -214,7 +214,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                         value={config.tagName || ''}
                         onChange={(e) => onUpdate('tagName', sanitizeBidiText(e.target.value))}
                         placeholder="VIP Customer"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)]"
                         dir="ltr"
                         style={LTR_TEXT_STYLE}
                     />
@@ -230,7 +230,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                             <select
                                 value={config.discountType || 'percent'}
                                 onChange={(e) => onUpdate('discountType', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)]"
                             >
                                 <option value="percent">Percent</option>
                                 <option value="fixed_cart">Fixed Cart Amount</option>
@@ -244,7 +244,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                                 step="0.01"
                                 value={config.amount || 10}
                                 onChange={(e) => onUpdate('amount', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)]"
                             />
                         </div>
                     </div>
@@ -257,7 +257,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                                 value={config.codePrefix || 'OS'}
                                 onChange={(e) => onUpdate('codePrefix', sanitizeBidiText(e.target.value))}
                                 placeholder="WINBACK"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)]"
                                 dir="ltr"
                                 style={LTR_TEXT_STYLE}
                             />
@@ -269,7 +269,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                                 min="1"
                                 value={config.expiryDays || 7}
                                 onChange={(e) => onUpdate('expiryDays', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)]"
                             />
                         </div>
                     </div>
@@ -281,23 +281,23 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                             value={config.description || ''}
                             onChange={(e) => onUpdate('description', sanitizeBidiText(e.target.value))}
                             placeholder="Special recovery offer"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)]"
                             dir="ltr"
                             style={LTR_TEXT_STYLE}
                         />
                     </div>
 
-                    <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <div className="p-3 bg-[var(--brand-subtle)] rounded-lg border border-[var(--brand-border)]">
                         <label className="flex items-center gap-3">
                             <input
                                 type="checkbox"
                                 checked={config.individualUse ?? true}
                                 onChange={(e) => onUpdate('individualUse', e.target.checked)}
-                                className="w-4 h-4 rounded-sm text-blue-600"
+                                className="w-4 h-4 rounded-sm text-[var(--brand-text)]"
                             />
                             <div>
-                                <span className="text-sm font-medium text-blue-800">One customer use only</span>
-                                <p className="text-xs text-blue-700">Restrict the coupon to one use and the enrolled email address.</p>
+                                <span className="text-sm font-medium text-[var(--brand-text)]">One customer use only</span>
+                                <p className="text-xs text-[var(--brand-text)]">Restrict the coupon to one use and the enrolled email address.</p>
                             </div>
                         </label>
                     </div>
@@ -313,7 +313,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                             onChange={(e) => onUpdate('noteContent', sanitizeBidiText(e.target.value))}
                             placeholder="Order updated by automation for {{customer.email}}"
                             rows={4}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)]"
                             dir="ltr"
                             style={LTR_TEXT_STYLE}
                         />
@@ -342,7 +342,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                     <select
                         value={config.orderStatus || 'processing'}
                         onChange={(e) => onUpdate('orderStatus', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)]"
                     >
                         <option value="pending">Pending</option>
                         <option value="processing">Processing</option>

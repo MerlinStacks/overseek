@@ -313,7 +313,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
             {/* Pending Setup Modal */}
             {pendingSetup.show && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+                    <div className="bg-white rounded-xl shadow-sm p-6 max-w-md w-full mx-4">
                         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                             <AlertCircle className="text-amber-500" size={20} />
                             Complete Google Ads Setup
@@ -334,7 +334,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                             />
                             <p className="text-xs text-gray-500 mt-2">
                                 Find your Customer ID in the top-right corner of{' '}
-                                <a href="https://ads.google.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                                <a href="https://ads.google.com" target="_blank" rel="noopener noreferrer" className="text-[var(--brand-text)] underline">
                                     Google Ads
                                 </a>
                                 . It looks like: 123-456-7890
@@ -354,7 +354,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                             <button
                                 onClick={handleCompletePendingSetup}
                                 disabled={!pendingSetup.customerId.trim() || pendingSetup.isSubmitting}
-                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                        className="px-4 py-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] disabled:opacity-50 flex items-center gap-2"
                             >
                                 {pendingSetup.isSubmitting ? <Loader2 className="animate-spin" size={16} /> : null}
                                 Complete Setup
@@ -379,7 +379,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                         <h2 className="text-xl font-semibold text-gray-900">Ad Accounts</h2>
                         <button
                             onClick={() => setShowConnect(!showConnect)}
-                            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                    className="flex items-center gap-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] px-4 py-2 rounded-lg hover:bg-[var(--primary-hover)]"
                         >
                             <Plus size={18} /> Connect Account
                         </button>
@@ -405,8 +405,8 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                 {formData.platform === 'GOOGLE' ? (
                                     /* Google Ads - OAuth Flow */
                                     <div className="space-y-4">
-                                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                            <p className="text-sm text-blue-800">
+                                        <div className="bg-[var(--brand-subtle)] border border-[var(--brand-border)] rounded-lg p-4">
+                                            <p className="text-sm text-[var(--brand-text)]">
                                                 Google Ads requires OAuth authentication. Click the button below to connect your account securely.
                                             </p>
                                         </div>
@@ -475,7 +475,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                                     href="https://developers.facebook.com/tools/explorer/"
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-blue-600 underline inline-flex items-center gap-0.5"
+                                                    className="text-[var(--brand-text)] underline inline-flex items-center gap-0.5"
                                                 >
                                                     Graph API Explorer <ExternalLink size={12} />
                                                 </a>
@@ -492,7 +492,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                             <button
                                                 type="submit"
                                                 disabled={isConnecting}
-                                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                            className="px-4 py-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] disabled:opacity-50"
                                             >
                                                 {isConnecting ? <Loader2 className="animate-spin" size={18} /> : 'Save'}
                                             </button>
@@ -556,7 +556,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                                         <button
                                                             onClick={() => isTemporarilyUnavailable ? fetchInsights(acc.id) : handleReconnect(acc)}
                                                             disabled={loadingInsights[acc.id]}
-                                                            className={`flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-medium rounded-lg disabled:opacity-50 ${isTemporarilyUnavailable ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+                                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-color)] disabled:opacity-50 ${isTemporarilyUnavailable ? 'bg-amber-600 text-white hover:bg-amber-700' : 'bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]'}`}
                                                         >
                                                             <RefreshCw size={14} className={loadingInsights[acc.id] ? 'animate-spin' : ''} />
                                                             {isTemporarilyUnavailable ? 'Retry' : 'Reconnect'}
@@ -568,7 +568,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                                         <button
                                                             onClick={() => fetchInsights(acc.id)}
                                                             disabled={loadingInsights[acc.id]}
-                                                            className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-sm disabled:opacity-50"
+                                                            className="p-1 text-gray-400 hover:text-[var(--brand-text)] hover:bg-[var(--brand-subtle)] rounded-sm disabled:opacity-50"
                                                             title="Refresh data"
                                                         >
                                                             <RefreshCw size={16} className={loadingInsights[acc.id] ? 'animate-spin' : ''} />
@@ -576,7 +576,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                                         {(acc.platform === 'GOOGLE' || acc.platform === 'META') && !isPending && (
                                                             <button
                                                                 onClick={() => onSelectAccount ? onSelectAccount(acc) : setSelectedAccount(acc)}
-                                                                className="p-1 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-sm"
+                                                                className="p-1 text-gray-400 hover:text-[var(--brand-text)] hover:bg-[var(--brand-subtle)] rounded-sm"
                                                                 title="View campaign breakdown"
                                                             >
                                                                 <BarChart2 size={16} />

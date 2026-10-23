@@ -231,7 +231,7 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
                     <select
                         value={selectedTrigger}
                         onChange={(e) => onUpdate('triggerType', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)]"
                     >
                         {TRIGGER_TYPES.map(t => (
                             <option key={t.value} value={t.value}>{t.label}</option>
@@ -263,7 +263,7 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
                     <select
                         value={config.targetOrderStatus || ''}
                         onChange={(e) => onUpdate('targetOrderStatus', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)]"
                     >
                         <option value="">Any status change</option>
                         {(orderStatusOptions.length > 0 ? orderStatusOptions : DEFAULT_ORDER_STATUSES).map((status) => (

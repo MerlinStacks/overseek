@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useToast } from '../context/ToastContext';
 import { Logger } from '../utils/logger';
+import { Metric, MetricStrip } from '../components/ui/MetricStrip';
 
 interface EmailListItem {
     id: string;
@@ -244,43 +245,28 @@ export function EmailListsPage({ embedded = false }: EmailListsPageProps) {
         <div className="space-y-6">
             <div className={`flex flex-col gap-4 lg:flex-row lg:items-end ${embedded ? 'lg:justify-end' : 'lg:justify-between'}`}>
                 {!embedded && <div className="flex flex-col gap-2">
-                    <div className="inline-flex w-fit items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
+                    <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[var(--brand-border)] bg-[var(--brand-subtle)] px-3 py-1 text-xs font-medium text-[var(--brand-text)]">
                         <Mail size={14} /> Broadcast targeting
                     </div>
                     <h1 className="text-2xl font-bold text-gray-900">Email Lists</h1>
                     <p className="max-w-2xl text-gray-500">Build reusable recipient lists, add contacts, and manage subscription status before sending campaigns.</p>
                 </div>}
 
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:min-w-[420px]">
-                    <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-xs">
-                        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-gray-500">
-                            <Users size={14} /> Lists
-                        </div>
-                        <p className="mt-2 text-2xl font-semibold text-gray-900">{lists.length}</p>
-                    </div>
-                    <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-xs">
-                        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-gray-500">
-                            <UserPlus size={14} /> Contacts
-                        </div>
-                        <p className="mt-2 text-2xl font-semibold text-gray-900">{totalListMembers}</p>
-                    </div>
-                    <div className="col-span-2 rounded-xl border border-gray-200 bg-white p-3 shadow-xs sm:col-span-1">
-                        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-gray-500">
-                            <CheckCircle2 size={14} /> Active Here
-                        </div>
-                        <p className="mt-2 text-2xl font-semibold text-gray-900">{subscribedMembers}</p>
-                    </div>
-                </div>
+                <MetricStrip label="Email list summary" className="sm:grid-cols-3 lg:min-w-[420px]">
+                    <Metric label="Lists" value={lists.length} />
+                    <Metric label="Contacts" value={totalListMembers} />
+                    <Metric label="Active Here" value={subscribedMembers} />
+                </MetricStrip>
             </div>
 
             <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-                <div className="rounded-2xl border border-gray-200 bg-white shadow-xs">
+                <div className="rounded-xl border border-gray-200 bg-white shadow-xs">
                     <div className="border-b border-gray-100 p-4">
                         <h2 className="text-sm font-semibold text-gray-900">Create a list</h2>
                         <p className="mt-1 text-sm text-gray-500">Name it by audience or campaign purpose.</p>
                         <form onSubmit={handleCreateList} className="mt-4 flex flex-col gap-2 sm:flex-row xl:flex-col">
                             <input
-                                className="min-h-10 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                        className="min-h-10 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden transition focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)]"
                                 placeholder="VIP customers, newsletter, trade leads..."
                                 value={newListName}
                                 onChange={(e) => setNewListName(e.target.value)}
@@ -288,7 +274,7 @@ export function EmailListsPage({ embedded = false }: EmailListsPageProps) {
                             <button
                                 type="submit"
                                 disabled={!newListName.trim()}
-                                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] transition hover:bg-[var(--primary-hover)] disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 <Plus size={16} /> Create list
                             </button>
@@ -309,7 +295,7 @@ export function EmailListsPage({ embedded = false }: EmailListsPageProps) {
                                         onClick={() => setSelectedListId(list.id)}
                                         className={`w-full rounded-xl border p-3 transition ${
                                             isSelected
-                                                ? 'border-indigo-300 bg-indigo-50 shadow-xs ring-2 ring-indigo-100'
+                                        ? 'border-[var(--brand-border)] bg-[var(--brand-subtle)] shadow-xs ring-2 ring-[var(--focus-color)]'
                                                 : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                                         }`}
                                     >
@@ -318,7 +304,7 @@ export function EmailListsPage({ embedded = false }: EmailListsPageProps) {
                                                 <div className="truncate text-sm font-semibold text-gray-900">{list.name}</div>
                                                 {list.description && <div className="mt-1 line-clamp-2 text-xs text-gray-500">{list.description}</div>}
                                             </div>
-                                            <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${isSelected ? 'bg-white text-indigo-700' : 'bg-gray-100 text-gray-600'}`}>
+                                            <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${isSelected ? 'bg-white text-[var(--brand-text)]' : 'bg-gray-100 text-gray-600'}`}>
                                                 {list._count?.memberships || 0}
                                             </span>
                                         </div>
@@ -337,7 +323,7 @@ export function EmailListsPage({ embedded = false }: EmailListsPageProps) {
                     </div>
                 </div>
 
-                <div className="rounded-2xl border border-gray-200 bg-white shadow-xs">
+                <div className="rounded-xl border border-gray-200 bg-white shadow-xs">
                     <div className="border-b border-gray-100 p-4">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                             <div>
@@ -366,7 +352,7 @@ export function EmailListsPage({ embedded = false }: EmailListsPageProps) {
 
                         <form onSubmit={handleAddMember} className="mt-4 flex flex-col gap-2 sm:flex-row">
                             <input
-                                className="min-h-11 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-50 disabled:text-gray-400"
+                                        className="min-h-11 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden transition focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--focus-color)] disabled:bg-gray-50 disabled:text-gray-400"
                                 placeholder="customer@email.com"
                                 value={newMemberEmail}
                                 onChange={(e) => setNewMemberEmail(e.target.value)}
@@ -433,7 +419,7 @@ export function EmailListsPage({ embedded = false }: EmailListsPageProps) {
                 </div>
             </div>
 
-            <div className="overflow-hidden rounded-2xl border border-red-100 bg-white shadow-xs">
+            <div className="overflow-hidden rounded-xl border border-red-100 bg-white shadow-xs">
                 <div className="border-b border-red-100 bg-red-50/70 p-4">
                     <div className="flex items-start gap-3">
                         <div className="mt-0.5 rounded-lg bg-white p-2 text-red-600 shadow-xs">

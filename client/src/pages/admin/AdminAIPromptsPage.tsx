@@ -223,7 +223,7 @@ export function AdminAIPromptsPage() {
         <div className="max-w-4xl">
             {/* Header */}
             <div className="flex items-center gap-3 mb-6">
-                <Sparkles className="text-purple-600" size={28} />
+                    <Sparkles className="text-[var(--brand-text)]" size={24} />
                 <h1 className="text-2xl font-bold text-slate-800">AI Prompts</h1>
             </div>
 
@@ -259,7 +259,7 @@ export function AdminAIPromptsPage() {
                                 className="w-full p-5 flex items-center justify-between bg-linear-to-r from-slate-50 to-white hover:from-slate-100 transition-colors"
                             >
                                 <div className="flex items-center gap-3">
-                                    <Sparkles className="text-purple-500" size={20} />
+                            <Sparkles className="text-[var(--brand-text)]" size={20} />
                                     <div className="text-left">
                                         <div className="flex items-center gap-2">
                                             <h3 className="font-semibold text-slate-900">{config.name}</h3>
@@ -304,7 +304,7 @@ export function AdminAIPromptsPage() {
                                                 Prompt Template
                                             </label>
                                             <textarea
-                                                className="w-full p-4 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-shadow font-mono text-sm resize-y min-h-[200px]"
+                                    className="w-full p-4 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[var(--brand-border)] focus:border-[var(--primary-color)] transition-shadow font-mono text-sm resize-y min-h-[200px]"
                                                 placeholder={config.placeholder}
                                                 value={formData[config.id] || ''}
                                                 onChange={e => setFormData(prev => ({
@@ -327,7 +327,7 @@ export function AdminAIPromptsPage() {
                                         <button
                                             onClick={() => handleSave(config.id)}
                                             disabled={saving === config.id}
-                                            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2 transition-colors"
+                            className="px-4 py-2 bg-[var(--primary-color)] text-[var(--primary-foreground)] rounded-lg hover:bg-[var(--primary-hover)] disabled:opacity-50 flex items-center gap-2 transition-colors"
                                         >
                                             {saving === config.id ? (
                                                 <Loader2 className="animate-spin" size={16} />

@@ -3,6 +3,7 @@
  * Part of the Growth menu in the sidebar.
  */
 import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { Metric, MetricStrip } from '../components/ui/MetricStrip';
 import { ArrowLeft, Redo2, Undo2 } from 'lucide-react';
 import type { Edge, Node } from '@xyflow/react';
 import { useSearchParams } from 'react-router-dom';
@@ -1368,7 +1369,7 @@ export function FlowsPage() {
                                         }}
                                         onKeyDown={handleRenameKeyDown}
                                         disabled={isSavingRename}
-                                        className="-ml-1 max-w-sm rounded-md border border-blue-300 bg-white px-1 text-lg font-bold text-gray-900 outline-none ring-2 ring-blue-100 disabled:cursor-wait disabled:opacity-70"
+                                        className="-ml-1 max-w-sm rounded-md border border-[var(--brand-border)] bg-white px-1 text-lg font-bold text-gray-900 outline-none ring-2 ring-[var(--focus-color)] disabled:cursor-wait disabled:opacity-70"
                                         aria-label="Flow name"
                                     />
                                 ) : (
@@ -1407,7 +1408,7 @@ export function FlowsPage() {
                             </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                            <button type="button" onClick={() => void handlePublishDraft()} disabled={isPublishing || saveState === 'saving'} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+                            <button type="button" onClick={() => void handlePublishDraft()} disabled={isPublishing || saveState === 'saving'} className="rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] disabled:opacity-50">
                                 {isPublishing ? 'Publishing...' : 'Review & publish draft'}
                             </button>
                             <button
@@ -1452,7 +1453,7 @@ export function FlowsPage() {
                                     nextParams.delete('editorTab');
                                     setSearchParams(nextParams, { replace: true });
                                 }}
-                                className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${activeEditorTab === 'flow' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-600 hover:text-gray-900'}`}
+                                className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${activeEditorTab === 'flow' ? 'border-[var(--primary-color)] text-[var(--brand-text)]' : 'border-transparent text-gray-600 hover:text-gray-900'}`}
                             >
                                 Flow
                             </button>
@@ -1464,7 +1465,7 @@ export function FlowsPage() {
                                     nextParams.set('editorTab', 'insights');
                                     setSearchParams(nextParams, { replace: true });
                                 }}
-                                className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${activeEditorTab === 'insights' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-600 hover:text-gray-900'}`}
+                                className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${activeEditorTab === 'insights' ? 'border-[var(--primary-color)] text-[var(--brand-text)]' : 'border-transparent text-gray-600 hover:text-gray-900'}`}
                             >
                                 Insights
                             </button>
@@ -1492,32 +1493,12 @@ export function FlowsPage() {
                         <div className="flex-1 overflow-y-auto bg-white">
                             {editingItem && <div className="p-4"><ContactFlowHistory key={`${currentAccount?.id}:${token}`} flowId={editingItem.id} /></div>}
                             {analytics && (
-                                <div className="grid grid-cols-2 gap-3 px-4 py-3 md:grid-cols-4">
-                                    <div className="rounded-xl border border-gray-200 p-3">
-                                        <div className="text-xs uppercase text-gray-500">Enrollments</div>
-                                        <div className="mt-1 text-lg font-semibold text-gray-900">{analytics.enrollments.total}</div>
-                                        <div className="text-xs text-gray-500">{analytics.enrollments.completed} completed</div>
-                                    </div>
-                                    <div className="rounded-xl border border-gray-200 p-3">
-                                        <div className="text-xs uppercase text-gray-500">Email</div>
-                                        <div className="mt-1 text-lg font-semibold text-gray-900">{analytics.email.sends}</div>
-                                        <div className="text-xs text-gray-500">
-                                            {analytics.email.opens} opens, {analytics.email.clicks} clicks
-                                        </div>
-                                    </div>
-                                    <div className="rounded-xl border border-gray-200 p-3">
-                                        <div className="text-xs uppercase text-gray-500">Conversions</div>
-                                        <div className="mt-1 text-lg font-semibold text-gray-900">{analytics.goals.conversions}</div>
-                                        <div className="text-xs text-gray-500">{analytics.enrollments.cancelled} cancelled</div>
-                                    </div>
-                                    <div className="rounded-xl border border-gray-200 p-3">
-                                        <div className="text-xs uppercase text-gray-500">Revenue</div>
-                                        <div className="mt-1 text-lg font-semibold text-gray-900">
-                                            ${analytics.goals.revenue.toFixed(2)}
-                                        </div>
-                                        <div className="text-xs text-gray-500">{analytics.email.unsubscribes} unsubscribes</div>
-                                    </div>
-                                </div>
+                                <MetricStrip label="Flow performance" className="mx-4">
+                                    <Metric label="Enrollments" value={analytics.enrollments.total} hint={`${analytics.enrollments.completed} completed`} />
+                                    <Metric label="Email" value={analytics.email.sends} hint={`${analytics.email.opens} opens, ${analytics.email.clicks} clicks`} />
+                                    <Metric label="Conversions" value={analytics.goals.conversions} hint={`${analytics.enrollments.cancelled} cancelled`} />
+                                    <Metric label="Revenue" value={`$${analytics.goals.revenue.toFixed(2)}`} hint={`${analytics.email.unsubscribes} unsubscribes`} />
+                                </MetricStrip>
                             )}
 
                             {analytics && getExecutionSummaryBadges(analytics).length > 0 && (
@@ -1650,11 +1631,11 @@ export function FlowsPage() {
                                             setJourneyErrorByEnrollment({});
                                         }}
                                         className={`flex items-center justify-between gap-2 px-4 py-3 text-sm font-medium capitalize transition-colors ${isActive
-                                            ? 'bg-white text-blue-700 shadow-sm dark:bg-slate-800 dark:text-blue-300'
+                                            ? 'bg-white text-[var(--brand-text)] shadow-sm dark:bg-slate-800'
                                             : 'text-slate-600 hover:bg-white/70 dark:text-slate-300 dark:hover:bg-slate-800/70'}`}
                                     >
                                         <span>{getNodeAnalyticsStatusLabel(status)}</span>
-                                        <span className={`rounded-full px-2 py-0.5 text-xs ${isActive ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-200' : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200'}`}>
+                                        <span className={`rounded-full px-2 py-0.5 text-xs ${isActive ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)]' : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200'}`}>
                                             {count.toLocaleString()}
                                         </span>
                                     </button>
@@ -1700,7 +1681,7 @@ export function FlowsPage() {
                                     {!isNodeAnalyticsLoading && nodeAnalytics?.contacts.map((contact) => (
                                         <Fragment key={contact.id}>
                                             <tr className="text-slate-700 dark:text-slate-200">
-                                                <td className="px-4 py-3 font-medium text-blue-700 dark:text-blue-300">{contact.name}</td>
+                                                <td className="px-4 py-3 font-medium text-[var(--brand-text)]">{contact.name}</td>
                                                 <td className="px-4 py-3 break-all">{contact.email}</td>
                                                 <td className="px-4 py-3">{new Date(contact.occurredAt).toLocaleDateString()}</td>
                                                 <td className="px-4 py-3 text-xs text-slate-500">{getNodeAnalyticsOutcomeLabel(contact.outcome)}</td>
@@ -1708,7 +1689,7 @@ export function FlowsPage() {
                                                     <button
                                                         type="button"
                                                         onClick={() => void handleToggleJourney(contact.enrollmentId)}
-                                                        className="text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200"
+                                                        className="text-xs font-medium text-[var(--brand-text)] hover:text-[var(--brand-text)] dark:hover:text-[var(--brand-text)]"
                                                     >
                                                         {expandedJourneyEnrollmentId === contact.enrollmentId ? 'Hide Journey' : 'View Journey'}
                                                     </button>
@@ -1813,7 +1794,7 @@ export function FlowsPage() {
                             <button
                                 type="button"
                                 onClick={handleRestoreDraft}
-                                className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                                className="rounded-md bg-[var(--primary-color)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]"
                             >
                                 Restore Draft
                             </button>

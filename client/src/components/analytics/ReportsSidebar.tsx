@@ -45,7 +45,7 @@ function Library({ templates, selectedTemplateId, onSelect, onDelete, onCreateCu
         if (!result.ok && mutation.isActive()) setBlocked(true);
     };
     return (
-        <aside className="w-full space-y-4 rounded-2xl border bg-white/80 p-4 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 lg:w-80">
+        <aside className="w-full space-y-4 rounded-xl border border-slate-200 bg-white p-4 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 lg:w-80">
             <h2 className="font-semibold">Report library</h2>
             <p className="text-sm">{rows.length} supplied template observations (window capped at 500); source coverage and report readiness are not established.</p>
             <label className="block">Search reports<input className="block w-full rounded border p-2 dark:bg-slate-800" maxLength={200} value={search} onChange={event => setSearch(event.target.value)} /></label>
@@ -56,7 +56,7 @@ function Library({ templates, selectedTemplateId, onSelect, onDelete, onCreateCu
                     <h3 className="text-sm font-semibold">{category}</h3>
                     {group.map(row => (
                         <div key={row.id} className="my-2 rounded border p-2">
-                            <button type="button" aria-pressed={row.id === selectedTemplateId} disabled={mutation.busy} className="w-full rounded p-2 text-left aria-pressed:bg-indigo-100 dark:aria-pressed:bg-indigo-950" onClick={() => onSelect(structuredClone(row) as ReportTemplate)}>
+                            <button type="button" aria-pressed={row.id === selectedTemplateId} disabled={mutation.busy} className="w-full rounded-md p-2 text-left aria-pressed:bg-[var(--brand-subtle)] aria-pressed:text-[var(--brand-text)] focus-visible:outline-[var(--focus-color)]" onClick={() => onSelect(structuredClone(row) as ReportTemplate)}>
                                 <strong>{row.name}</strong><p className="text-xs">{row.config.dimension} · {row.config.dateRange}</p>
                             </button>
                             {row.type === 'CUSTOM' && canManage && <button type="button" disabled={mutation.busy || blocked || !row.updatedAt} aria-label={`Delete report ${row.name}`} onClick={event => void remove(event, row)}>Delete</button>}
