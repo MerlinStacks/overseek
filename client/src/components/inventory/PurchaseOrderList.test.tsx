@@ -23,7 +23,7 @@ it('restores table hierarchy, meaningful status badges and compact unnumbered re
     expect(fallback).toHaveAttribute('title', recordId);
     expect(screen.getByText('Record ID: DF6BE184')).toBeInTheDocument();
     expect(screen.queryByText(recordId)).toBeNull();
-    expect(screen.getAllByRole('columnheader')).toHaveLength(7);
+    expect(screen.getAllByRole('columnheader')).toHaveLength(8);
     expect(screen.getByText('Ordered', { selector: 'span' })).toHaveClass('rounded-full', 'bg-blue-50');
     expect(screen.getByText('Received', { selector: 'span' })).toHaveClass('bg-emerald-50');
     expect(screen.getByRole('link', { name: 'New Purchase Order' })).toHaveClass('bg-indigo-600');
@@ -43,6 +43,20 @@ it('labels page counts honestly and does not invent currency, receipt dates or o
     expect(within(row).getByText('Unavailable')).toBeInTheDocument();
     expect(screen.queryByText(/Pending Value|Received This Month|AUD|USD|\$115/)).toBeNull();
     expect(screen.getByText('Purchase-order amounts and dates').closest('details')).not.toHaveAttribute('open');
+});
+
+it('groups compact summaries with the status filter and create action in a wrapping toolbar', async () => {
+    mount();
+    await screen.findByText('Matching orders');
+    const filter = screen.getByRole('combobox', { name: 'Status' });
+    const toolbar = filter.closest('[aria-label="Purchase order filters and summary"]')!;
+    expect(toolbar).toHaveClass('flex', 'flex-wrap');
+    expect(toolbar).toContainElement(screen.getByText('Matching orders'));
+    expect(toolbar).toContainElement(screen.getByRole('link', { name: 'New Purchase Order' }));
+    const count = screen.getByText('Matching orders').nextElementSibling!;
+    expect(count).toHaveClass('text-base');
+    expect(count).not.toHaveClass('text-2xl');
+    expect(count.closest('dl')).toHaveClass('grid-cols-2', 'sm:grid-cols-4', 'xl:flex-1');
 });
 
 it('requests server pages and resets to the first page when the status changes', async () => {
@@ -97,8 +111,82 @@ it('honors separate read and creation permissions', async () => {
     const view = mount();
     await screen.findByText('PO-2026-12');
     expect(screen.queryByRole('link', { name: 'New Purchase Order' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Mark received' })).toBeNull();
     m.canRead = false;
     view.rerender(<MemoryRouter><PurchaseOrderList /></MemoryRouter>);
     expect(screen.getByRole('alert')).toHaveTextContent('inventory read access');
     expect(screen.queryByText('PO-2026-12')).toBeNull();
+});
+
+it('offers receive only for ordered POs and does not write after declined confirmation', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    m.fetch.mockResolvedValue(response(overview({ orders: [order(), order({ id: 'draft', status: 'DRAFT' }), order({ id: 'cancel', status: 'CANCELLED' }), order({ id: 'received', status: 'RECEIVED' })] })));
+    mount();
+    const button = await screen.findByRole('button', { name: 'Mark received' });
+    expect(screen.getAllByRole('button', { name: 'Mark received' })).toHaveLength(1);
+    fireEvent.click(button);
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('may update inventory'));
+    expect(m.fetch.mock.calls.some(([, options]) => options.method === 'PUT')).toBe(false);
+    expect(button).toBeEnabled();
+});
+
+it('serializes the confirmed stock receipt, sends the scoped status-only request and refreshes the list', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mount();
+    const button = await screen.findByRole('button', { name: 'Mark received' });
+    let resolve!: (value: Response) => void;
+    m.fetch.mockReturnValueOnce(new Promise(r => { resolve = r; })).mockImplementation(async () => response(overview({ orders: [order({ status: 'RECEIVED' })] })));
+    fireEvent.click(button); fireEvent.click(button);
+    const writes = m.fetch.mock.calls.filter(([, options]) => options.method === 'PUT');
+    expect(writes).toHaveLength(1);
+    expect(writes[0][0]).toBe(`/api/inventory/purchase-orders/${recordId}`);
+    expect(writes[0][1].headers).toMatchObject({ 'X-Account-ID': 'a', Authorization: 'Bearer t' });
+    expect(JSON.parse(writes[0][1].body)).toEqual({ status: 'RECEIVED' });
+    expect(button).toBeDisabled();
+    await act(async () => resolve(response({ id: recordId, status: 'RECEIVED' })));
+    await screen.findByText('Purchase order marked received. Review the purchase order for stock-receipt details.');
+    await screen.findByText('Received', { selector: 'span' });
+    expect(screen.queryByRole('button', { name: 'Mark received' })).toBeNull();
+});
+
+it.each(['conflict', 'outage', 'mismatched acknowledgement'])('retains an uncertain receipt lock after %s across refreshes and offers review rather than blind retry', async failure => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mount();
+    const button = await screen.findByRole('button', { name: 'Mark received' });
+    m.fetch.mockResolvedValueOnce(failure === 'mismatched acknowledgement' ? response({ id: 'wrong', status: 'RECEIVED' }) : new Response('', { status: failure === 'conflict' ? 409 : 503 }));
+    fireEvent.click(button);
+    await screen.findByRole('alert');
+    expect(screen.getByRole('link', { name: 'Review purchase order' })).toHaveAttribute('href', `/inventory/purchase-orders/${recordId}`);
+    expect(screen.getByRole('button', { name: 'Receipt attempted' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh orders' }));
+    expect(await screen.findByRole('button', { name: 'Receipt attempted' })).toBeDisabled();
+    expect(m.fetch.mock.calls.filter(([, options]) => options.method === 'PUT')).toHaveLength(1);
+});
+
+it('surfaces receipt warnings without claiming all inventory updates succeeded', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mount();
+    const button = await screen.findByRole('button', { name: 'Mark received' });
+    m.fetch.mockResolvedValueOnce(response({ id: recordId, status: 'RECEIVED', _warnings: ['Remote stock acknowledgement unavailable'] }));
+    fireEvent.click(button);
+    await screen.findByText(/Marked received with warnings: Remote stock acknowledgement unavailable/);
+    expect(await screen.findByRole('button', { name: 'Receipt attempted' })).toBeDisabled();
+});
+
+it('aborts an old-account receipt and ignores its late acknowledgement', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const view = mount();
+    const button = await screen.findByRole('button', { name: 'Mark received' });
+    let resolve!: (value: Response) => void;
+    m.fetch.mockReturnValueOnce(new Promise(r => { resolve = r; }));
+    fireEvent.click(button);
+    const write = m.fetch.mock.calls.find(([, options]) => options.method === 'PUT')!;
+    m.account = { id: 'b' };
+    view.rerender(<MemoryRouter><PurchaseOrderList /></MemoryRouter>);
+    await screen.findByRole('button', { name: 'Mark received' });
+    const reads = m.fetch.mock.calls.length;
+    await act(async () => resolve(response({ id: recordId, status: 'RECEIVED' })));
+    expect(write[1].signal.aborted).toBe(true);
+    expect(screen.queryByText(/Purchase order marked received/)).toBeNull();
+    expect(m.fetch).toHaveBeenCalledTimes(reads);
 });

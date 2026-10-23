@@ -5,7 +5,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useScopedRequest } from '../../hooks/useScopedRequest';
-import { subscribeToCrossTabEvents } from '../../utils/productCrossTabEvents';
+import { useScopedMutation } from '../../hooks/useScopedMutation';
+import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../../utils/productCrossTabEvents';
 import { getSafeNavigationUrl } from '../../utils/url';
 import { isRecord } from '../../utils/responseValidation';
 import { formatDateSafe } from '../../utils/format';
@@ -35,6 +36,8 @@ function decode(value: unknown) {
     });
     return { orders, total: value.total as number, page: value.page as number, limit: value.limit as number };
 }
+type Order = ReturnType<typeof decode>['orders'][number];
+interface ReceiveControls { allowed: boolean; busy: boolean; attempted: ReadonlySet<string>; run: (row: Order) => void }
 
 export function PurchaseOrderList() {
     const { token, user } = useAuth(); const { currentAccount } = useAccount(); const { hasPermission } = usePermissions();
@@ -44,35 +47,62 @@ export function PurchaseOrderList() {
 
 function ScopedList({ token, accountId, canCreate }: { token: string; accountId: string; canCreate: boolean }) {
     const [page, setPage] = useState(1), [status, setStatus] = useState('');
+    const mutation = useScopedMutation();
+    // Retain attempted-row locks across paging/filtering/refreshes: an aborted request may have committed.
+    const [attempted, setAttempted] = useState<ReadonlySet<string>>(() => new Set());
+    const [revision, setRevision] = useState(0);
+    const [receipt, setReceipt] = useState<{ id: string; text: string } | null>(null);
+    const receive = async (row: Order) => {
+        if (!canCreate || row.status !== 'ORDERED' || attempted.has(row.id) || mutation.isPending()) return;
+        const label = row.number?.trim() || `unnumbered PO (${row.id.slice(0, 8).toUpperCase()})`;
+        if (!window.confirm(`Mark ${label} from ${row.supplier} as received? This runs the stock-receipt workflow and may update inventory. Confirm only after the goods have arrived.`)) return;
+        setAttempted(current => new Set([...current, row.id])); setReceipt(null);
+        const result = await mutation.run(async signal => {
+            const response = await fetch(`/api/inventory/purchase-orders/${encodeURIComponent(row.id)}`, { method: 'PUT', signal, headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId, 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'RECEIVED' }) });
+            if (!response.ok) throw new Error('Receipt unacknowledged');
+            const saved: unknown = await response.json();
+            if (!isRecord(saved) || saved.id !== row.id || saved.status !== 'RECEIVED' || saved._warnings !== undefined && (!Array.isArray(saved._warnings) || !saved._warnings.every(warning => typeof warning === 'string'))) throw new Error('Invalid receipt acknowledgement');
+            return (saved._warnings as string[] | undefined) ?? [];
+        }, 'Receipt outcome unconfirmed or blocked. Do not repeat this stock action; open the purchase order to review its status and receipt recovery.');
+        if (!mutation.isActive()) return;
+        if (!result.ok) { setReceipt({ id: row.id, text: '' }); return; }
+        setReceipt({ id: row.id, text: result.value.length ? `Marked received with warnings: ${result.value.join(' ')} Review the purchase order before taking further stock actions.` : 'Purchase order marked received. Review the purchase order for stock-receipt details.' });
+        setRevision(value => value + 1);
+        emitCrossTabEvent({ resource: 'purchase-order', type: 'status-updated', accountId, resourceId: row.id });
+    };
     return <div className="min-w-0 space-y-5 text-slate-900 dark:text-slate-100">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-            <label className={`${ui.label} w-full sm:w-48`}>Status<select className={ui.input} value={status} onChange={event => { setStatus(event.target.value); setPage(1); }}><option value="">All orders</option>{statuses.map(value => <option key={value} value={value}>{statusLabels[value]}</option>)}</select></label>
-            {canCreate && <Link className={ui.primary} to="/inventory/purchase-orders/new"><Plus size={16} aria-hidden="true" />New Purchase Order</Link>}
-        </div>
-        <DataNote title="Purchase-order amounts and dates">Order currency and actual receipt dates are unavailable. Amounts are not aggregated; a creation date does not establish when goods were received.</DataNote>
-        <Page key={`${status}-${page}`} token={token} accountId={accountId} page={page} status={status} setPage={setPage} />
+        {(mutation.error || receipt) && <div className={`${mutation.error ? ui.alert : ui.notice} space-y-2`}><p role={mutation.error ? 'alert' : 'status'}>{mutation.error || receipt?.text}</p>{receipt && <Link className={ui.link} to={`/inventory/purchase-orders/${encodeURIComponent(receipt.id)}`}>Review purchase order</Link>}</div>}
+        <Page key={`${status}-${page}-${revision}`} token={token} accountId={accountId} page={page} status={status} setStatus={value => { setStatus(value); setPage(1); }} setPage={setPage} receive={{ allowed: canCreate, busy: mutation.busy, attempted, run: row => { void receive(row); } }} />
     </div>;
 }
 
-function Page({ token, accountId, page, status, setPage }: { token: string; accountId: string; page: number; status: string; setPage: (page: number) => void }) {
+function Page({ token, accountId, page, status, setStatus, setPage, receive }: { token: string; accountId: string; page: number; status: string; setStatus: (status: string) => void; setPage: (page: number) => void; receive: ReceiveControls }) {
     const read = useScopedRequest(`/api/inventory/purchase-orders/overview?${new URLSearchParams({ page: String(page), limit: '25', ...(status ? { status } : {}) })}`, accountId, token, decode);
     const retry = read.retry;
     useEffect(() => subscribeToCrossTabEvents(event => { if (event.resource === 'purchase-order' && event.accountId === accountId) retry(); }), [accountId, retry]);
-    if (read.loading) return <div role="status" className={`${ui.card} flex items-center justify-center gap-2 py-12 text-sm text-slate-500 dark:text-slate-400`}><Loader2 size={18} aria-hidden="true" className="animate-spin motion-reduce:animate-none" />Loading purchase orders…</div>;
-    if (read.error || !read.data) return <div role="alert" className={`${ui.alert} flex flex-wrap items-center justify-between gap-3`}>Purchase orders unavailable. <button className={ui.secondary} type="button" onClick={read.retry}>Retry orders</button></div>;
-    if (read.data.page !== page || read.data.limit !== 25) return <p role="alert" className={ui.alert}>Page acknowledgement unavailable.</p>;
-    const data = read.data;
-    const summaries = [
+    const data = !read.loading && !read.error && read.data?.page === page && read.data.limit === 25 ? read.data : null;
+    const summaries = data ? [
         { label: 'Matching orders', value: data.total, Icon: Package, tone: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300' },
         { label: 'Ordered on this page', value: data.orders.filter(row => row.status === 'ORDERED').length, Icon: Clock, tone: 'bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-300' },
         { label: 'Drafts on this page', value: data.orders.filter(row => row.status === 'DRAFT').length, Icon: FileText, tone: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' },
         { label: 'Received on this page', value: data.orders.filter(row => row.status === 'RECEIVED').length, Icon: CheckCircle2, tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-300' },
-    ];
+    ] : [];
+    const toolbar = <>
+        <div aria-label="Purchase order filters and summary" className="flex min-w-0 flex-wrap items-end gap-3">
+            <label className={`${ui.label} w-full sm:w-40 sm:shrink-0`}>Status<select className={ui.input} value={status} onChange={event => setStatus(event.target.value)}><option value="">All orders</option>{statuses.map(value => <option key={value} value={value}>{statusLabels[value]}</option>)}</select></label>
+            {data && <dl aria-label="Purchase order summary" className="grid w-full min-w-0 grid-cols-2 gap-2 sm:grid-cols-4 xl:w-auto xl:min-w-[560px] xl:flex-1">{summaries.map(({ label, value, Icon, tone }) => <div className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-800" key={label}><span aria-hidden="true" className={`shrink-0 rounded-lg p-1.5 ${tone}`}><Icon size={15} /></span><div className="min-w-0"><dt className="text-[11px] leading-tight text-slate-500 dark:text-slate-400">{label}</dt><dd className="mt-0.5 text-base font-semibold leading-tight tabular-nums">{value.toLocaleString()}</dd></div></div>)}</dl>}
+            {receive.allowed && <Link className={`${ui.primary} sm:ml-auto`} to="/inventory/purchase-orders/new"><Plus size={16} aria-hidden="true" />New Purchase Order</Link>}
+        </div>
+        <DataNote title="Purchase-order amounts and dates">Order currency and actual receipt dates are unavailable. Amounts are not aggregated; a creation date does not establish when goods were received.</DataNote>
+    </>;
+    if (read.loading) return <>{toolbar}<div role="status" className={`${ui.card} flex items-center justify-center gap-2 py-12 text-sm text-slate-500 dark:text-slate-400`}><Loader2 size={18} aria-hidden="true" className="animate-spin motion-reduce:animate-none" />Loading purchase orders…</div></>;
+    if (read.error || !read.data) return <>{toolbar}<div role="alert" className={`${ui.alert} flex flex-wrap items-center justify-between gap-3`}>Purchase orders unavailable. <button className={ui.secondary} type="button" onClick={read.retry}>Retry orders</button></div></>;
+    if (!data) return <>{toolbar}<p role="alert" className={ui.alert}>Page acknowledgement unavailable.</p></>;
     return <>
-        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">{summaries.map(({ label, value, Icon, tone }) => <div className={`${ui.card} flex items-center gap-3 p-4`} key={label}><span aria-hidden="true" className={`rounded-xl p-2.5 ${tone}`}><Icon size={20} /></span><div className="min-w-0"><dt className={ui.muted}>{label}</dt><dd className="mt-1 text-2xl font-semibold tabular-nums">{value.toLocaleString()}</dd></div></div>)}</dl>
+        {toolbar}
         <section aria-label="Purchase orders" className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs dark:border-slate-700 dark:bg-slate-800">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-700"><p className={ui.muted}>{data.total} matching orders · page {page} · {data.orders.length} displayed</p><button className={`${ui.secondary} text-xs`} type="button" onClick={read.retry}><RefreshCw size={13} aria-hidden="true" />Refresh orders</button></div>
-            {!data.orders.length ? <div className="flex flex-col items-center gap-3 px-4 py-12 text-slate-400"><FileText size={32} aria-hidden="true" /><p className="text-sm">No orders on this page.</p></div> : <div className="overflow-x-auto"><table className={`${ui.table} min-w-[880px]`}><caption className="sr-only">Purchase orders, suppliers and delivery status</caption><thead className={ui.tableHead}><tr>{['Order', 'Supplier', 'Status', 'Order date', 'Expected', 'Source amount (currency unknown)', 'Tracking'].map(label => <th scope="col" className={`${ui.cell} font-medium ${label.startsWith('Source amount') ? 'max-w-40 text-right' : ''}`} key={label}>{label}</th>)}</tr></thead><tbody className={ui.tableBody}>{data.orders.map(row => {
+            {!data.orders.length ? <div className="flex flex-col items-center gap-3 px-4 py-12 text-slate-400"><FileText size={32} aria-hidden="true" /><p className="text-sm">No orders on this page.</p></div> : <div className="overflow-x-auto"><table className={`${ui.table} min-w-[880px]`}><caption className="sr-only">Purchase orders, suppliers and delivery status</caption><thead className={ui.tableHead}><tr>{['Order', 'Supplier', 'Status', 'Order date', 'Expected', 'Source amount (currency unknown)', 'Tracking', ...(receive.allowed ? ['Actions'] : [])].map(label => <th scope="col" className={`${ui.cell} font-medium ${label.startsWith('Source amount') ? 'max-w-40 text-right' : ''}`} key={label}>{label}</th>)}</tr></thead><tbody className={ui.tableBody}>{data.orders.map(row => {
                 const tracking = getSafeNavigationUrl(row.tracking);
                 const number = row.number?.trim();
                 return <tr key={row.id} className="transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-700/30">
@@ -83,6 +113,7 @@ function Page({ token, accountId, page, status, setPage }: { token: string; acco
                     <td className={`${ui.cell} whitespace-nowrap text-xs text-slate-500 dark:text-slate-400`}>{row.expected}</td>
                     <td className={`${ui.cell} text-right font-medium tabular-nums`}>{row.amount ?? 'Unavailable'}</td>
                     <td className={ui.cell}>{tracking ? <a className={`${ui.link} inline-flex items-center gap-1 whitespace-nowrap text-xs`} href={tracking} target="_blank" rel="noopener noreferrer">Track shipment<ExternalLink size={12} aria-hidden="true" /></a> : <span className={ui.muted}>—</span>}</td>
+                    {receive.allowed && <td className={ui.cell}>{row.status === 'ORDERED' ? <button className={`${ui.secondary} whitespace-nowrap text-xs`} type="button" disabled={receive.busy || receive.attempted.has(row.id)} onClick={() => receive.run(row)}><CheckCircle2 size={15} aria-hidden="true" />{receive.attempted.has(row.id) ? 'Receipt attempted' : 'Mark received'}</button> : <span className={ui.muted}>—</span>}</td>}
                 </tr>;
             })}</tbody></table></div>}
             <Pagination currentPage={page} totalPages={Math.ceil(data.total / 25)} onPageChange={setPage} />
