@@ -18,7 +18,7 @@ export class SyncService {
 
         Logger.info(`Dispatching Sync Jobs for Account ${accountId}`, { types, incremental });
 
-        // OOM prevention: trim bloated queues before adding new jobs (sync queues only)
+        // Observe backpressure without deleting previously admitted work.
         const SYNC_QUEUES = [
             QUEUES.ORDERS,
             QUEUES.PRODUCTS,
@@ -40,6 +40,15 @@ export class SyncService {
             const stableJobId = jobIdBase;
 
             const existingJob = await queue.getJob(stableJobId);
+            if (queueName === QUEUES.BOM_SYNC) {
+                const legacy = await queue.getJob(`bom_sync_${accountId.replace(/:/g, '_')}`);
+                for (const candidate of [existingJob, legacy]) {
+                    if (!candidate) continue;
+                    const state = await candidate.getState();
+                    if (['active', 'waiting', 'delayed', 'prioritized'].includes(state)) return;
+                    if (state !== 'completed') throw Object.assign(new Error('BOM sync requires reconciliation of the previous failed or stalled job before another run'), { statusCode: 409, code: 'BOM_SYNC_RECONCILIATION_REQUIRED', jobId: candidate.id });
+                }
+            }
 
             if (existingJob) {
                 const state = await existingJob.getState();
@@ -76,7 +85,7 @@ export class SyncService {
                 jobId: stableJobId,
                 priority,
                 removeOnComplete: true, // Ensure it clears after success to allow next run
-                removeOnFail: 100 // Keep failed for debugging
+                removeOnFail: false // Failed work is evidence, especially stock writes.
             });
             jobCount++;
         };

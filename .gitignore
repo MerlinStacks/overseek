@@ -28,9 +28,10 @@ yarn-error.log*
 api_logs.txt
 api-logs.txt
 
-# Ignore generated contents, not the directory path: staging tools may pass
-# output explicitly when recording deletion of a formerly tracked artifact.
-/output/*
+# Ignore generated files, but allow directory paths at every depth: staging
+# tools may pass these when deleting a formerly tracked artifact.
+/output/**
+!/output/**/
 # Debug & Build Output (development artifacts)
 build_output*.txt
 *_errors.txt

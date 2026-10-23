@@ -6,6 +6,7 @@ import { monitorEventLoopDelay } from 'perf_hooks';
 import { Logger } from './logger';
 import { getRuntimeMetricsSnapshot } from './runtimeMetrics';
 import { sendOperationalAlert } from '../services/OperationalAlertService';
+import { evaluateMemoryTrend } from './memoryTrend';
 
 let monitorInterval: NodeJS.Timeout | null = null;
 let latestSnapshot: MemorySnapshot | null = null;
@@ -129,11 +130,11 @@ function buildSnapshot(): MemorySnapshot {
 }
 
 function maybeWarnTrend(snapshot: MemorySnapshot): void {
-    const windowPoints = parsePositiveInt(
+    const windowPoints = Math.max(3, parsePositiveInt(
         process.env.MEMORY_MONITOR_TREND_WINDOW_POINTS,
         DEFAULT_TREND_WINDOW_POINTS,
         'MEMORY_MONITOR_TREND_WINDOW_POINTS'
-    );
+    ));
     const trendWarnMbPerMin = parsePositiveInt(
         process.env.MEMORY_MONITOR_TREND_WARN_MB_PER_MIN,
         DEFAULT_TREND_WARN_MB_PER_MIN,
@@ -147,28 +148,8 @@ function maybeWarnTrend(snapshot: MemorySnapshot): void {
     });
     while (heapHistory.length > windowPoints) heapHistory.shift();
 
-    if (heapHistory.length < 3) return;
-
-    const first = heapHistory[0];
-    const last = heapHistory[heapHistory.length - 1];
-    const elapsedMin = (last.ts - first.ts) / 60_000;
-    if (elapsedMin <= 0) return;
-
-    const heapSlope = (last.heapUsedMb - first.heapUsedMb) / elapsedMin;
-    const rssSlope = (last.rssMb - first.rssMb) / elapsedMin;
-
-    if (heapSlope >= trendWarnMbPerMin) {
-        Logger.warn('[MemoryMonitor] Potential memory leak trend detected', {
-            windowPoints: heapHistory.length,
-            elapsedMin: Math.round(elapsedMin * 10) / 10,
-            heapSlopeMbPerMin: Math.round(heapSlope * 100) / 100,
-            rssSlopeMbPerMin: Math.round(rssSlope * 100) / 100,
-            heapUsedMbStart: first.heapUsedMb,
-            heapUsedMbEnd: last.heapUsedMb,
-            rssMbStart: first.rssMb,
-            rssMbEnd: last.rssMb,
-        });
-    }
+    const trend = evaluateMemoryTrend(heapHistory, windowPoints, trendWarnMbPerMin);
+    if (trend) Logger.warn('[MemoryMonitor] Sustained heap growth observed', trend);
 }
 
 function maybeWriteHeapdump(snapshot: MemorySnapshot): void {
@@ -299,5 +280,7 @@ export function stopMemoryMonitor(): void {
         eventLoopDelayHistogram = null;
     }
 
+    heapHistory.length = 0;
+    latestSnapshot = null;
     Logger.info('[MemoryMonitor] Stopped');
 }

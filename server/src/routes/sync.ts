@@ -90,13 +90,17 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(400).send({ error: 'accountId mismatch' });
         }
 
-        syncService.runSync(accountId, {
-            types: types || ['orders', 'products', 'customers', 'reviews', 'pages', 'blog-posts'],
-            incremental: incremental !== false,
-            triggerSource: 'MANUAL'
-        }).catch(err => {
-            Logger.error('Background sync failed', { error: err });
-        });
+        try {
+            await syncService.runSync(accountId, {
+                types: types || ['orders', 'products', 'customers', 'reviews', 'pages', 'blog-posts'],
+                incremental: incremental !== false,
+                triggerSource: 'MANUAL'
+            });
+        } catch (err) {
+            if ((err as { code?: string }).code === 'BOM_SYNC_RECONCILIATION_REQUIRED') return reply.code(409).send({ error: (err as Error).message, code: 'BOM_SYNC_RECONCILIATION_REQUIRED' });
+            Logger.error('Sync queue admission failed', { error: err });
+            return reply.code(503).send({ error: 'Sync queue admission unavailable' });
+        }
 
         return { message: 'Sync started', status: 'IN_PROGRESS' };
     });
@@ -169,6 +173,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                             return reply.code(403).send({ error: 'Cannot cancel jobs for another account' });
                         }
                         const state = await job.getState();
+                        if (queueName === 'bom-inventory-sync' && state === 'failed') return reply.code(409).send({ error: 'Failed BOM stock-sync evidence must be reconciled, not removed through cancellation', code: 'BOM_SYNC_RECONCILIATION_REQUIRED' });
                         let cancellationRequested = state === 'active';
                         if (state === 'active') {
                             await SyncCancellationService.request(queueName, String(jobId));

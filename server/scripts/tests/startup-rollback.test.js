@@ -10,6 +10,7 @@ const migrationError = 'mock migration failure: P3009 requires migration repair'
 const migrate = `node ${path.resolve(__dirname, '../startup_migrations.js')}`;
 const push = 'npx prisma db push --config ./prisma/prisma.config.ts';
 const installer = `node ${path.resolve(__dirname, '../install_plugin_download.js')}`;
+const app = `node --disable-warning=DEP0040 ${path.resolve(__dirname, '../../dist/index.js')}`;
 
 // Run the real shell script with fake external commands, never Prisma or a DB.
 function runStartup(overrides = {}) {
@@ -29,6 +30,7 @@ esac`,
   */startup_migrations.js)
     if [ "$MIGRATE_STATUS" != 0 ]; then printf '%s\\n' '${migrationError}' >&2; fi
     exit "$MIGRATE_STATUS" ;;
+  "--disable-warning=DEP0040 "*/dist/index.js) exit 0 ;;
   *) exit "$INSTALL_STATUS" ;;
 esac`,
         npm: '[ "$*" = start ] || exit 98\nexit 0',
@@ -68,13 +70,13 @@ esac`,
 test('successful migrations install the plugin before normal application startup', () => {
     const result = runStartup();
     assert.equal(result.status, 0);
-    assert.deepEqual(result.commands, [migrate, installer, 'npm start']);
+    assert.deepEqual(result.commands, [migrate, installer, app]);
 });
 
 test('explicit recovery hold starts existing schema without running pending migrations or db push', () => {
     const result = runStartup({ MIGRATION_RECOVERY_MODE: 'hold', MIGRATE_STATUS: '1' });
     assert.equal(result.status, 0);
-    assert.deepEqual(result.commands, [installer, 'npm start']);
+    assert.deepEqual(result.commands, [installer, app]);
     assert.match(result.stdout, /RECOVERY HOLD/);
 });
 

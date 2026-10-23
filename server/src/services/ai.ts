@@ -14,8 +14,9 @@ async function boundedTool(work: Promise<unknown>, signal: AbortSignal) {
 }
 export class AIService {
     static async getModels(apiKey?: string) {
-        const data = z.object({ data: z.array(z.object({ id: modelId, name: z.string().max(300) })).max(5000) }).parse(await providerJson(AI_LIMITS.MODELS_ENDPOINT, { headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {} }, 8000000));
-        return data.data;
+        const data = z.object({ data: z.array(z.object({ id: modelId, name: z.string().max(300), supported_parameters: z.array(z.string()).max(200).optional() })).max(5000) }).parse(await providerJson(AI_LIMITS.MODELS_ENDPOINT, { headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {} }, 8000000));
+        return data.data.filter(model => model.supported_parameters?.includes('tools') || !model.supported_parameters && AI_LIMITS.TOOL_CAPABLE_MODELS.includes(model.id))
+            .map(({ id, name }) => ({ id, name }));
     }
     static async authorize(accountId: string, actorId?: string) {
         scopeId.parse(accountId); scopeId.parse(actorId);
@@ -32,7 +33,10 @@ export class AIService {
         const unavailable = (sources: unknown[] = []) => ({ reply: 'Analysis unavailable or incomplete. Do not infer store facts, profit or forecasts from missing observations. No automatic retry was performed.', sources, state: sources.length ? 'partial' as const : 'unavailable' as const });
         if (!account?.openRouterApiKey) return unavailable();
         const model = modelId.parse(account.aiModel || AI_LIMITS.DEFAULT_MODEL);
-        if (!AI_LIMITS.TOOL_CAPABLE_MODELS.includes(model)) return unavailable();
+        if (!AI_LIMITS.TOOL_CAPABLE_MODELS.includes(model)) {
+            try { if (!(await this.getModels(account.openRouterApiKey)).some(candidate => candidate.id === model)) return unavailable(); }
+            catch { return unavailable(); }
+        }
         const release = await claimProviderWork(accountId, 'chat', 5), deadline = AbortSignal.timeout(60000);
         const sources: unknown[] = [], calls = new Set<string>(); let work = 0;
         const messages: Record<string, unknown>[] = [

@@ -116,7 +116,13 @@ export class QueueFactory {
         });
 
         worker.on('failed', (job, err) => {
-            Logger.error(`Job ${job?.id} Failed`, { error: err.message });
+            Logger.error(`Job ${job?.id} Failed`, {
+                error: err.message, queueName: name, jobId: job?.id, accountId: job?.data?.accountId,
+                ...(name === QUEUES.BOM_SYNC && err.message.includes('stalled') ? {
+                    code: 'BOM_SYNC_RECONCILIATION_REQUIRED', progress: job?.progress,
+                    recovery: 'Worker lock was lost, possibly during deployment. Inspect acknowledged Woo stock writes and job progress before a reviewed new sync; do not blindly retry or remove this job.',
+                } : {}),
+            });
         });
 
         worker.on('error', (err) => {

@@ -2,6 +2,7 @@ import { prisma } from '../../../utils/prisma';
 import { getHistoricalSales } from './sales';
 import type { BOMComponentMapping } from './types';
 import { buildBOMComponentMappings } from './bomGraph';
+import { BOMForecastDataError } from './errors';
 
 export async function getBOMComponentMappings(accountId: string, productIds: string[], variationWooIds: number[],
     products: Array<{ id: string; wooId: number; isVariation?: boolean; productId?: string }>): Promise<BOMComponentMapping[]> {
@@ -9,11 +10,11 @@ export async function getBOMComponentMappings(accountId: string, productIds: str
     if (!productIds.length && !variationWooIds.length) return [];
     // Ancestors need not themselves be managed-stock rows. Read the bounded
     // account graph once and reject truncation rather than dropping demand.
-    const items = await prisma.bOMItem.findMany({ where: { bom: { product: { accountId } } },
+    const items = await prisma.bOMItem.findMany({ where: { isActive: true, bom: { product: { accountId } } },
         take: 10001, select: { isActive: true, supplierItemId: true, childProductId: true, childVariationId: true, internalProductId: true, quantity: true, wasteFactor: true,
         childProduct: { select: { id: true, accountId: true, wooId: true, boms: { select: { variationId: true } } } }, childVariation: { select: { id: true, productId: true, wooId: true } }, internalProduct: { select: { id: true, accountId: true } },
         bom: { select: { productId: true, variationId: true, product: { select: { accountId: true, wooId: true, boms: { select: { variationId: true } } } } } } } });
-    if (items.length > 10000) throw new Error('BOM forecast coverage limit exceeded');
+    if (items.length > 10000) throw new BOMForecastDataError('BOM forecast coverage limit exceeded');
     return buildBOMComponentMappings(accountId, items, productIds, variationWooIds, products);
 }
 

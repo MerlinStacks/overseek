@@ -192,7 +192,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
      * POST /bom/sync-all
      * Bulk sync ALL BOM parent products for the account to WooCommerce.
      */
-    fastify.post('/bom/sync-all', async (request, _reply) => {
+    fastify.post('/bom/sync-all', async (request, reply) => {
         const accountId = request.accountId!;
 
         const { QueueFactory, QUEUES } = await import('../../services/queue/QueueFactory');
@@ -228,6 +228,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
                         estimatedProducts: bomCount
                     };
                 }
+                if (state !== 'completed') return sendBomError(reply, 409, 'Previous BOM sync failed or stalled. Reconcile its stock writes and retained job progress before starting another run.', 'BOM_SYNC_RECONCILIATION_REQUIRED');
             }
         }
 
@@ -241,7 +242,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
             jobId,
             priority: 10,
             removeOnComplete: 20,
-            removeOnFail: 100
+            removeOnFail: false
         });
 
         Logger.info(`[BOMInventorySync] Dispatched queue job`, { accountId, jobId, bomCount });
@@ -282,6 +283,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
                     if (runningJobStates.includes(state)) {
                         return { isSyncing: true, state, progress };
                     }
+                    if (state === 'failed') return { isSyncing: false, state, progress, requiresReconciliation: true, code: 'BOM_SYNC_RECONCILIATION_REQUIRED' };
                 }
             }
             return { isSyncing: false, state: null };

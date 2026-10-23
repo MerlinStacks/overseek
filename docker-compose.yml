@@ -80,6 +80,8 @@ services:
   # For local builds: docker-compose.override.yml restores build: directives
   api:
     image: ${OVERSEEK_API_IMAGE:-ghcr.io/merlinstacks/overseek-api:latest}
+    # Longer than the application's two-minute drain deadline.
+    stop_grace_period: 150s
     ports:
       - "3000:3000"
     env_file:

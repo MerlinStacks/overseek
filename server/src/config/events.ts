@@ -5,6 +5,7 @@ import { Logger } from '../utils/logger';
 import { NotificationEngine } from '../services/NotificationEngine';
 import { drainCriticalEvents } from '../services/CriticalEventOutbox';
 import { prisma } from '../utils/prisma';
+import { shipmentAutomationContext } from '../services/shipping/shipmentContext';
 
 function subscribeAutomationTrigger(
     eventName: string,
@@ -46,12 +47,12 @@ export function subscribeEventBus(chatService: ChatService, automationEngine: Au
         previousStatus: data.previousStatus,
         newStatus: data.newStatus
     }), automationEngine);
-    subscribeAutomationTrigger(EVENTS.SHIPMENT.RECEIVED_BY_CARRIER, 'SHIPMENT_RECEIVED_BY_CARRIER', data => data.shipment, automationEngine);
-    subscribeAutomationTrigger(EVENTS.SHIPMENT.IN_TRANSIT, 'SHIPMENT_IN_TRANSIT', data => data.shipment, automationEngine);
-    subscribeAutomationTrigger(EVENTS.SHIPMENT.OUT_FOR_DELIVERY, 'SHIPMENT_OUT_FOR_DELIVERY', data => data.shipment, automationEngine);
-    subscribeAutomationTrigger(EVENTS.SHIPMENT.DELIVERY_ATTEMPTED, 'SHIPMENT_DELIVERY_ATTEMPTED', data => data.shipment, automationEngine);
-    subscribeAutomationTrigger(EVENTS.SHIPMENT.DELIVERED, 'SHIPMENT_DELIVERED', data => data.shipment, automationEngine);
-    subscribeAutomationTrigger(EVENTS.SHIPMENT.EXCEPTION, 'SHIPMENT_EXCEPTION', data => data.shipment, automationEngine);
+    subscribeAutomationTrigger(EVENTS.SHIPMENT.RECEIVED_BY_CARRIER, 'SHIPMENT_RECEIVED_BY_CARRIER', data => shipmentAutomationContext(data.shipment), automationEngine);
+    subscribeAutomationTrigger(EVENTS.SHIPMENT.IN_TRANSIT, 'SHIPMENT_IN_TRANSIT', data => shipmentAutomationContext(data.shipment), automationEngine);
+    subscribeAutomationTrigger(EVENTS.SHIPMENT.OUT_FOR_DELIVERY, 'SHIPMENT_OUT_FOR_DELIVERY', data => shipmentAutomationContext(data.shipment), automationEngine);
+    subscribeAutomationTrigger(EVENTS.SHIPMENT.DELIVERY_ATTEMPTED, 'SHIPMENT_DELIVERY_ATTEMPTED', data => shipmentAutomationContext(data.shipment), automationEngine);
+    subscribeAutomationTrigger(EVENTS.SHIPMENT.DELIVERED, 'SHIPMENT_DELIVERED', data => shipmentAutomationContext(data.shipment), automationEngine);
+    subscribeAutomationTrigger(EVENTS.SHIPMENT.EXCEPTION, 'SHIPMENT_EXCEPTION', data => shipmentAutomationContext(data.shipment), automationEngine);
     subscribeAutomationTrigger(EVENTS.ARTWORK.UPLOADED, 'ARTWORK_UPLOADED', data => data.artwork, automationEngine);
     // CK Workflow emits approval_requested when a proof is uploaded and sent to
     // the customer. Keep the more specific trigger while also treating it as an

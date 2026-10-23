@@ -8,6 +8,8 @@ describe the state at the time each record was written, not the current checkout
 
 ## Records
 
+- [Last 15 commits: regression audit](last-15-commits-regression-audit-2026-10-23.md)
+- [Regression fixes and startup recovery](regression-fixes-and-startup-recovery-2026-10-23.md)
 - [Analytics, delivery and telemetry](source-review-analytics-and-delivery.md)
 - [Authorized and durable writes](source-review-authorized-and-durable-writes.md)
 - [Content recovery and utility contracts](source-review-content-recovery-and-utility-contracts.md)

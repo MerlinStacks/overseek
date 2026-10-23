@@ -29,6 +29,8 @@ export function AISettings() {
     const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState('openai/text-embedding-3-small');
     const [models, setModels] = useState<AIModel[]>([]);
     const [isLoadingModels, setIsLoadingModels] = useState(false);
+    const [modelsLoaded, setModelsLoaded] = useState(false);
+    const [modelsError, setModelsError] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
     const [isEmbeddingOpen, setIsEmbeddingOpen] = useState(false);
@@ -64,6 +66,7 @@ export function AISettings() {
         model.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         model.id.toLowerCase().includes(searchQuery.toLowerCase())
     );
+    const selectedModelUnavailable = modelsLoaded && !models.some(model => model.id === selectedModel);
 
     useEffect(() => {
         const name = selectedModel === 'openai/gpt-4o'
@@ -87,6 +90,9 @@ export function AISettings() {
     }, [currentAccount]);
 
     useEffect(() => {
+        const controller = new AbortController();
+        let active = true;
+        setModels([]); setModelsLoaded(false); setModelsError('');
         const fetchModels = async () => {
             if (!accountId || !token) return;
             // Only fetch if we have a key saved (or maybe standard list?)
@@ -95,31 +101,39 @@ export function AISettings() {
             setIsLoadingModels(true);
             try {
                 const res = await fetch('/api/ai/models', {
+                    signal: controller.signal,
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'x-account-id': accountId
                     }
                 });
+                if (!res.ok) throw new Error('Model catalog unavailable');
                 if (res.ok) {
                     const data = await res.json();
-                    if (Array.isArray(data)) {
+                    if (!active) return;
+                    if (Array.isArray(data) && data.every(model => model && typeof model.id === 'string' && typeof model.name === 'string')) {
                         const sorted = (data as AIModel[]).sort((a, b) => a.id.localeCompare(b.id));
                         setModels(sorted);
-                    }
+                        setModelsLoaded(true);
+                    } else throw new Error('Invalid model catalog');
                 }
             } catch (e) {
+                if (!active) return;
+                setModelsError('Tool-capable model availability could not be checked. Retry after checking your connection and access.');
                 Logger.error('Failed to fetch models', { error: e });
             } finally {
-                setIsLoadingModels(false);
+                if (active) setIsLoadingModels(false);
             }
         };
 
         // Fetch on mount
         fetchModels();
+        return () => { active = false; controller.abort(); };
     }, [accountId, token]); // Only re-fetch if account changes
 
     const handleSave = async () => {
         if (!currentAccount || !token) return;
+        if (selectedModelUnavailable) { toast.error('Choose an available tool-capable chat model before saving.'); return; }
         setIsSaving(true);
         try {
             const res = await fetch(`/api/accounts/${currentAccount.id}`, {
@@ -249,6 +263,12 @@ export function AISettings() {
                     </div>
                 </div>
 
+                <div className="text-sm text-gray-500 dark:text-slate-400 sm:col-span-2">
+                    <p>Chat models are checked against the provider’s tool-support metadata, not a fixed vendor list.</p>
+                    {modelsError && <p role="alert">{modelsError}</p>}
+                    {selectedModelUnavailable && <p role="alert">The saved chat model ({selectedModel}) is not in the current tool-capable catalog. Select an available model; your saved setting has not been changed automatically.</p>}
+                </div>
+
                 {/* Embedding Model Selector */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
@@ -297,7 +317,7 @@ export function AISettings() {
             <div className="flex justify-end pt-4">
                 <button
                     onClick={handleSave}
-                    disabled={isSaving}
+                    disabled={isSaving || selectedModelUnavailable}
                     className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
                 >
                     {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}

@@ -180,7 +180,16 @@ describe('BOM local preview', () => {
         const response = await app.inject({ method: 'POST', url: '/bom/sync-all' });
         expect(response.json()).toMatchObject({ status: 'queued', jobId: 'bom_sync_account_one' });
         expect(mocks.queue.add).toHaveBeenCalledWith('bom-inventory-sync', { accountId: 'account:one' },
-            expect.objectContaining({ jobId: 'bom_sync_account_one' }));
+            expect.objectContaining({ jobId: 'bom_sync_account_one', removeOnFail: false }));
+    });
+    it.each(['bom_sync_account_one', 'sync_bom_account_one'])('preserves failed stock-write evidence and surfaces reconciliation at %s', async id => {
+        const job = { getState: vi.fn().mockResolvedValue('failed'), remove: vi.fn(), progress: { current: 2, total: 3, failed: 1 } };
+        mocks.queue.getJob.mockImplementation(async key => key === id ? job : null);
+        const response = await app.inject({ method: 'POST', url: '/bom/sync-all' });
+        expect(response.statusCode).toBe(409);
+        expect(response.json().code).toBe('BOM_SYNC_RECONCILIATION_REQUIRED');
+        expect(job.remove).not.toHaveBeenCalled(); expect(mocks.queue.add).not.toHaveBeenCalled();
+        expect((await app.inject('/bom/sync-status')).json()).toMatchObject({ isSyncing: false, state: 'failed', requiresReconciliation: true, progress: { current: 2, total: 3 } });
     });
 
     it('checks shared running work even when a completed legacy job exists', async () => {

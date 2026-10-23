@@ -29,8 +29,8 @@ export const AI_LIMITS = {
     API_ENDPOINT: 'https://openrouter.ai/api/v1/chat/completions',
     /** OpenRouter models endpoint */
     MODELS_ENDPOINT: 'https://openrouter.ai/api/v1/models',
-    /** Explicit configured tool-capable model IDs. Not a guarantee of provider
-     * availability; unsupported/unknown IDs are unavailable, never prefix-inferred. */
+    /** Known tool-capable fallback IDs. Other models use the provider catalog's
+     * explicit tools metadata, never vendor-prefix inference. Availability is not guaranteed. */
     TOOL_CAPABLE_MODELS: [
         'openai/gpt-4o',
         'openai/gpt-4o-mini',
@@ -43,7 +43,7 @@ export const SCHEDULER_LIMITS = {
     /** Interval for automation ticker in milliseconds (60 seconds) */
     TICKER_INTERVAL_MS: 60_000,
     /** Graceful shutdown timeout in milliseconds */
-    SHUTDOWN_TIMEOUT_MS: 10_000,
+    SHUTDOWN_TIMEOUT_MS: 120_000,
     /** Fast order sync interval in milliseconds (30 seconds) */
     FAST_SYNC_INTERVAL_MS: 30_000,
     /** Full sync cron pattern (every 5 minutes) */

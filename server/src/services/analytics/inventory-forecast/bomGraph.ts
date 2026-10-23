@@ -1,5 +1,5 @@
 import type { BOMComponentMapping } from './types';
-import { BOMForecastCycleError } from './errors';
+import { BOMForecastCycleError, BOMForecastDataError } from './errors';
 
 interface Product { id: string; wooId: number; isVariation?: boolean; productId?: string }
 interface RecipeProduct { accountId: string; wooId: number; boms: Array<{ variationId: number }> }
@@ -21,6 +21,9 @@ const internalKey = (id: string) => JSON.stringify(['internal', id]);
 
 /** Gross replenishment demand only. Never changes operational stock deductions. */
 export function buildBOMComponentMappings(accountId: string, items: BOMPlanningItem[], productIds: string[], variationWooIds: number[], products: Product[]): BOMComponentMapping[] {
+    // Disabled lines are not part of the current recipe, just as in operational
+    // stock calculation. Validate every reachable ACTIVE reference fail-closed.
+    items = items.filter(item => item.isActive !== false);
     type Parent = BOMComponentMapping['parentMappings'][number];
     const recipes = new Set(items.map(item => productKey(item.bom.productId, item.bom.variationId)));
     const targets = new Map<string, { id: string; wooId: number }>();
@@ -33,7 +36,7 @@ export function buildBOMComponentMappings(accountId: string, items: BOMPlanningI
     }
     for (const wooId of new Set(variationWooIds)) {
         const variant = variants.get(wooId);
-        if (!variant?.productId) throw new Error('BOM component variation unresolved');
+        if (!variant?.productId) throw new BOMForecastDataError('BOM component variation unresolved');
         targets.set(productKey(variant.productId, wooId), { id: variant.id, wooId });
     }
     const incoming = new Map<string, BOMPlanningItem[]>();
@@ -59,15 +62,15 @@ export function buildBOMComponentMappings(accountId: string, items: BOMPlanningI
     for (let index = 0; index < queue.length; index++) {
         const key = queue[index];
         for (const item of incoming.get(key) || []) {
-            if ([item.childProductId, item.internalProductId, item.supplierItemId].filter(Boolean).length !== 1) throw new Error('BOM forecast incomplete: ambiguous component reference');
-            if (!item.isActive || item.bom.product.accountId !== accountId || item.childProduct && item.childProduct.accountId !== accountId || item.internalProduct && item.internalProduct.accountId !== accountId) throw new Error('BOM forecast incomplete: inactive/foreign component');
-            if (item.childProductId && (!item.childProduct || item.childProduct.id !== item.childProductId) || item.internalProductId && (!item.internalProduct || item.internalProduct.id !== item.internalProductId)) throw new Error('BOM component unresolved');
-            if (item.childVariationId && (!item.childVariation || item.childVariation.productId !== item.childProductId || item.childVariation.wooId !== item.childVariationId)) throw new Error('BOM component variation unresolved');
+            if ([item.childProductId, item.internalProductId, item.supplierItemId].filter(Boolean).length !== 1) throw new BOMForecastDataError('BOM forecast incomplete: ambiguous component reference');
+            if (!item.isActive || item.bom.product.accountId !== accountId || item.childProduct && item.childProduct.accountId !== accountId || item.internalProduct && item.internalProduct.accountId !== accountId) throw new BOMForecastDataError('BOM forecast incomplete: foreign or invalid active component');
+            if (item.childProductId && (!item.childProduct || item.childProduct.id !== item.childProductId) || item.internalProductId && (!item.internalProduct || item.internalProduct.id !== item.internalProductId)) throw new BOMForecastDataError('BOM component unresolved');
+            if (item.childVariationId && (!item.childVariation || item.childVariation.productId !== item.childProductId || item.childVariation.wooId !== item.childVariationId)) throw new BOMForecastDataError('BOM component variation unresolved');
             const target = targets.get(key);
-            if (target && item.childVariationId && target.id !== item.childVariation?.id) throw new Error('BOM component variation unresolved');
+            if (target && item.childVariationId && target.id !== item.childVariation?.id) throw new BOMForecastDataError('BOM component variation unresolved');
             if (target && item.childProduct && !item.childVariationId) target.wooId = item.childProduct.wooId;
             const quantity = Number(item.quantity); const waste = Number(item.wasteFactor);
-            if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(waste) || waste < 0 || waste > 1) throw new Error('Invalid BOM demand quantity/waste');
+            if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(waste) || waste < 0 || waste > 1) throw new BOMForecastDataError('Invalid BOM demand quantity/waste');
             const parent = productKey(item.bom.productId, item.bom.variationId);
             parents.set(parent, { parentProductId: item.bom.productId, parentWooId: item.bom.product.wooId,
                 parentVariationId: item.bom.variationId, quantity: 1, wasteFactor: 0,
@@ -90,9 +93,9 @@ export function buildBOMComponentMappings(accountId: string, items: BOMPlanningI
             if (!weights.has(edge.parent)) weights.set(edge.parent, new Map());
             const next = weights.get(edge.parent)!;
             for (const [target, coefficient] of weights.get(key) || []) {
-                if (!next.has(target) && ++contributions > 100000) throw new Error('BOM forecast coverage limit exceeded');
+                if (!next.has(target) && ++contributions > 100000) throw new BOMForecastDataError('BOM forecast coverage limit exceeded');
                 const total = (next.get(target) || 0) + coefficient * edge.factor;
-                if (!Number.isFinite(total)) throw new Error('BOM demand overflow');
+                if (!Number.isFinite(total)) throw new BOMForecastDataError('BOM demand overflow');
                 next.set(target, total);
             }
             pending.set(edge.parent, pending.get(edge.parent)! - 1);

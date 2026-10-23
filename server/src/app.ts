@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-import Fastify, { FastifyError } from 'fastify';
+import Fastify, { FastifyError, LogController } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
@@ -27,7 +27,7 @@ const automationEngine = new AutomationEngine();
 
 const fastify = Fastify({
     logger: fastifyLoggerConfig,
-    disableRequestLogging: true,
+    logController: new LogController({ disableRequestLogging: true }),
     trustProxy: true,
 });
 

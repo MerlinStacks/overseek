@@ -76,4 +76,15 @@ describe('SyncService dispatch', () => {
         });
         expect(mocks.queue.add.mock.calls[0][2].priority).toBe(10);
     });
+    it('retains failed/stalled BOM jobs rather than automatically replaying stock writes', async () => {
+        const job = { id: 'sync_bom_account-1', getState: vi.fn().mockResolvedValue('failed'), remove: vi.fn() };
+        mocks.queue.getJob.mockResolvedValue(job);
+        await expect(new SyncService().runSync('account-1', { types: ['bom'] })).rejects.toMatchObject({ code: 'BOM_SYNC_RECONCILIATION_REQUIRED', statusCode: 409 });
+        expect(job.remove).not.toHaveBeenCalled(); expect(mocks.queue.add).not.toHaveBeenCalled();
+    });
+    it('keeps failed job evidence for new sync jobs', async () => {
+        mocks.queue.getJob.mockResolvedValue(null);
+        await new SyncService().runSync('account-1', { types: ['bom'] });
+        expect(mocks.queue.add.mock.calls[0][2].removeOnFail).toBe(false);
+    });
 });

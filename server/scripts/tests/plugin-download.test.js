@@ -158,7 +158,8 @@ test('Docker context exceptions and production COPY/startup wiring are narrowly 
     assert.ok(docker.includes('ENV OVERSEEK_REQUIRE_PLUGIN_DOWNLOAD=1'));
     const start = fs.readFileSync(path.join(root, 'server/start.sh'), 'utf8');
     assert.ok(start.indexOf('install_plugin_download.js') > start.indexOf('[Startup] Database ready.'));
-    assert.ok(start.indexOf('install_plugin_download.js') < start.indexOf('exec npm start'));
+    assert.ok(start.indexOf('install_plugin_download.js') < start.indexOf('exec node --disable-warning=DEP0040'));
+    assert.ok(!start.includes('exec npm start'), 'Node must receive shutdown signals directly');
     const installer = fs.readFileSync(path.join(root, 'server/scripts/install_plugin_download.js'), 'utf8');
     const imports = [...installer.matchAll(/require\('([^']+)'\)/g)].map(match => match[1]);
     assert.ok(imports.every(name => name.startsWith('node:')));

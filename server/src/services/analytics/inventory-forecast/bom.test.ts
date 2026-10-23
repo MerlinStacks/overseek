@@ -8,12 +8,12 @@ beforeEach(() => { vi.resetAllMocks(); m.items.mockResolvedValue([item()]); m.sa
 describe('scoped explicit BOM demand support', () => {
     it('scopes SQL before reading and excludes overrides from default-parent demand', async () => {
         const mappings = await getBOMComponentMappings('tenant', ['child'], [], []); expect(m.items.mock.calls[0][0].where.bom.product.accountId).toBe('tenant');
-        expect(m.items.mock.calls[0][0]).toMatchObject({ take: 10001 });
+        expect(m.items.mock.calls[0][0]).toMatchObject({ take: 10001, where: { isActive: true } });
         expect(mappings[0].componentWooId).toBe(2);
         expect(mappings[0].parentMappings[0].excludedVariationIds).toEqual([10]); expect((await calculateBOMDerivedDemand('tenant', mappings, 30)).get('child')).toBeCloseTo(2.2); expect(m.sales.mock.calls[0][4]).toEqual({ 1: [10] });
     });
-    it('refuses inactive planning instead of silently omitting demand', async () => {
-        m.items.mockResolvedValue([{ ...item(), isActive: false }]); await expect(getBOMComponentMappings('tenant', ['child'], [], [])).rejects.toThrow('inactive');
+    it('excludes disabled recipe lines consistently with stock calculation', async () => {
+        m.items.mockResolvedValue([{ ...item(), isActive: false }]); await expect(getBOMComponentMappings('tenant', ['child'], [], [])).resolves.toEqual([]);
     });
     it('includes upstream demand even when assemblies are not managed-stock rows', async () => {
         m.items.mockResolvedValue([item(), { ...item(), childProductId: 'parent', childProduct: { id: 'parent', accountId: 'tenant', wooId: 1, boms: [{ variationId: 0 }] }, quantity: 3, wasteFactor: 0.2, bom: { productId: 'root', variationId: 0, product: { accountId: 'tenant', wooId: 3, boms: [] } } }]);

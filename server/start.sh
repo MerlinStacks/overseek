@@ -73,4 +73,6 @@ node "$(dirname "$0")/scripts/install_plugin_download.js"
 # Respect preconfigured NODE_OPTIONS from Compose/env; default to 6GB.
 echo "[Startup] Starting Node.js application..."
 export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=6144}"
-exec npm start
+# Node must receive Docker's SIGTERM directly so workers keep renewing locks
+# while graceful shutdown drains them. An npm/shell parent can strand active jobs.
+exec node --disable-warning=DEP0040 "$(dirname "$0")/dist/index.js"

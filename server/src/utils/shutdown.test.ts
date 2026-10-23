@@ -33,7 +33,7 @@ describe('graceful shutdown ordering', () => {
         const { initGracefulShutdown } = await import('./shutdown');
         const close = vi.fn(); initGracefulShutdown({ close } as unknown as Server);
         void listeners.get('SIGTERM')!(); await listeners.get('SIGINT')!();
-        await vi.advanceTimersByTimeAsync(60000);
+        await vi.advanceTimersByTimeAsync(120000);
         expect(close).toHaveBeenCalledOnce(); expect(process.exit).toHaveBeenCalledWith(1); expect(mocks.disconnect).not.toHaveBeenCalled();
     });
 });

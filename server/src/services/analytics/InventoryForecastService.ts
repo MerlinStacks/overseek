@@ -13,7 +13,7 @@ import type {
 import { getManagedStockProducts, getOrderedInventory } from './inventory-forecast/queries';
 import { getHistoricalSales } from './inventory-forecast/sales';
 import { getBOMComponentMappings, calculateBOMDerivedDemand } from './inventory-forecast/bom';
-import { BOMForecastCycleError } from './inventory-forecast/errors';
+import { BOMForecastDataError } from './inventory-forecast/errors';
 import {
     calculateProductSeasonality,
     aggregateToDailySales,
@@ -146,7 +146,7 @@ export class InventoryForecastService {
 
             return sortByRisk(forecasts);
         } catch (error) {
-            if (error instanceof BOMForecastCycleError) throw error;
+            if (error instanceof BOMForecastDataError) throw error;
             Logger.error('[InventoryForecastService] Error generating SKU forecasts', { error, accountId });
             throw error;
         }
@@ -198,7 +198,7 @@ export class InventoryForecastService {
 
             return { ...forecast, forecastCurve, historicalDemand };
         } catch (error) {
-            if (error instanceof BOMForecastCycleError) throw error;
+            if (error instanceof BOMForecastDataError) throw error;
             Logger.error('[InventoryForecastService] Error getting SKU detail', { error, accountId, wooId });
             throw error;
         }

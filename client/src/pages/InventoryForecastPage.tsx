@@ -265,7 +265,7 @@ export function InventoryForecastPage() {
             <div className="flex justify-between items-end border-b pb-4">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Inventory Forecasts</h1>
-                    <p className="text-sm text-gray-500">AI-powered demand prediction & stockout alerts</p>
+                    <p className="text-sm text-gray-500">Demand prediction & stockout alerts from synced sales and active BOM recipes</p>
                 </div>
                 <button
                     onClick={fetchData}
@@ -274,6 +274,8 @@ export function InventoryForecastPage() {
                     <RefreshCw size={16} /> Refresh
                 </button>
             </div>
+
+            <p className="text-sm text-gray-500 dark:text-slate-400">BOM demand uses active component lines only. Disabled lines are excluded, as in stock calculation. Review disabled components before using forecasts for purchasing; these estimates do not certify recipe completeness.</p>
 
             {/* Critical Alert Banner */}
             {alerts && alerts.summary.criticalCount > 0 && (

@@ -114,13 +114,16 @@ describe('bounded multi-level gross BOM planning', () => {
     it.each([-1, 1.1, NaN, Infinity])('rejects invalid waste %s', waste => {
         expect(() => plan([edge('root', 'leaf', 1, waste)])).toThrow('quantity/waste');
     });
-    it('rejects foreign, inactive, missing and ambiguous references rather than lowering demand', () => {
+    it('rejects foreign, missing and ambiguous ACTIVE references rather than lowering demand', () => {
         const foreign = edge('root', 'leaf'); foreign.childProduct!.accountId = 'other';
         const foreignParent = edge('root', 'leaf'); foreignParent.bom.product.accountId = 'other';
-        const inactive = { ...edge('root', 'leaf'), isActive: false };
         const missing = { ...edge('root', 'leaf'), childProduct: null };
         const ambiguous = { ...edge('root', 'leaf'), supplierItemId: 'also-cost' };
-        for (const line of [foreign, foreignParent, inactive, missing, ambiguous]) expect(() => plan([line])).toThrow();
+        for (const line of [foreign, foreignParent, missing, ambiguous]) expect(() => plan([line])).toThrow();
+    });
+    it('ignores disabled legacy lines, including their unresolved references and disconnected cycles', () => {
+        const disabled = { ...edge('old', 'leaf', 99), isActive: false, childProduct: null };
+        expect(factors([edge('root', 'leaf', 2), disabled, { ...edge('old', 'old'), isActive: false }])).toEqual({ 'root:0': 2 });
     });
     it('rejects overflowing multipliers', () => {
         expect(() => plan([edge('a', 'leaf', 1e200), edge('root', 'a', 1e200)])).toThrow('overflow');
