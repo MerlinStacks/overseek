@@ -9,6 +9,7 @@ on:
       - 'server/scripts/tests/plugin-package.test.js'
       - 'server/scripts/tests/plugin-download.test.js'
       - 'server/uploads/plugins/overseek-wc-plugin*'
+      - 'client/src/utils/pluginRelease.ts'
       - 'server/Dockerfile'
       - 'server/start.sh'
       - '.dockerignore'
@@ -23,6 +24,7 @@ on:
       - 'server/scripts/tests/plugin-package.test.js'
       - 'server/scripts/tests/plugin-download.test.js'
       - 'server/uploads/plugins/overseek-wc-plugin*'
+      - 'client/src/utils/pluginRelease.ts'
       - 'server/Dockerfile'
       - 'server/start.sh'
       - '.dockerignore'
@@ -200,6 +202,19 @@ jobs:
           reports=("$OVERSEEK_NATIVE_ARTIFACT_DIR"/overseek-native-*)
           test "${#reports[@]}" -eq 1
           node --experimental-strip-types overseek-wc-plugin/tests/delivery-native-artifacts.mjs "${reports[0]}" 2>&1 | tee "$OVERSEEK_NATIVE_ARTIFACT_DIR/shared-core.log"
+
+      - name: Verify in-place upgrade preserves existing store data
+        env:
+          OVERSEEK_RUN_DISPOSABLE_DB_TESTS: '1'
+        run: |
+          # Retain the immutable previous release; never rebuild old-version bytes.
+          git fetch --no-tags --depth=1 origin 683d9677c89070c2b571c91ded0820fce004a34e
+          git show 683d9677c89070c2b571c91ded0820fce004a34e:server/uploads/plugins/overseek-wc-plugin.zip > "$RUNNER_TEMP/overseek-previous.zip"
+          echo "0238cdf11427b1f39325109c410794890d6c26c6c2511aa4306c8e7ced8b165b  $RUNNER_TEMP/overseek-previous.zip" | sha256sum --check
+          wp plugin install "$RUNNER_TEMP/overseek-previous.zip" --path=wordpress --force --activate
+          wp eval-file overseek-wc-plugin/tests/plugin-upgrade.php seed --path=wordpress --use-include
+          wp plugin install "$RUNNER_TEMP/plugin-package/overseek-wc-plugin.zip" --path=wordpress --force --activate
+          wp eval-file overseek-wc-plugin/tests/plugin-upgrade.php verify --path=wordpress --use-include
 
       - name: Upload native reports and package manifest (including failures)
         if: always()

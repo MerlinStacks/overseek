@@ -14,6 +14,9 @@ test('release pins and packaged manifest match the current plugin source', () =>
     assert.equal(RELEASE.version, source.version);
     assert.equal(packaged.version, source.version);
     assert.deepEqual(packaged.files, source.files);
+    const client = fs.readFileSync(path.join(root, 'client/src/utils/pluginRelease.ts'), 'utf8');
+    assert.equal(client.match(/version: '([^']+)'/)?.[1], RELEASE.version);
+    assert.equal(client.match(/sha256: '([^']+)'/)?.[1], RELEASE.zip);
 });
 
 function fixture(t) {

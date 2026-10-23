@@ -105,6 +105,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify packaged companion release before publishing API
+        run: node --test server/scripts/tests/plugin-package.test.js server/scripts/tests/plugin-download.test.js
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:

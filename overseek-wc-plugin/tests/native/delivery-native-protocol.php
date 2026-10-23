@@ -70,7 +70,10 @@ function overseek_native_protocol(OverSeek_Native_Fixture $f): void {
  $f->check($adapter->calculate($cart,[$rate],new DateTimeImmutable('+25 hours',new DateTimeZone('UTC')))['status']==='unavailable','Expired proof input unavailable');
  $f->control('disable');$f->check($storage->read_settings()['payload']['enabled']===true,'Explicit disable tested while settings remain enabled');
  $f->check(!OverSeek_Delivery_Storefront_Gate::is_active(),'Explicit disable closes gate independently of enabled settings');
- $f->activate();activate_plugin($d['old_plugin']);$f->check(!OverSeek_Delivery_Storefront_Gate::is_active(),'Old-plugin fingerprint invalidates already-active gate');
+  // The coexistence check above leaves this fixture active. Exercise real
+  // transitions: activating an already-active plugin is deliberately a no-op.
+  $f->activate();deactivate_plugins($d['old_plugin']);$f->check(!OverSeek_Delivery_Storefront_Gate::is_active(),'Old-plugin deactivation invalidates already-active gate');
+  $f->activate();activate_plugin($d['old_plugin']);$f->check(!OverSeek_Delivery_Storefront_Gate::is_active(),'Old-plugin activation invalidates already-active gate');
  $f->control('disable');deactivate_plugins($d['old_plugin']);$f->activate();
  $f->save();
 }

@@ -13,11 +13,13 @@ final class OverSeek_Delivery_Render_Token {
 		$inputs = $wpdb->prefix . 'overseek_delivery_inputs';
 		$guards = $wpdb->prefix . 'overseek_receipt_guards';
 		$sql = $wpdb->prepare(
-			"SELECT 'input' AS kind, CONCAT(scope,':',entity_id) AS identity, CAST(revision AS CHAR) AS a, payload_hash AS b,
+			// ASCII receipt identities/hashes and store-collated postmeta must share
+			// an explicit comparison collation across the UNION (also on MariaDB).
+			"SELECT 'input' AS kind, CONVERT(CONCAT(scope,':',entity_id) USING utf8mb4) COLLATE utf8mb4_bin AS identity, CAST(revision AS CHAR) AS a, CONVERT(payload_hash USING utf8mb4) COLLATE utf8mb4_bin AS b,
 			CASE WHEN scope='inbound' THEN JSON_UNQUOTE(JSON_EXTRACT(payload,'$.generatedAt')) ELSE '' END AS c,
 			CASE WHEN scope='inbound' THEN JSON_UNQUOTE(JSON_EXTRACT(payload,'$.expiresAt')) ELSE '' END AS d
 			FROM {$inputs} WHERE account_id=%s AND ((entity_id=0 AND scope IN ('control','settings')) OR (entity_id IN ({$list}) AND scope IN ('product','inbound')))
-			UNION ALL SELECT 'guard', CAST(owner_id AS CHAR), operation_id, CAST(sequence AS CHAR), CAST(guard_active AS CHAR), ''
+			UNION ALL SELECT 'guard', CAST(owner_id AS CHAR), CONVERT(operation_id USING utf8mb4) COLLATE utf8mb4_bin, CAST(sequence AS CHAR), CAST(guard_active AS CHAR), ''
 			FROM {$guards} WHERE account_id=%s AND owner_id IN ({$list})
 			UNION ALL SELECT 'stock', CONCAT(post_id,':',meta_id), meta_key, meta_value, '', ''
 			FROM {$wpdb->postmeta} WHERE post_id IN ({$list}) AND meta_key IN ('_stock','_stock_status','_manage_stock','_backorders')

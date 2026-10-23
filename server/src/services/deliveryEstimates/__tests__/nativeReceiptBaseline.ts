@@ -14,6 +14,8 @@ export async function extendNativeReceiptBaseline(db: any) {
             ADD COLUMN "merchantCenterScore" int, ADD COLUMN "merchantCenterIssues" jsonb, ADD COLUMN "binLocation" text,
             ADD COLUMN "baseTurnaroundDays" int, ADD COLUMN "stockQuantity" int DEFAULT 10,
             ADD COLUMN "createdAt" timestamp DEFAULT now(), ADD COLUMN "updatedAt" timestamp DEFAULT now(),
+            ADD COLUMN "embeddingSourceVersion" timestamp(3), ADD COLUMN "embeddingModelId" text,
+            ADD COLUMN "embeddingDimensions" int,
             ADD UNIQUE ("accountId","wooId");
         ALTER TABLE "ProductVariation"
             ADD COLUMN sku text, ADD COLUMN price numeric DEFAULT 0, ADD COLUMN "salePrice" numeric,

@@ -39,6 +39,7 @@ All notable changes to this project will be documented in this file.
 - Isolated customer catalog viewer using rasterized pages and thumbnails without a public PDF, print, or download control
 
 ### Fixed
+- Restore delivery CI against the current Prisma schema and publish companion 2.25.10 with matching server/client download pins. Normalize delivery-cache UNION collations without data changes; verify in-place plugin upgrades preserve settings, stock and purchase metadata.
 - WooCommerce companion 2.25.9: preserve Google gclid/gbraid/wbraid types and capture stream-specific GA4 sessions from GS1/GS2 cookies without changing Meta cookies, values or deduplication IDs. Deploy the matching server update for Google upload fields, GA4 session matching and read-only purchase-goal/value diagnostics. Release notes use WordPress's native Changelog section, with no embedded frame.
 - WooCommerce companion 2.25.7: use customer-facing order-received links for Blocks purchases, suppress identical checkout starts across capture paths for 30 minutes within a WooCommerce session, and exclude background requests from cart/checkout views. Preserve classic checkout support; historical visitor-log entries are unchanged.
 - WooCommerce companion 2.25.6: repair Meta AddToCart browser/server event IDs, prevent checkout-ID reuse, include quantities in browser values, and validate browser Purchase values/currencies without fabricating zero revenue. Preserve the SLDevs updater from published 2.25.5.

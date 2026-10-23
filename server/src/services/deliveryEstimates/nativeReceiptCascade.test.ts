@@ -63,6 +63,22 @@ describe.skipIf(!process.env.DELIVERY_FRESHNESS_TEST_DATABASE_URL)('native 13-mi
             INSERT INTO "BOMItem" (id,"bomId","isActive",quantity,"childProductId") VALUES ('item','bom',true,2,'component')`);
     }
 
+    it('upgrades existing products with unknown embedding provenance without changing stock or source data', async () => {
+        const historical = await openNativeDeliveryDatabase();
+        try {
+            await historical.db.exec(`INSERT INTO "WooProduct" (id,"accountId","wooId","manageStock","rawData")
+                VALUES ('existing','a',99,true,'{"stock_quantity":17}');`);
+            await historical.db.exec(await readFile('prisma/migrations/20261022120000_embedding_provenance/migration.sql', 'utf8'));
+            expect(await historical.client.wooProduct.findUniqueOrThrow({ where: { id: 'existing' }, select: {
+                id: true, accountId: true, wooId: true, manageStock: true, rawData: true,
+                embeddingSourceVersion: true, embeddingModelId: true, embeddingDimensions: true,
+            } })).toEqual({ id: 'existing', accountId: 'a', wooId: 99, manageStock: true,
+                rawData: { stock_quantity: 17 }, embeddingSourceVersion: null, embeddingModelId: null, embeddingDimensions: null });
+        } finally {
+            await historical.close();
+        }
+    });
+
     it('records a real parent-owned variation receipt under the repaired CHECK and rolls back stock/ledger atomically', async () => {
         await db.exec(`UPDATE "WooProduct" SET "rawData"='{"id":10,"type":"variable","manage_stock":true,"variations":[11]}' WHERE id='component';
             INSERT INTO "ProductVariation" (id,"productId","wooId","manageStock","rawData") VALUES ('v','component',11,false,'{"id":11,"parent_id":10,"manage_stock":"parent"}')`);
