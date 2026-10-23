@@ -19,6 +19,7 @@ dist/
 
 # Logs
 logs/
+/logs
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -27,6 +28,9 @@ yarn-error.log*
 api_logs.txt
 api-logs.txt
 
+# Ignore generated contents, not the directory path: staging tools may pass
+# output explicitly when recording deletion of a formerly tracked artifact.
+/output/*
 # Debug & Build Output (development artifacts)
 build_output*.txt
 *_errors.txt
@@ -111,6 +115,10 @@ client/eslint-report.json
 client/eslint-latest.json
 client/eslint-errors.json
 client/eslint-client.json
+client/eslint-remaining-*.txt
+
+# Local schema snapshots (the live schema and migrations remain tracked)
+/server/prisma/schema.prisma.bak
 
 # User uploads stay private; retain only the verified application plugin download.
 **/uploads/

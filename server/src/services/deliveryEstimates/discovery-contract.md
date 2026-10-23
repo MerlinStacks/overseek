@@ -82,4 +82,4 @@ per method: opaque printable non-space ASCII `rateId` (1–200), `title` (≤200
 units), and UTC ISO `capturedAt`. They are past admin-only observations, not current
 eligibility. Global WBS/WBSNG discovery normalizes the known vendor method getter
 -1 to actual rate instance zero, never by parsing full rate IDs. See
-`docs/delivery-shipping-options.md` for settings policy and native fixture instructions.
+`docs/delivery/delivery-shipping-options.md` for settings policy and native fixture instructions.

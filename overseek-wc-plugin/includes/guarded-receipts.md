@@ -1,6 +1,6 @@
 # Guarded receipt transport v1 (staged)
 
-> Historical transport notes. Launch controls, phase-5 operator reconciliation, explicit baselines and atomic verified-proof release now extend this protocol. See [`docs/delivery-launch-api.md`](../../docs/delivery-launch-api.md) for current endpoints, guarantees and remaining verification gaps. The statements below that finalization is absent or permanently inactive no longer describe the implementation.
+> Historical transport notes. Launch controls, phase-5 operator reconciliation, explicit baselines and atomic verified-proof release now extend this protocol. See [`docs/delivery/delivery-launch-api.md`](../../docs/delivery/delivery-launch-api.md) for current endpoints, guarantees and remaining verification gaps. The statements below that finalization is absent or permanently inactive no longer describe the implementation.
 
 Implements `server/src/services/deliveryEstimates/receipt-contract.md` on the plugin side. REST registration only loads these classes; private tables are created only during an authenticated, validated receipt request. There are no storefront hooks, public endpoints, activation migrations, release endpoints or automatic account-mode changes.
 

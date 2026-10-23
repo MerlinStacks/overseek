@@ -6,6 +6,7 @@ import { isRecord } from '../../utils/responseValidation';
 import { abortable } from '../../utils/abortable';
 import { formatDateTimeSafe } from '../../utils/format';
 import { Modal } from '../../components/ui/Modal';
+import { workspaceStyles as ui } from '../../components/ui/workspaceStyles';
 
 interface Account { id: string; name: string; domain?: string | null }
 interface Preview { accountId: string; accountName: string; recordCounts: Record<string, number>; estimatedSizeKB: number }
@@ -13,7 +14,7 @@ interface Settings { isEnabled: boolean; frequency: string; maxBackups: number; 
 interface Backup { id: string; accountId: string; filename: string; sizeBytes: number; recordCount: number; status: string; type: string; createdAt: string }
 const frequencies = ['DAILY', 'EVERY_3_DAYS', 'WEEKLY'];
 const card = 'p-6 space-y-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800';
-const control = 'p-2 border rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900';
+const control = ui.input;
 const count = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 function decodeAccounts(value: unknown): Account[] {
     if (!Array.isArray(value) || !value.every(row => isRecord(row) && typeof row.id === 'string' && !!row.id && typeof row.name === 'string' && (row.domain == null || typeof row.domain === 'string'))) throw new Error('Invalid accounts');
@@ -108,7 +109,7 @@ function AccountBackups({ token, account }: { token: string; account: Account })
         }
     };
     return <section className="space-y-4" aria-label={`Backups for ${account.name}`}>
-        <button type="button" disabled={mutation.busy} onClick={refresh}>Refresh account backup data</button>
+        <button className={ui.secondary} type="button" disabled={mutation.busy} onClick={refresh}>Refresh account backup data</button>
         {loading && <p role="status">Loading account backup data...</p>}
         {readError && !loading && <p role="alert">Could not load valid backup preview, schedule or stored backups. Refresh to retry.</p>}
         {mutation.error && <p role="alert">{mutation.error}</p>}{message && <p role="status">{message}</p>}{mutation.busy && <p role="status">Processing backup operation...</p>}
@@ -120,19 +121,19 @@ function AccountBackups({ token, account }: { token: string; account: Account })
                     <p>Next Backup: {settings.data!.nextBackupAt ? formatDateTimeSafe(settings.data!.nextBackupAt, 'Date unavailable') : settings.data!.isEnabled ? 'Unavailable' : 'Disabled'}</p></div>
             </section>
             <section className={card}><h2 className="font-semibold">Stored Backups ({backups.data!.length})</h2>
-                {!backups.data!.length ? <p>No stored backups.</p> : <div className="overflow-x-auto"><table className="w-full text-sm text-left"><caption className="sr-only">Stored backups for {account.name}</caption><thead><tr>{['Date', 'Type / Status', 'Size', 'Records', 'Actions'].map(label => <th scope="col" className="p-2" key={label}>{label}</th>)}</tr></thead><tbody>{backups.data!.map(backup => <tr key={backup.id}>
-                    <td className="p-2">{formatDateTimeSafe(backup.createdAt, 'Date unavailable')}</td><td>{backup.type} · {backup.status}</td><td>{(backup.sizeBytes / 1024).toFixed(0)} KB</td><td>{backup.recordCount.toLocaleString()}</td><td><div className="flex gap-3 p-2"><button type="button" onClick={() => void action('stored', backup)}>Download {backup.filename}</button><button type="button" disabled={backup.status !== 'COMPLETED'} onClick={() => { setRestoreTarget(backup); setConfirmName(''); }}>Restore {backup.filename}</button><button type="button" disabled={backup.status === 'RESTORING'} onClick={() => void action('delete', backup)}>Delete {backup.filename}</button></div></td>
+                {!backups.data!.length ? <p className={ui.empty}>No stored backups.</p> : <div className="overflow-x-auto"><table className={ui.table}><caption className="sr-only">Stored backups for {account.name}</caption><thead className={ui.tableHead}><tr>{['Date', 'Type / Status', 'Size', 'Records', 'Actions'].map(label => <th scope="col" className={`${ui.cell} font-medium`} key={label}>{label}</th>)}</tr></thead><tbody className={ui.tableBody}>{backups.data!.map(backup => <tr key={backup.id}>
+                    <td className={`${ui.cell} whitespace-nowrap text-xs`}>{formatDateTimeSafe(backup.createdAt, 'Date unavailable')}</td><td className={ui.cell}><span className={ui.badge}>{backup.type} · {backup.status}</span></td><td className={`${ui.cell} whitespace-nowrap tabular-nums`}>{(backup.sizeBytes / 1024).toFixed(0)} KB</td><td className={`${ui.cell} tabular-nums`}>{backup.recordCount.toLocaleString()}</td><td className={ui.cell}><div className="flex flex-wrap gap-2"><button className={ui.secondary} type="button" onClick={() => void action('stored', backup)}>Download {backup.filename}</button><button className={ui.danger} type="button" disabled={backup.status !== 'COMPLETED'} onClick={() => { setRestoreTarget(backup); setConfirmName(''); }}>Restore {backup.filename}</button><button className={ui.danger} type="button" disabled={backup.status === 'RESTORING'} onClick={() => void action('delete', backup)}>Delete {backup.filename}</button></div></td>
                 </tr>)}</tbody></table></div>}
             </section>
-            <section className={card}><h2 className="font-semibold">New Backup Preview · {preview.data!.accountName}</h2><p>Estimated size: {preview.data!.estimatedSizeKB.toFixed(0)} KB</p><dl className="grid grid-cols-2 gap-2">{Object.entries(preview.data!.recordCounts).map(([table, total]) => <div key={table}><dt>{table}</dt><dd>{total.toLocaleString()}</dd></div>)}</dl>
+            <section className={card}><h2 className="font-semibold">New Backup Preview · {preview.data!.accountName}</h2><p className={ui.muted}>Estimated size: {preview.data!.estimatedSizeKB.toFixed(0)} KB</p><dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">{Object.entries(preview.data!.recordCounts).map(([table, total]) => <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900/50" key={table}><dt className={`break-all ${ui.muted}`}>{table}</dt><dd className="mt-1 text-xl font-semibold tabular-nums">{total.toLocaleString()}</dd></div>)}</dl>
                 <label className="flex gap-2"><input type="checkbox" checked={includeAuditLogs} onChange={event => setIncludeAuditLogs(event.target.checked)} />Include audit logs</label><label className="flex gap-2"><input type="checkbox" checked={includeAnalytics} onChange={event => setIncludeAnalytics(event.target.checked)} />Include analytics</label>
-                <div className="flex gap-4"><button type="button" onClick={() => void action('save')}>Save to Storage</button><button type="button" onClick={() => void action('download')}>Download Now</button></div>
+                <div className="flex flex-wrap gap-3"><button className={ui.primary} type="button" onClick={() => void action('save')}>Save to Storage</button><button className={ui.secondary} type="button" onClick={() => void action('download')}>Download Now</button></div>
             </section>
         </fieldset>}
         <Modal isOpen={!!restoreTarget && !!preview.data && !blocked} onClose={mutation.busy ? undefined : () => setRestoreTarget(null)} title="Restore Backup">
             <p>This replaces existing data in <strong>{preview.data?.accountName}</strong> using <strong>{restoreTarget?.filename}</strong>.</p>
             <p>Type the account name to confirm.</p><label className="block my-4">Account name confirmation<input className={`${control} block w-full`} value={confirmName} disabled={mutation.busy} onChange={event => setConfirmName(event.target.value)} /></label>
-            <button type="button" disabled={!ready || mutation.busy || !confirmName || confirmName !== preview.data?.accountName} onClick={() => { if (restoreTarget) void action('restore', restoreTarget); }}>Confirm Restore</button>
+            <button className={ui.danger} type="button" disabled={!ready || mutation.busy || !confirmName || confirmName !== preview.data?.accountName} onClick={() => { if (restoreTarget) void action('restore', restoreTarget); }}>Confirm Restore</button>
         </Modal>
     </section>;
 }

@@ -4,7 +4,7 @@ import { esClient } from '../utils/elastic';
 import { Logger } from '../utils/logger';
 import { InventoryService } from '../services/InventoryService';
 import { InventoryForecastService } from '../services/analytics/InventoryForecastService';
-import { UnsupportedBOMForecastError } from '../services/analytics/inventory-forecast/errors';
+import { BOMForecastCycleError } from '../services/analytics/inventory-forecast/errors';
 
 const analyticsInventoryRoutes: FastifyPluginAsync = async (fastify) => {
     /**
@@ -165,7 +165,7 @@ const analyticsInventoryRoutes: FastifyPluginAsync = async (fastify) => {
             const forecasts = await InventoryForecastService.getSkuForecasts(accountId, forecastDays);
             return forecasts;
         } catch (e: any) {
-            if (e instanceof UnsupportedBOMForecastError) return reply.code(e.statusCode).send({ error: e.message, code: e.code });
+            if (e instanceof BOMForecastCycleError) return reply.code(e.statusCode).send({ error: e.message, code: e.code });
             Logger.error('[InventoryRoutes] SKU Forecasts Error', { error: e });
             return reply.code(500).send({ error: e.message });
         }
@@ -191,7 +191,7 @@ const analyticsInventoryRoutes: FastifyPluginAsync = async (fastify) => {
             const alerts = await InventoryForecastService.getStockoutAlerts(accountId, thresholdDays);
             return alerts;
         } catch (e: any) {
-            if (e instanceof UnsupportedBOMForecastError) return reply.code(e.statusCode).send({ error: e.message, code: e.code });
+            if (e instanceof BOMForecastCycleError) return reply.code(e.statusCode).send({ error: e.message, code: e.code });
             Logger.error('[InventoryRoutes] Stockout Alerts Error', { error: e });
             return reply.code(500).send({ error: e.message });
         }
@@ -219,7 +219,7 @@ const analyticsInventoryRoutes: FastifyPluginAsync = async (fastify) => {
 
             return detail;
         } catch (e: any) {
-            if (e instanceof UnsupportedBOMForecastError) return reply.code(e.statusCode).send({ error: e.message, code: e.code });
+            if (e instanceof BOMForecastCycleError) return reply.code(e.statusCode).send({ error: e.message, code: e.code });
             Logger.error('[InventoryRoutes] SKU Forecast Detail Error', { error: e });
             return reply.code(500).send({ error: e.message });
         }

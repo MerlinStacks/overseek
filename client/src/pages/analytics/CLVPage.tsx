@@ -3,6 +3,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useScopedRequest } from '../../hooks/useScopedRequest';
 import { record, rows, label, metric, count, money } from '../../components/analytics/analyticsRead';
+import { workspaceStyles as ui } from '../../components/ui/workspaceStyles';
+import { DataNote } from '../../components/ui/DataNote';
 function decode(value: unknown) {
     const data = record(value); const observation = record(data.observation); const returning = record(data.newVsReturning);
     if (observation.basis !== 'observed-window-spend' || typeof observation.start !== 'string' || typeof observation.end !== 'string' ||
@@ -26,7 +28,7 @@ function ScopedCLV({ accountId, token }: { accountId: string; token: string }) {
     const [months, setMonths] = useState(1);
     return <div className="p-4 space-y-5 text-slate-900 dark:text-slate-100">
         <header className="flex flex-wrap justify-between gap-3"><h1 className="text-2xl font-bold">Observed Customer Spend</h1>
-            <label>Window starts at first UTC day of <select value={months} onChange={event => setMonths(Number(event.target.value))} className="bg-white dark:bg-slate-800">{[1, 3, 6, 12].map(value => <option key={value} value={value}>{value} {value === 1 ? 'month' : 'months'} ago</option>)}</select></label></header>
+            <label className={ui.label}>Window starts at first UTC day of <select value={months} onChange={event => setMonths(Number(event.target.value))} className={ui.input}>{[1, 3, 6, 12].map(value => <option key={value} value={value}>{value} {value === 1 ? 'month' : 'months'} ago</option>)}</select></label></header>
         <SpendContent key={months} accountId={accountId} token={token} months={months} />
     </div>;
 }
@@ -38,13 +40,18 @@ function SpendContent({ accountId, token, months }: { accountId: string; token: 
     const monetary = (value: number) => observation.currency ? money(value, observation.currency) : 'Unavailable (mixed or unknown currency)';
     const maximum = data.trend.reduce((max, row) => Math.max(max, row.average), 0);
     return <div className="space-y-5">
-        <p>Observed revenue per email-identified customer in {observation.start.slice(0, 10)} through {observation.end.slice(0, 10)} (UTC), not complete lifetime value or a forecast. Repeat means multiple orders within this window, not lifetime returning-customer status.</p>
-        {(observation.incomplete || observation.excludedOrders > 0) && <p role="alert">Coverage is partial: {observation.incomplete ? 'a source row limit was reached; ' : ''}{observation.excludedOrders} orders without customer email excluded. Attribution uses the earliest returned in-window session, not proven lifetime acquisition.</p>}
+        <DataNote title="Spend window and methodology">Observed revenue per email-identified customer in {observation.start.slice(0, 10)} through {observation.end.slice(0, 10)} (UTC), not complete lifetime value or a forecast. Repeat means multiple orders within this window, not lifetime returning-customer status.</DataNote>
+        {(observation.incomplete || observation.excludedOrders > 0) && <p role="alert" className={ui.notice}>Coverage is partial: {observation.incomplete ? 'a source row limit was reached; ' : ''}{observation.excludedOrders} orders without customer email excluded. Attribution uses the earliest returned in-window session, not proven lifetime acquisition.</p>}
         {!observation.currency && <p role="status">Monetary summaries are withheld because the returned orders do not establish one known currency.</p>}
-        <dl className="grid grid-cols-2 md:grid-cols-4 gap-4"><div><dt>Average observed spend</dt><dd>{total ? monetary(data.average) : 'Unavailable (no customers)'}</dd></div><div><dt>Median observed spend</dt><dd>{total ? monetary(data.median) : 'Unavailable (no customers)'}</dd></div><div><dt>Observed customers</dt><dd>{total}</dd></div><div><dt>Multi-order share in window</dt><dd>{total ? `${(data.returningCustomers / total * 100).toFixed(1)}%` : 'Unavailable (no customers)'}</dd></div></dl>
-        {observation.currency && <section aria-label="Observed spend distribution"><h2>Spend distribution ({observation.currency})</h2><ul>{data.distribution.map((row, index) => <li key={index}>{row.label}: {row.count} customers</li>)}</ul></section>}
-        <section aria-label="Customer cohort spend"><h2>Spend by first observed order month in this window</h2><ul>{data.trend.map(row => <li key={row.month} className="mb-3"><p>{row.month}: {monetary(row.average)} · {row.customers} customers</p><div aria-hidden="true" className="h-2 bg-slate-100 dark:bg-slate-800"><div className="h-2 bg-indigo-500" style={{ width: `${observation.currency && maximum > 0 ? row.average / maximum * 100 : 0}%` }} /></div></li>)}</ul></section>
-        <section><h2>Spend by observed source</h2><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr><th className="text-left">Source</th><th>Average observed spend</th><th>Customers</th></tr></thead><tbody>{data.sources.map(row => <tr key={row.source}><td>{row.source}</td><td className="text-center">{monetary(row.average)}</td><td className="text-center">{row.customers}</td></tr>)}</tbody></table></div></section>
+        <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">{[
+            ['Average observed spend', total ? monetary(data.average) : 'Unavailable (no customers)'],
+            ['Median observed spend', total ? monetary(data.median) : 'Unavailable (no customers)'],
+            ['Observed customers', total.toLocaleString()],
+            ['Multi-order share in window', total ? `${(data.returningCustomers / total * 100).toFixed(1)}%` : 'Unavailable (no customers)'],
+        ].map(([title, value]) => <div className={ui.card} key={title}><dt className={ui.muted}>{title}</dt><dd className="mt-2 break-words text-2xl font-semibold tabular-nums">{value}</dd></div>)}</dl>
+        <div className="grid items-start gap-5 lg:grid-cols-2">{observation.currency && <section className={`${ui.card} space-y-4`} aria-label="Observed spend distribution"><h2 className={ui.title}>Spend distribution ({observation.currency})</h2><ul className="space-y-3">{data.distribution.map((row, index) => <li key={index}><p className="flex justify-between gap-3 text-xs"><span>{row.label}</span><span className="tabular-nums">{row.count} customers</span></p><div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700" aria-hidden="true"><div className="h-full rounded-full bg-indigo-500" style={{ width: `${total > 0 ? Math.min(100, row.count / total * 100) : 0}%` }} /></div></li>)}</ul></section>}
+        <section className={`${ui.card} space-y-4`} aria-label="Customer cohort spend"><h2 className={ui.title}>Spend by first observed order month in this window</h2><ul>{data.trend.map(row => <li key={row.month} className="mb-4"><p className="mb-2 text-xs">{row.month}: {monetary(row.average)} · {row.customers} customers</p><div aria-hidden="true" className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700"><div className="h-2 rounded-full bg-indigo-500" style={{ width: `${observation.currency && maximum > 0 ? row.average / maximum * 100 : 0}%` }} /></div></li>)}</ul></section></div>
+        <section className={`${ui.card} space-y-4`}><h2 className={ui.title}>Spend by observed source</h2><div className="overflow-x-auto"><table className={ui.table}><thead className={ui.tableHead}><tr>{['Source', 'Average observed spend', 'Customers'].map(title => <th scope="col" className={`${ui.cell} font-medium`} key={title}>{title}</th>)}</tr></thead><tbody className={ui.tableBody}>{data.sources.map(row => <tr key={row.source}><td className={ui.cell}>{row.source}</td><td className={`${ui.cell} tabular-nums`}>{monetary(row.average)}</td><td className={`${ui.cell} tabular-nums`}>{row.customers}</td></tr>)}</tbody></table></div></section>
     </div>;
 }
 export default CLVPage;

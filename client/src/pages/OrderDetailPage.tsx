@@ -645,9 +645,9 @@ export function OrderDetailPage() {
                 { label: 'Orders', href: '/orders' },
                 { label: `#${order.id}` }
             ]} />
-            <div className="flex items-center gap-4 mb-6">
-                <div className="flex-1">
-                    <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-4 mb-6">
+                <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-3">
                         <h1 className="text-2xl font-bold text-gray-900">Order #{order.id}</h1>
                         <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide
               ${order.status === 'completed' ? 'bg-green-100 text-green-700' :
@@ -659,7 +659,7 @@ export function OrderDetailPage() {
                     </div>
                     <div className="text-sm text-gray-500 mt-1">Placed on {formatDate(toStringValue(order.date_created))} via {order.payment_method_title}</div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                     <select
                         value={statusToApply}
                         onChange={(event) => {
@@ -691,14 +691,15 @@ export function OrderDetailPage() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
                 {/* Main Content - Items */}
-                <div className="lg:col-span-2 space-y-6">
+                <div className="min-w-0 lg:col-span-2 space-y-6">
                     <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
                         <div className="p-4 border-b border-gray-100 bg-gray-50/50 font-semibold text-gray-800 flex items-center gap-2">
                             <Package size={18} className="text-gray-400" />
                             Order Items
                         </div>
                         <div className="overflow-x-auto">
-                            <table className="w-full text-left">
+                            <table className="w-full min-w-[560px] table-fixed text-left">
+                                <colgroup><col className="w-[55%]" /><col className="w-[15%]" /><col className="w-[12%]" /><col className="w-[18%]" /></colgroup>
                                 <thead className="text-xs text-gray-500 uppercase bg-gray-50/30 border-b border-gray-100">
                                     <tr>
                                         <th className="px-6 py-3 font-medium">Item</th>
@@ -711,8 +712,8 @@ export function OrderDetailPage() {
                                     {order.line_items?.map((item) => (
                                         <tr key={item.id} className="hover:bg-gray-50/50">
                                             <td className="px-6 py-4">
-                                                <div className="font-medium text-gray-900">{item.name}</div>
-                                                <div className="text-xs text-gray-500">SKU: {item.sku || 'N/A'}</div>
+                                                <div className="break-words font-medium text-gray-900">{item.name}</div>
+                                                <div className="break-all text-xs text-gray-500">SKU: {item.sku || 'N/A'}</div>
                                                 {item.meta_data && item.meta_data.length > 0 && (
                                                     <OrderMetaSection metaData={toMetaData(item)} onImageClick={setSelectedImage} />
                                                 )}

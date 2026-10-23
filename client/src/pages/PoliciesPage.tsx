@@ -5,6 +5,8 @@ import { usePermissions } from '../hooks/usePermissions';
 import { useScopedRequest } from '../hooks/useScopedRequest';
 import { useRecoveryAttempt } from '../hooks/useRecoveryAttempt';
 import { isRecord } from '../utils/responseValidation';
+import { FileText } from 'lucide-react';
+import { workspaceStyles as ui } from '../components/ui/workspaceStyles';
 
 interface Policy { id: string; title: string; content: string; type: 'POLICY' | 'SOP' | 'TRAINING'; category: string | null; isPublished: boolean; updatedAt: string }
 interface Prompt { id: string; name: string | null; content: string; version: string; isAccountOverride: boolean }
@@ -22,8 +24,8 @@ function prompts(value: unknown): Prompt[] {
     return value;
 }
 type Selection = { kind: 'new' } | { kind: 'policy'; value: Policy } | { kind: 'prompt'; value: Prompt };
-const box = 'rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4';
-const input = 'block w-full rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 p-2';
+const box = ui.card;
+const input = ui.input;
 export function PoliciesPage() {
     const { user, token } = useAuth(); const { currentAccount } = useAccount();
     if (!token || !currentAccount) return <p role="status">Sign in and select an account.</p>;
@@ -39,20 +41,20 @@ function ScopedPolicies({ token, accountId }: { token: string; accountId: string
     const reload = () => { setSelection(null); setDirty(false); list.retry(); templates.retry(); };
     useEffect(() => { if (!dirty) return; const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; }; window.addEventListener('beforeunload', guard); return () => window.removeEventListener('beforeunload', guard); }, [dirty]);
     return <main className="space-y-4 text-slate-900 dark:text-slate-100">
-        <h1 className="text-2xl font-bold">Policies &amp; SOPs</h1>
-        <p>Plain-text documents and account AI prompt overrides. Saving requires a current server version.</p>
+        <h1 className="flex items-center gap-3 text-2xl font-bold"><FileText size={24} className="text-indigo-500" />Policies &amp; SOPs</h1>
+        <p className={ui.muted}>Plain-text documents and account AI prompt overrides. Saving requires a current server version.</p>
         <div className="grid gap-4 lg:grid-cols-[minmax(16rem,1fr)_minmax(0,2fr)]">
             <aside className={`${box} space-y-3`} aria-label="Documents and prompts">
-                {canManage && <button type="button" onClick={() => choose({ kind: 'new' })}>Create policy</button>}
+                {canManage && <button className={`${ui.primary} w-full`} type="button" onClick={() => choose({ kind: 'new' })}>Create policy</button>}
                 {!canView ? <p>Policy view permission required.</p> : list.loading ? <p role="status">Loading policies…</p> : list.error ? <p role="alert">Policies unavailable. <button type="button" onClick={list.retry}>Retry policies</button></p> : <>
                     {list.data?.items.length === 0 && <p>No policies in this page.</p>}
-                    {list.data?.items.map(item => <button type="button" className="block w-full text-left p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800" key={item.id} onClick={() => choose({ kind: 'policy', value: item })}>{item.title} {!item.isPublished && '(draft)'}</button>)}
-                    {cursor && <button type="button" onClick={() => { if (choose(null)) setCursor(null); }}>First policy page</button>}
-                    {list.data?.nextCursor && <button type="button" onClick={() => { if (dirty && !window.confirm('Discard unsaved local changes?')) return; setSelection(null); setDirty(false); setCursor(list.data!.nextCursor); }}>Next policy page</button>}
+                    {list.data?.items.map(item => <button type="button" aria-pressed={selection?.kind === 'policy' && selection.value.id === item.id} className={`block w-full rounded-lg border px-3 py-3 text-left text-sm transition-colors ${selection?.kind === 'policy' && selection.value.id === item.id ? 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-300' : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-700/50'}`} key={item.id} onClick={() => choose({ kind: 'policy', value: item })}><span className="block break-words font-medium">{item.title} {!item.isPublished && '(draft)'}</span><span className={`mt-1 block text-[10px] ${ui.muted}`}>{item.type}{item.category ? ` · ${item.category}` : ''}</span></button>)}
+                    {cursor && <button className={ui.secondary} type="button" onClick={() => { if (choose(null)) setCursor(null); }}>First policy page</button>}
+                    {list.data?.nextCursor && <button className={ui.secondary} type="button" onClick={() => { if (dirty && !window.confirm('Discard unsaved local changes?')) return; setSelection(null); setDirty(false); setCursor(list.data!.nextCursor); }}>Next policy page</button>}
                 </>}
-                {canPrompt && <section><h2 className="font-semibold">AI prompts</h2>{templates.loading ? <p role="status">Loading prompts…</p> : templates.error ? <p role="alert">Prompts unavailable. <button type="button" onClick={templates.retry}>Retry prompts</button></p> : templates.data?.map(item => <button type="button" key={item.id} className="block p-2 text-left" onClick={() => choose({ kind: 'prompt', value: item })}>{item.name || item.id} ({item.isAccountOverride ? 'account override' : 'default'})</button>)}</section>}
+                {canPrompt && <section className="space-y-2 border-t border-slate-100 pt-4 dark:border-slate-700"><h2 className={ui.title}>AI prompts</h2>{templates.loading ? <p role="status">Loading prompts…</p> : templates.error ? <p role="alert">Prompts unavailable. <button className={ui.secondary} type="button" onClick={templates.retry}>Retry prompts</button></p> : templates.data?.map(item => <button type="button" key={item.id} className="block w-full rounded-lg p-3 text-left text-xs hover:bg-slate-50 dark:hover:bg-slate-700/50" onClick={() => choose({ kind: 'prompt', value: item })}>{item.name || item.id} ({item.isAccountOverride ? 'account override' : 'default'})</button>)}</section>}
             </aside>
-            <section className={box}>{selection ? <Editor key={selection.kind === 'new' ? 'new' : `${selection.kind}:${selection.value.id}:${selection.kind === 'policy' ? selection.value.updatedAt : selection.value.version}`} selection={selection} token={token} accountId={accountId} editable={selection.kind === 'prompt' ? canPrompt : canManage} onDirty={setDirty} onSaved={reload} /> : <p>Select a document or prompt.</p>}</section>
+            <section className={box}>{selection ? <Editor key={selection.kind === 'new' ? 'new' : `${selection.kind}:${selection.value.id}:${selection.kind === 'policy' ? selection.value.updatedAt : selection.value.version}`} selection={selection} token={token} accountId={accountId} editable={selection.kind === 'prompt' ? canPrompt : canManage} onDirty={setDirty} onSaved={reload} /> : <div className="flex min-h-72 flex-col items-center justify-center gap-3 text-slate-400"><FileText size={32} /><p className="text-sm">Select a document or prompt.</p></div>}</section>
         </div>
     </main>;
 }
@@ -87,6 +89,6 @@ function Editor({ selection, token, accountId, editable, onDirty, onSaved }: { s
         <label className="block">{template ? 'Prompt content' : 'Document content (plain text)'}<textarea className={`${input} min-h-72`} value={content} maxLength={template ? 30000 : 100000} disabled={disabled} onChange={e => { setContent(e.target.value); onDirty(true); }} /></label>
         {error && <p role="alert">{error} <button type="button" onClick={() => { if (window.confirm('Discard local edits and reload?')) onSaved(); }}>Discard edits and reload</button></p>}
         {busy && <p role="status">Saving…</p>}
-        {editable && <div className="flex flex-wrap gap-4"><button type="button" disabled={disabled} onClick={() => void write()}>Save</button>{(existing || template?.isAccountOverride) && <button type="button" disabled={disabled} onClick={() => void write(true)}>{template ? 'Reset to global default' : 'Delete policy'}</button>}</div>}
+        {editable && <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 pt-4 dark:border-slate-700"><button className={ui.primary} type="button" disabled={disabled} onClick={() => void write()}>Save</button>{(existing || template?.isAccountOverride) && <button className={ui.danger} type="button" disabled={disabled} onClick={() => void write(true)}>{template ? 'Reset to global default' : 'Delete policy'}</button>}</div>}
     </div>;
 }

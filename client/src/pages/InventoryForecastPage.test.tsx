@@ -13,13 +13,13 @@ beforeEach(() => { mocks.request.mockReset(); mocks.account = { id: 'a', timezon
 afterEach(cleanup);
 
 it('uses authenticated shared requests and explains why planning is unavailable on retry', async () => {
-    mocks.request.mockRejectedValue(new Error('BOM forecast unavailable: nested/cyclic component demand requires multi-level planning'));
+    mocks.request.mockRejectedValue(new Error('BOM forecast unavailable: cyclic component references detected'));
     render(<MemoryRouter><InventoryForecastPage /></MemoryRouter>);
-    expect(await screen.findByText(/Multi-level demand planning is not supported/)).toBeInTheDocument();
+    expect(await screen.findByText(/contains a component cycle/)).toBeInTheDocument();
     expect(mocks.request).toHaveBeenCalledWith('/api/analytics/inventory/sku-forecasts?days=30', expect.objectContaining({ token: 'token', accountId: 'a', cache: 'no-store', signal: expect.any(AbortSignal) }));
     fireEvent.click(screen.getByRole('button', { name: /Retry/ }));
     await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(4));
-    expect(await screen.findByText(/Multi-level demand planning is not supported/)).toBeInTheDocument();
+    expect(await screen.findByText(/contains a component cycle/)).toBeInTheDocument();
 });
 
 it('aborts obsolete requests and ignores their errors when switching accounts', async () => {
@@ -32,6 +32,6 @@ it('aborts obsolete requests and ignores their errors when switching accounts', 
     view.rerender(<MemoryRouter><InventoryForecastPage /></MemoryRouter>);
     expect(signal.aborted).toBe(true);
     expect(await screen.findByText(/sales history could not be read completely/)).toBeInTheDocument();
-    await act(async () => reject(new Error('BOM forecast unavailable: nested/cyclic')));
-    expect(screen.queryByText(/Multi-level demand planning/)).toBeNull();
+    await act(async () => reject(new Error('BOM forecast unavailable: cyclic component references detected')));
+    expect(screen.queryByText(/component cycle/)).toBeNull();
 });

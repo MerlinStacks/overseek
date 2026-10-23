@@ -64,7 +64,7 @@ they do not describe current activation, checkout wiring or provider support.
 
 ### Rollout prerequisites and actual exclusions
 
-Follow [the release runbook](docs/delivery-release-runbook.md): OverSeek first with
+Follow [the release runbook](docs/delivery/delivery-release-runbook.md): OverSeek first with
 all 13 migrations and shared-core/server/client builds; inventory pause, legacy drain
 and all pre-upgrade workers restarted; account/product/calendar/method configuration;
 companion update; private cutover/certification and verified-input readiness with Pi
@@ -87,10 +87,10 @@ Measure comparable merchant query/latency/error/backlog baselines. Native measur
 are local evidence, not a production performance guarantee or merchant certification.
 
 Evidence: [native ZIP results](overseek-wc-plugin/tests/delivery-native-integration.md),
-[final native PostgreSQL result](docs/delivery-native-validation-13-migrations.md),
-[client validation](docs/delivery-client-validation-2026-09-22.md),
-[compatibility](docs/delivery-estimates-compatibility.md),
-[current launch API contract](docs/delivery-launch-api.md).
+[final native PostgreSQL result](docs/delivery/delivery-native-validation-13-migrations.md),
+[client validation](docs/delivery/delivery-client-validation-2026-09-22.md),
+[compatibility](docs/delivery/delivery-estimates-compatibility.md),
+[current launch API contract](docs/delivery/delivery-launch-api.md).
 
 ## Superseded implementation history — dormant foundation stage
 
@@ -121,7 +121,7 @@ and pending-validation statements are explicitly superseded by the record above.
 - Disposable native integration now **passed 62 assertions** on WordPress 7.1.1 / WooCommerce 11.1.1 / PHP 8.4.23 / MySQL 8.4.8, including deltas, replay/reversal, caller-transaction preservation and a real trigger-injected silent SQL failure. A separate 11-assertion bootstrap check confirmed dormant block/shortcode/cart registration with no output/assets. Used fresh local binaries and a private database/server because Docker was unavailable; fixtures and processes were cleaned up. Fixed the strict-types WP-CLI invocation to use `--use-include`, including CI. This does not prove arbitrary third-party hooks, reconnect/crash concurrency or final release safety.
 - Implemented `overseek/delivery-estimate` product block and `[overseek_delivery_estimate]` shortcode, editor-only inactive placeholder, compact shared renderer with theme-inherited fonts/validated colours and optional local SVG icon. No automatic price/Add-to-Cart positions. The production gate is hard false; no shortcode attribute, request or filter activates it, and inactive placements load no frontend assets.
 - Built cache-safe product placeholders and a small batched/debounced WC AJAX client for the future active path. Public product/variation validation, no-store responses, stale-response aborts and product-specific form binding prevent private/stale content leaks. Default/geolocated country is not treated as an entered address. Known-address quote reuse verifies supported native package hashes against the full current cart/destination/cache version, without shipping recalculation; mismatches stay blank.
-- Added additive classic per-rate markup below the label and native Blocks delivery-time text, preserving provider descriptions/text and prices. Native field coverage requires Woo 9.7+, with checkout's primary under-label position on 9.9+. Separate Blocks pickup-location selection and ambiguous multiple packages are not yet supported. WBS source audit found both `wbs` and `wbsng` with title-derived opaque rate IDs, including global instance discrepancies; these remain blocked pending explicit mapping rather than guessed from labels/prefixes. See `docs/delivery-estimates-compatibility.md`.
+- Added additive classic per-rate markup below the label and native Blocks delivery-time text, preserving provider descriptions/text and prices. Native field coverage requires Woo 9.7+, with checkout's primary under-label position on 9.9+. Separate Blocks pickup-location selection and ambiguous multiple packages are not yet supported. WBS source audit found both `wbs` and `wbsng` with title-derived opaque rate IDs, including global instance discrepancies; these remain blocked pending explicit mapping rather than guessed from labels/prefixes. See `docs/delivery/delivery-estimates-compatibility.md`.
 - Latest presentation checks: 65 storefront assertions, 324 classic/Blocks assertions across eight modes, quote checks across 18 Woo version cases, JS batching/variation/race tests, PHP lint, actionlint and diff checks pass. Visually inspected the actual shared renderer in isolated sample fixtures at 390px and 1280px: theme font inheritance, compact wrapping and no horizontal overflow. Prior suites remain 392 backend, 368 client and 60 core tests, plus all existing PHP harnesses (including 8,899 receipt assertions). Merchant-theme live checkout, SMTP/email-client checks, real PostgreSQL concurrency/migrations and remote CI remain unverified.
 - Pending: inventory baseline/cutover and legacy-task drain, uncertain-operation reconciliation, final version-bound inbound release; remaining invalidation/freshness coverage; actual WBS/WBSNG transit mapping and store verification; separate Blocks pickup flow if used; actual checkout snapshot capture; automatic upgrade signalling/reconciliation, end-to-end merchant-theme/cache and performance checks. Registered presentation is not activation-ready.
 - Deployment prerequisite: apply all seven additive delivery migrations through the normal deployment process before running the new backend, and rebuild the shared core package. No Overseek/PostgreSQL migrations or production deployment have been performed; the native test used only a disposable WordPress database. After a store's plugin update, use explicit sync to wake parked accounts and bootstrap saved inputs; automatic activation and guarded cutover are still unavailable.

@@ -3,6 +3,7 @@ node_modules
 **/node_modules
 
 # Ignore build outputs
+output
 dist
 **/dist
 .next
@@ -44,6 +45,11 @@ README.md
 
 # Bundle analysis
 bundle-analysis.html
+
+# Generated diagnostics and local schema snapshots
+**/eslint-*.json
+**/eslint-remaining-*.txt
+server/prisma/schema.prisma.bak
 
 # Keep shared core compiled output in Docker context (used by server runtime import)
 !packages/overseek-core/dist/

@@ -94,7 +94,7 @@ existing callers; that ZIP is tracked, so use the explicit candidate directory f
 local validation. `--check` retains the lightweight Docker build check; a full
 package additionally verifies version consistency, exact ZIP entries, CRC and
 per-file SHA-256, and writes a sidecar manifest. Never ship that sidecar as plugin code.
-See [delivery release runbook](docs/delivery-release-runbook.md) for the final rebuild,
+See [delivery release runbook](docs/delivery/delivery-release-runbook.md) for the final rebuild,
 all 13 migrations, controlled activation, limitations and rollback procedure.
 
 Tracking regressions remain developer-only:

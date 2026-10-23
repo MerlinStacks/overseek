@@ -28,7 +28,7 @@ function AccountGold({ accountId, token, className = '' }: { accountId: string; 
             <p className="text-xs">Lowest known margins in sample, not a store-wide ranking.</p>
             {read.data.unavailableCount > 0 && <p>{read.data.unavailableCount} sampled margins unavailable (missing or invalid inputs).</p>}
             {!read.data.lowestMarginItems.length && <p>No calculable margins in sample.</p>}
-            <ul>{read.data.lowestMarginItems.map((item, index) => <li key={index} className="flex justify-between gap-3 p-2 bg-slate-50 dark:bg-slate-700 rounded-lg"><span>{item.name}</span><span className={item.margin < 20 ? 'text-red-600 dark:text-red-400' : item.margin < 40 ? 'text-amber-700 dark:text-amber-400' : 'text-green-700 dark:text-green-400'}>{item.margin.toFixed(1)}%</span></li>)}</ul>
+            <ul className="space-y-2">{read.data.lowestMarginItems.map((item, index) => <li key={index} className="flex items-start justify-between gap-3 rounded-lg bg-slate-50 p-3 dark:bg-slate-700/50"><span className="min-w-0 break-words text-xs font-medium">{item.name}</span><span className={`shrink-0 text-sm font-semibold tabular-nums ${item.margin < 20 ? 'text-red-600 dark:text-red-400' : item.margin < 40 ? 'text-amber-700 dark:text-amber-400' : 'text-green-700 dark:text-green-400'}`}>{item.margin.toFixed(1)}%</span></li>)}</ul>
         </>}
         <Link to="/reports/gold-price-margin" className="text-indigo-600 dark:text-indigo-400">View Full Report</Link>
     </section>;

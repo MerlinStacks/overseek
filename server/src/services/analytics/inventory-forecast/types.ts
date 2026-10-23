@@ -34,6 +34,7 @@ export interface BOMComponentMapping {
         parentProductId: string;
         parentWooId: number;
         parentVariationId: number;
+        /** Effective units per source sale, including all paths/levels for graph mappings. */
         quantity: number;
         wasteFactor: number;
         excludedVariationIds?: number[];

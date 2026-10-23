@@ -1,4 +1,4 @@
-/** Wire contract: docs/delivery-launch-api.md and server/routes/deliveryEstimates.ts. */
+/** Wire contract: docs/delivery/delivery-launch-api.md and server/routes/deliveryEstimates.ts. */
 export interface DeliveryReadiness {
     estimateMode?: 'production' | 'inventory';
     ready: boolean;

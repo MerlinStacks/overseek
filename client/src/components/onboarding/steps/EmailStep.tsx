@@ -4,6 +4,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useAccount } from '../../../context/AccountContext';
 import { useScopedMutation } from '../../../hooks/useScopedMutation';
 import { isRecord } from '../../../utils/responseValidation';
+import { workspaceStyles as ui } from '../../ui/workspaceStyles';
 
 export function EmailStep(props: OnboardingStepProps) {
     const { token } = useAuth(); const { currentAccount } = useAccount();
@@ -39,19 +40,19 @@ function ScopedEmailStep({ draft, setDraft, onNext, onBack, onSkip, isSubmitting
         setDraft(current => JSON.stringify(current.email) === snapshot ? { ...current, email: { ...current.email, verifiedAccountId: accountId, ...(save ? { savedEmailId: result.value!, configured: true } : { verified: true }) } } : current);
         setMessage(save ? 'Sending account saved. Default sender selection can be changed in Settings → Email.' : 'Connection test passed. This does not save a sending account or verify delivery.');
     };
-    const inputClass = 'block w-full p-2 border rounded-lg bg-white dark:bg-slate-900';
+    const inputClass = ui.input;
     return <section className="space-y-5 text-slate-900 dark:text-slate-100"><h2 className="text-2xl font-bold">Email Setup</h2>
-        <fieldset disabled={locked} className="space-y-4">
-            <label className="flex gap-2"><input type="checkbox" checked={email.enabled} onChange={event => change('enabled', event.target.checked)} />Enable email integration</label>
+        <fieldset disabled={locked} className={`${ui.card} space-y-4`}>
+            <label className="flex items-center gap-2 text-sm font-medium"><input className={ui.checkbox} type="checkbox" checked={email.enabled} onChange={event => change('enabled', event.target.checked)} />Enable email integration</label>
             {email.enabled && <>
-                {([['name', 'Display Name'], ['email', 'Email Address'], ['smtpHost', 'SMTP Host'], ['smtpUsername', 'Username'], ['smtpPassword', 'Password']] as const).map(([field, label]) => <label className="block" key={field}>{label}<input className={inputClass} type={field === 'smtpPassword' ? 'password' : field === 'email' ? 'email' : 'text'} autoComplete={field === 'smtpPassword' ? 'new-password' : 'off'} value={email[field]} onChange={event => change(field, event.target.value)} /></label>)}
-                <label className="block">Port<input className={inputClass} type="number" min="1" max="65535" step="1" value={port} onChange={event => { setPort(event.target.value); change('smtpPort', event.target.value.trim() ? Number(event.target.value) : NaN); }} /></label>
+                <div className="grid gap-4 sm:grid-cols-2">{([['name', 'Display Name'], ['email', 'Email Address'], ['smtpHost', 'SMTP Host'], ['smtpUsername', 'Username'], ['smtpPassword', 'Password']] as const).map(([field, label]) => <label className={ui.label} key={field}>{label}<input className={inputClass} type={field === 'smtpPassword' ? 'password' : field === 'email' ? 'email' : 'text'} autoComplete={field === 'smtpPassword' ? 'new-password' : 'off'} value={email[field]} onChange={event => change(field, event.target.value)} /></label>)}
+                <label className={ui.label}>Port<input className={inputClass} type="number" min="1" max="65535" step="1" value={port} onChange={event => { setPort(event.target.value); change('smtpPort', event.target.value.trim() ? Number(event.target.value) : NaN); }} /></label></div>
                 <label className="flex gap-2"><input type="checkbox" checked={email.smtpSecure} onChange={event => change('smtpSecure', event.target.checked)} />Use implicit TLS (typically port 465; otherwise SMTP STARTTLS)</label>
-                <div className="flex flex-wrap gap-4"><button type="button" disabled={!valid} onClick={() => void send(false)}>Test SMTP Connection</button><button type="button" disabled={!valid || !email.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.email) || !email.verified || email.verifiedAccountId !== accountId} onClick={() => void send(true)}>Save email configuration</button></div>
+                <div className="flex flex-wrap gap-3"><button className={ui.secondary} type="button" disabled={!valid} onClick={() => void send(false)}>Test SMTP Connection</button><button className={ui.primary} type="button" disabled={!valid || !email.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.email) || !email.verified || email.verifiedAccountId !== accountId} onClick={() => void send(true)}>Save email configuration</button></div>
             </>}
         </fieldset>
         {mutation.busy && <p role="status">Working...</p>}{mutation.error && <p role="alert">{mutation.error}</p>}{message && <p role="status">{message}</p>}
         {!email.enabled && <p>Email is optional. Configure it later in Settings → Email.</p>}
-        <div className="flex flex-wrap justify-between gap-4"><button type="button" disabled={locked} onClick={onBack}>Back</button><button type="button" disabled={locked} onClick={onSkip}>Skip for now</button><button type="button" disabled={locked || (email.enabled && (!email.configured || email.verifiedAccountId !== accountId))} onClick={onNext}>Continue</button></div>
+        <div className="flex flex-wrap justify-between gap-3 border-t border-slate-100 pt-4 dark:border-slate-700"><button className={ui.secondary} type="button" disabled={locked} onClick={onBack}>Back</button><button className={ui.secondary} type="button" disabled={locked} onClick={onSkip}>Skip for now</button><button className={ui.primary} type="button" disabled={locked || (email.enabled && (!email.configured || email.verifiedAccountId !== accountId))} onClick={onNext}>Continue</button></div>
     </section>;
 }

@@ -6,6 +6,8 @@ import { usePermissions } from '../hooks/usePermissions';
 import { useScopedRequest } from '../hooks/useScopedRequest';
 import { isRecord } from '../utils/responseValidation';
 import { DeliveryHealthPanel } from '../components/marketing/DeliveryHealthPanel';
+import { workspaceStyles as ui } from '../components/ui/workspaceStyles';
+import { DataNote } from '../components/ui/DataNote';
 
 interface Dashboard {
     days: number; rangeStart: string; rangeEnd: string; timezone: string; currency: string | null;
@@ -27,7 +29,7 @@ function decode(value: unknown): Dashboard {
     if (!Array.isArray(value.recentUnsubscribes) || value.recentUnsubscribes.length > 10 || value.recentUnsubscribes.some(row => !isRecord(row) || !string(row.id, 200) || !string(row.email, 320) || !string(row.scope, 100) || row.reason !== null && !string(row.reason) || !date(row.createdAt))) throw new Error('Invalid unsubscribe records');
     return value as unknown as Dashboard;
 }
-const card = 'rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4';
+const card = `${ui.card} space-y-4`;
 export function EmailDashboardPage() {
     const { user, token } = useAuth(); const { currentAccount } = useAccount(); const { hasPermission } = usePermissions();
     if (!token || !currentAccount) return <p role="status">Sign in and select an account.</p>;
@@ -58,14 +60,14 @@ function DashboardRead({ token, accountId, days }: { token: string; accountId: s
     const percent = (value: number | null) => value === null ? 'Unavailable' : `${value.toFixed(2)}%`;
     const max = Math.max(1, ...data.trends.map(row => row.unsubscribes));
     return <>
-        <p>{data.rangeStart} to {data.rangeEnd} ({data.timezone}; current day {data.coverage.currentDayPartial ? 'partial' : 'complete'}).</p>
+        <p className={ui.muted}>{data.rangeStart} to {data.rangeEnd} ({data.timezone}; current day {data.coverage.currentDayPartial ? 'partial' : 'complete'}).</p>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {[['Flow revenue', money(data.kpis.flowRevenue)], ['Broadcast revenue', money(data.kpis.broadcastRevenue)], ['New unsubscribe records', data.kpis.totalUnsubscribes.toLocaleString()], ['Failed-status share', percent(data.kpis.failureRate)], ['Flow send events', data.kpis.flowSends.toLocaleString()], ['Broadcast send events', data.kpis.broadcastSends.toLocaleString()]].map(([label, value]) => <div className={card} key={label}><h2>{label}</h2><p className="text-2xl font-semibold">{value}</p></div>)}
+            {[['Flow revenue', money(data.kpis.flowRevenue)], ['Broadcast revenue', money(data.kpis.broadcastRevenue)], ['New unsubscribe records', data.kpis.totalUnsubscribes.toLocaleString()], ['Failed-status share', percent(data.kpis.failureRate)], ['Flow send events', data.kpis.flowSends.toLocaleString()], ['Broadcast send events', data.kpis.broadcastSends.toLocaleString()]].map(([label, value]) => <div className={card} key={label}><h2 className={ui.muted}>{label}</h2><p className="text-2xl font-semibold tabular-nums">{value}</p></div>)}
         </div>
-        <div className={card}><p>{data.coverage.revenue}</p><p>{data.coverage.failureDefinition}</p><p>{data.kpis.failedCount} failed-status rows / {data.kpis.attemptedCount} terminal-status rows; {data.coverage.unknownStatusRows} other-status rows excluded.</p><p>{data.coverage.unsubscribeDefinition}</p></div>
-        <div className={card}><h2 className="font-semibold">UTC delivery observations</h2>{!data.coverage.trendComplete ? <p role="status">Daily trends unavailable: row coverage limit exceeded.</p> : data.trends.slice(-10).map(row => <div key={row.date} className="flex flex-wrap items-center gap-3 py-1"><span>{row.date}</span><div className="flex-1 min-w-20 rounded bg-slate-100 dark:bg-slate-800 h-2" aria-hidden="true"><div className="h-2 bg-indigo-500 rounded" style={{ width: `${row.unsubscribes / max * 100}%` }} /></div><span>{row.unsubscribes} new unsubscribe records</span><span>{percent(row.failureRate)} failed-status share</span></div>)}</div>
+        <DataNote title="Email reporting definitions"><p>{data.coverage.revenue}</p><p>{data.coverage.failureDefinition}</p><p>{data.kpis.failedCount} failed-status rows / {data.kpis.attemptedCount} terminal-status rows; {data.coverage.unknownStatusRows} other-status rows excluded.</p><p>{data.coverage.unsubscribeDefinition}</p></DataNote>
+        <div className={card}><h2 className="font-semibold">UTC delivery observations</h2>{!data.coverage.trendComplete ? <p role="status" className={ui.notice}>Daily trends unavailable: row coverage limit exceeded.</p> : data.trends.slice(-10).map(row => <div key={row.date} className="flex flex-wrap items-center gap-3 border-b border-slate-100 py-2.5 text-xs last:border-0 dark:border-slate-700"><span className="tabular-nums">{row.date}</span><div className="h-2 min-w-20 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700" aria-hidden="true"><div className="h-2 rounded-full bg-indigo-500" style={{ width: `${row.unsubscribes / max * 100}%` }} /></div><span>{row.unsubscribes} new unsubscribe records</span><span className={ui.muted}>{percent(row.failureRate)} failed-status share</span></div>)}</div>
         <div ref={section} data-focused="false" className={`${card} data-[focused=true]:ring-2 data-[focused=true]:ring-indigo-500`}><h2 className="font-semibold">Recent unsubscribe records in this window</h2>
-            {!data.recentUnsubscribes.length ? <p>No unsubscribe records in this window.</p> : <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr><th>Email</th><th>Scope</th><th>Reason</th><th>Created</th></tr></thead><tbody>{data.recentUnsubscribes.map(row => <tr key={row.id}><td className="p-2">{row.email}</td><td className="p-2">{row.scope}</td><td className="p-2">{row.reason || 'Not provided'}</td><td className="p-2">{new Date(row.createdAt).toLocaleString()}</td></tr>)}</tbody></table></div>}
+            {!data.recentUnsubscribes.length ? <p className={ui.empty}>No unsubscribe records in this window.</p> : <div className="overflow-x-auto"><table className={ui.table}><thead className={ui.tableHead}><tr>{['Email', 'Scope', 'Reason', 'Created'].map(label => <th scope="col" className={`${ui.cell} font-medium`} key={label}>{label}</th>)}</tr></thead><tbody className={ui.tableBody}>{data.recentUnsubscribes.map(row => <tr key={row.id}><td className={`${ui.cell} break-all`}>{row.email}</td><td className={ui.cell}><span className={ui.badge}>{row.scope}</span></td><td className={ui.cell}>{row.reason || 'Not provided'}</td><td className={`${ui.cell} whitespace-nowrap text-xs`}>{new Date(row.createdAt).toLocaleString()}</td></tr>)}</tbody></table></div>}
         </div>
     </>;
 }

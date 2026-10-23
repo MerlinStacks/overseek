@@ -37,14 +37,14 @@ function AOVContent({ days, accountId, token, currency }: { days: number; accoun
     const change = comparison.data && comparison.data.previous > 0 ? (comparison.data.current - comparison.data.previous) / comparison.data.previous * 100 : null;
     return <Card><CardHeader><CardTitle>AOV Trend</CardTitle></CardHeader><CardContent className="space-y-4">
         {comparison.loading ? <p role="status">Loading AOV comparison…</p> : comparison.error || !comparison.data ? <div role="alert">AOV comparison unavailable. <button onClick={comparison.retry}>Retry comparison</button></div> :
-            <p>Current: {money(comparison.data.current, currency)} · Previous: {money(comparison.data.previous, currency)} · Change: {change == null ? 'Unavailable (zero baseline)' : `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`}</p>}
+            <p className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4 text-sm font-medium text-indigo-800 dark:border-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-200">Current: {money(comparison.data.current, currency)} · Previous: {money(comparison.data.previous, currency)} · Change: {change == null ? 'Unavailable (zero baseline)' : `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`}</p>}
         {trend.loading ? <p role="status">Loading AOV trend…</p> : trend.error ? <div role="alert">AOV trend unavailable. <button onClick={trend.retry}>Retry trend</button></div> : !points.length ? <p>No AOV observations with orders in this range.</p> : <>
             <svg role="img" aria-labelledby={id} viewBox="0 0 100 44" className="w-full h-28"><title id={id}>Daily average order value; gaps have no order observations. {points.length} observations.</title>
                 <path d={path} fill="none" stroke="currentColor" strokeWidth="1" className="text-indigo-500" />
                 {plotted.map(point => <circle key={point.date} cx={point.x} cy={point.y} r="1.5" fill="currentColor" className="text-indigo-500"><title>{point.date}: {money(point.aov, currency)} ({point.orders} orders)</title></circle>)}
             </svg>
-            <p>{points[0].date} – {points[points.length - 1].date}</p>
-            <div className="grid grid-cols-3 gap-4 text-sm"><p>Highest AOV: {money(max, currency)}</p><p>Order-weighted average: {money(average!, currency)}</p><p>Lowest AOV: {money(min, currency)}</p></div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{points[0].date} – {points[points.length - 1].date}</p>
+            <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-3"><p className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900/50">Highest AOV: {money(max, currency)}</p><p className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900/50">Order-weighted average: {money(average!, currency)}</p><p className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900/50">Lowest AOV: {money(min, currency)}</p></div>
         </>}
     </CardContent></Card>;
 }

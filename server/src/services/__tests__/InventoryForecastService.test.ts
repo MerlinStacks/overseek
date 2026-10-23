@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { InventoryForecastService } from '../analytics/InventoryForecastService';
 import { prisma } from '../../utils/prisma';
 import { esClient } from '../../utils/elastic';
+import { BOMForecastCycleError } from '../analytics/inventory-forecast/errors';
 
 // Mock prisma
 vi.mock('../../utils/prisma', () => ({
@@ -122,6 +123,38 @@ describe('InventoryForecastService', () => {
             expect(result[0].name).toBeDefined();
             expect(result[0].currentStock).toBeDefined();
             expect(result[0].stockoutRisk).toBeDefined();
+        });
+
+        it('forecasts nested assembly demand without altering stock or counting direct sales twice', async () => {
+            const leaf = { id: 'leaf', wooId: 101, name: 'Material', sku: 'MAT', mainImage: null,
+                stockQuantity: 100, manageStock: true, rawData: { manage_stock: true, stock_quantity: 100 },
+                supplier: { leadTimeDefault: 7 }, boms: [], variations: [] };
+            (prisma.wooProduct.findMany as any).mockResolvedValue([leaf]);
+            const product = (id: string, wooId: number) => ({ id, accountId: 'acc_123', wooId, boms: [{ variationId: 0 }] });
+            const edge = (parent: string, parentWooId: number, child: string, childWooId: number, quantity: number, wasteFactor: number) => ({
+                isActive: true, supplierItemId: null, internalProductId: null, internalProduct: null,
+                childProductId: child, childVariationId: null, childVariation: null,
+                childProduct: product(child, childWooId), quantity, wasteFactor,
+                bom: { productId: parent, variationId: 0, product: product(parent, parentWooId) },
+            });
+            (prisma.bOMItem.findMany as any).mockResolvedValue([
+                edge('middle', 201, 'leaf', 101, 2, 0.1), edge('root', 301, 'middle', 201, 3, 0.2),
+            ]);
+            const yesterday = new Date(); yesterday.setUTCHours(0, 0, 0, 0); yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+            (esClient.search as any).mockImplementation(async (query: any) => {
+                const selected = query.aggs.by_day.aggs.line_items_nested.aggs.products.aggs.values.terms.include;
+                return { aggregations: { by_day: { buckets: [{ key: yesterday.getTime(), line_items_nested: { products: { values: {
+                    sum_other_doc_count: 0, doc_count_error_upper_bound: 0,
+                    buckets: selected.map((id: string) => ({ key: id, total_qty: { value: id === '201' ? 45 : 90 } })),
+                } } } }] } } };
+            });
+            const [forecast] = await InventoryForecastService.getSkuForecasts('acc_123');
+            expect(forecast.derivedDemand).toBeCloseTo(45 / 90 * 2.2 + 90 / 90 * 7.92);
+            expect(forecast.dailyDemand).toBeCloseTo(2.5 + 9.02);
+            expect(forecast.forecastedDemand).toBe(346);
+            expect(forecast.currentStock).toBe(100);
+            expect(leaf.stockQuantity).toBe(100);
+            expect(prisma.bOMItem.findMany).toHaveBeenCalledTimes(1);
         });
 
         it('should include ordered PO stock and subtract it from the reorder recommendation', async () => {
@@ -304,6 +337,13 @@ describe('InventoryForecastService', () => {
     });
 
     describe('getSkuForecastDetail', () => {
+        it('propagates real cycle conflicts instead of converting them to a missing product', async () => {
+            const error = new BOMForecastCycleError();
+            const spy = vi.spyOn(InventoryForecastService, 'getSkuForecasts').mockRejectedValue(error);
+            try {
+                await expect(InventoryForecastService.getSkuForecastDetail('acc_123', 101)).rejects.toBe(error);
+            } finally { spy.mockRestore(); }
+        });
         it('should return null for non-existent product', async () => {
             (prisma.wooProduct.findMany as any).mockResolvedValue([]);
 

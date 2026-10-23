@@ -10,6 +10,8 @@ import { isRecord } from '../../utils/responseValidation';
 import { BOMCostSummary, BOMSearchDropdown, BOMItemsTable, type BOMItem } from './bom';
 import type { BOMSearchResultProduct } from './bom/BOMSearchDropdown';
 import { bomNumber, validBOMValues, validStock } from './bom/bomValues';
+import { Layers } from 'lucide-react';
+import { workspaceStyles as ui } from '../ui/workspaceStyles';
 
 interface BOMPanelProps {
     productId: string; variants?: { id: number; sku?: string }[]; fixedVariationId?: number;
@@ -75,9 +77,9 @@ const BOMScopes = forwardRef<BOMPanelRef, Omit<ScopeProps, 'scope'>>(function BO
         const result = await transition.run(async () => { if (!child.current || !await child.current.save()) throw new Error('BOM not saved'); }, 'Could not save this BOM. Resolve its errors before changing scope.');
         if (result.ok) setScope(next);
     };
-    return <section className="p-5 space-y-4 border rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"><h3 className="font-semibold">BOM Configuration</h3>
-        {props.fixedVariationId === undefined && <label>BOM scope<select disabled={busy || transition.busy} className="ml-2 p-2 border rounded-lg bg-white dark:bg-slate-900" value={scope} onChange={event => void changeScope(Number(event.target.value))}><option value={0}>Main Product</option>{props.variants?.map(variant => <option key={variant.id} value={variant.id}>Variant #{variant.id} {variant.sku}</option>)}</select></label>}
-        {transition.error && <p role="alert">{transition.error}</p>}
+    return <section className={`${ui.card} space-y-4 text-slate-900 dark:text-slate-100`}><h3 className="flex items-center gap-2 font-semibold"><Layers size={18} className="text-indigo-500" />BOM Configuration</h3>
+        {props.fixedVariationId === undefined && <label className={`${ui.label} max-w-md`}>BOM scope<select disabled={busy || transition.busy} className={ui.input} value={scope} onChange={event => void changeScope(Number(event.target.value))}><option value={0}>Main Product</option>{props.variants?.map(variant => <option key={variant.id} value={variant.id}>Variant #{variant.id} {variant.sku}</option>)}</select></label>}
+        {transition.error && <p role="alert" className={ui.alert}>{transition.error}</p>}
         <LoadedBOM key={scope} {...props} scope={scope} ref={child} onBusyChange={setBusy} />
     </section>;
 });
@@ -148,12 +150,12 @@ const BOMEditor = forwardRef<BOMPanelRef, ScopeProps & { initial: BOMItem[]; onB
     };
     return <div className="space-y-4">
         <StockSummary key={stockVersion} {...props} totalCost={totalCost} isSyncing={mutation.busy} disabled={dirty || mutation.busy || !items.length} syncStatus={syncStatus} onSyncToWoo={() => void sync()} />
-        {dirty && <p>Unsaved BOM changes. Save before syncing stock; buildable units reflect the saved BOM.</p>}
-        <label className="block">Search components<input className="block w-full p-2 border rounded-lg bg-white dark:bg-slate-900" disabled={mutation.busy} value={query} onChange={event => setQuery(event.target.value)} /></label>
+        {dirty && <p className={ui.notice}>Unsaved BOM changes. Save before syncing stock; buildable units reflect the saved BOM.</p>}
+        <label className={ui.label}>Search components<input className={ui.input} placeholder="Search component name or SKU…" disabled={mutation.busy} value={query} onChange={event => setQuery(event.target.value)} /></label>
         {query.trim().length >= 2 && (query !== debounced ? <p role="status">Searching components...</p> : <ComponentSearch key={debounced} {...props} query={debounced} onAdd={add} disabled={mutation.busy} />)}
         <BOMItemsTable items={items} selectedScope={props.scope} currency={props.currency} disabled={mutation.busy} onItemsChange={next => { if (!mutation.isPending()) { setItems(next); setSyncStatus('idle'); } }} />
-        {mutation.error && <p role="alert">{mutation.error}</p>}{message && <p role="status">{message}</p>}
-        <button type="button" disabled={mutation.busy || !dirty || !items.every(validBOMValues)} onClick={() => void save()}>{mutation.busy ? 'Working...' : 'Save BOM'}</button>
+        {mutation.error && <p role="alert" className={ui.alert}>{mutation.error}</p>}{message && <p role="status" className={ui.notice}>{message}</p>}
+        <div className="flex justify-end"><button className={ui.primary} type="button" disabled={mutation.busy || !dirty || !items.every(validBOMValues)} onClick={() => void save()}>{mutation.busy ? 'Working...' : 'Save BOM'}</button></div>
     </div>;
 });
 function StockSummary(props: ScopeProps & Omit<React.ComponentProps<typeof BOMCostSummary>, 'effectiveStock' | 'currentWooStock'>) {

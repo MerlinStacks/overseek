@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NewEmailModal } from './NewEmailModal';
 
 vi.mock('../../context/AuthContext', () => ({ useAuth: () => ({ token: 'token', user: {} }) }));
-vi.mock('../../context/AccountContext', () => ({ useAccount: () => ({ currentAccount: { id: 'account-1' } }) }));
+// Real AccountContext preserves account identity between renders. A fresh object
+// here retriggers the email-account effect indefinitely and starves SMS reads.
+const account = vi.hoisted(() => ({ id: 'account-1' }));
+vi.mock('../../context/AccountContext', () => ({ useAccount: () => ({ currentAccount: account }) }));
 vi.mock('../../utils/logger', () => ({ Logger: { error: vi.fn() } }));
 vi.mock('../../hooks/useCannedResponses', () => ({
     useCannedResponses: () => ({ cannedResponses: [], filteredCanned: [], showCanned: false, handleInputForCanned: vi.fn() })

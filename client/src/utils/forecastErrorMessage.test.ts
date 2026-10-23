@@ -1,9 +1,15 @@
 import { expect, it } from 'vitest';
 import { forecastErrorMessage } from './forecastErrorMessage';
 
-it('explains unsupported BOM planning without hiding it as a transient fetch error', () => {
-    expect(forecastErrorMessage(new Error('BOM forecast unavailable: nested/cyclic component demand requires multi-level planning'))).toContain('Multi-level demand planning is not supported');
+it('explains genuine cycles without claiming valid multi-level planning is unsupported', () => {
+    expect(forecastErrorMessage(new Error('BOM forecast unavailable: cyclic component references detected'))).toContain('component cycle');
+    expect(forecastErrorMessage(new Error('BOM forecast unavailable: nested/cyclic component demand requires multi-level planning'))).toContain('updated server');
     expect(forecastErrorMessage(new Error('BOM component variation unresolved'))).toContain('Check component references');
+});
+
+it('explains bounded planning failures without presenting partial demand', () => {
+    expect(forecastErrorMessage(new Error('BOM forecast coverage limit exceeded'))).toContain('planning limits');
+    expect(forecastErrorMessage(new Error('BOM demand overflow'))).toContain('planning limits');
 });
 
 it('distinguishes incomplete sales history from zero demand', () => {

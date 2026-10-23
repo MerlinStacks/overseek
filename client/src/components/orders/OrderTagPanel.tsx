@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
+import { Plus, Search, Tag, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -48,16 +49,17 @@ function ScopedTags({ accountId, token, orderId, currentTags, lastUpdate, onTags
         finally { clearTimeout(timer); attempt.finish(); if (attempt.current(active, true)) setBusy(false); }
     }
     const options = (mappings.data || []).filter(row => !tags.some(tag => tag.toLowerCase() === row.orderTag.toLowerCase()) && row.orderTag.toLowerCase().includes(search.toLowerCase()));
-    return <section className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 space-y-3 text-slate-900 dark:text-slate-100"><h3 className="font-semibold">Tags</h3>
+    const controlClass = 'inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700';
+    return <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-700 dark:bg-slate-800 space-y-3 text-sm text-slate-900 dark:text-slate-100"><h3 className="flex items-center gap-2 font-semibold"><Tag size={18} className="text-indigo-500" />Tags</h3>
         {error && <p role="alert">{error} <button onClick={() => window.location.reload()}>Reload page after reconciliation</button></p>}
         {!versionValid(version) && <p role="status">Current order version required before editing.</p>}
         {useAck && <p role="status">Tags saved locally; search indexing pending.</p>}
-        {(error || !versionValid(version)) && onRefresh && <button onClick={onRefresh}>Refresh order to reconcile</button>}
-        {tags.length === 0 && <p>No tags applied.</p>}
-        <ul className="flex flex-wrap gap-2">{tags.map(tag => <li key={tag} className="rounded border p-2">{tag} {hasPermission('edit_order_tags') && <button aria-label={`Remove tag ${tag}`} disabled={!allowed} onClick={() => void write(tag, true)}>×</button>}</li>)}</ul>
+        {(error || !versionValid(version)) && onRefresh && <button type="button" className={controlClass} onClick={onRefresh}>Refresh order to reconcile</button>}
+        {tags.length === 0 && <p className="text-xs italic text-slate-500 dark:text-slate-400">No tags applied.</p>}
+        <ul className="flex flex-wrap gap-2">{tags.map(tag => { const color = mappings.data?.find(row => row.orderTag.toLowerCase() === tag.toLowerCase())?.color; return <li key={tag} className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300">{color && <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />}<span className="min-w-0 break-all">{tag}</span>{hasPermission('edit_order_tags') && <button type="button" className="shrink-0 rounded-full p-0.5 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-indigo-900" aria-label={`Remove tag ${tag}`} disabled={!allowed} onClick={() => void write(tag, true)}><X size={12} /></button>}</li>; })}</ul>
         {mappings.loading ? <p role="status">Loading tag mappings…</p> : mappings.error ? <p role="alert">Tag mappings unavailable. <button onClick={mappings.retry}>Retry tag mappings</button></p> : hasPermission('edit_order_tags') && <>
-            <button aria-expanded={expanded} disabled={!allowed} onClick={() => setExpanded(value => !value)}>Add tag</button>
-            {expanded && <div onKeyDown={event => { if (event.key === 'Escape') setExpanded(false); }}><label>Search tags<input className="block bg-white dark:bg-slate-900" value={search} onChange={event => setSearch(event.target.value)} maxLength={100} /></label>{options.length === 0 ? <p>No available matching tags.</p> : options.map(row => <button className="block p-2" disabled={!allowed} key={row.orderTag} onClick={() => void write(row.orderTag)}>{row.orderTag}</button>)}</div>}
+            <button type="button" className={controlClass} aria-expanded={expanded} disabled={!allowed} onClick={() => setExpanded(value => !value)}><Plus size={14} />Add tag</button>
+            {expanded && <div className="overflow-hidden rounded-lg border border-slate-200 shadow-sm dark:border-slate-600" onKeyDown={event => { if (event.key === 'Escape') setExpanded(false); }}><label className="flex items-center gap-2 border-b border-slate-100 px-3 py-2 dark:border-slate-700"><Search size={14} className="shrink-0 text-slate-400" /><span className="sr-only">Search tags</span><input className="block min-w-0 w-full bg-transparent text-xs outline-none" placeholder="Search tags…" value={search} onChange={event => setSearch(event.target.value)} maxLength={100} /></label><div className="max-h-48 overflow-y-auto p-1">{options.length === 0 ? <p className="p-2 text-xs text-slate-500 dark:text-slate-400">No available matching tags.</p> : options.map(row => <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-xs hover:bg-slate-50 disabled:opacity-50 dark:hover:bg-slate-700" disabled={!allowed} key={row.orderTag} onClick={() => void write(row.orderTag)}>{row.color && <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: row.color }} />}<span className="break-all">{row.orderTag}</span></button>)}</div></div>}
         </>}
     </section>;
 }

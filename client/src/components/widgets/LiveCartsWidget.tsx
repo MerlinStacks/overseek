@@ -34,9 +34,9 @@ function AccountCarts({ token, accountId, className = '' }: { token: string; acc
         {read.error && <WidgetErrorState message={read.error} onRetry={() => void read.refresh()} />}
         {read.data === null && !read.error && <WidgetLoadingState message="Loading carts..." />}
         {read.data?.length === 0 && <p>No active carts</p>}
-        <ul className="space-y-2">{read.data?.map(cart => <li key={cart.id} className="p-3 rounded-lg bg-slate-50 dark:bg-slate-700/40">
-            <p className="font-semibold">{cart.cartValue === null ? 'Value unavailable' : reportMoney(cart.cartValue, cart.currency ?? undefined)}</p>
-            <p>{cart.customerName || cart.email || `Visitor ${cart.visitorId.slice(0, 6)}`}</p>
+        <ul className="mt-3 space-y-3">{read.data?.map(cart => <li key={cart.id} className="space-y-1.5 rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-700/40">
+            <p className="font-semibold tabular-nums text-indigo-700 dark:text-indigo-300">{cart.cartValue === null ? 'Value unavailable' : reportMoney(cart.cartValue, cart.currency ?? undefined)}</p>
+            <p className="break-all text-sm font-medium">{cart.customerName || cart.email || `Visitor ${cart.visitorId.slice(0, 6)}`}</p>
             {cart.purchaseIntentScore !== null && cart.purchaseIntentScore >= 70 && <p className="text-xs text-amber-700 dark:text-amber-400">High purchase intent · {cart.purchaseIntentScore}/100</p>}
             <p className="text-xs">{cart.itemCount === null ? 'Item count unavailable' : `${cart.itemCount} items`}{cart.cartItems[0] ? ` · ${cart.cartItems[0].name}` : ''}</p>
             <p className="text-xs text-slate-500 dark:text-slate-400">{toValidDate(cart.lastActiveAt) ? <RelativeTime date={cart.lastActiveAt} /> : 'Date unavailable'}{cart.city || cart.country ? ` · ${[cart.city, cart.country].filter(Boolean).join(', ')}` : ''}</p>

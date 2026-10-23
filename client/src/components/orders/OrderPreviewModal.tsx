@@ -6,6 +6,7 @@ import { useScopedRequest } from '../../hooks/useScopedRequest';
 import { isRecord } from '../../utils/responseValidation';
 import { formatDateSafe } from '../../utils/format';
 import { reportMoney } from '../analytics/useReportRequest';
+import { getStatusBadgeClasses } from '../../utils/orderStatus';
 
 interface Props { orderId: number | null; isOpen: boolean; onClose: () => void }
 interface Item { id: number | string; name: string; quantity: number; price: number; total: number }
@@ -35,11 +36,11 @@ function OrderPreview({ orderId, token, accountId, onClose }: { orderId: number;
     const money = (amount: number) => reportMoney(amount, data?.currency);
     return <div className="space-y-4 text-slate-900 dark:text-slate-100">
         {loading ? <p role="status">Loading order details...</p> : error || !data ? <p role="alert">Could not load order data. <button type="button" onClick={retry}>Retry order preview</button></p> : <>
-            <div className="flex flex-wrap gap-3 justify-between"><span className="capitalize font-semibold">{data.status}</span><span>{formatDateSafe(data.date_created, 'Date unavailable')}</span></div>
+            <div className="flex flex-wrap items-center justify-between gap-3"><span className={`rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${getStatusBadgeClasses(data.status)}`}>{data.status}</span><span className="text-xs text-slate-500 dark:text-slate-400">{formatDateSafe(data.date_created, 'Date unavailable')}</span></div>
             <div className="p-4 rounded-lg bg-slate-100 dark:bg-slate-900"><p className="font-medium">{data.billing?.first_name} {data.billing?.last_name}</p><p className="text-sm break-all">{data.billing?.email}</p></div>
-            <h3 className="font-semibold">Order Items</h3><ul className="space-y-3">{data.line_items?.map(item => <li key={item.id} className="flex justify-between gap-3"><div>{item.name}<p className="text-sm text-slate-500 dark:text-slate-400">{item.quantity} × {money(item.price)}</p></div><span>{money(item.total)}</span></li>)}</ul>
+            <h3 className="font-semibold">Order Items</h3><ul className="divide-y divide-slate-100 dark:divide-slate-700">{data.line_items?.map(item => <li key={item.id} className="flex items-start justify-between gap-3 py-3 text-sm"><div className="min-w-0 flex-1 break-words font-medium">{item.name}<p className="text-xs font-normal text-slate-500 dark:text-slate-400">{item.quantity} × {money(item.price)}</p></div><span className="shrink-0 font-medium tabular-nums">{money(item.total)}</span></li>)}</ul>
             <div className="flex justify-between font-semibold border-t border-slate-200 dark:border-slate-700 pt-3"><span>Total</span><span>{money(data.total)}</span></div>
         </>}
-        <div className="flex flex-wrap justify-end gap-3"><button type="button" onClick={onClose}>Close preview</button><button type="button" onClick={() => { onClose(); navigate(`/orders/${orderId}`); }} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">View Full Details</button></div>
+        <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 pt-4 dark:border-slate-700"><button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-indigo-500 dark:border-slate-600 dark:hover:bg-slate-700">Close preview</button><button type="button" onClick={() => { onClose(); navigate(`/orders/${orderId}`); }} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-indigo-500">View Full Details</button></div>
     </div>;
 }

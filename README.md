@@ -150,6 +150,9 @@ overseek/
 
 ## Related Docs
 
+- [Documentation index](./docs/README.md)
+- [Deployment guide](./DEPLOYMENT.md)
+- [Contributing guide](./CONTRIBUTING.md)
 - [Wholesale catalog generator plan and rollout checklist](./docs/wholesale-catalog-generator-plan.md)
 - [WooCommerce plugin README](./overseek-wc-plugin/README.md)
 - [Print agent README](./print-agent/README.md)

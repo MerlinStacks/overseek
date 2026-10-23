@@ -93,7 +93,7 @@ calendars and closures are handled by the existing pure engine.
 WBS/WBSNG require `exact_rate` or confirmed `all_provider_rates`; old unverified
 rows remain blank. Global vendor method getter -1 is normalized in discovery to
 actual rate instance zero, never parsed from a title hash. WBSNG multi-shipment
-solution metadata stays excluded. See `docs/delivery-shipping-options.md` for the
+solution metadata stays excluded. See `docs/delivery/delivery-shipping-options.md` for the
 API/UI contract, admin actual-rate observation and native 6.18.0 fixture.
 
 ## Results and limitations

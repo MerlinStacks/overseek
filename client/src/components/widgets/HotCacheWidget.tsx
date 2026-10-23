@@ -6,6 +6,7 @@ import { useScopedMutation } from '../../hooks/useScopedMutation';
 import type { WidgetProps } from './WidgetRegistry';
 import { WidgetErrorState, WidgetLoadingState } from './WidgetState';
 import { widgetCardClass, widgetTitleClass } from './widgetStyles';
+import { workspaceStyles as ui } from '../ui/workspaceStyles';
 
 export function HotCacheWidget(props: WidgetProps) {
     const { currentAccount } = useAccount(); const { token } = useAuth();
@@ -39,11 +40,11 @@ function AccountCache({ accountId, className = '' }: { accountId: string; classN
     };
     return <section aria-label="Hot cache" className={`${widgetCardClass} p-4 h-full text-slate-900 dark:text-white space-y-3 ${className}`}>
         <h3 className={widgetTitleClass}>Hot Cache</h3>
-        <div className="flex gap-3"><button type="button" disabled={busy} onClick={() => void load()}>Refresh stats</button><button type="button" disabled={busy || !stats} onClick={() => void clear()}>{confirm ? 'Confirm clear cache' : 'Clear cache'}</button></div>
+        <div className="flex flex-wrap gap-2"><button className={`${ui.secondary} py-1.5 text-xs`} type="button" disabled={busy} onClick={() => void load()}>Refresh stats</button><button className={`${ui.danger} py-1.5 text-xs`} type="button" disabled={busy || !stats} onClick={() => void clear()}>{confirm ? 'Confirm clear cache' : 'Clear cache'}</button></div>
         {confirm && <p role="status">Clear this account’s local cache? Select confirm within 3 seconds.</p>}
         {error && <WidgetErrorState message={error} onRetry={() => void load()} />}
         {busy && <WidgetLoadingState message="Updating cache statistics..." />}
-        {stats && <dl className="space-y-2">{(['products', 'orders', 'customers'] as const).map(table => <div key={table}><dt className="capitalize">{table}</dt><dd>{stats[table].toLocaleString()} cached · Last sync: {stats.lastSync[table] === null ? 'Never' : new Date(stats.lastSync[table]!).toLocaleString()}</dd></div>)}</dl>}
+        {stats && <dl className="grid gap-2 sm:grid-cols-3">{(['products', 'orders', 'customers'] as const).map(table => <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900/50" key={table}><dt className={`capitalize ${ui.muted}`}>{table}</dt><dd><span className="mt-1 block text-lg font-semibold tabular-nums">{stats[table].toLocaleString()} cached</span><span className={`mt-1 block ${ui.muted}`}>Last sync: {stats.lastSync[table] === null ? 'Never' : new Date(stats.lastSync[table]!).toLocaleString()}</span></dd></div>)}</dl>}
     </section>;
 }
 export default HotCacheWidget;

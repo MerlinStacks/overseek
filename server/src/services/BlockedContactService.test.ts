@@ -12,6 +12,28 @@ it('uses authoritative normalized exact identities and propagates unavailable de
     m.find.mockResolvedValueOnce({ id: 'blocked' }); expect(await BlockedContactService.isBlocked('a', 'USER@example.com')).toBe(true);
     m.find.mockRejectedValueOnce(new Error('DB unavailable')); await expect(BlockedContactService.isBlocked('a', 'user@example.com')).rejects.toThrow('DB unavailable');
 });
+it('preserves legacy blocked addresses without rejecting the entire inbox filter', async () => {
+    m.list.mockResolvedValue([
+        { email: ' User@Example.com ' },
+        { email: ' Legacy..User@Example.com ' },
+        { email: 'social-id' },
+        { email: '' },
+    ]);
+    expect(await BlockedContactService.listBlockedEmails('a')).toEqual([
+        'user@example.com', 'legacy..user@example.com', 'social-id', '',
+    ]);
+    expect(m.list).toHaveBeenCalledWith({ where: { accountId: 'a' }, select: { email: true }, take: 10001 });
+});
+it('still rejects invalid addresses in new block commands', async () => {
+    await expect(BlockedContactService.blockContact('a', 'legacy..user@example.com', 'u', '', { operationId, version: null })).rejects.toThrow();
+    expect(m.transaction).not.toHaveBeenCalled();
+});
+it('propagates database failures and refuses incomplete block filter coverage', async () => {
+    m.list.mockRejectedValueOnce(new Error('DB unavailable'));
+    await expect(BlockedContactService.listBlockedEmails('a')).rejects.toThrow('DB unavailable');
+    m.list.mockResolvedValueOnce(Array.from({ length: 10001 }, () => ({ email: 'user@example.com' })));
+    await expect(BlockedContactService.listBlockedEmails('a')).rejects.toThrow('coverage exceeds supported window');
+});
 it('commits acknowledgement independent of later cache failure and replays one actor/payload', async () => {
     m.invalidate.mockRejectedValue(new Error('cache down'));
     const command = { operationId, version: null };

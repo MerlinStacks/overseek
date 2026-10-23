@@ -1,7 +1,7 @@
 # Server inbound projection stage
 
 Historical stage report. Current freshness coverage and stock-derived versus cost-only
-BOM eligibility are documented in `docs/delivery-freshness-launch.md`. Current source
+BOM eligibility are documented in `docs/delivery/delivery-freshness-launch.md`. Current source
 reads filter `boms` to inventory-linked items; SupplierItem/labour-only cost BOMs use
 normal native-product inputs and owner certification, never component-derived dates.
 

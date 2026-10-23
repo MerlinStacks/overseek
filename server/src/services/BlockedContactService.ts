@@ -81,6 +81,9 @@ export class BlockedContactService {
         scope.parse(accountId);
         const contacts = await prisma.blockedContact.findMany({ where: { accountId }, select: { email: true }, take: 10001 });
         if (contacts.length > 10000) throw new Error('Blocked-contact filter coverage exceeds supported window');
-        return contacts.map(contact => canonicalBlockedEmail(contact.email));
+        // Existing rows may predate the current email validator. Preserve their
+        // block coverage without letting one legacy address break inbox reads;
+        // new block commands still require canonicalBlockedEmail validation.
+        return contacts.map(contact => contact.email.trim().toLowerCase());
     }
 }

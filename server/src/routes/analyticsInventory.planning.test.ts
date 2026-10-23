@@ -9,18 +9,18 @@ vi.mock('../services/analytics/InventoryForecastService', () => ({ InventoryFore
     getSkuForecasts: mocks.forecast, getStockoutAlerts: mocks.alerts, getSkuForecastDetail: mocks.detail,
 } }));
 import routes from './analyticsInventory';
-import { UnsupportedBOMForecastError } from '../services/analytics/inventory-forecast/errors';
+import { BOMForecastCycleError } from '../services/analytics/inventory-forecast/errors';
 
-describe('unsupported inventory planning responses', () => {
+describe('cyclic inventory planning responses', () => {
     it.each(['/sku-forecasts', '/stockout-alerts', '/sku-forecasts/123'])('returns an explicit conflict, not false empty data or HTTP 500: %s', async url => {
         vi.resetAllMocks();
-        for (const mock of [mocks.forecast, mocks.alerts, mocks.detail]) mock.mockRejectedValue(new UnsupportedBOMForecastError());
+        for (const mock of [mocks.forecast, mocks.alerts, mocks.detail]) mock.mockRejectedValue(new BOMForecastCycleError());
         const app = Fastify();
         await app.register(routes);
         try {
             const response = await app.inject({ url });
             expect(response.statusCode).toBe(409);
-            expect(response.json()).toEqual({ code: 'BOM_MULTI_LEVEL_PLANNING_REQUIRED', error: expect.stringContaining('nested/cyclic') });
+            expect(response.json()).toEqual({ code: 'BOM_CYCLE_DETECTED', error: expect.stringContaining('cyclic') });
             expect(mocks.error).not.toHaveBeenCalled();
         } finally {
             await app.close();
