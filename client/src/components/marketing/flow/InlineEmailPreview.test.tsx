@@ -20,6 +20,14 @@ it('renders resolved fields, device controls and missing-value diagnostics inlin
     expect(screen.getByTitle('Inline email preview')).toHaveClass('w-[320px]');
     expect(screen.getByTitle('Inline email preview')).toHaveAttribute('sandbox', '');
 });
+it('fills the desktop column while retaining the compact stacked preview height', async () => {
+    render(<InlineEmailPreview {...props} />);
+    const frame = await screen.findByTitle('Inline email preview');
+    expect(screen.getByRole('region', { name: 'Live email preview' })).toHaveClass('flex', 'flex-col', 'lg:flex-1');
+    expect(frame).toHaveClass('h-64', 'lg:min-h-64', 'lg:flex-1', 'w-full');
+    fireEvent.click(screen.getByRole('button', { name: 'Mobile' }));
+    expect(frame).toHaveClass('w-[320px]', 'lg:flex-1');
+});
 it('pins both preview and test to explicit sample context rather than implicitly selecting a recent order', async () => {
     render(<InlineEmailPreview {...props} />); await screen.findByTitle('Inline email preview');
     const previewCall = mocks.fetch.mock.calls.find(([url]) => url.endsWith('preview-email'));

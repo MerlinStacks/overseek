@@ -28,6 +28,83 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('email designer integration', () => {
+    it('clones blocks from Layers with fresh IDs and supports undo and redo', async () => {
+        const save = vi.fn();
+        render(<EmailDesignEditorV2 initialDesign={initialDesign()} onSave={save} onCancel={vi.fn()} />);
+        fireEvent.click(screen.getByRole('button', { name: 'layers', exact: true }));
+        fireEvent.click(screen.getByRole('button', { name: 'Clone Text: Saved message' }));
+        expect(screen.getAllByRole('button', { name: 'Select Text: Saved message' })).toHaveLength(2);
+        expect(screen.getAllByRole('button', { name: 'Select Text: Saved message' })[1]).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.click(screen.getByRole('button', { name: 'Undo', exact: true }));
+        expect(screen.getAllByRole('button', { name: 'Select Text: Saved message' })).toHaveLength(1);
+        fireEvent.click(screen.getByRole('button', { name: 'Redo', exact: true }));
+        expect(screen.getAllByRole('button', { name: 'Select Text: Saved message' })).toHaveLength(2);
+        fireEvent.click(screen.getByText('Close', { exact: true }));
+        await waitFor(() => expect(save).toHaveBeenCalledOnce());
+        const blocks = save.mock.calls[0][1].document.sections[0].columns[0].blocks;
+        expect(blocks[0].id).toBe('message');
+        expect(blocks[1].id).not.toBe(blocks[0].id);
+        expect(blocks[1].props).toEqual(blocks[0].props);
+    });
+
+    it('clones complete sections with fresh descendant IDs', async () => {
+        const save = vi.fn();
+        render(<EmailDesignEditorV2 initialDesign={initialDesign()} onSave={save} onCancel={vi.fn()} />);
+        fireEvent.click(screen.getByRole('button', { name: 'layers', exact: true }));
+        fireEvent.click(screen.getByRole('button', { name: 'Clone section 1' }));
+        expect(screen.getByRole('button', { name: 'Select section Section copy' })).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.click(screen.getByText('Close', { exact: true }));
+        await waitFor(() => expect(save).toHaveBeenCalledOnce());
+        const sections = save.mock.calls[0][1].document.sections;
+        expect(sections).toHaveLength(2);
+        expect(sections[1].id).not.toBe(sections[0].id);
+        expect(sections[1].columns[0].id).not.toBe(sections[0].columns[0].id);
+        expect(sections[1].columns[0].blocks[0].id).not.toBe(sections[0].columns[0].blocks[0].id);
+        expect(sections[1].columns[0].blocks[0].props).toEqual(sections[0].columns[0].blocks[0].props);
+    });
+
+    it('lets footer layers be cloned and deleted, with undo restoring deleted content', () => {
+        const design = initialDesign();
+        design.document.sections[0].columns[0].blocks.push({ id: 'footer', type: 'footer', props: { html: '<a href="{{unsubscribe_url}}">Unsubscribe</a>' } });
+        render(<EmailDesignEditorV2 initialDesign={design} onSave={vi.fn()} onCancel={vi.fn()} />);
+        fireEvent.click(screen.getByRole('button', { name: 'layers', exact: true }));
+        fireEvent.click(screen.getByRole('button', { name: 'Clone Footer: Footer' }));
+        expect(screen.getAllByRole('button', { name: 'Select Footer: Footer' })).toHaveLength(2);
+        fireEvent.click(screen.getAllByRole('button', { name: 'Delete Footer: Footer' })[1]);
+        fireEvent.click(screen.getByRole('button', { name: 'Delete Footer: Footer' }));
+        expect(screen.queryByRole('button', { name: 'Select Footer: Footer' })).not.toBeInTheDocument();
+        expect(screen.getByText('Marketing emails need an unsubscribe or preferences link, not just wording.')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Undo', exact: true }));
+        expect(screen.getByRole('button', { name: 'Select Footer: Footer' })).toBeVisible();
+        expect(screen.queryByText('Marketing emails need an unsubscribe or preferences link, not just wording.')).not.toBeInTheDocument();
+    });
+
+    it('allows deleting the final section and restoring it with Undo', () => {
+        render(<EmailDesignEditorV2 initialDesign={initialDesign()} onSave={vi.fn()} onCancel={vi.fn()} />);
+        fireEvent.click(screen.getByRole('button', { name: 'layers', exact: true }));
+        fireEvent.click(screen.getByRole('button', { name: 'Delete section 1' }));
+        expect(screen.getByText('Add a structure to start your email.')).toBeVisible();
+        expect(screen.getByText('Select a section to edit its properties.')).toBeVisible();
+        fireEvent.click(screen.getByRole('button', { name: 'Undo', exact: true }));
+        expect(screen.getByRole('button', { name: 'Select Text: Saved message' })).toBeVisible();
+    });
+
+    it('keeps the inspector selection valid across cross-section moves and undo', async () => {
+        const design = initialDesign();
+        design.document.sections[0].name = 'First';
+        design.document.sections.push({ id: 'second', name: 'Second', columns: [{ id: 'second-column', width: 100, blocks: [] }] });
+        render(<EmailDesignEditorV2 initialDesign={design} onSave={vi.fn()} onCancel={vi.fn()} />);
+        fireEvent.click(screen.getByRole('button', { name: 'layers', exact: true }));
+        fireEvent.click(screen.getByRole('button', { name: 'Select Text: Saved message' }));
+        fireEvent.keyDown(screen.getByRole('button', { name: 'Drag Text: Saved message' }), { altKey: true, key: 'ArrowDown' });
+        const target = screen.getByLabelText('Column 1 in Second');
+        expect(within(target).getByRole('button', { name: 'Select Text: Saved message' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('tab', { name: 'block' })).toHaveAttribute('aria-selected', 'true');
+        fireEvent.click(screen.getByRole('button', { name: 'Undo', exact: true }));
+        await waitFor(() => expect(within(screen.getByRole('tabpanel')).getByLabelText('HTML')).toHaveValue('<p>Saved message</p>'));
+        expect(within(screen.getByLabelText('Column 1 in First')).getByRole('button', { name: 'Select Text: Saved message' })).toHaveAttribute('aria-pressed', 'true');
+    });
+
     it('keeps section properties on the right and replaces Layouts with Layers on the left', () => {
         render(<EmailDesignEditorV2 initialDesign={initialDesign()} onSave={vi.fn()} onCancel={vi.fn()} />);
         expect(screen.queryByRole('button', { name: 'layouts' })).not.toBeInTheDocument();

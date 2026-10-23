@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { compileEmailDesignV2, createDefaultEmailDesignV2, getEmailBlockAlignment, getEmailBlockPadding, normalizeEmailTextHtml, type EmailBlock } from '../../../lib/emailDesignerV2';
+import { compileEmailDesignV2, createDefaultEmailDesignV2, getEmailBlockAlignment, getEmailBlockPadding, normalizeEmailFooterHtml, normalizeEmailTextHtml, type EmailBlock } from '../../../lib/emailDesignerV2';
 import { createBlock } from './blockFactory';
 import { LiveBlock } from './LiveBlock';
 
@@ -15,6 +15,30 @@ function compiledBlock(block: EmailBlock): HTMLElement {
 }
 
 describe('email block layout parity', () => {
+    it('retains settings footer alignment, horizontal social icons and typography outside the rich-text editor', () => {
+        const html = '<p style="text-align:center"><img src="https://shop.test/logo.png" alt="Logo" width="200"></p><p style="text-align:center"><a href="https://facebook.com/shop"><img src="https://shop.test/facebook.png" alt="Facebook" width="16"></a><a href="https://instagram.com/shop"><img src="https://shop.test/instagram.png" alt="Instagram" width="16"></a></p><p style="text-align:center">A proud Australian small business<br><a href="{{unsubscribe_url}}">Unsubscribe</a></p>';
+        const block: EmailBlock = { id: 'footer', type: 'footer', props: { html, align: 'center', padding: '0' } };
+        const { container } = render(<><style>{'img { display:block; }'}</style><LiveBlock block={block} theme={theme} onUpdate={vi.fn()} /></>);
+        const footer = container.querySelector('div')!;
+        const delivered = compiledBlock(block);
+        expect(footer).toHaveStyle({ fontSize: '14px', color: '#111827', textAlign: 'center' });
+        expect(delivered).toHaveStyle({ fontSize: '14px', color: '#111827', textAlign: 'center' });
+        expect(footer.innerHTML).toBe(delivered.innerHTML);
+        for (const image of footer.querySelectorAll('img')) expect(image).toHaveStyle({ display: 'inline-block', verticalAlign: 'middle' });
+        expect(footer.querySelector('p')).toHaveStyle({ textAlign: 'center', margin: '0 0 8px' });
+        expect(footer.querySelector('a[href="{{unsubscribe_url}}"]')).toHaveStyle({ color: '#2563eb', textDecoration: 'underline' });
+        expect(normalizeEmailFooterHtml(normalizeEmailFooterHtml(html))).toBe(normalizeEmailFooterHtml(html));
+    });
+
+    it('preserves explicit footer styles and still strips unsafe content', () => {
+        const html = normalizeEmailFooterHtml('<p style="text-align:right;margin:12px;color:#123456"><img src="https://shop.test/logo.png" style="display:block;height:30px" onerror="alert(1)"><a href="{{unsubscribe_url}}" style="color:#c4006b;text-decoration:none">Leave</a><script>alert(2)</script></p>');
+        const wrapper = document.createElement('div'); wrapper.innerHTML = html;
+        expect(wrapper.querySelector('p')).toHaveStyle({ textAlign: 'right', margin: '12px', color: '#123456' });
+        expect(wrapper.querySelector('img')).toHaveStyle({ display: 'block', height: '30px' });
+        expect(wrapper.querySelector('a')).toHaveStyle({ color: '#c4006b', textDecoration: 'none' });
+        expect(html).not.toMatch(/onerror|script|alert\(/);
+    });
+
     it.each<EmailBlock['type']>(['text', 'image', 'siteLogo', 'button', 'list', 'divider', 'spacer', 'product', 'newProducts', 'cartItems', 'cartLink', 'orderSummary', 'orderTracking', 'address', 'coupon', 'review', 'menu', 'social', 'footer', 'rawHtml'])('%s uses inspector defaults on both rendering surfaces and respects zero padding', async type => {
         const block = createBlock(type);
         const { container, rerender } = render(<LiveBlock block={block} theme={theme} onUpdate={vi.fn()} />);

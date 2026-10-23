@@ -37,7 +37,7 @@ import { useDesignHistory } from './emailDesignerV2/useDesignHistory';
 import { DeliveryPreview, type DeliveryArtifact } from './emailDesignerV2/DeliveryPreview';
 import { SharedSections } from './emailDesignerV2/SharedSections';
 import type { EmailDeliveryPreviewOptions } from '@overseek/core';
-import { copyEmailBlockStyles, moveEmailBlock } from './emailDesignerV2/designerOperations';
+import { copyEmailBlockStyles, moveEmailBlock, relocateEmailBlock, reorderEmailSection } from './emailDesignerV2/designerOperations';
 
 interface Props {
     deliveryOptions?: EmailDeliveryPreviewOptions;
@@ -600,6 +600,23 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
     const { flush: persistLatestDesign, saving, saveError, hasUnsavedChanges, lastSavedAt } = useEmailAutosave(design, html, saveValidatedDesign, saveSnapshot);
     const selectedSection = design.document.sections.find((section) => section.id === selectedSectionId) || design.document.sections[0];
     const selectedBlock = selectedSection?.columns.flatMap((column) => column.blocks).find((block) => block.id === selectedBlockId) || null;
+    useEffect(() => {
+        // Undo/redo can move a selected block back to a different section or
+        // remove a freshly cloned layer. Keep the inspector selection valid.
+        if (selectedBlockId) {
+            const owner = design.document.sections.find(section => section.columns.some(column => column.blocks.some(block => block.id === selectedBlockId)));
+            if (owner) {
+                if (owner.id !== selectedSectionId) setSelectedSectionId(owner.id);
+                return;
+            }
+            setSelectedBlockId(null);
+            setInspectorTab('section');
+        }
+        if (!design.document.sections.some(section => section.id === selectedSectionId)) {
+            const fallback = design.document.sections[0]?.id || '';
+            if (fallback !== selectedSectionId) setSelectedSectionId(fallback);
+        }
+    }, [design.document.sections, selectedBlockId, selectedSectionId]);
     const designWarnings = useMemo(() => getEmailDesignWarnings(design), [design]);
     const issues: PreflightIssue[] = [
         ...evaluateEmailPreflight({ html, subject: design.document.meta.title, emailCategory }),
@@ -816,22 +833,9 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
 
     const moveBlock = (blockId: string, targetSectionId: string, targetIndex?: number, columnId?: string) => {
         setDirtyDesign((draft) => {
-            let movingBlock: EmailBlock | null = null;
-            for (const section of draft.document.sections) {
-                for (const column of section.columns) {
-                    const currentIndex = column.blocks.findIndex((block) => block.id === blockId);
-                    if (currentIndex >= 0) {
-                        [movingBlock] = column.blocks.splice(currentIndex, 1);
-                    }
-                }
-            }
-            if (!movingBlock) return;
             const targetSection = draft.document.sections.find((section) => section.id === targetSectionId);
             const targetColumn = columnId ? targetSection?.columns.find((item) => item.id === columnId) : targetSection?.columns[0];
-            const blocks = targetColumn?.blocks;
-            if (!blocks) return;
-            const nextIndex = typeof targetIndex === 'number' ? Math.min(targetIndex, blocks.length) : blocks.length;
-            blocks.splice(nextIndex, 0, movingBlock);
+            if (!targetColumn || !relocateEmailBlock(draft, blockId, targetSectionId, targetColumn.id, targetIndex ?? targetColumn.blocks.length)) return;
             setSelectedSectionId(targetSectionId);
             setSelectedBlockId(blockId);
             setInspectorTab('block');
@@ -928,6 +932,23 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
         return next;
     };
 
+    const duplicateSection = (sectionId: string) => setDirtyDesign(draft => {
+        const index = draft.document.sections.findIndex(section => section.id === sectionId);
+        if (index < 0) return;
+        const duplicate = cloneSectionWithFreshIds(draft.document.sections[index]);
+        duplicate.name = `${duplicate.name || 'Section'} copy`;
+        draft.document.sections.splice(index + 1, 0, duplicate);
+        setSelectedSectionId(duplicate.id);
+        setSelectedBlockId(null);
+        setInspectorTab('section');
+    });
+    const reorderSection = (sectionId: string, targetIndex: number) => setDirtyDesign(draft => {
+        if (!reorderEmailSection(draft, sectionId, targetIndex)) return;
+        setSelectedSectionId(sectionId);
+        setSelectedBlockId(null);
+        setInspectorTab('section');
+    });
+
     const saveSelectedSectionPreset = () => {
         if (!selectedSection) return;
         const name = window.prompt('Save structure as', selectedSection.name || 'Reusable section')?.trim();
@@ -1021,48 +1042,51 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                 for (const column of section.columns) {
                     const index = column.blocks.findIndex((item) => item.id === blockId);
                     if (index < 0) continue;
-                    if (column.blocks[index]?.type === 'footer') return;
                     const duplicated = typeof structuredClone === 'function' ? structuredClone(column.blocks[index]) : JSON.parse(JSON.stringify(column.blocks[index]));
                     duplicated.id = createEmailDesignId(duplicated.type);
                     column.blocks.splice(index + 1, 0, duplicated);
                     setSelectedSectionId(section.id);
                     setSelectedBlockId(duplicated.id);
+                    setInspectorTab('block');
                     return;
                 }
             }
         });
     };
-    const stepBlock = (blockId: string, direction: -1 | 1) => setDirtyDesign(draft => { moveEmailBlock(draft, blockId, direction); });
+    const stepBlock = (blockId: string, direction: -1 | 1) => setDirtyDesign(draft => {
+        if (!moveEmailBlock(draft, blockId, direction)) return;
+        const section = draft.document.sections.find(section => section.columns.some(column => column.blocks.some(block => block.id === blockId)));
+        if (section) setSelectedSectionId(section.id);
+        setSelectedBlockId(blockId);
+        setInspectorTab('block');
+    });
 
     const deleteBlockById = (blockId: string) => {
         setDirtyDesign((draft) => {
             for (const section of draft.document.sections) {
                 for (const column of section.columns) {
-                    column.blocks = column.blocks.filter((block) => block.id !== blockId || block.type === 'footer');
+                    column.blocks = column.blocks.filter((block) => block.id !== blockId);
                 }
             }
-            if (selectedBlockId === blockId) setSelectedBlockId(null);
+            if (selectedBlockId === blockId) { setSelectedBlockId(null); setInspectorTab('section'); }
         });
     };
 
     const deleteSelectedBlock = () => {
         if (!selectedBlockId) return;
-        setDirtyDesign((draft) => {
-            for (const section of draft.document.sections) {
-                for (const column of section.columns) {
-                    column.blocks = column.blocks.filter((block) => block.id !== selectedBlockId || block.type === 'footer');
-                }
-            }
-            setSelectedBlockId(null);
-        });
+        deleteBlockById(selectedBlockId);
     };
 
     const deleteSectionById = (sectionId: string) => {
-        if (design.document.sections.length <= 1) return;
         setDirtyDesign((draft) => {
+            const index = draft.document.sections.findIndex(section => section.id === sectionId);
+            if (index < 0) return;
             draft.document.sections = draft.document.sections.filter((section) => section.id !== sectionId);
-            setSelectedSectionId(draft.document.sections[0]?.id || '');
-            setSelectedBlockId(null);
+            if (selectedSectionId === sectionId) {
+                setSelectedSectionId(draft.document.sections[Math.min(index, draft.document.sections.length - 1)]?.id || '');
+                setSelectedBlockId(null);
+                setInspectorTab('section');
+            }
         });
     };
 
@@ -1347,7 +1371,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
             const target = event.target as HTMLElement | null;
             // Preserve native text-editor undo; shortcuts outside fields control the design.
             if (closing || target?.closest('input, textarea, [contenteditable="true"]')) return;
-            if (selectedBlockId && previewSurface === 'canvas' && event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) { event.preventDefault(); setDirtyDesign(draft => { moveEmailBlock(draft, selectedBlockId, event.key === 'ArrowUp' ? -1 : 1); }); return; }
+            if (selectedBlockId && previewSurface === 'canvas' && event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) { event.preventDefault(); stepBlock(selectedBlockId, event.key === 'ArrowUp' ? -1 : 1); return; }
             if (!(event.ctrlKey || event.metaKey)) return;
             if (event.key.toLowerCase() === 'z') {
                 event.preventDefault();
@@ -1359,7 +1383,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [undo, redo, closing, selectedBlockId, previewSurface, setDirtyDesign]);
+    }, [undo, redo, closing, selectedBlockId, previewSurface, stepBlock]);
 
     const selectLayer = (sectionId: string, blockId?: string) => {
         setSelectedSectionId(sectionId);
@@ -1404,7 +1428,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
         </div>
         <button type="button" onClick={saveSelectedSectionPreset} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--brand-border)] bg-[var(--brand-subtle)] px-3 py-2 text-sm font-semibold text-[var(--brand-text)]"><Layers size={14} />Save as reusable section</button>
         <SharedSections section={selectedSection} onInsert={insertBrandSection} onLink={linkBrandSection} onRefresh={refreshBrandSection} />
-        <button type="button" onClick={deleteSelectedSection} disabled={design.document.sections.length <= 1} className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-40"><Trash2 size={14} />Delete section</button>
+        <button type="button" onClick={deleteSelectedSection} className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-700 hover:bg-red-50"><Trash2 size={14} />Delete section</button>
     </div>;
 
     return (
@@ -1546,7 +1570,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                             </div>
                         )}
 
-                        {builderTab === 'layers' && <EmailLayersPanel sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelect={selectLayer} />}
+                        {builderTab === 'layers' && <EmailLayersPanel sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelect={selectLayer} onReorderSection={reorderSection} onRelocateBlock={(blockId, sectionId, columnId, index) => moveBlock(blockId, sectionId, index, columnId)} onStepBlock={stepBlock} onCloneSection={duplicateSection} onDeleteSection={deleteSectionById} onCloneBlock={duplicateBlock} onDeleteBlock={deleteBlockById} />}
                         {builderTab === 'global' && (
                             <div className="min-h-0 flex-1 overflow-auto px-3 pb-4 space-y-3">
                                 <p className="text-sm font-semibold text-slate-900 dark:text-white">Global styles</p>
@@ -1606,7 +1630,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                         {selectedBlock ? <>
                         <div className="mb-3 flex flex-wrap gap-2"><button onClick={() => setStyleClipboard(copyEmailBlockStyles(selectedBlock))} className="rounded border px-2 py-1 text-xs">Copy styles</button><button disabled={!styleClipboard} onClick={() => updateBlock(block => { Object.assign(block.props, styleClipboard); })} className="rounded border px-2 py-1 text-xs disabled:opacity-40">Paste styles</button><button onClick={() => duplicateBlock(selectedBlock.id)} className="rounded border px-2 py-1 text-xs">Duplicate</button></div>
                         <p className="mb-3 text-xs text-slate-500">Alt + ↑/↓ moves the selected block outside text fields.</p>
-                        <BlockEditor block={selectedBlock} onUpdate={updateBlock} onDelete={deleteSelectedBlock} canDelete={selectedBlock.type !== 'footer'} sections={design.document.sections} selectedSectionId={selectedSectionId} onSelectBlock={setSelectedBlockId} onDropOnSection={handleDropOnSection} onSaveSocialDefaults={saveSocialLinksAsDefaults} token={token || undefined} accountId={currentAccount?.id} />
+                        <BlockEditor block={selectedBlock} onUpdate={updateBlock} onDelete={deleteSelectedBlock} canDelete sections={design.document.sections} selectedSectionId={selectedSectionId} onSelectBlock={setSelectedBlockId} onDropOnSection={handleDropOnSection} onSaveSocialDefaults={saveSocialLinksAsDefaults} token={token || undefined} accountId={currentAccount?.id} />
                         </> : <p className="text-sm text-slate-500">Select a block in the canvas or Layers panel to edit its properties.</p>}
                         </div>}
                     </aside>}

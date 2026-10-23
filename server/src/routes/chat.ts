@@ -38,6 +38,7 @@ import { createMessageRoutes } from './chat/messages';
 import { schedulingRoutes } from './chat/scheduling';
 import { notesRoutes } from './chat/notes';
 import { requireInboxMutationAccess } from './chat/authorization';
+import { inboxAttachmentRoutes } from './chat/attachments';
 
 // Ensure attachments directory exists
 const attachmentsDir = path.join(__dirname, '../../uploads/attachments');
@@ -131,6 +132,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         await fastify.register(blockedContactRoutes);
         await fastify.register(createBulkActionRoutes(chatService));
         await fastify.register(createMessageRoutes(chatService));
+        await fastify.register(inboxAttachmentRoutes);
         await fastify.register(schedulingRoutes);
         await fastify.register(notesRoutes, { prefix: '/conversations' });
 

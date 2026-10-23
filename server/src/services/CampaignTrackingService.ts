@@ -7,6 +7,7 @@
 
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
+import { normalizeOrderStatus } from '../constants/orderStatus';
 
 type EventType = 'send' | 'open' | 'click' | 'unsubscribe' | 'purchase';
 type CampaignType = 'automation' | 'broadcast' | 'one-off';
@@ -128,18 +129,35 @@ export class CampaignTrackingService {
         });
     }
 
-    /**
-     * Attribute a purchase to a campaign based on UTM or email.
-     */
+    /** Shared by webhooks and sync, including historical revenue recovery. */
+    async trackOrderPurchase(accountId: string, order: Record<string, any>): Promise<void> {
+        if (!['processing', 'on-hold', 'completed'].includes(normalizeOrderStatus(order.status))) return;
+        const email = typeof order.billing?.email === 'string' ? order.billing.email.trim().toLowerCase() : '';
+        const revenue = Number(order.total);
+        if (!email || !order.id || !Number.isFinite(revenue) || revenue <= 0) return;
+
+        // GMT fields from WooCommerce have no suffix but represent UTC. Never
+        // use sync time: it could credit a message sent AFTER the purchase.
+        const gmt = order.date_paid_gmt || order.date_created_gmt;
+        const rawDate = gmt || order.date_paid || order.date_created;
+        if (typeof rawDate !== 'string' || !rawDate.trim()) return;
+        const purchasedAt = new Date(gmt && !/(Z|[+-]\d{2}:?\d{2})$/i.test(rawDate) ? `${rawDate}Z` : rawDate);
+        if (!Number.isFinite(purchasedAt.getTime()) || purchasedAt.getTime() > Date.now()) return;
+
+        await this.trackPurchase(accountId, String(order.id), revenue, email, undefined, purchasedAt);
+    }
+
+    /** Attribute a purchase to a campaign based on UTM or email. */
     async trackPurchase(
         accountId: string,
         orderId: string,
         revenue: number,
         customerEmail: string,
-        utmCampaign?: string
+        utmCampaign?: string,
+        purchasedAt: Date = new Date()
     ): Promise<void> {
         const normalizedEmail = customerEmail.trim().toLowerCase();
-        if (!normalizedEmail) return;
+        if (!normalizedEmail || !Number.isFinite(revenue) || revenue <= 0 || !Number.isFinite(purchasedAt.getTime())) return;
 
         // Try to find the campaign this purchase should be attributed to
         let campaignId = utmCampaign;
@@ -152,8 +170,10 @@ export class CampaignTrackingService {
                     accountId,
                     recipientEmail: { equals: normalizedEmail, mode: 'insensitive' },
                     eventType: 'send',
+                    campaignId: { not: null },
                     createdAt: {
-                        gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+                        gte: new Date(purchasedAt.getTime() - 7 * 24 * 60 * 60 * 1000),
+                        lte: purchasedAt
                     }
                 },
                 orderBy: { createdAt: 'desc' }
@@ -168,30 +188,25 @@ export class CampaignTrackingService {
         if (!campaignId) {
             return;
         }
+        campaignType ??= await this.resolveCampaignType(accountId, campaignId);
 
-        const existingPurchase = await prisma.campaignEvent.findFirst({
-            where: {
-                accountId,
-                campaignId,
-                eventType: 'purchase',
-                orderId
-            },
-            select: { id: true }
-        });
-
-        if (existingPurchase) {
-            return;
-        }
-
-        await this.trackEvent({
-            accountId,
-            campaignId,
-            campaignType,
-            eventType: 'purchase',
-            recipientEmail: normalizedEmail,
-            orderId,
-            revenue,
-            utmCampaign
+        await prisma.$transaction(async tx => {
+            // Webhooks and sync can process the same order concurrently. An
+            // account/order lock also prevents retries crediting another flow.
+            const key = `campaign-purchase:${accountId}:${orderId}`;
+            await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+            const existingPurchase = await tx.campaignEvent.findFirst({
+                where: { accountId, eventType: 'purchase', orderId },
+                select: { id: true }
+            });
+            if (existingPurchase) return;
+            await tx.campaignEvent.create({
+                data: {
+                    accountId, campaignId, campaignType, eventType: 'purchase',
+                    recipientEmail: normalizedEmail, orderId, revenue, utmCampaign,
+                    createdAt: purchasedAt
+                }
+            });
         });
     }
 

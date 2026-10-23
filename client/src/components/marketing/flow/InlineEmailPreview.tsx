@@ -84,7 +84,7 @@ function ScopedEmailPreview({ html, subject, previewText, category, onPreviewed,
         finally { setSending(false); }
     };
 
-    return <section aria-label="Live email preview" className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
+    return <section aria-label="Live email preview" className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3 lg:flex-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="text-sm font-semibold text-gray-900">Preview & test</h4>
             <div role="group" aria-label="Preview device" className="flex gap-1">
@@ -102,8 +102,8 @@ function ScopedEmailPreview({ html, subject, previewText, category, onPreviewed,
         {preview && previewScope === scope ? <>
             <div className="rounded-lg bg-white p-2 text-xs text-gray-700"><strong>Subject:</strong> {preview.subject || 'No subject'}<br /><strong>Preview text:</strong> {preview.previewText || 'Not set'}</div>
             {!!preview.missingTags?.length && <p role="alert" className="text-xs text-amber-800">Missing or unresolved values: {preview.missingTags.join(', ')}</p>}
-            <iframe key={`${preview.orderId}:${preview.html}:${preview.subject}`} title="Inline email preview" sandbox="" srcDoc={preview.html} onLoad={onPreviewed} className={`mx-auto h-64 max-w-full rounded-lg border bg-white ${mobile ? 'w-[320px]' : 'w-full'}`} />
-        </> : <p role="status" className="py-8 text-center text-sm text-gray-500">{html ? 'Loading preview…' : 'Add content to preview your email.'}</p>}
+            <iframe key={`${preview.orderId}:${preview.html}:${preview.subject}`} title="Inline email preview" sandbox="" srcDoc={preview.html} onLoad={onPreviewed} className={`mx-auto h-64 max-w-full rounded-lg border bg-white lg:min-h-64 lg:flex-1 ${mobile ? 'w-[320px]' : 'w-full'}`} />
+        </> : <p role="status" className="py-8 text-center text-sm text-gray-500 lg:flex lg:flex-1 lg:items-center lg:justify-center">{html ? 'Loading preview…' : 'Add content to preview your email.'}</p>}
         <form onSubmit={event => { event.preventDefault(); void sendTest(); }} className="flex flex-wrap gap-2">
             <input type="email" required aria-label="Test email recipient" placeholder="Test recipient email" value={to} onChange={event => setTo(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             <button type="submit" disabled={!preview || previewScope !== scope || sending || !to.trim() || !subject?.trim()} className="rounded-lg bg-[var(--primary-color)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] disabled:opacity-50">{sending ? 'Sending…' : 'Send test'}</button>

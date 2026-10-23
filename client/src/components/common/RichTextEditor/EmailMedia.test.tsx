@@ -24,6 +24,9 @@ describe('email footer media', () => {
         expect(html).toContain('{{unsubscribe_url}}');
         expect(html).not.toContain('https://{{unsubscribe_url}}');
         expect(html).not.toContain('Remove image');
+        const exported = new DOMParser().parseFromString(html, 'text/html').querySelector('img')!;
+        expect(exported.style.display).toBe('inline-block');
+        expect(exported.style.verticalAlign).toBe('middle');
         unmount();
         render(<RichTextEditor features={[...features]} value={html} onChange={vi.fn()} />);
         await waitFor(() => expect(screen.getByAltText('Store logo')).toBeInTheDocument());

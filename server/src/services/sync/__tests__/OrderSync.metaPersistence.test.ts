@@ -9,6 +9,9 @@ import { snapshotFixture, snapshotMetadata } from '../../deliveryEstimates/__tes
 import { OrderTaggingService } from '../../OrderTaggingService';
 vi.mock('../../CriticalEventOutbox', () => ({ recordOrderLifecycle: vi.fn() }));
 import { IndexingService } from '../../search/IndexingService';
+import { campaignTrackingService } from '../../CampaignTrackingService';
+
+vi.mock('../../CampaignTrackingService', () => ({ campaignTrackingService: { trackOrderPurchase: vi.fn() } }));
 
 vi.mock('../../ContactMaterialization', async importOriginal => ({
     ...await importOriginal<typeof import('../../ContactMaterialization')>(),
@@ -123,6 +126,15 @@ describe('OrderSync meta persistence', () => {
         expect((prisma.wooOrder.upsert as any).mock.calls[0][0].update.rawData.tags).toEqual(['Manual']);
         expect((IndexingService.bulkIndexOrders as any).mock.calls[0][2].get(42)).toEqual(['Manual']);
         expect((prisma.$queryRaw as any).mock.calls.some(([sql]: any[]) => sql?.strings?.join('').includes('FOR UPDATE'))).toBe(true);
+        expect(campaignTrackingService.trackOrderPurchase).toHaveBeenCalledWith(accountId, expect.objectContaining({ id: 42, status: 'processing' }));
+        expect(EventBus.emit).not.toHaveBeenCalled();
+    });
+
+    it('continues syncing when attribution fails so a later sync can retry', async () => {
+        vi.mocked(campaignTrackingService.trackOrderPurchase).mockRejectedValueOnce(new Error('temporary failure'));
+        mockWoo.getOrders = vi.fn().mockResolvedValue({ data: [{ id: 42, number: '42', status: 'completed', currency: 'AUD', total: '25' }], totalPages: 1, total: 1 });
+        await expect((new OrderSync() as any).sync(mockWoo, accountId, true)).resolves.toBeDefined();
+        expect(IndexingService.bulkIndexOrders).toHaveBeenCalled();
     });
 
     it('does not replace existing search tags with empty tags after extraction failure', async () => {

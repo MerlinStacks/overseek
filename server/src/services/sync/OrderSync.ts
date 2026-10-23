@@ -15,6 +15,7 @@ import { queueContactProjection } from '../ContactProjection';
 import { importOrderSnapshot } from '../deliveryEstimates/importOrderSnapshot';
 import { Prisma } from '@prisma/client';
 import { mergeOrderTags } from '../OrderTaggingService';
+import { campaignTrackingService } from '../CampaignTrackingService';
 
 const PURCHASE_TRACKING_STATUSES = ['pending', 'processing', 'on-hold', 'completed'];
 
@@ -181,6 +182,13 @@ export class OrderSync extends BaseSync {
             const finalTagsMap = new Map<number, string[]>();
 
             for (const order of persistedOrders) {
+                // Also run for unchanged/baseline orders so a full sync can
+                // recover missed attribution without replaying flow actions.
+                try {
+                    await campaignTrackingService.trackOrderPurchase(accountId, order);
+                } catch (error) {
+                    Logger.warn('Failed to attribute synced order purchase', { accountId, orderId: order.id, error });
+                }
                 const normalizedStatus = normalizeOrderStatus(order.status);
                 const existingStatus = existingMap.get(order.id);
                 const isNew = !existingStatus;

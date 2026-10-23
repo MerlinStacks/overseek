@@ -6,6 +6,11 @@ vi.mock('../../context/AuthContext', () => ({
     useAuth: () => ({ user: { fullName: 'Agent' } }),
 }));
 vi.mock('./GravatarAvatar', () => ({ GravatarAvatar: () => null }));
+// These tests cover attachment extraction/presentation; authenticated reads are tested separately.
+vi.mock('../../hooks/useInboxAttachments', async importOriginal => ({
+    ...await importOriginal<typeof import('../../hooks/useInboxAttachments')>(),
+    useInboxAttachments: () => ({ urls: {}, resolve: undefined, error: null }),
+}));
 
 afterEach(cleanup);
 

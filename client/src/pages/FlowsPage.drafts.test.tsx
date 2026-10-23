@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ fetch: vi.fn(), account: { id: 'account' } }));
+const mocks = vi.hoisted(() => ({ fetch: vi.fn(), account: { id: 'account' }, active: true, hasDraft: false }));
 vi.mock('../context/AuthContext', () => ({ useAuth: () => ({ token: 'token' }) }));
 vi.mock('../context/AccountContext', () => ({ useAccount: () => ({ currentAccount: mocks.account }) }));
 vi.mock('../components/marketing/AutomationsList', () => ({ AutomationsList: ({ onEdit }: any) => <button onClick={() => onEdit('flow', 'Order flow')}>Edit flow</button> }));
@@ -9,8 +9,8 @@ vi.mock('../components/marketing/FlowBuilder', () => ({ FlowBuilder: ({ initialF
 import { FlowsPage } from './FlowsPage';
 const flow = { nodes: [{ id: 'trigger', type: 'trigger', position: { x: 0, y: 0 }, data: { label: 'Order created', config: { triggerType: 'ORDER_CREATED' } } }, { id: 'exit', type: 'action', position: { x: 0, y: 100 }, data: { label: 'Exit', config: { actionType: 'EXIT' } } }], edges: [{ id: 'edge', source: 'trigger', target: 'exit' }] };
 beforeEach(() => {
-    window.localStorage.clear(); mocks.fetch.mockReset(); vi.spyOn(window, 'confirm').mockReturnValue(true);
-    mocks.fetch.mockImplementation(async (url: string) => ({ ok: true, json: async () => url.endsWith('/workspace') ? { id: 'flow', name: 'Order flow', isActive: true, draftRevision: 2, hasUnpublishedChanges: false, flowDefinition: flow } : url.endsWith('/draft') ? { draftRevision: 3, hasUnpublishedChanges: true } : url.endsWith('/publish') ? { draftRevision: 4, hasUnpublishedChanges: false } : url.includes('/node-stats') ? {} : url.endsWith('/analytics') ? null : [] }));
+    window.localStorage.clear(); mocks.fetch.mockReset(); mocks.active = true; mocks.hasDraft = false; vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mocks.fetch.mockImplementation(async (url: string) => ({ ok: true, json: async () => url.endsWith('/workspace') ? { id: 'flow', name: 'Order flow', isActive: mocks.active, draftRevision: 2, hasUnpublishedChanges: mocks.hasDraft, flowDefinition: flow } : url.endsWith('/draft') ? { draftRevision: 3, hasUnpublishedChanges: true } : url.endsWith('/publish') ? { draftRevision: 4, hasUnpublishedChanges: false } : url.includes('/node-stats') ? {} : url.endsWith('/analytics') ? null : [] }));
     vi.stubGlobal('fetch', mocks.fetch);
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -24,17 +24,99 @@ it('autosaves exclusively to a revision-checked draft and never updates the live
     expect(mocks.fetch.mock.calls.some(([url]) => url.endsWith('/publish') || url === '/api/marketing/automations')).toBe(false);
     await screen.findByText('Draft saved'); expect(screen.getByText(/Unpublished changes/)).toBeInTheDocument();
 });
-it('requires confirmation and publishes the latest saved revision explicitly', async () => {
+it('uses one toggle to disable, then save/publish the latest revision before re-enabling', async () => {
     await renderEditor(); fireEvent.click(screen.getByText('Change draft'));
-    fireEvent.click(screen.getByRole('button', { name: 'Review & publish draft' }));
+    expect(screen.queryByRole('button', { name: 'Review & publish draft' })).not.toBeInTheDocument();
+    const toggle = screen.getByRole('switch', { name: 'Flow enabled' });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'false'));
+    expect(mocks.fetch.mock.calls.some(([url]) => url.endsWith('/publish'))).toBe(false);
+    fireEvent.click(toggle);
     await waitFor(() => expect(mocks.fetch.mock.calls.some(([url]) => url.endsWith('/publish'))).toBe(true));
     const call = mocks.fetch.mock.calls.find(([url]) => url.endsWith('/publish'))!;
     expect(JSON.parse(call[1].body)).toEqual({ revision: 3 });
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('LIVE flow'));
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Publish the latest draft and enable'));
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'true'));
+    const writes = mocks.fetch.mock.calls.filter(([url]) => /\/(?:draft|publish|status)$/.test(url));
+    expect(writes.map(([url]) => url.split('/').pop())).toEqual(['status', 'draft', 'publish', 'status']);
+    expect(JSON.parse(writes[0][1].body)).toEqual({ isActive: false });
+    expect(JSON.parse(writes[3][1].body)).toEqual({ isActive: true });
+});
+it('does not save, publish or enable when the operator cancels', async () => {
+    mocks.active = false; mocks.hasDraft = true;
+    await renderEditor(); vi.mocked(window.confirm).mockReturnValue(false);
+    fireEvent.click(screen.getByRole('switch', { name: 'Flow enabled' }));
+    expect(mocks.fetch.mock.calls.some(([url]) => /\/(?:draft|publish|status)$/.test(url))).toBe(false);
+    expect(screen.getByRole('switch', { name: 'Flow enabled' })).toHaveAttribute('aria-checked', 'false');
+});
+it('enables an unchanged published flow without publishing a new revision', async () => {
+    mocks.active = false;
+    await renderEditor();
+    fireEvent.click(screen.getByRole('switch', { name: 'Flow enabled' }));
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Flow enabled' })).toHaveAttribute('aria-checked', 'true'));
+    expect(mocks.fetch.mock.calls.some(([url]) => url.endsWith('/publish') || url.endsWith('/draft'))).toBe(false);
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Enable the published flow'));
+});
+it('keeps the flow disabled when publication fails', async () => {
+    mocks.active = false; mocks.hasDraft = true;
+    const original = mocks.fetch.getMockImplementation()!;
+    mocks.fetch.mockImplementation((url, ...args) => url.endsWith('/publish') ? Promise.resolve({ ok: false, json: async () => ({ error: 'Draft revision conflict' }) }) : original(url, ...args));
+    await renderEditor();
+    fireEvent.click(screen.getByRole('switch', { name: 'Flow enabled' }));
+    await screen.findByText('Draft revision conflict');
+    expect(screen.getByRole('switch', { name: 'Flow enabled' })).toHaveAttribute('aria-checked', 'false');
     expect(mocks.fetch.mock.calls.some(([url]) => url.endsWith('/status'))).toBe(false);
 });
-it('does not publish when the operator cancels the review', async () => {
-    await renderEditor(); vi.mocked(window.confirm).mockReturnValue(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Review & publish draft' }));
+it('retains the previous toggle state when a status update fails', async () => {
+    const original = mocks.fetch.getMockImplementation()!;
+    mocks.fetch.mockImplementation((url, ...args) => url.endsWith('/status') ? Promise.resolve({ ok: false, json: async () => ({ error: 'Status update failed' }) }) : original(url, ...args));
+    await renderEditor();
+    fireEvent.click(screen.getByRole('switch', { name: 'Flow enabled' }));
+    await screen.findByText('Status update failed');
+    expect(screen.getByRole('switch', { name: 'Flow enabled' })).toHaveAttribute('aria-checked', 'true');
     expect(mocks.fetch.mock.calls.some(([url]) => url.endsWith('/publish'))).toBe(false);
+});
+it('retains blocking validation before publishing or enabling', async () => {
+    mocks.active = false; mocks.hasDraft = true;
+    const original = mocks.fetch.getMockImplementation()!;
+    mocks.fetch.mockImplementation(async (url, ...args) => {
+        const response = await original(url, ...args);
+        if (!url.endsWith('/workspace')) return response;
+        return { ok: true, json: async () => ({ ...await response.json(), flowDefinition: { nodes: [flow.nodes[1]], edges: [] } }) };
+    });
+    await renderEditor();
+    fireEvent.click(screen.getByRole('switch', { name: 'Flow enabled' }));
+    await screen.findByText('Flow needs a trigger before it can run.');
+    expect(window.confirm).not.toHaveBeenCalled();
+    expect(mocks.fetch.mock.calls.some(([url]) => /\/(?:draft|publish|status)$/.test(url))).toBe(false);
+});
+it('does not publish or enable after a failed save', async () => {
+    mocks.active = false;
+    const original = mocks.fetch.getMockImplementation()!;
+    mocks.fetch.mockImplementation((url, ...args) => url.endsWith('/draft') ? Promise.resolve({ ok: false, status: 500, json: async () => ({ error: 'Offline' }) }) : original(url, ...args));
+    await renderEditor(); fireEvent.click(screen.getByText('Change draft'));
+    fireEvent.click(screen.getByRole('switch', { name: 'Flow enabled' }));
+    await screen.findByText('Save the latest flow changes before enabling it.');
+    expect(screen.getByRole('switch', { name: 'Flow enabled' })).toHaveAttribute('aria-checked', 'false');
+    expect(mocks.fetch.mock.calls.some(([url]) => url.endsWith('/publish') || url.endsWith('/status'))).toBe(false);
+});
+it('blocks duplicate toggles and refuses activation if the draft changes during publication', async () => {
+    mocks.active = false; mocks.hasDraft = true;
+    let finish!: (result: unknown) => void;
+    const publish = new Promise(resolve => { finish = resolve; });
+    const original = mocks.fetch.getMockImplementation()!;
+    mocks.fetch.mockImplementation((url, ...args) => url.endsWith('/publish') ? publish : original(url, ...args));
+    await renderEditor();
+    const toggle = screen.getByRole('switch', { name: 'Flow enabled' });
+    fireEvent.click(toggle);
+    await waitFor(() => expect(mocks.fetch.mock.calls.some(([url]) => url.endsWith('/publish'))).toBe(true));
+    expect(toggle).toBeDisabled();
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByText('Change draft'));
+    finish({ ok: true, json: async () => ({ draftRevision: 4, hasUnpublishedChanges: false }) });
+    await screen.findByText('Draft changed while publishing. Review it and enable the flow again.');
+    expect(mocks.fetch.mock.calls.filter(([url]) => url.endsWith('/publish'))).toHaveLength(1);
+    expect(mocks.fetch.mock.calls.some(([url]) => url.endsWith('/status'))).toBe(false);
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
 });

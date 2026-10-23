@@ -391,13 +391,13 @@ export function FlowsPage() {
     const [recentEnrollments, setRecentEnrollments] = useState<EnrollmentRow[]>([]);
     const [recentRunEvents, setRecentRunEvents] = useState<RunEventRow[]>([]);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+    const statusActionRef = useRef(false);
     const [toastMessage, setToastMessage] = useState('');
     const [toastVisible, setToastVisible] = useState(false);
     const [toastType, setToastType] = useState<ToastType>('error');
     const [recoveryPrompt, setRecoveryPrompt] = useState<{ flowId: string; flowName: string; draftSavedAt?: string } | null>(null);
     const [saveState, setSaveState] = useState<SaveIndicatorState>('saved');
     const draftRevisionRef = useRef(0);
-    const [isPublishing, setIsPublishing] = useState(false);
     const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
     const [isDirty, setIsDirty] = useState(false);
     const [pendingClose, setPendingClose] = useState(false);
@@ -1252,16 +1252,11 @@ export function FlowsPage() {
     };
 
     const handleToggleFlowStatus = async () => {
-        if (!editingItem || !currentAccount || !editingFlowData || typeof editingFlowData.isActive !== 'boolean') return;
-
+        if (statusActionRef.current || !editingItem || !currentAccount || !editingFlowData || typeof editingFlowData.isActive !== 'boolean') return;
         const nextIsActive = !editingFlowData.isActive;
-
-        if (nextIsActive && (editingFlowData.hasUnpublishedChanges || isDirty)) {
-            showToast('Publish your draft before enabling the flow.');
-            return;
-        }
-        if (nextIsActive && !window.confirm('Enable the published flow? Eligible contacts may now enter it and receive messages.')) return;
-
+        const scope = activeEditorScopeRef.current;
+        const reviewedFlow = latestSerializedFlowRef.current;
+        const needsPublish = Boolean(editingFlowData.hasUnpublishedChanges || isDirty || reviewedFlow !== baselineFlowRef.current);
         if (nextIsActive) {
             const currentFlow = latestFlowRef.current || editingFlowData.flowDefinition || { nodes: [], edges: [] };
             const blockingIssues = validateFlow(currentFlow.nodes || [], currentFlow.edges || []).filter((issue) => issue.severity === 'blocking');
@@ -1272,21 +1267,34 @@ export function FlowsPage() {
                 setToastVisible(true);
                 return;
             }
-
-            if (autosaveTimerRef.current) {
-                window.clearTimeout(autosaveTimerRef.current);
-                autosaveTimerRef.current = null;
-            }
-            const saved = await persistLatestFlow(true);
-            if (!saved || latestSerializedFlowRef.current !== baselineFlowRef.current) {
-                showToast('Save the latest flow changes before enabling it.');
-                return;
-            }
+            if (!window.confirm(needsPublish
+                ? 'Publish the latest draft and enable this flow? Future steps of active enrollments will use this draft. Eligible contacts may enter it and receive messages.'
+                : 'Enable the published flow? Eligible contacts may enter it and receive messages.')) return;
         }
-
+        statusActionRef.current = true;
         setIsUpdatingStatus(true);
-
         try {
+            if (nextIsActive) {
+                if (autosaveTimerRef.current) { window.clearTimeout(autosaveTimerRef.current); autosaveTimerRef.current = null; }
+                const saved = await persistLatestFlow(true);
+                if (activeEditorScopeRef.current !== scope) return;
+                if (!saved || latestSerializedFlowRef.current !== baselineFlowRef.current) throw new Error('Save the latest flow changes before enabling it.');
+                if (latestSerializedFlowRef.current !== reviewedFlow) throw new Error('Draft changed during review. Review it and enable the flow again.');
+                if (needsPublish) {
+                    const response = await fetch(`/api/marketing/automations/${editingItem.id}/publish`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'x-account-id': currentAccount.id },
+                        body: JSON.stringify({ revision: draftRevisionRef.current }),
+                    });
+                    const result = await response.json();
+                    if (activeEditorScopeRef.current !== scope) return;
+                    if (!response.ok) throw new Error(result.error || 'Failed to publish the draft. The flow remains disabled.');
+                    draftRevisionRef.current = result.draftRevision ?? draftRevisionRef.current;
+                    setEditingFlowData(previous => previous ? { ...previous, ...result } : previous);
+                    if (latestSerializedFlowRef.current !== reviewedFlow) throw new Error('Draft changed while publishing. Review it and enable the flow again.');
+                }
+            }
+            if (activeEditorScopeRef.current !== scope) return;
             const res = await fetch(`/api/marketing/automations/${editingItem.id}/status`, {
                 method: 'PATCH',
                 headers: {
@@ -1301,52 +1309,21 @@ export function FlowsPage() {
                 const errorData = await res.json().catch(() => null);
                 throw new Error(errorData?.error || 'Failed to update flow status');
             }
-
+            if (activeEditorScopeRef.current !== scope) return;
             setEditingFlowData((prev) => prev ? { ...prev, isActive: nextIsActive } : prev);
             setToastMessage(`Flow ${nextIsActive ? 'enabled' : 'disabled'}`);
             setToastType('success');
             setToastVisible(true);
         } catch (error) {
+            if (activeEditorScopeRef.current !== scope) return;
             Logger.error('Failed to update flow status', { error });
             setToastMessage(error instanceof Error ? error.message : 'Failed to update flow status');
             setToastType('error');
             setToastVisible(true);
         } finally {
+            statusActionRef.current = false;
             setIsUpdatingStatus(false);
         }
-    };
-
-    const handlePublishDraft = async () => {
-        if (!editingItem || !currentAccount || isPublishing) return;
-        const flow = latestFlowRef.current;
-        if (!flow) return;
-        const issues = validateFlow(flow.nodes, flow.edges);
-        const blockers = issues.filter(issue => issue.severity === 'blocking');
-        if (blockers.length) {
-            setInvalidNodeIds(getInvalidNodeIds(flow));
-            showToast(blockers[0].message, 'error');
-            return;
-        }
-        if (!window.confirm(`Publish this draft${editingFlowData?.isActive ? ' to the LIVE flow' : ''}?\n${flow.nodes.length} steps; ${issues.length} advisory checks.\n${editingFlowData?.isActive ? 'Future steps of active enrollments will use this definition.' : 'The flow stays disabled until you enable it.'}`)) return;
-        const scope = activeEditorScopeRef.current;
-        setIsPublishing(true);
-        try {
-            if (!await persistLatestFlow(true)) throw new Error('Save the latest draft before publishing.');
-            if (latestSerializedFlowRef.current !== baselineFlowRef.current) throw new Error('Draft changed during save. Review and publish again.');
-            const response = await fetch(`/api/marketing/automations/${editingItem.id}/publish`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'x-account-id': currentAccount.id },
-                body: JSON.stringify({ revision: draftRevisionRef.current }),
-            });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.error || 'Failed to publish');
-            if (activeEditorScopeRef.current !== scope) return;
-            draftRevisionRef.current = result.draftRevision;
-            setEditingFlowData(previous => previous ? { ...previous, ...result } : previous);
-            showToast('Draft published. Flow status unchanged.', 'success');
-        } catch (error) {
-            if (activeEditorScopeRef.current === scope) showToast((error as Error).message, 'error');
-        } finally { setIsPublishing(false); }
     };
 
     if (isEditing) {
@@ -1405,12 +1382,10 @@ export function FlowsPage() {
                                     </span>
                                     <span className="text-gray-500">{editingFlowData?.isActive ? 'Published flow is live' : 'Flow is disabled'} · {editingFlowData?.hasUnpublishedChanges || isDirty ? 'Unpublished changes' : 'Published version'}</span>
                                 </div>
+                                {editingFlowData?.isActive && (editingFlowData.hasUnpublishedChanges || isDirty) && <p className="mt-1 text-xs text-gray-500">Disable and re-enable this flow to publish the latest draft.</p>}
                             </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                            <button type="button" onClick={() => void handlePublishDraft()} disabled={isPublishing || saveState === 'saving'} className="rounded-lg bg-[var(--primary-color)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] disabled:opacity-50">
-                                {isPublishing ? 'Publishing...' : 'Review & publish draft'}
-                            </button>
                             <button
                                 type="button"
                                 onClick={() => undoRedoHandlersRef.current?.undo()}
@@ -1429,17 +1404,12 @@ export function FlowsPage() {
                             >
                                 <Redo2 size={16} />
                             </button>
-                            <button
-                                onClick={handleToggleFlowStatus}
-                                disabled={isUpdatingStatus || typeof editingFlowData?.isActive !== 'boolean'}
-                                className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${editingFlowData?.isActive
-                                    ? 'bg-green-100 text-green-800 hover:bg-green-200'
-                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} ${isUpdatingStatus ? 'cursor-not-allowed opacity-60' : ''}`}
-                            >
-                                {isUpdatingStatus
-                                    ? 'Updating...'
-                                    : (editingFlowData?.isActive ? 'Enabled' : 'Disabled')}
-                            </button>
+                            <div className="flex items-center gap-2 text-sm">
+                                <span className="text-gray-700" aria-live="polite">{isUpdatingStatus ? 'Updating...' : editingFlowData?.isActive ? 'Enabled' : 'Disabled'}</span>
+                                <button type="button" role="switch" aria-label="Flow enabled" aria-checked={Boolean(editingFlowData?.isActive)} aria-busy={isUpdatingStatus} onClick={() => void handleToggleFlowStatus()} disabled={isUpdatingStatus || typeof editingFlowData?.isActive !== 'boolean'} className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-color)] disabled:cursor-wait disabled:opacity-60 ${editingFlowData?.isActive ? 'bg-[var(--primary-color)]' : 'bg-slate-300 dark:bg-slate-600'}`}>
+                                    <span aria-hidden="true" className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${editingFlowData?.isActive ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                                </button>
+                            </div>
                         </div>
                     </div>
 

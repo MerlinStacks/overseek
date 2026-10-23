@@ -11,7 +11,7 @@ export function validEmailImageUrl(value: string): boolean {
 function ImageView({ nodeKey, src, alt, width, height }: { nodeKey: NodeKey; src: string; alt: string; width: number; height?: number }) {
     const [editor] = useLexicalComposerContext();
     return <span className="group relative inline-block max-w-full align-middle">
-        <img src={src} alt={alt} width={width} height={height} style={{ maxWidth: '100%', height: height ? `${height}px` : 'auto' }} />
+        <img src={src} alt={alt} width={width} height={height} style={{ display: 'inline-block', verticalAlign: 'middle', maxWidth: '100%', height: height ? `${height}px` : 'auto' }} />
         <button type="button" aria-label={`Remove image: ${alt || 'image'}`} className="absolute right-0 top-0 rounded bg-white px-1 text-xs text-red-700 opacity-0 group-hover:opacity-100 focus:opacity-100" onClick={event => { event.preventDefault(); event.stopPropagation(); editor.update(() => { $getNodeByKey(nodeKey)?.remove(); }); }}>×</button>
     </span>;
 }
@@ -37,7 +37,7 @@ export class EmailImageNode extends DecoratorNode<JSX.Element> {
         const image = document.createElement('img');
         image.src = this.__src; image.alt = this.__alt; image.width = this.__width;
         if (this.__height) image.height = this.__height;
-        image.style.cssText = `max-width:100%;height:${this.__height ? `${this.__height}px` : 'auto'};border:0;`;
+        image.style.cssText = `display:inline-block;vertical-align:middle;max-width:100%;height:${this.__height ? `${this.__height}px` : 'auto'};border:0;`;
         return { element: image };
     }
     createDOM() { return document.createElement('span'); }

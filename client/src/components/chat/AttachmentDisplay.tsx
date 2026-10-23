@@ -6,6 +6,7 @@ import { FileText, Download, Image as ImageIcon, File, Eye, Paperclip } from 'lu
 import { cn } from '../../utils/cn';
 import { getSafeHref } from '../../utils/url';
 import { useState } from 'react';
+import { inboxAttachmentFilename } from '../../hooks/useInboxAttachments';
 
 interface AttachmentInfo {
     type: 'image' | 'pdf' | 'document' | 'file';
@@ -37,12 +38,14 @@ function AttachmentIcon({ type }: { type: 'image' | 'pdf' | 'document' | 'file' 
 interface AttachmentGalleryProps {
     attachments: AttachmentInfo[];
     onImageClick?: (src: string) => void;
+    privateUrls?: Record<string, string>;
+    resolvePrivateUrl?: (url: string) => Promise<string>;
 }
 
 /**
  * Renders a gallery of file attachments as compact pills.
  */
-export function AttachmentGallery({ attachments, onImageClick }: AttachmentGalleryProps) {
+export function AttachmentGallery({ attachments, onImageClick, privateUrls = {}, resolvePrivateUrl }: AttachmentGalleryProps) {
     const [failedPreviews, setFailedPreviews] = useState<Set<string>>(() => new Set());
     // Inline images are already rendered in the message HTML body — skip them here.
     const visibleAttachments = attachments.filter(a => !a.isInline);
@@ -52,15 +55,15 @@ export function AttachmentGallery({ attachments, onImageClick }: AttachmentGalle
     return (
         <div className="flex flex-wrap gap-2 mt-2">
             {visibleAttachments.map((attachment, idx) => (
-                attachment.type === 'image' && attachment.url && !failedPreviews.has(attachment.url) ? (
+                attachment.type === 'image' && attachment.url && !failedPreviews.has(attachment.url) && (!resolvePrivateUrl || !inboxAttachmentFilename(attachment.url) || privateUrls[attachment.url]) ? (
                     // Image thumbnail pill
                     <button
                         key={idx}
-                        onClick={() => onImageClick?.(attachment.url)}
+                        onClick={() => onImageClick?.(privateUrls[attachment.url] || attachment.url)}
                         className="group flex items-center gap-2 pl-1 pr-3 py-1 bg-gray-50   border border-gray-200 rounded-full shadow-sm hover:shadow hover:border-gray-300 transition-all"
                     >
                         <img
-                            src={attachment.url}
+                            src={privateUrls[attachment.url] || attachment.url}
                             alt={attachment.filename}
                             className="w-6 h-6 object-cover rounded-full ring-1 ring-gray-200"
                             onError={() => setFailedPreviews(previous => new Set(previous).add(attachment.url))}
@@ -74,7 +77,20 @@ export function AttachmentGallery({ attachments, onImageClick }: AttachmentGalle
                     // File attachment pill
                     <a
                         key={idx}
-                        href={getSafeHref(attachment.url)}
+                        href={privateUrls[attachment.url] || getSafeHref(attachment.url)}
+                        onClick={async event => {
+                            if (!resolvePrivateUrl || !inboxAttachmentFilename(attachment.url)) return;
+                            event.preventDefault();
+                            try {
+                                const url = await resolvePrivateUrl(attachment.url);
+                                const link = document.createElement('a');
+                                link.href = url;
+                                link.download = attachment.filename;
+                                document.body.appendChild(link);
+                                link.click();
+                                link.remove();
+                            } catch { /* The owning message displays the read failure. */ }
+                        }}
                         target="_blank"
                         rel="noopener noreferrer"
                         download={attachment.filename}

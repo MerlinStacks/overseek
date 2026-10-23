@@ -19,6 +19,7 @@ import { GravatarAvatar } from './GravatarAvatar';
 import { parseEmailContent, parseQuotedContent, cleanEmailMetadata } from '../../utils/emailParser';
 import { AttachmentGallery } from './AttachmentDisplay';
 import { normalizeAttachmentLinks } from '../../utils/attachmentLinks';
+import { inboxAttachmentFilename, resolveInboxAttachmentHtml, useInboxAttachments } from '../../hooks/useInboxAttachments';
 
 const MAX_RENDERED_EMAIL_CHARS = 60000;
 const EMAIL_ALLOWED_TAGS = [
@@ -176,6 +177,12 @@ export const MessageBubble = memo(function MessageBubble({
 
         return attachmentsList;
     }, [body]);
+    const attachmentImages = useMemo(() => attachments.filter(a => a.type === 'image' && inboxAttachmentFilename(a.url)).map(a => a.url), [attachments]);
+    const privateAttachments = useInboxAttachments(message.id, attachmentImages);
+    // Give inline customer photos a download control too, including when preview loading fails.
+    const galleryAttachments = useMemo(() => attachments.map(attachment => attachment.isInline && inboxAttachmentFilename(attachment.url)
+        ? { ...attachment, isInline: false, type: 'file' as const }
+        : attachment), [attachments]);
     const renderedMainContent = useMemo(() => ({
         content: mainContent.length > MAX_RENDERED_EMAIL_CHARS
             ? mainContent.slice(0, MAX_RENDERED_EMAIL_CHARS)
@@ -324,7 +331,7 @@ export const MessageBubble = memo(function MessageBubble({
                                 )
                             )}
                             onClick={handleContentClick}
-                            dangerouslySetInnerHTML={{ __html: sanitizedContent }}
+                            dangerouslySetInnerHTML={{ __html: resolveInboxAttachmentHtml(sanitizedContent, privateAttachments.urls) }}
                         />
                         {renderedMainContent.isTruncated && (
                             <div className={cn(
@@ -373,7 +380,8 @@ export const MessageBubble = memo(function MessageBubble({
                                             "mt-2 pl-3 border-l-2 text-xs opacity-80 max-h-96 overflow-y-auto select-text",
                                             isMe ? "border-[var(--primary-foreground)]/50" : "border-gray-300"
                                         )}
-                                        dangerouslySetInnerHTML={{ __html: sanitizedQuotedContent }}
+                                        onClick={handleContentClick}
+                                        dangerouslySetInnerHTML={{ __html: resolveInboxAttachmentHtml(sanitizedQuotedContent, privateAttachments.urls) }}
                                     />
                                 )}
                             </div>
@@ -381,7 +389,8 @@ export const MessageBubble = memo(function MessageBubble({
                     </div>
 
                     {/* Attachments as compact pills */}
-                    <AttachmentGallery attachments={attachments} onImageClick={onImageClick} />
+                    <AttachmentGallery attachments={galleryAttachments} onImageClick={onImageClick} privateUrls={privateAttachments.urls} resolvePrivateUrl={privateAttachments.resolve} />
+                    {privateAttachments.error && <p role="alert" className="mt-1 text-xs text-red-600">{privateAttachments.error}</p>}
 
                     {/* Timestamp and status row */}
                     <div className={cn(

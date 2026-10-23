@@ -1,9 +1,9 @@
-import { normalizeEmailTextHtml, sanitizeEmailLayoutHtml } from './emailSanitizer';
+import { normalizeEmailFooterHtml, normalizeEmailTextHtml, sanitizeEmailLayoutHtml } from './emailSanitizer';
 import { withEmailBlockLayout, getEmailImageMargin } from './emailBlockLayout';
 import type { DeliveryEstimateEmailOptions } from './deliveryEstimateSnapshot';
 import { assertEmailDesign } from './emailDesignValidation';
 
-export const EMAIL_RENDERER_VERSION = 'overseek-email-2026.10.23';
+export const EMAIL_RENDERER_VERSION = 'overseek-email-2026.10.23.1';
 
 export type EmailDeviceVisibility = 'all' | 'desktop' | 'mobile';
 export type EmailStackMode = 'stack' | 'reverse' | 'none';
@@ -921,8 +921,8 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
 
     if (block.type === 'footer') {
         const props = block.props;
-        const html = sanitizeEmailLayoutHtml(props.html || '<p><a href="{{unsubscribe_url}}">Unsubscribe</a></p>');
-        return `<div class="${joinClasses(blockClass, 'os-email-footer')}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};font-size:12px;line-height:1.6;color:${props.color || theme.mutedTextColor};">${html}</div>`;
+        const html = normalizeEmailFooterHtml(props.html || '<p><a href="{{unsubscribe_url}}">Unsubscribe</a></p>');
+        return `<div class="${joinClasses(blockClass, 'os-email-footer')}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};font-size:14px;line-height:1.6;color:${props.color || '#111827'};">${html}</div>`;
     }
 
     return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '8px 0'};text-align:${(block.props as { align?: string }).align || 'left'};">${sanitizeEmailLayoutHtml(String(block.props.html || ''))}</div>`;

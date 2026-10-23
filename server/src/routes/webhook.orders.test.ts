@@ -8,6 +8,7 @@ import { materializeContact } from '../services/ContactMaterialization';
 import { queueContactProjection } from '../services/ContactProjection';
 import { snapshotFixture, snapshotMetadata } from '../services/deliveryEstimates/__tests__/snapshotFixture';
 import { recordOrderLifecycle } from '../services/CriticalEventOutbox';
+import { campaignTrackingService } from '../services/CampaignTrackingService';
 vi.mock('../services/CriticalEventOutbox', () => ({ recordOrderLifecycle: vi.fn(), recordCriticalEvent: vi.fn() }));
 
 vi.mock('../services/ContactMaterialization', () => ({ materializeContact: vi.fn() }));
@@ -27,7 +28,7 @@ vi.mock('../utils/logger', () => ({ Logger: { info: vi.fn(), warn: vi.fn(), erro
 vi.mock('../utils/redis', () => ({ redisClient: { set: vi.fn() } }));
 vi.mock('../services/search/IndexingService', () => ({ IndexingService: { indexOrder: vi.fn() } }));
 vi.mock('../services/WebhookDeliveryService', () => ({ WebhookDeliveryService: {} }));
-vi.mock('../services/CampaignTrackingService', () => ({ campaignTrackingService: { trackPurchase: vi.fn() } }));
+vi.mock('../services/CampaignTrackingService', () => ({ campaignTrackingService: { trackOrderPurchase: vi.fn() } }));
 vi.mock('../services/EmailListService', () => ({ emailListService: {} }));
 vi.mock('../services/wholesale/reconciliation', () => ({ reconcileWholesaleProductsBestEffort: vi.fn() }));
 vi.mock('../services/events', () => ({ EventBus: { emit: vi.fn() }, EVENTS: { ORDER: {
@@ -118,6 +119,8 @@ describe('order webhook customer totals', () => {
             update: expect.objectContaining({ billingEmail: 'new@example.com', total: '99.99' })
         }));
         expect(EventBus.emit).not.toHaveBeenCalledWith('completed', expect.anything());
+        expect(campaignTrackingService.trackOrderPurchase).toHaveBeenCalledTimes(2);
+        expect(campaignTrackingService.trackOrderPurchase).toHaveBeenLastCalledWith('a', expect.objectContaining({ id: 12, total: '99.99' }));
     });
 
     it('rejects aggregate failures without acknowledging side effects', async () => {
@@ -125,6 +128,7 @@ describe('order webhook customer totals', () => {
         await expect(processWebhookPayload('a', 'order.created', order)).rejects.toThrow('aggregate failed');
         expect(IndexingService.indexOrder).not.toHaveBeenCalled();
         expect(EventBus.emit).not.toHaveBeenCalled();
+        expect(campaignTrackingService.trackOrderPurchase).not.toHaveBeenCalled();
     });
 
     it('preserves excluded-status handling without mutating totals', async () => {

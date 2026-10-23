@@ -473,7 +473,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope, 
             </section>
             </section>
 
-            <section aria-label="Email preview and test" className="min-w-0 lg:sticky lg:top-0">
+            <section aria-label="Email preview and test" className="min-w-0 lg:flex lg:self-stretch">
             <InlineEmailPreview html={config.htmlContent || ''} subject={config.subject} previewText={config.previewText} category={emailCategory} onPreviewed={() => setCheckedRevision(revision)} onTestSent={() => setCheckedRevision(revision)} />
             </section>
             </div>

@@ -94,6 +94,35 @@ export function normalizeEmailTextHtml(html: string, explicitSize?: number): str
     return serialize(tree);
 }
 export function sanitizeEmailLayoutHtml(html: string): string { return sanitize(html, true); }
+/** Rich-text footer defaults must survive outside the settings editor's CSS,
+ * particularly Tailwind's block-image reset on the visual canvas. */
+export function normalizeEmailFooterHtml(html: string): string {
+    const tree = parseFragment(sanitizeEmailLayoutHtml(html)) as any;
+    const walk = (parent: any) => {
+        const elements = (parent.childNodes || []).filter((node: any) => node.tagName);
+        for (const node of elements) {
+            const imageHeight = node.tagName === 'img' ? node.attrs.find((attr: any) => attr.name === 'height')?.value : undefined;
+            const defaults: Record<string, string> = node.tagName === 'img'
+                ? { display: 'inline-block', 'vertical-align': 'middle', 'max-width': '100%', height: imageHeight && /^\d+$/.test(imageHeight) ? `${imageHeight}px` : 'auto', border: '0' }
+                : node.tagName === 'a' ? { color: '#2563eb', 'text-decoration': 'underline' }
+                    : node.tagName === 'p' ? { margin: node === elements[elements.length - 1] ? '0' : '0 0 8px', 'line-height': '1.6' } : {};
+            if (Object.keys(defaults).length) {
+                const style = node.attrs.find((attr: any) => attr.name === 'style') || { name: 'style', value: '' };
+                const existing = new Map<string, string>(style.value.split(';').filter(Boolean).map((value: string) => {
+                    const colon = value.indexOf(':'); return [value.slice(0, colon).trim(), value.slice(colon + 1).trim()];
+                }));
+                for (const [key, value] of Object.entries(defaults)) {
+                    if (!existing.has(key) && !(key === 'margin' && Array.from(existing.keys()).some(property => property.startsWith('margin-')))) existing.set(key, value);
+                }
+                style.value = Array.from(existing, ([key, value]) => `${key}:${value}`).join(';');
+                if (!node.attrs.includes(style)) node.attrs.push(style);
+            }
+            walk(node);
+        }
+    };
+    walk(tree);
+    return serialize(tree);
+}
 export function decodeEmailHref(value: string, quote = '"'): string {
     const tree = parseFragment(`<a href=${quote}${value}${quote}></a>`) as any;
     return tree.childNodes?.[0]?.attrs?.find((attribute: any) => attribute.name === 'href')?.value || value;

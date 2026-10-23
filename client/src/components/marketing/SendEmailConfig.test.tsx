@@ -16,6 +16,8 @@ describe('flow email configuration', () => {
         const content = screen.getByRole('region', { name: 'Email content' });
         expect(details.parentElement).toHaveClass('lg:grid-cols-2');
         const preview = screen.getByRole('region', { name: 'Email preview and test' });
+        expect(preview).toHaveClass('lg:flex', 'lg:self-stretch');
+        expect(preview).not.toHaveClass('lg:sticky');
         expect(content.parentElement).toBe(details);
         expect(preview.parentElement).toBe(details.parentElement);
         expect(within(preview).getByText('Inline preview')).toBeInTheDocument();
