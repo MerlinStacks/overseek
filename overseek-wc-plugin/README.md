@@ -2,7 +2,7 @@
 
 A WordPress plugin that connects your WooCommerce store to your self-hosted OverSeek server.
 
-Current version: **2.25.10**.
+Current version: **2.25.11**.
 
 ### Simple delivery estimate setup
 
@@ -163,6 +163,12 @@ revalidation before reactivation. See `docs/companion-2.23.1-release.md` for the
 candidate validation gate and upgrade sequence.
 
 ## Changelog
+
+### 2.25.11 - 2026-10-23
+
+- Include delayed-payment purchase tracking fixes in the downloadable plugin, preserving checkout attribution, consent and payment time for background confirmations.
+- Keep successful retries deduplicated while allowing failed acknowledgements to be retried.
+- Update in place without uninstalling; no settings or stock migration is required.
 
 ### 2.25.10 - 2026-10-22
 

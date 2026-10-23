@@ -129,18 +129,27 @@ jobs:
           wp config create --path=wordpress --dbname=wordpress_tests --dbuser=wordpress --dbpass=wordpress --dbhost=127.0.0.1 --skip-check
           wp core install --path=wordpress --url=http://overseek-ci.invalid --title=OverSeek --admin_user=admin --admin_password=password --admin_email=admin@example.invalid --skip-email
 
-      - name: Install exact WooCommerce and WBS, then packaged OverSeek
+      - name: Verify companion release and lint package
         run: |
-          wp plugin install https://downloads.wordpress.org/plugin/woocommerce.11.1.1.zip --path=wordpress --activate
-          wp plugin install https://downloads.wordpress.org/plugin/weight-based-shipping-for-woocommerce.6.18.0.zip --path=wordpress --activate
           # Git does not retain the currently empty runtime translation directory.
           mkdir -p overseek-wc-plugin/languages
           node --test server/scripts/tests/plugin-package.test.js server/scripts/tests/plugin-download.test.js
           bash -n server/start.sh
           node server/scripts/build_plugin.js --output-dir "$RUNNER_TEMP/plugin-package" --lint
-          wp plugin install "$RUNNER_TEMP/plugin-package/overseek-wc-plugin.zip" --path=wordpress --activate
+
+      - name: Install exact WooCommerce
+        run: |
+          wp plugin install https://downloads.wordpress.org/plugin/woocommerce.11.1.1.zip --path=wordpress --activate
           test "$(wp plugin get woocommerce --path=wordpress --field=version)" = '11.1.1'
+
+      - name: Install exact WBS
+        run: |
+          wp plugin install https://downloads.wordpress.org/plugin/weight-based-shipping-for-woocommerce.6.18.0.zip --path=wordpress --activate
           test "$(wp plugin get weight-based-shipping-for-woocommerce --path=wordpress --field=version)" = '6.18.0'
+
+      - name: Install packaged OverSeek release
+        # Exercise the exact source-verified download shipped in the API image.
+        run: wp plugin install "$GITHUB_WORKSPACE/server/uploads/plugins/overseek-wc-plugin.zip" --path=wordpress --activate
 
       - name: Isolate disposable WordPress after all downloads
         run: |
@@ -208,12 +217,12 @@ jobs:
           OVERSEEK_RUN_DISPOSABLE_DB_TESTS: '1'
         run: |
           # Retain the immutable previous release; never rebuild old-version bytes.
-          git fetch --no-tags --depth=1 origin 683d9677c89070c2b571c91ded0820fce004a34e
-          git show 683d9677c89070c2b571c91ded0820fce004a34e:server/uploads/plugins/overseek-wc-plugin.zip > "$RUNNER_TEMP/overseek-previous.zip"
-          echo "0238cdf11427b1f39325109c410794890d6c26c6c2511aa4306c8e7ced8b165b  $RUNNER_TEMP/overseek-previous.zip" | sha256sum --check
+          git fetch --no-tags --depth=1 origin 3eedc6e0b43d734ee16873d54a63deca6ca71b55
+          git show 3eedc6e0b43d734ee16873d54a63deca6ca71b55:server/uploads/plugins/overseek-wc-plugin.zip > "$RUNNER_TEMP/overseek-previous.zip"
+          echo "3249b4330ee0c93d0be4f8ff7513f6a97a80830ce5a18ad951065969f9514e42  $RUNNER_TEMP/overseek-previous.zip" | sha256sum --check
           wp plugin install "$RUNNER_TEMP/overseek-previous.zip" --path=wordpress --force --activate
           wp eval-file overseek-wc-plugin/tests/plugin-upgrade.php seed --path=wordpress --use-include
-          wp plugin install "$RUNNER_TEMP/plugin-package/overseek-wc-plugin.zip" --path=wordpress --force --activate
+          wp plugin install "$GITHUB_WORKSPACE/server/uploads/plugins/overseek-wc-plugin.zip" --path=wordpress --force --activate
           wp eval-file overseek-wc-plugin/tests/plugin-upgrade.php verify --path=wordpress --use-include
 
       - name: Upload native reports and package manifest (including failures)
@@ -223,6 +232,6 @@ jobs:
           name: delivery-wordpress-${{ matrix.wordpress }}
           path: |
             ${{ runner.temp }}/delivery-native/
-            ${{ runner.temp }}/plugin-package/overseek-wc-plugin.manifest.json
+            server/uploads/plugins/overseek-wc-plugin.manifest.json
           if-no-files-found: warn
           retention-days: 14

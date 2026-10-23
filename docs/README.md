@@ -57,7 +57,7 @@ These are point-in-time records. Check the installed version and the relevant
 runbook before using an older result as a rollout prerequisite. Local or mocked
 validation does not certify production deployment.
 
-- Companion releases: [2.23.1](releases/companion-2.23.1-release.md), [2.25.6](releases/companion-2.25.6-release.md), [2.25.7](releases/companion-2.25.7-release.md), [2.25.8](releases/companion-2.25.8-release.md), [2.25.9](releases/companion-2.25.9-release.md), [2.25.10](releases/companion-2.25.10-release.md).
+- Companion releases: [2.23.1](releases/companion-2.23.1-release.md), [2.25.6](releases/companion-2.25.6-release.md), [2.25.7](releases/companion-2.25.7-release.md), [2.25.8](releases/companion-2.25.8-release.md), [2.25.9](releases/companion-2.25.9-release.md), [2.25.10](releases/companion-2.25.10-release.md), [2.25.11](releases/companion-2.25.11-release.md).
   Customer-facing release notes remain linked from their release records.
 - [Installed 2.23.1 ZIP validation](delivery/delivery-2.23.1-installed-zip-validation.md)
 - [Client validation, 22 September 2026](delivery/delivery-client-validation-2026-09-22.md)

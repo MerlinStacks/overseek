@@ -19,6 +19,15 @@ test('release pins and packaged manifest match the current plugin source', () =>
     assert.equal(client.match(/sha256: '([^']+)'/)?.[1], RELEASE.zip);
 });
 
+test('WordPress CI installs the shipped release for native and upgrade checks', () => {
+    const workflow = fs.readFileSync(path.join(root, '.github/workflows/wordpress-plugin-tests.yml'), 'utf8');
+    const installs = workflow.split('\n').filter(line => line.includes('wp plugin install') && line.includes('overseek-wc-plugin.zip'));
+    assert.equal(installs.length, 2, 'Native and upgrade checks must both install the companion');
+    for (const line of installs) {
+        assert.ok(line.includes('"$GITHUB_WORKSPACE/server/uploads/plugins/overseek-wc-plugin.zip"'), line);
+    }
+});
+
 function fixture(t) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'overseek-download-'));
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
