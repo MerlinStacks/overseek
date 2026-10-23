@@ -184,8 +184,8 @@ export const CONDITION_GROUPS: ConditionGroup[] = [
             { field: 'order.itemCount', label: 'Order Item Count', operators: ['gt', 'gte', 'lt', 'lte', 'eq'] },
             { field: 'order.productId', label: 'Order contains product', operators: ['eq', 'neq'] },
             { field: 'order.categoryId', label: 'Order contains category', operators: ['eq', 'neq'] },
-            { field: 'order.productTagId', label: 'Order contains product with tag', operators: ['contains', 'not_contains'] },
-            { field: 'customer.purchasedProductTagIds', label: 'Customer purchased product with tag', operators: ['contains', 'not_contains'] },
+            { field: 'order.productTagId', label: 'Order contains product with tag', operators: ['contains', 'contains_any', 'not_contains'] },
+            { field: 'customer.purchasedProductTagIds', label: 'Customer purchased product with tag', operators: ['contains', 'contains_any', 'not_contains'] },
             { field: 'order.couponCode', label: 'Order used coupon', operators: ['contains', 'not_contains', 'eq', 'neq'] },
             { field: 'customer.totalSpent', label: 'Customer Lifetime Value', operators: ['gt', 'gte', 'lt', 'lte'] },
             { field: 'customer.ordersCount', label: 'Customer Total Orders', operators: ['gt', 'gte', 'lt', 'lte', 'eq'] },
@@ -257,6 +257,7 @@ export const OPERATOR_LABELS: Record<string, string> = {
     'lt': 'less than',
     'lte': 'less than or equal',
     'contains': 'contains',
+    'contains_any': 'contains any of',
     'not_contains': 'does not contain',
     'is_set': 'is set',
     'not_set': 'is not set',
@@ -788,14 +789,15 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                     <div className="text-xs font-medium text-gray-700">Active conditions:</div>
                     {conditions.map((cond, idx) => cond.field && (
                         <div key={idx} className="flex items-center gap-2 p-3 bg-white border rounded-lg">
-                            <div className="flex-1 grid grid-cols-3 gap-2">
-                                <div className="text-sm text-gray-700 font-medium truncate">
+                            <div className="min-w-0 flex-1 grid grid-cols-3 items-start gap-2">
+                                <div className="text-sm text-gray-700 font-medium">
                                     {CONDITION_GROUPS.flatMap(g => g.conditions).find(c => c.field === cond.field)?.label || cond.field}
                                 </div>
                                 <select
                                     value={cond.operator}
                                     onChange={(e) => updateCondition(idx, 'operator', e.target.value)}
-                                    className="text-sm border border-gray-300 rounded-sm px-2 py-1"
+                                    aria-label="Condition operator"
+                                    className="min-w-0 w-full text-sm border border-gray-300 rounded-lg px-2 py-1.5"
                                 >
                                     {getOperatorsForField(cond.field).map(op => (
                                         <option key={op} value={op}>{OPERATOR_LABELS[op] || op}</option>

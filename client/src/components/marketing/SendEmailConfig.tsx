@@ -3,6 +3,7 @@
  * Includes visual builder, rich text, raw HTML modes, template management, and preview
  */
 import { useRef, useState, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { CheckCircle, Circle, Search, Copy, X } from 'lucide-react';
 import { RichTextEditor } from '../common/RichTextEditor';
 import { MarketingEmailDesigner } from './MarketingEmailDesigner';
@@ -43,6 +44,7 @@ interface SendEmailConfigProps {
     config: SendEmailNodeConfig;
     onUpdate: (key: string, value: unknown) => void;
     onUpdateMany?: (updates: Record<string, unknown>) => void;
+    setupContainer?: HTMLElement | null;
 }
 
 type MergeTagField = 'to' | 'subject' | 'previewText';
@@ -67,7 +69,7 @@ const MERGE_TAG_CATEGORIES: Array<{ id: MergeTagDefinition['category']; label: s
     { id: 'general', label: 'General' },
 ];
 
-export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }: SendEmailConfigProps) {
+export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope, setupContainer }: SendEmailConfigProps) {
     const [showTemplateSelector, setShowTemplateSelector] = useState(false);
     const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
@@ -98,7 +100,6 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
         { label: 'Category', done: Boolean(emailCategory) },
         { label: 'Preview/test', done: previewChecked },
     ];
-    const completedSetupSteps = setupSteps.filter((step) => step.done).length;
     const readinessIssues = evaluateEmailPreflight({ html: config.htmlContent || '', subject: config.subject, emailCategory, to: config.to || '{{customer.email}}', overrideFrom: config.overrideFrom, fromEmail: config.fromEmail, replyToEmail: config.replyToEmail });
     const focusIssue = (id: string) => {
         const field = id.startsWith('recipient') ? toInputRef.current : id === 'subject' ? subjectInputRef.current : null;
@@ -221,29 +222,24 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
         return tag.label.toLowerCase().includes(term) || tag.value.toLowerCase().includes(term);
     });
 
+    const setupChecks = (
+        <div role="group" aria-label="Email step setup" className="flex flex-wrap gap-2" title="Complete these fields, then preview and send a test before activating the flow.">
+            {setupSteps.map((step) => (
+                <div key={step.label} aria-label={`${step.label}: ${step.done ? 'complete' : 'incomplete'}`} className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs ${step.done ? 'border-emerald-200 bg-white text-emerald-700' : 'border-[var(--brand-border)] bg-white/70 text-[var(--brand-text)]'}`}>
+                    {step.done ? <CheckCircle size={14} aria-hidden="true" /> : <Circle size={14} aria-hidden="true" />}
+                    <span>{step.label}</span>
+                </div>
+            ))}
+        </div>
+    );
+
     return (
         <div className="space-y-4">
-            <div className="rounded-xl border border-[var(--brand-border)] bg-[var(--brand-subtle)] p-4">
-                <div className="flex items-start justify-between gap-4">
-                    <div>
-                        <h4 className="text-sm font-semibold text-[var(--brand-text)]">Email step setup</h4>
-                        <p className="mt-1 text-xs text-[var(--brand-text)]">Complete these fields, then preview and send a test before activating the flow.</p>
-                    </div>
-                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-[var(--brand-text)] shadow-xs">{completedSetupSteps}/{setupSteps.length}</span>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                    {setupSteps.map((step) => (
-                        <div key={step.label} className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${step.done ? 'border-emerald-200 bg-white text-emerald-700' : 'border-[var(--brand-border)] bg-white/70 text-[var(--brand-text)]'}`}>
-                            {step.done ? <CheckCircle size={14} /> : <Circle size={14} />}
-                            <span>{step.label}</span>
-                        </div>
-                    ))}
-                </div>
-                {readinessIssues.length > 0 && <details className="mt-3 border-t border-[var(--brand-border)] pt-2">
+            {setupContainer ? createPortal(setupChecks, setupContainer) : setupChecks}
+                {readinessIssues.length > 0 && <details className="rounded-lg border border-[var(--brand-border)] bg-[var(--brand-subtle)] px-3 py-2">
                     <summary className="cursor-pointer text-xs font-medium text-[var(--brand-text)]">Readiness: {readinessIssues.filter(issue => issue.severity === 'blocking').length} blockers · {readinessIssues.filter(issue => issue.severity === 'warning').length} suggestions</summary>
                     <ul className="mt-2 space-y-1">{readinessIssues.map(issue => <li key={issue.id}><button type="button" onClick={() => focusIssue(issue.id)} className={`text-left text-xs underline underline-offset-2 ${issue.severity === 'blocking' ? 'text-red-700' : 'text-amber-800'}`}>{issue.severity === 'blocking' ? 'Required' : 'Suggestion'}: {issue.message}</button></li>)}</ul>
                 </details>}
-            </div>
 
             <div className="grid items-start gap-6 lg:grid-cols-2">
             <section aria-label="Message details" className="min-w-0 space-y-4">
@@ -343,9 +339,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                     Marketing emails honor unsubscribe preferences. Transactional emails can still be sent for important order or account updates.
                 </p>
             </div>
-            </section>
-
-            <section id="flow-email-content" aria-label="Email content" className="min-w-0 space-y-4">
+            <section id="flow-email-content" aria-label="Email content" className="min-w-0 space-y-4 border-t border-gray-200 pt-4">
             <h4 className="text-sm font-semibold text-gray-900">Email content</h4>
             <div>
                 <label className="mb-2 block text-sm font-medium text-gray-700">Template Type</label>
@@ -476,6 +470,10 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }
                 </button>
             </div>
 
+            </section>
+            </section>
+
+            <section aria-label="Email preview and test" className="min-w-0 lg:sticky lg:top-0">
             <InlineEmailPreview html={config.htmlContent || ''} subject={config.subject} previewText={config.previewText} category={emailCategory} onPreviewed={() => setCheckedRevision(revision)} onTestSent={() => setCheckedRevision(revision)} />
             </section>
             </div>

@@ -33,6 +33,7 @@ export interface ActionConfigProps {
     config: ActionNodeConfig;
     onUpdate: (key: string, value: unknown) => void;
     onUpdateMany?: (updates: Record<string, unknown>) => void;
+    emailSetupContainer?: HTMLElement | null;
 }
 
 const ACTION_TYPES = [
@@ -79,7 +80,7 @@ function getSmsMetrics(message: string) {
     };
 }
 
-export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, onUpdateMany, storageScope }) => {
+export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, onUpdateMany, storageScope, emailSetupContainer }) => {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const selectedActionType = config.actionType || 'SEND_EMAIL';
@@ -122,7 +123,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
             )}
 
             {selectedActionType === 'SEND_EMAIL' && (
-                <SendEmailConfig key={storageScope} storageScope={storageScope} config={config} onUpdate={onUpdate} onUpdateMany={onUpdateMany} />
+                <SendEmailConfig key={storageScope} storageScope={storageScope} config={config} onUpdate={onUpdate} onUpdateMany={onUpdateMany} setupContainer={emailSetupContainer} />
             )}
 
             {selectedActionType === 'UNSUBSCRIBE' && (

@@ -18,7 +18,7 @@ describe('canvas responsive preview', () => {
         const { rerender } = render(<EmailDropCanvas {...props} sections={sections} isMobilePreview />);
         expect(screen.queryByText('desktop-left-block')).not.toBeInTheDocument();
         expect(screen.getByText('mobile-left-block')).toBeInTheDocument();
-        const column = screen.getByText('all-left-block').closest('.min-h-16')!;
+        const column = screen.getByText('all-left-block').closest('.min-w-0')!;
         expect(column).toHaveStyle({ width: '100%' });
         expect(column.parentElement).toHaveStyle({ flexDirection: 'column-reverse' });
         rerender(<EmailDropCanvas {...props} sections={sections} isMobilePreview={false} />);
@@ -26,5 +26,27 @@ describe('canvas responsive preview', () => {
         expect(screen.getByText('desktop-left-block')).toBeInTheDocument();
         expect(column).toHaveStyle({ width: '50%' });
         expect(column.parentElement).toHaveStyle({ flexDirection: 'row' });
+    });
+
+    it('keeps editor controls out of zero-padding content flow', () => {
+        const content = section('compact', 'all');
+        content.padding = '0';
+        content.columns.forEach(column => { column.padding = '0'; });
+        render(<EmailDropCanvas {...props} sections={[content]} isMobilePreview={false} />);
+        const column = screen.getByText('compact-left-block').closest('.min-w-0')!;
+        expect(column).toHaveStyle({ padding: '0' });
+        expect(column.className).not.toMatch(/min-h-|\bp-2\b|\bborder\b/);
+        expect(column.closest('section')).toHaveStyle({ padding: '0' });
+        screen.getAllByLabelText('Block actions').forEach(actions => expect(actions).toHaveClass('absolute'));
+        screen.getAllByLabelText('Block insertion target').forEach(target => expect(target).toHaveClass('absolute'));
+        screen.getAllByLabelText('Structure insertion target').forEach(target => expect(target).toHaveClass('absolute'));
+    });
+
+    it('retains a usable drop area for empty columns only', () => {
+        const content = section('empty', 'all');
+        content.columns[0].blocks = [];
+        render(<EmailDropCanvas {...props} sections={[content]} isMobilePreview={false} />);
+        expect(screen.getByText('Drop here')).toHaveClass('min-h-16');
+        expect(screen.getByText('empty-right-block').closest('.min-w-0')).not.toHaveClass('min-h-16');
     });
 });

@@ -5,6 +5,19 @@ import { prisma } from '../../utils/prisma';
 
 vi.mock('../../utils/prisma', () => ({ prisma: { wooCustomer: { findFirst: vi.fn() }, wooOrder: { findFirst: vi.fn(), findUnique: vi.fn(), findMany: vi.fn() }, wooProduct: { findMany: vi.fn() } } }));
 describe('automation WooCommerce product tags', () => {
+    it.each(['order.productTagId', 'customer.purchasedProductTagIds'])('matches multiple %s tags with all, any and none semantics', field => {
+        const context = { order: { line_items: [{ tagIds: [94, 95] }] }, customer: { purchasedProductTagIds: [94, 95] } };
+        const matches = (operator: string, value: unknown) => automationConditionService.evaluate({ field, operator, value }, context);
+        expect(matches('contains', '94,95')).toBe(true);
+        expect(matches('contains', '94,96')).toBe(false);
+        expect(matches('contains_any', '94,96')).toBe(true);
+        expect(matches('contains_any', '9,96')).toBe(false);
+        expect(matches('not_contains', '94,96')).toBe(false);
+        expect(matches('not_contains', '9,96')).toBe(true);
+        expect(matches('contains', ['94', '95'])).toBe(true);
+        expect(matches('not_contains', '')).toBe(false);
+        expect(matches('contains_any', '')).toBe(false);
+    });
     beforeEach(() => {
         vi.clearAllMocks();
         vi.mocked(prisma.wooCustomer.findFirst).mockResolvedValue(null);

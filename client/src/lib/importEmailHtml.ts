@@ -1,6 +1,6 @@
 import DOMPurify from 'dompurify';
 import { createDefaultEmailDesignV2, createEmailDesignId, type EmailBlock, type EmailSection } from './emailDesignerV2';
-import { sanitizeEmailHtml } from '../utils/emailHtml';
+import { sanitizeEmailHtml, sanitizeEmailLayoutHtml } from '../utils/emailHtml';
 
 /** Import supported content as editable blocks; retain complex markup as HTML blocks. */
 export function importEmailHtml(html: string, options?: { title?: string; previewText?: string }) {
@@ -17,6 +17,43 @@ export function importEmailHtml(html: string, options?: { title?: string; previe
         theme.contentWidth = parseFloat(card.style.maxWidth) || theme.contentWidth;
         theme.contentBackgroundColor = card.style.backgroundColor || theme.contentBackgroundColor;
         theme.borderRadius = parseFloat(card.style.borderRadius) || 0;
+    }
+
+    // Native sections cannot represent arbitrary nested-table spacing, borders,
+    // rounded panels or stylesheet rules. Flattening these layouts is destructive:
+    // ancestor padding gets repeated and a shell's align="center" becomes text
+    // alignment. Keep the layout together instead of promising editable fidelity.
+    const tables = Array.from(body.querySelectorAll<HTMLTableElement>('table'));
+    const needsLayoutPreservation = !doc.querySelector('.os-email-section')
+        && tables.some(table => table.querySelector('table'))
+        && (Boolean(doc.querySelector('style')) || tables.some(table =>
+            Boolean(table.style.margin || table.style.borderRadius)
+            || Array.from(table.rows).some(row => Array.from(row.cells).some(cell =>
+                Boolean(cell.style.borderTop || cell.style.borderBottom)
+                || Boolean(cell.style.borderRadius && !cell.querySelector('a:only-child'))))));
+    if (needsLayoutPreservation) {
+        const preheader = Array.from(body.children).find(element => element instanceof HTMLElement && element.style.display === 'none');
+        if (options?.previewText === undefined && preheader?.textContent?.trim()) design.document.meta.previewText = preheader.textContent.trim();
+        // The compiler emits its own hidden preheader. Never turn the original
+        // hidden content into visible blocks when sanitation removes attributes.
+        body.querySelectorAll<HTMLElement>('[hidden], [style]').forEach(element => {
+            if (element.hidden || element.style.display === 'none') element.remove();
+        });
+        const container = tables.find(table => /px$/.test(table.style.maxWidth) && parseFloat(table.style.maxWidth) >= 320 && parseFloat(table.style.maxWidth) <= 1200);
+        if (container) theme.contentWidth = parseFloat(container.style.maxWidth);
+        theme.borderRadius = 0;
+        theme.contentBackgroundColor = body.style.backgroundColor || '#ffffff';
+        design.document.sections = [{
+            id: createEmailDesignId('section'), name: 'Imported HTML layout', padding: '0',
+            columns: [{ id: createEmailDesignId('column'), width: 100, padding: '0', blocks: [{
+                id: createEmailDesignId('block'), type: 'rawHtml', props: {
+                    padding: '0',
+                    html: sanitizeEmailLayoutHtml(body.innerHTML),
+                    migrationWarning: 'Imported table layout retained as one HTML block to preserve inline formatting. Edit its HTML rather than individual visual blocks. Custom stylesheet and mobile rules are not retained; use Raw HTML to keep the original document.',
+                },
+            }] }],
+        }];
+        return design;
     }
 
     const inheritedStyle = (element: HTMLElement, property: string): string => {

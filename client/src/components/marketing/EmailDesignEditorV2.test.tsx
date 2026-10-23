@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultEmailDesignV2 } from '../../lib/emailDesignerV2';
 import { EmailDesignEditorV2 } from './EmailDesignEditorV2';
@@ -23,15 +23,84 @@ beforeEach(() => {
     localStorage.clear();
     vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url === '/api/marketing/preview-email' ? {
         html: '<html><body>Prepared</body></html>', canonicalHtml: '<p>Prepared canonical content</p>', subject: 'Saved subject', previewText: 'Keep my preview', text: 'Prepared', hash: 'a'.repeat(64), rendererVersion: 'test-renderer', assets: [], missingTags: [], orderId: null, scenario: 'standard',
-    } : url === '/api/marketing/designer/sections' ? { presets: [] } : [] })));
+    } : url === '/api/marketing/preview-orders' ? { orders: [{ id: 'recent-order', number: '123', label: 'Recent customer' }] } : url === '/api/marketing/designer/sections' ? { presets: [] } : [] })));
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('email designer integration', () => {
+    it('keeps section properties on the right and replaces Layouts with Layers on the left', () => {
+        render(<EmailDesignEditorV2 initialDesign={initialDesign()} onSave={vi.fn()} onCancel={vi.fn()} />);
+        expect(screen.queryByRole('button', { name: 'layouts' })).not.toBeInTheDocument();
+        expect(screen.queryByText(/Edit your layout here/)).not.toBeInTheDocument();
+        const inspector = screen.getByRole('complementary', { name: 'Email properties' });
+        expect(within(inspector).getByRole('tab', { name: 'section' })).toHaveAttribute('aria-selected', 'true');
+        expect(within(inspector).getByText('Section settings')).toBeVisible();
+        expect(within(inspector).getByRole('switch', { name: 'Responsive structure' })).toHaveAttribute('aria-checked', 'true');
+        fireEvent.click(screen.getByRole('button', { name: 'layers', exact: true }));
+        expect(screen.getByRole('navigation', { name: 'Email layers' })).toBeVisible();
+        expect(within(screen.getByRole('navigation', { name: 'Email layers' })).queryByText('Section settings')).not.toBeInTheDocument();
+    });
+
+    it('selects blocks from Layers without replacing the left panel and removes redundant visibility', async () => {
+        const save = vi.fn();
+        render(<EmailDesignEditorV2 initialDesign={initialDesign()} onSave={save} onCancel={vi.fn()} />);
+        fireEvent.click(screen.getByRole('button', { name: 'layers', exact: true }));
+        fireEvent.click(screen.getByRole('button', { name: 'Select Text: Saved message' }));
+        const inspector = screen.getByRole('complementary', { name: 'Email properties' });
+        expect(within(inspector).getByRole('tab', { name: 'block' })).toHaveAttribute('aria-selected', 'true');
+        expect(screen.getByRole('navigation', { name: 'Email layers' })).toBeVisible();
+        expect(within(inspector).queryByLabelText('Visibility')).not.toBeInTheDocument();
+        expect(within(inspector).getByRole('switch', { name: 'Hide on mobile' })).toBeVisible();
+        const responsive = within(inspector).getByRole('switch', { name: 'Responsive structure' });
+        expect(responsive).toHaveAttribute('aria-checked', 'true');
+        fireEvent.click(responsive);
+        expect(responsive).toHaveAttribute('aria-checked', 'false');
+        fireEvent.click(screen.getByRole('button', { name: 'Select section 1' }));
+        expect(within(inspector).getByRole('tab', { name: 'section' })).toHaveAttribute('aria-selected', 'true');
+        fireEvent.click(screen.getByText('Close', { exact: true }));
+        await waitFor(() => expect(save).toHaveBeenCalledOnce());
+        expect(save.mock.calls[0][1].document.sections[0].columns[0].blocks[0].responsive).toBe(false);
+    });
+
+    it('supports keyboard switching between inspector tabs', () => {
+        render(<EmailDesignEditorV2 initialDesign={initialDesign()} onSave={vi.fn()} onCancel={vi.fn()} />);
+        const section = screen.getByRole('tab', { name: 'section' });
+        fireEvent.keyDown(section, { key: 'ArrowRight' });
+        const block = screen.getByRole('tab', { name: 'block' });
+        expect(block).toHaveAttribute('aria-selected', 'true');
+        expect(block).toHaveFocus();
+        expect(screen.getByText('Select a block in the canvas or Layers panel to edit its properties.')).toBeVisible();
+        fireEvent.keyDown(block, { key: 'Home' });
+        expect(section).toHaveFocus();
+        expect(section).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('keeps warnings in a header checklist dropdown without replacing the builder sidebar', () => {
+        render(<EmailDesignEditorV2 initialDesign={initialDesign()} onSave={vi.fn()} onCancel={vi.fn()} />);
+        expect(screen.queryByText('Designer warnings')).not.toBeInTheDocument();
+        const checklist = screen.getByText('Checklist', { exact: true });
+        expect(checklist.closest('header')).toBeInTheDocument();
+        expect(checklist.querySelector('[aria-label="Warnings"]')).toBeInTheDocument();
+        fireEvent.click(checklist);
+        expect(checklist.closest('details')).toHaveAttribute('open');
+        expect(screen.getByText('Preflight checklist')).toBeVisible();
+        expect(screen.getByPlaceholderText('Search blocks')).toBeVisible();
+        fireEvent.keyDown(checklist, { key: 'Escape' });
+        expect(checklist.closest('details')).not.toHaveAttribute('open');
+        fireEvent.click(checklist);
+        fireEvent.pointerDown(screen.getByText('Canvas'));
+        expect(checklist.closest('details')).not.toHaveAttribute('open');
+    });
+
     it('keeps the desktop HTML viewport wider than the mobile CSS breakpoint', async () => {
         render(<EmailDesignEditorV2 initialDesign={initialDesign()} onSave={vi.fn()} onCancel={vi.fn()} />);
         fireEvent.click(screen.getByRole('button', { name: 'Delivery preview' }));
         expect((await screen.findByTitle('Prepared delivery HTML preview')).parentElement).toHaveStyle({ width: '920px' });
+        expect(screen.getByLabelText('Delivery preview order').closest('header')).toBeInTheDocument();
+        expect(screen.queryByLabelText('Delivery preview scenario')).not.toBeInTheDocument();
+        expect(screen.queryByText(/HTML bytes|Missing values|Browser colour simulation/)).not.toBeInTheDocument();
+        fireEvent.change(screen.getByLabelText('Delivery preview order'), { target: { value: 'recent-order' } });
+        await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url, options]) => url === '/api/marketing/preview-email' && JSON.parse(options!.body as string).orderId === 'recent-order')).toBe(true));
         fireEvent.change(screen.getByLabelText('Preview device'), { target: { value: 'iphone-se' } });
         expect(screen.getByTitle('Prepared delivery HTML preview').parentElement).toHaveStyle({ width: '375px' });
     });

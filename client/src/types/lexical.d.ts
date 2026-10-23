@@ -8,22 +8,49 @@ declare module 'lexical' {
     export type Spread<T, U> = Omit<U, keyof T> & T;
     export type SerializedLexicalNode = { type: string; version: number };
     export type DOMExportOutput = { element: HTMLElement | null };
-    export type DOMConversionMap = Record<string, (element: HTMLElement) => { priority: 0 | 1 | 2 | 3 | 4; conversion: (element: HTMLElement) => { node: LexicalNode | null } } | null>;
+    export type DOMConversionOutput = {
+        node: LexicalNode | LexicalNode[] | null;
+        forChild?: (child: LexicalNode, parent: LexicalNode | null) => LexicalNode | null;
+    };
+    export type DOMConversionMap = Record<string, (element: HTMLElement) => { priority: 0 | 1 | 2 | 3 | 4; conversion: (element: HTMLElement) => DOMConversionOutput | null } | null>;
+    export type DOMExportOutputMap = Map<{ prototype: LexicalNode }, (editor: LexicalEditor, node: LexicalNode) => DOMExportOutput>;
+    export type HTMLConfig = { import?: DOMConversionMap; export?: DOMExportOutputMap };
+    export interface StateConfig<T> { readonly key: string; readonly parse: (value: unknown) => T }
+    export function createState<T>(key: string, config: { parse: (value: unknown) => T }): StateConfig<T>;
+    export function $getState<T>(node: LexicalNode, config: StateConfig<T>): T;
+    export function $setState<T>(node: LexicalNode, config: StateConfig<T>, value: T): void;
     export class LexicalNode {
         __key: NodeKey;
         constructor(key?: NodeKey);
         remove(): void;
         exportJSON(): SerializedLexicalNode;
+        exportDOM(editor: LexicalEditor): DOMExportOutput;
+        static importDOM?: () => DOMConversionMap | null;
+        $config(): Record<string, { importDOM?: DOMConversionMap }>;
+        getKey(): NodeKey;
     }
+    export class ElementNode extends LexicalNode {
+        getChildren(): LexicalNode[];
+        getStyle(): string;
+        setStyle(style: string): this;
+        getFormatType(): string;
+    }
+    export class ParagraphNode extends ElementNode {}
+    export class TextNode extends LexicalNode {
+        getStyle(): string;
+        setStyle(style: string): this;
+    }
+    export function $isElementNode(node: unknown): node is ElementNode;
+    export function $isTextNode(node: unknown): node is TextNode;
     export class DecoratorNode<T> extends LexicalNode {}
     export function $getNodeByKey(key: NodeKey): LexicalNode | null;
     export class EditorState {
         read<T>(callback: () => T): T;
     }
     export class LexicalEditor {
-        update(callback: () => void): void;
+        update(callback: () => void, options?: { tag?: string; discrete?: boolean }): void;
         registerCommand<T>(command: any, listener: (payload: T) => boolean, priority: number): () => void;
-        registerUpdateListener(listener: (payload: { editorState: EditorState }) => void): () => void;
+        registerUpdateListener(listener: (payload: { editorState: EditorState; tags: Set<string>; dirtyElements: Map<NodeKey, boolean>; dirtyLeaves: Set<NodeKey> }) => void): () => void;
         dispatchCommand<T>(command: any, payload?: T): boolean;
         getElementByKey(key: string): HTMLElement | null;
         getEditorState(): EditorState;
@@ -91,6 +118,7 @@ declare module '@lexical/react/LexicalComposer' {
         theme?: any;
         nodes?: any[];
         onError?: (error: Error) => void;
+        html?: import('lexical').HTMLConfig;
     }
     export function LexicalComposer(props: { initialConfig: InitialConfigType; children: ReactNode }): JSX.Element;
 }
@@ -135,10 +163,10 @@ declare module '@lexical/html' {
 }
 
 declare module '@lexical/link' {
-    import { LexicalNode, type NodeKey, type SerializedLexicalNode } from 'lexical';
+    import { ElementNode, type NodeKey, type SerializedLexicalNode } from 'lexical';
     export type LinkAttributes = { target?: string | null; rel?: string | null; title?: string | null };
     export type SerializedLinkNode = SerializedLexicalNode & LinkAttributes & { url: string };
-    export class LinkNode extends LexicalNode {
+    export class LinkNode extends ElementNode {
         constructor(url?: string, attributes?: LinkAttributes, key?: NodeKey);
         getURL(): string;
         getTarget(): string | null;
@@ -149,22 +177,24 @@ declare module '@lexical/link' {
     }
     export class AutoLinkNode { }
     export function $createLinkNode(url: string): any;
-    export function $isLinkNode(node: any): boolean;
+    export function $isLinkNode(node: unknown): node is LinkNode;
     export const TOGGLE_LINK_COMMAND: any;
 }
 
 declare module '@lexical/list' {
-    export class ListNode {
+    import { ElementNode } from 'lexical';
+    export class ListNode extends ElementNode {
         getListType(): string;
     }
-    export class ListItemNode { }
+    export class ListItemNode extends ElementNode { }
     export function $isListNode(node: any): boolean;
     export const INSERT_ORDERED_LIST_COMMAND: any;
     export const INSERT_UNORDERED_LIST_COMMAND: any;
 }
 
 declare module '@lexical/rich-text' {
-    export class HeadingNode { }
+    import { ElementNode } from 'lexical';
+    export class HeadingNode extends ElementNode { }
     export class QuoteNode { }
     export function $createHeadingNode(tag: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'): any;
 }

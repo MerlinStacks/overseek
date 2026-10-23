@@ -33,6 +33,8 @@ import { PreviewOrderContext } from './PreviewOrderContext';
 import { EMAIL_MERGE_TAGS, type MergeTagDefinition } from './mergeTags';
 import { LTR_TEXT_STYLE, sanitizeBidiText } from '../textInputBidi';
 import { sanitizeEmailHtml, sanitizeEmailLayoutHtml, sanitizeEmailPaste, stripBidiControls } from '../../../utils/emailHtml';
+import { withEmailBlockLayout, getEmailImageMargin, normalizeEmailTextHtml } from '../../../lib/emailDesignerV2';
+import { emailTextHtmlConfig, registerEmailTextStyles } from './emailTextHtmlConfig';
 
 const MERGE_TAG_CATEGORIES: Array<{ id: MergeTagDefinition['category']; label: string }> = [
     { id: 'customer', label: 'Customer' },
@@ -49,6 +51,9 @@ const EMAIL_TEXT_EDITOR_CONTENT_STYLE = `
 .${EMAIL_TEXT_EDITOR_CONTENT_CLASS} h1,
 .${EMAIL_TEXT_EDITOR_CONTENT_CLASS} h2,
 .${EMAIL_TEXT_EDITOR_CONTENT_CLASS} h3,
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} h4,
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} h5,
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} h6,
 .${EMAIL_TEXT_EDITOR_CONTENT_CLASS} p,
 .${EMAIL_TEXT_EDITOR_CONTENT_CLASS} ul,
 .${EMAIL_TEXT_EDITOR_CONTENT_CLASS} ol {
@@ -58,20 +63,23 @@ const EMAIL_TEXT_EDITOR_CONTENT_STYLE = `
     margin-bottom: 0;
 }
 .${EMAIL_TEXT_EDITOR_CONTENT_CLASS} h1 {
-    font-size: 2em;
+    font-size: var(--os-email-heading-size, 2em);
     font-weight: 700;
     line-height: 1.25;
 }
 .${EMAIL_TEXT_EDITOR_CONTENT_CLASS} h2 {
-    font-size: 1.5em;
+    font-size: var(--os-email-heading-size, 1.5em);
     font-weight: 700;
     line-height: 1.3;
 }
 .${EMAIL_TEXT_EDITOR_CONTENT_CLASS} h3 {
-    font-size: 1.17em;
+    font-size: var(--os-email-heading-size, 1.17em);
     font-weight: 700;
     line-height: 1.35;
 }
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} h4 { font-size: var(--os-email-heading-size, 1em); font-weight: 700; line-height: 1.4; }
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} h5 { font-size: var(--os-email-heading-size, 0.83em); font-weight: 700; line-height: 1.4; }
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} h6 { font-size: var(--os-email-heading-size, 0.67em); font-weight: 700; line-height: 1.4; }
 .${EMAIL_TEXT_EDITOR_CONTENT_CLASS} ul,
 .${EMAIL_TEXT_EDITOR_CONTENT_CLASS} ol {
     padding-left: 1.4em;
@@ -93,8 +101,9 @@ const EMAIL_TEXT_EDITOR_CONTENT_STYLE = `
 `;
 
 export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme: EmailDesignTheme; onUpdate: (updater: (block: EmailBlock) => void) => void }) {
+    block = withEmailBlockLayout(block);
     const previewOrder = useContext(PreviewOrderContext);
-    const responsiveStyle: CSSProperties = block.responsive ? { width: '100%', maxWidth: '100%' } : {};
+    const responsiveStyle: CSSProperties = block.responsive !== false ? { width: '100%', maxWidth: '100%' } : {};
     if (block.type === 'deliveryEstimate') {
         const html = renderDeliveryEstimateEmailBlock(previewOrder, getDeliveryEstimateBlockOptions(block.props, theme));
         return html
@@ -102,7 +111,7 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
             : <p style={{ color: theme.mutedTextColor, fontSize: 13 }}>No saved delivery estimate on preview order</p>;
     }
     if (block.type === 'siteLogo') {
-        return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', ...responsiveStyle }}>{block.props.src ? <img src={block.props.src} alt={block.props.alt || block.props.fallbackText || 'Logo'} width={block.props.width || 160} style={{ display: 'block', maxWidth: '100%', height: 'auto', border: 0, margin: '0 auto' }} /> : <h1 style={{ margin: 0, color: theme.textColor, fontSize: 28, lineHeight: 1.25 }}>{block.props.fallbackText || block.props.alt || 'Your Store'}</h1>}</div>;
+        return <div style={{ padding: block.props.padding, textAlign: block.props.align, ...responsiveStyle }}>{block.props.src ? <img src={block.props.src} alt={block.props.alt || block.props.fallbackText || 'Logo'} width={block.props.width || 160} style={{ display: 'block', maxWidth: '100%', height: 'auto', border: 0, margin: getEmailImageMargin(block.props.align) }} /> : <h1 style={{ margin: 0, color: theme.textColor, fontSize: 28, lineHeight: 1.25 }}>{block.props.fallbackText || block.props.alt || 'Your Store'}</h1>}</div>;
     }
     if (block.type === 'text') {
         return <EditableTextBlock block={block} theme={theme} onUpdate={onUpdate} />;
@@ -121,10 +130,10 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
         }} style={{ margin: '0 0 6px', outline: 'none', direction: 'ltr', unicodeBidi: 'isolate', writingMode: 'horizontal-tb' }}>{item}</li>)}</Tag></div>;
     }
     if (block.type === 'image') {
-        return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', ...responsiveStyle }}><img src={block.props.src} alt={block.props.alt || ''} width={block.props.width || 560} style={{ display: 'block', maxWidth: '100%', height: 'auto', border: 0, margin: '0 auto' }} /></div>;
+        return <div style={{ padding: block.props.padding, textAlign: block.props.align, ...responsiveStyle }}><img src={block.props.src} alt={block.props.alt || ''} width={block.props.width || 560} style={{ display: 'block', maxWidth: '100%', height: 'auto', border: 0, margin: getEmailImageMargin(block.props.align) }} /></div>;
     }
     if (block.type === 'coupon') {
-        return <div style={{ padding: (block.props as { padding?: string }).padding || '18px', margin: '8px 0', background: '#eef2ff', border: `1px dashed ${theme.primaryColor}`, borderRadius: theme.borderRadius, textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'center', ...responsiveStyle }}><p contentEditable suppressContentEditableWarning dir="ltr" onFocus={(event) => normalizeEditorDirection(event.currentTarget)} onBlur={(event) => {
+        return <div style={{ padding: (block.props as { padding?: string }).padding, margin: 0, background: '#eef2ff', border: `1px dashed ${theme.primaryColor}`, borderRadius: theme.borderRadius, textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align, ...responsiveStyle }}><p contentEditable suppressContentEditableWarning dir="ltr" onFocus={(event) => normalizeEditorDirection(event.currentTarget)} onBlur={(event) => {
             normalizeEditorDirection(event.currentTarget);
             const nextHeadline = sanitizeRtlText(event.currentTarget.textContent || '');
             onUpdate((draft) => {
@@ -141,7 +150,7 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
         const showReviewer = block.props.showReviewer !== false;
         const showProductName = block.props.showProductName !== false;
         const showCta = block.props.showCta !== false;
-        return <div style={{ padding: block.props.padding || '18px', margin: '8px 0', background: block.props.backgroundColor || 'transparent', border: block.props.borderColor ? `1px solid ${block.props.borderColor}` : 0, borderRadius: theme.borderRadius, textAlign: block.props.align || 'left', ...responsiveStyle }}>{showHeadline && <p contentEditable suppressContentEditableWarning dir="ltr" onFocus={(event) => normalizeEditorDirection(event.currentTarget)} onBlur={(event) => {
+        return <div style={{ padding: block.props.padding, margin: 0, background: block.props.backgroundColor || 'transparent', border: block.props.borderColor ? `1px solid ${block.props.borderColor}` : 0, borderRadius: theme.borderRadius, textAlign: block.props.align, ...responsiveStyle }}>{showHeadline && <p contentEditable suppressContentEditableWarning dir="ltr" onFocus={(event) => normalizeEditorDirection(event.currentTarget)} onBlur={(event) => {
             normalizeEditorDirection(event.currentTarget);
             const nextHeadline = sanitizeRtlText(event.currentTarget.textContent || '');
             onUpdate((draft) => {
@@ -181,7 +190,8 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
         const description = block.props.productDescription || (productSelected ? '' : 'Choose a WooCommerce product in block settings.');
         const showTitle = block.props.showTitle !== false;
         const showButton = block.props.showButton !== false;
-        return <div style={{ padding: (block.props as { padding?: string }).padding || '18px 0', textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'center', ...responsiveStyle }}>{block.props.showImage && image && <img src={image} alt={name} width="220" style={{ display: 'block', maxWidth: '100%', height: 'auto', borderRadius: 10, margin: '0 auto 14px' }} />}{showTitle && <h3 style={{ margin: '0 0 8px', color: theme.textColor, fontSize: 20, lineHeight: 1.3 }}>{name}</h3>}{block.props.showDescription && description && <p style={{ margin: '0 0 10px', color: '#64748b', lineHeight: 1.6 }}>{description}</p>}{block.props.showPrice && price && <p style={{ margin: '0 0 8px', color: theme.primaryColor, fontWeight: 700 }}>{price}</p>}{block.props.showRegularPrice && regularPrice && <p style={{ margin: '0 0 14px', color: theme.mutedTextColor, fontSize: 14, textDecoration: block.props.showPrice && !!price ? 'line-through' : 'none' }}>{regularPrice}</p>}{showButton && <span style={{ display: 'inline-block', background: theme.primaryColor, color: '#ffffff', borderRadius: theme.borderRadius, padding: '10px 16px', fontWeight: 700 }}>{block.props.buttonLabel || 'View Product'}</span>}</div>;
+        const imageMargin = getEmailImageMargin((block.props as { align?: 'left' | 'center' | 'right' }).align, '14px');
+        return <div style={{ padding: (block.props as { padding?: string }).padding || '18px 0', textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'center', ...responsiveStyle }}>{block.props.showImage && image && <img src={image} alt={name} width="220" style={{ display: 'block', maxWidth: '100%', height: 'auto', borderRadius: 10, margin: imageMargin }} />}{showTitle && <h3 style={{ margin: '0 0 8px', color: theme.textColor, fontSize: 20, lineHeight: 1.3 }}>{name}</h3>}{block.props.showDescription && description && <p style={{ margin: '0 0 10px', color: '#64748b', lineHeight: 1.6 }}>{description}</p>}{block.props.showPrice && price && <p style={{ margin: '0 0 8px', color: theme.primaryColor, fontWeight: 700 }}>{price}</p>}{block.props.showRegularPrice && regularPrice && <p style={{ margin: '0 0 14px', color: theme.mutedTextColor, fontSize: 14, textDecoration: block.props.showPrice && !!price ? 'line-through' : 'none' }}>{regularPrice}</p>}{showButton && <span style={{ display: 'inline-block', background: theme.primaryColor, color: '#ffffff', borderRadius: theme.borderRadius, padding: '10px 16px', fontWeight: 700 }}>{block.props.buttonLabel || 'View Product'}</span>}</div>;
     }
     if (block.type === 'newProducts') {
         const rawCount = Number(block.props.count);
@@ -495,12 +505,14 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
     const initialConfig = useMemo(() => ({
         namespace: `EmailTextBlock-${block.id}`,
         nodes: [HeadingNode, LinkNode, ListNode, ListItemNode],
+        html: emailTextHtmlConfig,
         onError: (error: Error) => {
             console.error('Email text editor error', error);
         },
     }), [block.id]);
 
     const textStyle = useMemo<CSSProperties>(() => ({
+        ...(block.props.size ? { '--os-email-heading-size': 'inherit' } : {}),
         padding: block.props.padding || '8px 0',
         textAlign: align,
         direction: 'ltr',
@@ -510,8 +522,7 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
         lineHeight: block.props.lineHeight || 1.6,
         color: block.props.color || theme.textColor,
         outline: 'none',
-        minHeight: 36,
-    }), [align, block.props.color, block.props.lineHeight, block.props.padding, size, theme.textColor]);
+    }), [align, block.props.color, block.props.lineHeight, block.props.padding, block.props.size, size, theme.textColor]);
 
 
     return (
@@ -529,13 +540,14 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
         >
             <style>{EMAIL_TEXT_EDITOR_CONTENT_STYLE}</style>
             <LexicalComposer initialConfig={initialConfig}>
-                <EmailTextHtmlPlugin html={block.props.html} syncExternal={!isFocused} />
+                <EmailTextHtmlPlugin html={normalizeEmailTextHtml(block.props.html, block.props.size)} syncExternal={!isFocused} />
                 <EmailTextOnChangePlugin currentHtml={block.props.html} onChange={(nextHtml) => {
                     onUpdate((draft) => {
                         if (draft.type === 'text') draft.props.html = nextHtml;
                     });
                 }} />
                 <EmailTextPastePlugin />
+                <EmailTextStylesPlugin />
                 <div style={textStyle}>
                     <RichTextPlugin
                         contentEditable={<ContentEditable className={EMAIL_TEXT_EDITOR_CONTENT_CLASS} ariaLabel="Email text block" />}
@@ -564,9 +576,15 @@ function EmailTextHtmlPlugin({ html, syncExternal }: { html: string; syncExterna
         lastHtmlRef.current = nextHtml;
         editor.update(() => {
             replaceEditorHtml(editor, nextHtml);
-        });
+        }, { tag: 'email-html-sync' });
     }, [editor, html, syncExternal]);
 
+    return null;
+}
+
+function EmailTextStylesPlugin() {
+    const [editor] = useLexicalComposerContext();
+    useEffect(() => registerEmailTextStyles(editor), [editor]);
     return null;
 }
 
@@ -588,7 +606,8 @@ function EmailTextOnChangePlugin({ currentHtml, onChange }: { currentHtml: strin
         currentHtmlRef.current = currentHtml;
     }, [currentHtml]);
 
-    useEffect(() => editor.registerUpdateListener(({ editorState }) => {
+    useEffect(() => editor.registerUpdateListener(({ editorState, tags, dirtyElements, dirtyLeaves }) => {
+        if (tags.has('email-html-sync') || (dirtyElements.size === 0 && dirtyLeaves.size === 0)) return;
         editorState.read(() => {
             const nextHtml = sanitizeEmailHtml($generateHtmlFromNodes(editor));
             if (nextHtml && nextHtml !== currentHtmlRef.current) {

@@ -40,7 +40,7 @@ const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => ({ '&'
 
 export const createAccountFooterHtml = (accountName: string) => `<p>You are receiving this email from ${escapeHtml(accountName)}.<br /><a href="{{unsubscribe_url}}">Unsubscribe</a></p>`;
 
-export const createBlock = (type: EmailBlock['type']): EmailBlock => {
+const createBlockContent = (type: EmailBlock['type']): EmailBlock => {
     const id = createEmailDesignId(type);
     if (type === 'siteLogo') return { id, type, props: { src: '', alt: 'Site logo', width: 160, align: 'center', fallbackText: 'Your Store' } };
     if (type === 'text') return { id, type, props: { html: '<p>Add your copy here.</p>', align: 'left', size: 15, lineHeight: 1.6 } };
@@ -96,7 +96,9 @@ export const createBlock = (type: EmailBlock['type']): EmailBlock => {
     return { id, type: 'rawHtml', props: { html: '<div style="padding:16px;">Custom HTML</div>' } };
 };
 
-export const createPaletteBlock = (key: PaletteKey, accountName: string, logoUrl = '', socialLinks = defaultSocialLinks, footerHtml = ''): EmailBlock => {
+export const createBlock = (type: EmailBlock['type']): EmailBlock => ({ ...createBlockContent(type), responsive: true });
+
+const createPaletteBlockContent = (key: PaletteKey, accountName: string, logoUrl = '', socialLinks = defaultSocialLinks, footerHtml = ''): EmailBlock => {
     if (key === 'siteLogo') {
         return { id: createEmailDesignId('siteLogo'), type: 'siteLogo', props: { src: logoUrl, alt: `${accountName} logo`, width: 160, align: 'center', fallbackText: accountName } };
     }
@@ -121,3 +123,5 @@ export const createPaletteBlock = (key: PaletteKey, accountName: string, logoUrl
     if (key === 'rawHtml') return createBlock('rawHtml');
     return createBlock(key);
 };
+
+export const createPaletteBlock = (...args: Parameters<typeof createPaletteBlockContent>): EmailBlock => ({ ...createPaletteBlockContent(...args), responsive: true });

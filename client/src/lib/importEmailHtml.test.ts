@@ -3,6 +3,62 @@ import { importEmailHtml } from './importEmailHtml';
 import { compileEmailDesignV2, createDefaultEmailDesignV2 } from './emailDesignerV2';
 
 describe('HTML email import', () => {
+    it('preserves a styled nested-table email instead of flattening its padding and alignment', () => {
+        const design = importEmailHtml(`<!doctype html><html><head><title>Your story is waiting.</title>
+            <style>@media(max-width:600px){.ls-title{font-size:28px!important}}</style></head>
+            <body style="background-color:#ffffff;font-family:Montserrat,Arial,sans-serif;color:#333333">
+            <div style="display:none">We've saved your chosen pieces.</div>
+            <table width="100%"><tr><td align="center"><table style="width:100%;max-width:640px"><tr>
+            <td style="padding:32px 24px">
+            <a href="https://shop.test"><img src="https://shop.test/logo.png" width="190" style="display:block;margin:0 0 32px"></a>
+            <p style="margin:0 0 8px;font-size:12px;line-height:20px">A little reminder</p>
+            <h1 style="margin:0 0 16px;font-size:34px;line-height:42px;font-weight:500">Your story is waiting.</h1>
+            <p>Hi {{contact.firstName}},</p>
+            <table style="margin:8px 0 24px"><tr><td style="background-color:#feb5e9;border-radius:999px">
+            <a href="{{cart.recoveryUrl}}" style="padding:14px 24px">Return to your cart</a></td></tr></table>
+            <table><tr><td style="padding:24px;border-radius:28px;background-color:#fef5fd">{{cart.itemsTable}}</td></tr></table>
+            <p><a href="{{marketing.unsubscribeUrl}}">Unsubscribe</a></p>
+            </td></tr></table></td></tr></table></body></html>`);
+        expect(design.document.meta).toMatchObject({ title: 'Your story is waiting.', previewText: "We've saved your chosen pieces." });
+        expect(design.document.theme).toMatchObject({ contentWidth: 640, borderRadius: 0, backgroundColor: 'rgb(255, 255, 255)' });
+        expect(design.document.sections).toHaveLength(1);
+        const section = design.document.sections[0];
+        expect(section.padding).toBe('0');
+        expect(section.columns[0].padding).toBe('0');
+        expect(section.columns[0].blocks).toHaveLength(1);
+        expect(section.columns[0].blocks[0]).toMatchObject({ type: 'rawHtml', props: { padding: '0', migrationWarning: expect.stringContaining('Custom stylesheet and mobile rules are not retained') } });
+        const compiled = compileEmailDesignV2(design);
+        expect(compiled.match(/padding:32px 24px/g)).toHaveLength(1);
+        expect(compiled).toContain('font-size:34px;line-height:42px;font-weight:500');
+        expect(compiled).toContain('margin:0 0 32px');
+        expect(compiled).toContain('border-radius:28px');
+        expect(compiled).toContain('{{cart.itemsTable}}');
+        expect(compiled).toContain('{{cart.recoveryUrl}}');
+        expect(compiled).toContain('{{marketing.unsubscribeUrl}}');
+        const block = section.columns[0].blocks[0];
+        if (block.type !== 'rawHtml') throw new Error('Expected preserved layout');
+        block.props.html = block.props.html.replace('Your story is waiting.', 'Your story is ready.');
+        const edited = compileEmailDesignV2(design);
+        expect(edited).toContain('Your story is ready.');
+        expect(edited).toContain('font-size:34px;line-height:42px;font-weight:500');
+        expect(edited.match(/padding:32px 24px/g)).toHaveLength(1);
+    });
+
+    it('preserves decorated table layouts without a stylesheet and sanitizes their HTML', () => {
+        const design = importEmailHtml('<table><tr><td><table style="margin:0 0 24px"><tr><td onclick="alert(1)"><h1 style="font-size:34px">Heading</h1><img src="https://shop.test/logo.png" onerror="alert(2)"></td></tr></table></td></tr></table><script>alert(3)</script>');
+        expect(design.document.sections[0].columns[0].blocks[0].type).toBe('rawHtml');
+        expect(compileEmailDesignV2(design)).not.toMatch(/onclick|onerror|alert\(/);
+    });
+
+    it('keeps explicit metadata and removes hidden content from preserved layouts', () => {
+        const design = importEmailHtml('<style>table{color:red}</style><div style="display:none">Original preview</div><table><tr><td><table><tr><td><p hidden>Hidden text</p><p>Visible</p></td></tr></table></td></tr></table>', { title: 'My subject', previewText: 'My preview' });
+        expect(design.document.meta).toMatchObject({ title: 'My subject', previewText: 'My preview' });
+        const compiled = compileEmailDesignV2(design);
+        expect(compiled).toContain('Visible');
+        expect(compiled).not.toContain('Original preview');
+        expect(compiled).not.toContain('Hidden text');
+    });
+
     it('imports text, images and buttons as editable blocks with merge tags intact', () => {
         const design = importEmailHtml('<p>Hello {{customer.firstName}}</p><img src="https://shop.test/logo.png" alt="Logo"><a href="{{cart.recoveryUrl}}" style="background:#ffcc00;color:#000;padding:12px">Return to cart</a>');
         const blocks = design.document.sections[0].columns[0].blocks;

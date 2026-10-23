@@ -19,7 +19,8 @@ describe('delivery preview request lifecycle', () => {
         await act(async () => { await vi.advanceTimersByTimeAsync(451); });
         await act(async () => { pending[1]({ ok: true, json: async () => artifact('New') }); });
         await act(async () => { pending[0]({ ok: true, json: async () => artifact('Old') }); });
-        expect(screen.getByText('New')).toBeInTheDocument();
+        expect(screen.getByTitle('Prepared delivery HTML preview')).toHaveAttribute('srcdoc', '<p>New</p>');
+        expect(screen.queryByText(/HTML bytes|Missing values|Stress scenario/)).not.toBeInTheDocument();
         expect(prepared.mock.calls.filter(([value]) => value !== null)).toHaveLength(1);
         view.unmount();
     });

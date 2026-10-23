@@ -33,6 +33,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
 }) => {
     const initialData = { ...((node?.data as Record<string, unknown> | undefined) || {}) };
     const [localData, setLocalData] = useState<NodeDataState>(initialData);
+    const [emailSetupContainer, setEmailSetupContainer] = useState<HTMLDivElement | null>(null);
     const nodeId = node?.id;
     const syncedNodeIdRef = useRef<string | undefined>(undefined);
 
@@ -132,20 +133,30 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-6">
             <div role="dialog" aria-modal="true" aria-labelledby="node-config-title" className={`bg-white rounded-xl shadow-sm w-full flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 ${isEmailAction ? 'max-w-6xl max-h-[92dvh]' : 'max-w-xl max-h-[80dvh]'}`}>
                 {/* Header */}
-                <div className={`flex shrink-0 items-center justify-between px-6 py-4 border-b`}>
-                    <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-lg bg-${header.color}-100`}>
+                <div className="flex shrink-0 flex-wrap items-center gap-3 border-b px-4 py-3 sm:px-6">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <div className={`shrink-0 p-2 rounded-lg bg-${header.color}-100`}>
                             {header.icon}
                         </div>
-                        <div>
-                            <h3 id="node-config-title" className="font-semibold text-gray-900">{localData.label || header.title}</h3>
-                            <p className="text-sm text-gray-500">{header.subtitle}</p>
+                        <div className="min-w-0 flex-1">
+                            <h3 id="node-config-title" className={isEmailAction ? 'sr-only' : 'font-semibold text-gray-900'}>{localData.label || header.title}</h3>
+                            {isEmailAction ? (
+                                <input
+                                    aria-label="Label"
+                                    type="text"
+                                    value={localData.label || ''}
+                                    placeholder="Send Email"
+                                    onChange={(e) => updateLabel(e.target.value)}
+                                    className="w-full max-w-sm rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-semibold text-gray-900 hover:border-gray-300 focus:border-[var(--primary-color)] focus:outline-none focus:ring-2 focus:ring-[var(--focus-color)]"
+                                />
+                            ) : <p className="text-sm text-gray-500">{header.subtitle}</p>}
                         </div>
                     </div>
+                    {isEmailAction && <div ref={setEmailSetupContainer} className="order-last flex w-full flex-wrap gap-2 lg:order-none lg:w-auto" />}
                     <button
                         onClick={handleCancel}
                         aria-label="Close configuration"
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        className="shrink-0 p-2 hover:bg-gray-100 rounded-lg transition-colors"
                     >
                         <X size={18} className="text-gray-500" />
                     </button>
@@ -154,7 +165,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
                 {/* Content */}
                 <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
                     {/* Common: Label */}
-                    <div className={isEmailAction ? 'max-w-md' : undefined}>
+                    {!isEmailAction && <div>
                         <label htmlFor="node-config-label" className="block text-sm font-medium text-gray-700 mb-1">Label</label>
                         <input
                             id="node-config-label"
@@ -163,7 +174,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
                             onChange={(e) => updateLabel(e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--focus-color)] focus:border-[var(--primary-color)]"
                         />
-                    </div>
+                    </div>}
 
                     {/* Trigger-specific config */}
                     {node.type === 'trigger' && (
@@ -180,6 +191,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
                             config={localData.config || {}}
                             onUpdate={updateConfig}
                             onUpdateMany={updateConfigPatch}
+                            emailSetupContainer={emailSetupContainer}
                         />
                     )}
 

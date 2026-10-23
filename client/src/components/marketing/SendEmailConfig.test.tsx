@@ -10,16 +10,32 @@ vi.mock('./flow/EmailPreviewModal', () => ({ EmailPreviewModal: ({ onPreviewed, 
 afterEach(() => vi.restoreAllMocks());
 
 describe('flow email configuration', () => {
-    it('groups message details and content into responsive columns with preview controls beside the editor', () => {
+    it('groups message details and template controls on the left with a dedicated preview column', () => {
         render(<SendEmailConfig config={{ subject: 'Order confirmation', htmlContent: '<p>Thanks</p>' }} onUpdate={vi.fn()} />);
         const details = screen.getByRole('region', { name: 'Message details' });
         const content = screen.getByRole('region', { name: 'Email content' });
         expect(details.parentElement).toHaveClass('lg:grid-cols-2');
-        expect(content.parentElement).toBe(details.parentElement);
+        const preview = screen.getByRole('region', { name: 'Email preview and test' });
+        expect(content.parentElement).toBe(details);
+        expect(preview.parentElement).toBe(details.parentElement);
+        expect(within(preview).getByText('Inline preview')).toBeInTheDocument();
         expect(within(details).getByDisplayValue('Order confirmation')).toBeInTheDocument();
         expect(within(details).getByLabelText('Delivery Category')).toBeInTheDocument();
         expect(within(content).getByRole('button', { name: 'Edit Design' })).toBeInTheDocument();
         expect(within(content).getByRole('button', { name: 'Preview and Test' })).toBeEnabled();
+    });
+
+    it('renders setup checks in the header slot and keeps their state current', () => {
+        const header = document.createElement('div');
+        document.body.appendChild(header);
+        const { rerender, unmount } = render(<SendEmailConfig config={{}} onUpdate={vi.fn()} setupContainer={header} />);
+        expect(within(header).getByRole('group', { name: 'Email step setup' })).toBeInTheDocument();
+        expect(within(header).getByLabelText('Subject: incomplete')).toBeInTheDocument();
+        rerender(<SendEmailConfig config={{ subject: 'Updated' }} onUpdate={vi.fn()} setupContainer={header} />);
+        expect(within(header).getByLabelText('Subject: complete')).toBeInTheDocument();
+        unmount();
+        expect(header).toBeEmptyDOMElement();
+        header.remove();
     });
 
     it('keeps advanced settings collapsed without losing configured values', () => {

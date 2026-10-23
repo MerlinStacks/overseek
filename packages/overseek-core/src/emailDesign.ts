@@ -1,8 +1,9 @@
-import { sanitizeEmailHtml, sanitizeEmailLayoutHtml } from './emailSanitizer';
+import { normalizeEmailTextHtml, sanitizeEmailLayoutHtml } from './emailSanitizer';
+import { withEmailBlockLayout, getEmailImageMargin } from './emailBlockLayout';
 import type { DeliveryEstimateEmailOptions } from './deliveryEstimateSnapshot';
 import { assertEmailDesign } from './emailDesignValidation';
 
-export const EMAIL_RENDERER_VERSION = 'overseek-email-2026.10.22';
+export const EMAIL_RENDERER_VERSION = 'overseek-email-2026.10.23';
 
 export type EmailDeviceVisibility = 'all' | 'desktop' | 'mobile';
 export type EmailStackMode = 'stack' | 'reverse' | 'none';
@@ -362,6 +363,7 @@ export interface RawHtmlBlock extends BaseBlock {
     type: 'rawHtml';
     props: {
         html: string;
+        padding?: string;
         migrationWarning?: string;
     };
 }
@@ -754,29 +756,32 @@ function renderSection(section: EmailSection, theme: EmailDesignTheme): string {
 }
 
 function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
+    block = withEmailBlockLayout(block);
     const visibilityClass = getVisibilityClass(block.visibility);
-    const blockClass = `${visibilityClass}${block.responsive ? `${visibilityClass ? ' ' : ''}os-responsive-block` : ''}`;
+    const blockClass = `${visibilityClass}${block.responsive !== false ? `${visibilityClass ? ' ' : ''}os-responsive-block` : ''}`;
 
     if (block.type === 'deliveryEstimate') {
         const params = Object.entries(getDeliveryEstimateBlockOptions(block.props, theme))
             .map(([key, value]) => `${key}:${encodeURIComponent(String(value))}`).join(' ');
         const token = `{{delivery_estimate ${params}}}`;
-        // No padded card or heading outside the token: missing snapshots render nothing.
-        return blockClass ? `<div class="${blockClass}">${token}</div>` : token;
+        // The estimate already renders a full-width table. Only visibility
+        // needs a wrapper; a responsive-only wrapper would leave an empty shell
+        // when no delivery snapshot is available.
+        return visibilityClass ? `<div class="${blockClass}">${token}</div>` : token;
     }
 
     if (block.type === 'siteLogo') {
         const props = block.props;
         const logoSrc = toAbsoluteUrl(props.src || '', { allowData: true, allowCid: true });
         const content = logoSrc && isEmailImageSource(logoSrc)
-            ? `<img src="${escapeHtml(logoSrc)}" alt="${escapeHtml(props.alt || props.fallbackText || 'Logo')}" width="${props.width || 160}" style="display:block;max-width:100%;height:auto;border:0;margin:0 auto;" />`
+            ? `<img src="${escapeHtml(logoSrc)}" alt="${escapeHtml(props.alt || props.fallbackText || 'Logo')}" width="${props.width || 160}" style="display:block;max-width:100%;height:auto;border:0;margin:${getEmailImageMargin(props.align)};" />`
             : `<h1 class="os-email-heading" style="margin:0;color:${theme.textColor};font-size:28px;line-height:1.25;">${escapeHtml(props.fallbackText || props.alt || 'Your Store')}</h1>`;
         return `<div class="${blockClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};">${content}</div>`;
     }
 
     if (block.type === 'text') {
         const props = block.props;
-        return `<div class="${joinClasses(blockClass, 'os-email-text')}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'left'};font-size:${props.size || 15}px;line-height:${props.lineHeight || 1.6};color:${props.color || theme.textColor};">${sanitizeEmailHtml(props.html)}</div>`;
+        return `<div class="${joinClasses(blockClass, 'os-email-text')}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'left'};font-size:${props.size || 15}px;line-height:${props.lineHeight || 1.6};color:${props.color || theme.textColor};">${normalizeEmailTextHtml(props.html, props.size)}</div>`;
     }
 
     if (block.type === 'image') {
@@ -785,7 +790,7 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
         if (!isEmailImageSource(imageSrc)) {
             return `<div class="${joinClasses(blockClass, 'os-email-muted')}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};color:${theme.mutedTextColor};font-size:13px;">Image source unavailable</div>`;
         }
-        const image = `<img src="${escapeHtml(imageSrc)}" alt="${escapeHtml(props.alt || '')}" width="${props.width || 560}" style="display:block;max-width:100%;height:auto;border:0;margin:0 auto;" />`;
+        const image = `<img src="${escapeHtml(imageSrc)}" alt="${escapeHtml(props.alt || '')}" width="${props.width || 560}" style="display:block;max-width:100%;height:auto;border:0;margin:${getEmailImageMargin(props.align)};" />`;
         const linked = props.href ? `<a href="${escapeHtml(toAbsoluteUrl(props.href))}">${image}</a>` : image;
         return `<div class="${blockClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};">${linked}</div>`;
     }
@@ -822,7 +827,7 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
         const productUrl = toAbsoluteUrl(props.productUrl || props.buttonHref || '{{store_url}}');
         const productImageSrc = toAbsoluteUrl(productImage, { allowData: true, allowCid: true });
         return `<div class="${blockClass}" style="padding:${(props as { padding?: string }).padding || '18px 0'};text-align:${(props as { align?: string }).align || 'center'};">
-            ${props.showImage ? `<img src="${escapeHtml(productImageSrc)}" alt="${escapeHtml(productName)}" width="220" style="display:block;max-width:100%;height:auto;border-radius:10px;margin:0 auto 14px;" />` : ''}
+            ${props.showImage ? `<img src="${escapeHtml(productImageSrc)}" alt="${escapeHtml(productName)}" width="220" style="display:block;max-width:100%;height:auto;border-radius:10px;margin:${getEmailImageMargin((props as { align?: 'left' | 'center' | 'right' }).align, '14px')};" />` : ''}
             ${showTitle ? `<h3 class="os-email-product-title" style="margin:0 0 8px;color:${theme.textColor};font-size:20px;line-height:1.3;">${escapeHtml(productName)}</h3>` : ''}
             ${props.showDescription && productDescription ? `<p class="os-email-muted" style="margin:0 0 10px;color:#64748b;line-height:1.6;">${escapeHtml(productDescription)}</p>` : ''}
             ${props.showPrice ? `<p style="margin:0 0 8px;color:${theme.primaryColor};font-weight:700;">${escapeHtml(productPrice)}</p>` : ''}
@@ -882,7 +887,7 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
     }
 
     if (block.type === 'coupon') {
-        return `<div class="${joinClasses(blockClass, 'os-email-coupon')}" style="padding:${(block.props as { padding?: string }).padding || '18px'};margin:8px 0;background:#eef2ff;border:1px dashed ${theme.primaryColor};border-radius:${theme.borderRadius}px;text-align:${(block.props as { align?: string }).align || 'center'};"><p class="os-email-heading" style="margin:0 0 6px;color:${theme.textColor};font-size:18px;font-weight:700;">${escapeHtml(block.props.headline)}</p><p style="margin:0 0 8px;color:${theme.primaryColor};font-size:22px;font-weight:800;letter-spacing:1px;">${escapeHtml(block.props.code || '{{coupon.code}}')}</p><p class="os-email-muted" style="margin:0;color:${theme.mutedTextColor};line-height:1.5;">${escapeHtml(block.props.description || '{{coupon.description}}')}</p></div>`;
+        return `<div class="${joinClasses(blockClass, 'os-email-coupon')}" style="padding:${(block.props as { padding?: string }).padding || '18px'};margin:0;background:#eef2ff;border:1px dashed ${theme.primaryColor};border-radius:${theme.borderRadius}px;text-align:${(block.props as { align?: string }).align || 'center'};"><p class="os-email-heading" style="margin:0 0 6px;color:${theme.textColor};font-size:18px;font-weight:700;">${escapeHtml(block.props.headline)}</p><p style="margin:0 0 8px;color:${theme.primaryColor};font-size:22px;font-weight:800;letter-spacing:1px;">${escapeHtml(block.props.code || '{{coupon.code}}')}</p><p class="os-email-muted" style="margin:0;color:${theme.mutedTextColor};line-height:1.5;">${escapeHtml(block.props.description || '{{coupon.description}}')}</p></div>`;
     }
 
     if (block.type === 'review') {
@@ -898,7 +903,7 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
             showReviewer ? escapeHtml(block.props.reviewer || '{{review.reviewer}}') : '',
             showProductName ? `on ${escapeHtml(block.props.productName || '{{review.productName}}')}` : '',
         ].filter(Boolean).join(' ');
-        return `<div class="${joinClasses(blockClass, 'os-email-review')}" style="padding:${block.props.padding || '18px'};margin:8px 0;background:${block.props.backgroundColor || 'transparent'};border:${block.props.borderColor ? `1px solid ${block.props.borderColor}` : '0'};border-radius:${theme.borderRadius}px;text-align:${block.props.align || 'left'};">${showHeadline ? `<p class="os-email-heading" style="margin:0 0 8px;color:${theme.textColor};font-size:18px;font-weight:700;">${escapeHtml(block.props.headline || 'Customer review')}</p>` : ''}${showRating ? `<p style="margin:0 0 8px;color:#b45309;font-size:18px;letter-spacing:1px;">${stars}</p>` : ''}${showContent ? `<p class="os-email-review-content" style="margin:0 0 10px;color:${theme.textColor};line-height:1.6;">${escapeHtml(block.props.content || '{{review.content}}')}</p>` : ''}${attribution ? `<p class="os-email-muted" style="margin:0 0 14px;color:${theme.mutedTextColor};font-size:13px;">- ${attribution}</p>` : ''}${showCta ? `<a href="${escapeHtml(toAbsoluteUrl(block.props.ctaHref || '{{review.requestUrl}}'))}" style="display:inline-block;background:${theme.primaryColor};color:#ffffff;text-decoration:none;border-radius:${theme.borderRadius}px;padding:10px 16px;font-weight:700;">${escapeHtml(block.props.ctaLabel || 'Leave a review')}</a>` : ''}</div>`;
+        return `<div class="${joinClasses(blockClass, 'os-email-review')}" style="padding:${block.props.padding || '18px'};margin:0;background:${block.props.backgroundColor || 'transparent'};border:${block.props.borderColor ? `1px solid ${block.props.borderColor}` : '0'};border-radius:${theme.borderRadius}px;text-align:${block.props.align || 'left'};">${showHeadline ? `<p class="os-email-heading" style="margin:0 0 8px;color:${theme.textColor};font-size:18px;font-weight:700;">${escapeHtml(block.props.headline || 'Customer review')}</p>` : ''}${showRating ? `<p style="margin:0 0 8px;color:#b45309;font-size:18px;letter-spacing:1px;">${stars}</p>` : ''}${showContent ? `<p class="os-email-review-content" style="margin:0 0 10px;color:${theme.textColor};line-height:1.6;">${escapeHtml(block.props.content || '{{review.content}}')}</p>` : ''}${attribution ? `<p class="os-email-muted" style="margin:0 0 14px;color:${theme.mutedTextColor};font-size:13px;">- ${attribution}</p>` : ''}${showCta ? `<a href="${escapeHtml(toAbsoluteUrl(block.props.ctaHref || '{{review.requestUrl}}'))}" style="display:inline-block;background:${theme.primaryColor};color:#ffffff;text-decoration:none;border-radius:${theme.borderRadius}px;padding:10px 16px;font-weight:700;">${escapeHtml(block.props.ctaLabel || 'Leave a review')}</a>` : ''}</div>`;
     }
 
     if (block.type === 'social') {

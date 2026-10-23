@@ -49,6 +49,17 @@ export class AutomationConditionService {
         if (fieldVal === undefined || fieldVal === null || fieldVal === '') return false;
 
         const fieldArray = Array.isArray(fieldVal) ? fieldVal : null;
+        // Product tag selections use exact IDs, with all/any/none semantics.
+        // Keep legacy single IDs and accept arrays as well as string-valued rules.
+        if (fieldArray && ['order.productTagId', 'customer.purchasedProductTagIds'].includes(condition.field)) {
+            const targets = (Array.isArray(targetVal) ? targetVal : String(targetVal ?? '').split(','))
+                .map(value => String(value).trim()).filter(Boolean);
+            if (!targets.length) return false;
+            const tags = new Set(fieldArray.map(String));
+            if (operator === 'contains') return targets.every(tag => tags.has(tag));
+            if (operator === 'contains_any') return targets.some(tag => tags.has(tag));
+            if (operator === 'not_contains') return targets.every(tag => !tags.has(tag));
+        }
         if (fieldArray) {
             const normalizedArray = fieldArray.map((item) => String(item).toLowerCase());
             const needle = String(targetVal ?? '').toLowerCase();

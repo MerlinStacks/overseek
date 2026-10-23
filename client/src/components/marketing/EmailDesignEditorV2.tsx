@@ -21,8 +21,10 @@ import {
     type SocialIconSet,
     type SocialIconStyle,
 } from '../../lib/emailDesignerV2';
+import { getEmailBlockAlignment, getEmailBlockPadding } from '../../lib/emailDesignerV2';
 import { createAccountFooterHtml, createBlock, createPaletteBlock, paletteItems, type PaletteKey } from './emailDesignerV2/blockFactory';
 import { EmailDropCanvas } from './emailDesignerV2/EmailDropCanvas';
+import { EmailLayersPanel } from './emailDesignerV2/EmailLayersPanel';
 import { PreviewOrderContext } from './emailDesignerV2/PreviewOrderContext';
 import { loadEmailPreviewData, useScopedEmailPreview, type PreviewOrderSelection } from './emailDesignerV2/previewData';
 import { resolveDeliveryEstimateEmailTokens } from '@overseek/core';
@@ -70,8 +72,8 @@ const HISTORY_STORAGE_KEY = 'overseek-email-builder-v2-history';
 const SAVED_SECTIONS_STORAGE_KEY = 'overseek-email-builder-v2-saved-sections';
 const MAX_HISTORY = 12;
 
-type BuilderTab = 'structure' | 'blocks' | 'layouts' | 'global';
-type LeftSidebarMode = 'builder' | 'blockSettings' | 'sectionSettings' | 'checklist' | 'history' | 'test';
+type BuilderTab = 'structure' | 'blocks' | 'layers' | 'global';
+type LeftSidebarMode = 'builder' | 'history' | 'test';
 type PreviewDeviceId = 'desktop' | 'iphone-se' | 'iphone-15' | 'iphone-15-pro-max' | 'pixel-8' | 'galaxy-s24';
 
 interface PreviewDevicePreset {
@@ -557,13 +559,15 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
     const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
     const [leftSidebarMode, setLeftSidebarMode] = useState<LeftSidebarMode>('builder');
     const [builderTab, setBuilderTab] = useState<BuilderTab>('blocks');
+    const [inspectorTab, setInspectorTab] = useState<'section' | 'block'>('section');
     const [blockSearch, setBlockSearch] = useState('');
     const [previewDeviceId, setPreviewDeviceId] = useState<PreviewDeviceId>('desktop');
     const [previewSurface, setPreviewSurface] = useState<'canvas' | 'html'>('canvas');
     const [deliveryArtifact, setDeliveryArtifact] = useState<DeliveryArtifact | null>(null);
     const [styleClipboard, setStyleClipboard] = useState<Record<string, unknown> | null>(null);
     const [closing, setClosing] = useState(false);
-    const [issues, setIssues] = useState<PreflightIssue[]>([]);
+    const checklistRef = useRef<HTMLDetailsElement>(null);
+    const [previewContextContainer, setPreviewContextContainer] = useState<HTMLDivElement | null>(null);
     const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
     const [savedSections, setSavedSections] = useState<SavedSectionPreset[]>([]);
     const [testEmail, setTestEmail] = useState(user?.email || '');
@@ -596,8 +600,13 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
     const { flush: persistLatestDesign, saving, saveError, hasUnsavedChanges, lastSavedAt } = useEmailAutosave(design, html, saveValidatedDesign, saveSnapshot);
     const selectedSection = design.document.sections.find((section) => section.id === selectedSectionId) || design.document.sections[0];
     const selectedBlock = selectedSection?.columns.flatMap((column) => column.blocks).find((block) => block.id === selectedBlockId) || null;
-    const groupedIssues = groupPreflightIssues(issues);
     const designWarnings = useMemo(() => getEmailDesignWarnings(design), [design]);
+    const issues: PreflightIssue[] = [
+        ...evaluateEmailPreflight({ html, subject: design.document.meta.title, emailCategory }),
+        ...designWarnings,
+        ...(deliveryArtifact?.designKey === JSON.stringify(design) ? deliveryArtifact.missingTags.map(tag => ({ id: `missing-${tag}`, severity: 'warning' as const, message: `Missing value: ${tag}` })) : []),
+    ];
+    const groupedIssues = groupPreflightIssues(issues);
     const visiblePaletteItems = paletteItems.filter((item) => item.label.toLowerCase().includes(blockSearch.trim().toLowerCase()));
     const saveStatus = saving ? 'Autosaving...' : saveError ? 'Autosave failed' : hasUnsavedChanges ? 'Autosave pending' : lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString()}` : 'Ready';
     const previewDevice = PREVIEW_DEVICES.find((device) => device.id === previewDeviceId) || PREVIEW_DEVICES[0];
@@ -776,6 +785,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
             }
             setSelectedSectionId(section.id);
             setSelectedBlockId(null);
+            setInspectorTab('section');
         });
     };
 
@@ -800,6 +810,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
             else blocks.push(block);
             setSelectedSectionId(sectionId);
             setSelectedBlockId(block.id);
+            setInspectorTab('block');
         });
     };
 
@@ -823,6 +834,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
             blocks.splice(nextIndex, 0, movingBlock);
             setSelectedSectionId(targetSectionId);
             setSelectedBlockId(blockId);
+            setInspectorTab('block');
         });
     };
 
@@ -1139,13 +1151,20 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
         });
     };
 
-    const runChecklist = () => {
-        setIssues([
-            ...evaluateEmailPreflight({ html, subject: design.document.meta.title, emailCategory }),
-            ...designWarnings,
-        ]);
-        setLeftSidebarMode('checklist');
-    };
+    useEffect(() => {
+        const dismiss = (event: PointerEvent) => {
+            if (event.target instanceof globalThis.Node && !checklistRef.current?.contains(event.target)) checklistRef.current?.removeAttribute('open');
+        };
+        const escape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape' && checklistRef.current?.open) {
+                checklistRef.current.removeAttribute('open');
+                checklistRef.current.querySelector('summary')?.focus();
+            }
+        };
+        document.addEventListener('pointerdown', dismiss);
+        document.addEventListener('keydown', escape);
+        return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape); };
+    }, []);
 
     const testScope = JSON.stringify([currentAccount?.id, token, design, deliveryOptions, emailCategory]);
     const currentTestScope = useRef(testScope); currentTestScope.current = testScope;
@@ -1342,10 +1361,56 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
         return () => window.removeEventListener('keydown', handler);
     }, [undo, redo, closing, selectedBlockId, previewSurface, setDirtyDesign]);
 
+    const selectLayer = (sectionId: string, blockId?: string) => {
+        setSelectedSectionId(sectionId);
+        setSelectedBlockId(blockId || null);
+        setInspectorTab(blockId ? 'block' : 'section');
+        setPreviewSurface('canvas');
+        requestAnimationFrame(() => {
+            const attribute = blockId ? 'data-email-block-id' : 'data-email-section-id';
+            const target = Array.from(document.querySelectorAll<HTMLElement>(`[${attribute}]`)).find(element => element.getAttribute(attribute) === (blockId || sectionId));
+            target?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+        });
+    };
+    const sectionProperties = selectedSection && <div className="space-y-3">
+        <p className="text-sm font-semibold text-slate-900 dark:text-white">Section settings</p>
+        <Field label="Name" value={selectedSection.name || ''} onChange={(value) => updateSection('name', value)} />
+        <SelectField label="Background type" value={selectedSection.backgroundType || 'solid'} options={['solid']} onChange={(value) => updateSelectedSection((section) => { section.backgroundType = value as 'solid'; })} />
+        <ColorField label="Background color" value={selectedSection.backgroundColor || design.document.theme.contentBackgroundColor} onChange={(value) => updateSection('backgroundColor', value)} />
+        <SelectField label="Border style" value={selectedSection.borderStyle || 'none'} options={['none', 'solid', 'dashed', 'dotted']} onChange={(value) => updateSelectedSection((section) => { section.borderStyle = value as EmailSection['borderStyle']; })} />
+        {(selectedSection.borderStyle || 'none') !== 'none' && <>
+            <ColorField label="Border color" value={selectedSection.borderColor || '#e2e8f0'} onChange={(value) => updateSelectedSection((section) => { section.borderColor = value; })} />
+            <Field label="Border width" type="number" value={String(selectedSection.borderWidth ?? 1)} onChange={(value) => updateSelectedSection((section) => { section.borderWidth = Math.max(1, Number(value) || 1); })} />
+        </>}
+        <LinkedFourSideField label="Border radius" values={selectedSection.borderRadius || [0, 0, 0, 0]} onChange={updateSectionBorderRadiusSide} />
+        <LinkedFourSideField label="Padding" values={parseBoxSpacing(selectedSection.padding || '0')} onChange={updateSectionPaddingSide} defaultLinked />
+        <ToggleField label="Hide on desktop" checked={hideOnDesktop} onChange={setSectionHideOnDesktop} />
+        <ToggleField label="Hide on mobile" checked={hideOnMobile} onChange={setSectionHideOnMobile} />
+        <ToggleField label="Responsive structure" checked={(selectedSection.stackMode || 'stack') !== 'none'} onChange={(checked) => updateSection('stackMode', checked ? 'stack' : 'none')} />
+        {(selectedSection.stackMode || 'stack') !== 'none' && <SelectField label="Mobile stack" value={selectedSection.stackMode || 'stack'} options={['stack', 'reverse']} onChange={(value) => updateSection('stackMode', value)} />}
+        <div className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+            <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Display condition</p><button type="button" onClick={() => updateSelectedSection((section) => { section.displayCondition = { enabled: !section.displayCondition?.enabled, expression: section.displayCondition?.expression || 'customer.isVip' }; })} className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">{selectedSection.displayCondition?.enabled ? 'Remove condition' : 'Add condition'}</button></div>
+            {selectedSection.displayCondition?.enabled && <Field label="Condition expression" value={selectedSection.displayCondition.expression || ''} onChange={(value) => updateSelectedSection((section) => { section.displayCondition = { enabled: true, expression: value }; })} />}
+        </div>
+        <div className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+            <div className="flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Columns</p><button type="button" onClick={addSectionColumn} disabled={selectedSection.columns.length >= 4} className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-600 dark:text-slate-200">Add column</button></div>
+            {selectedSection.columns.map((column, index) => <div key={column.id} className="space-y-2 rounded-md border border-slate-200 p-2 dark:border-slate-700">
+                <div className="flex items-center justify-between"><p className="text-xs text-slate-600 dark:text-slate-300">Column {index + 1}</p><button type="button" onClick={() => removeSectionColumn(column.id)} disabled={selectedSection.columns.length <= 1} className="text-xs text-red-600 disabled:opacity-40">Remove</button></div>
+                <Field label="Width %" type="number" value={String(column.width)} onChange={(value) => updateSectionColumnWidth(column.id, value)} />
+                <ColorField label="Background color" value={column.backgroundColor || selectedSection.backgroundColor || design.document.theme.contentBackgroundColor} onChange={(value) => updateSectionColumn(column.id, (draft) => { draft.backgroundColor = value; })} />
+                <LinkedFourSideField label="Padding" values={parseBoxSpacing(column.padding || '0')} onChange={(sideIndex, value) => updateSectionColumnPaddingSide(column.id, sideIndex, value)} />
+                <SelectField label="Vertical align" value={column.verticalAlign || 'top'} options={['top', 'middle', 'bottom']} onChange={(value) => updateSectionColumn(column.id, (draft) => { draft.verticalAlign = value as EmailColumn['verticalAlign']; })} />
+            </div>)}
+        </div>
+        <button type="button" onClick={saveSelectedSectionPreset} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--brand-border)] bg-[var(--brand-subtle)] px-3 py-2 text-sm font-semibold text-[var(--brand-text)]"><Layers size={14} />Save as reusable section</button>
+        <SharedSections section={selectedSection} onInsert={insertBrandSection} onLink={linkBrandSection} onRefresh={refreshBrandSection} />
+        <button type="button" onClick={deleteSelectedSection} disabled={design.document.sections.length <= 1} className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-40"><Trash2 size={14} />Delete section</button>
+    </div>;
+
     return (
         <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/55 ">
             <div className="flex h-full flex-col overflow-hidden bg-slate-100 dark:bg-slate-950">
-                <header className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-slate-200 bg-white px-4 py-2 dark:border-slate-800 dark:bg-slate-900">
+                <header className="grid grid-cols-1 items-center gap-3 border-b border-slate-200 bg-white px-4 py-2 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] dark:border-slate-800 dark:bg-slate-900">
                     <div className="flex min-w-0 items-center gap-3 border-r border-slate-200 pr-4 dark:border-slate-800">
                         <div className="min-w-0 flex-1">
                             <input
@@ -1388,10 +1453,26 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                         </div>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
+                        <div ref={setPreviewContextContainer} className={previewSurface === 'html' ? 'min-w-0 max-w-64' : 'hidden'} />
                         <span className={`hidden rounded-full px-2.5 py-1 text-xs font-semibold md:inline-flex ${saveError ? 'bg-red-100 text-red-800' : hasUnsavedChanges || saving ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}>
                             {saveStatus}
                         </span>
-                        <button onClick={runChecklist} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><ClipboardList size={16} />Checklist</button>
+                        <details ref={checklistRef} className="relative">
+                            <summary aria-label={issues.length ? `Checklist, ${issues.length} issues` : 'Checklist'} className="inline-flex cursor-pointer list-none items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 [&::-webkit-details-marker]:hidden">
+                                <span className="relative"><ClipboardList size={16} />{issues.length > 0 && <AlertTriangle aria-label="Warnings" size={12} className="absolute -right-1.5 -top-1.5 rounded-sm bg-white text-amber-600 dark:bg-slate-800 dark:text-amber-400" />}</span>Checklist
+                            </summary>
+                            <div className="absolute right-0 z-50 mt-2 max-h-[60dvh] w-80 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                                <ChecklistPanel issues={issues} groupedIssues={groupedIssues} onSelectIssue={(id) => {
+                                    const warning = designWarnings.find(item => item.id === id);
+                                    if (!warning) return;
+                                    checklistRef.current?.removeAttribute('open');
+                                    setPreviewSurface('canvas');
+                                    if (warning.sectionId) setSelectedSectionId(warning.sectionId);
+                                    setSelectedBlockId(warning.blockId || null);
+                                    setInspectorTab(warning.blockId ? 'block' : 'section');
+                                }} />
+                            </div>
+                        </details>
                         <button onClick={() => setLeftSidebarMode('history')} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><History size={16} />History</button>
                         <button onClick={() => setLeftSidebarMode('test')} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><Send size={16} />Test</button>
                         <button onClick={undo} disabled={!canUndo || closing} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-40">Undo</button>
@@ -1406,12 +1487,12 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                     <button onClick={() => { if (window.confirm('Discard all unsaved email changes?')) onCancel(); }} className="rounded border px-3 py-1">Discard unsaved changes</button>
                 </div>}
                 {compilation.error && <p role="alert" className="bg-red-50 px-4 py-3 text-sm text-red-700">{compilation.error}. Correct the value before saving or sending; your edits remain open.</p>}
-                <div className={`grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] ${previewSurface === 'canvas' && selectedBlock ? 'xl:grid-cols-[280px_minmax(0,1fr)_320px]' : ''}`}>
+                <div className={`grid min-h-0 flex-1 grid-cols-1 lg:grid-rows-1 ${previewSurface === 'canvas' ? 'grid-rows-[minmax(140px,1fr)_minmax(240px,2fr)_minmax(180px,1fr)] lg:grid-cols-[240px_minmax(0,1fr)_300px] xl:grid-cols-[280px_minmax(0,1fr)_320px]' : 'grid-rows-[minmax(140px,1fr)_minmax(240px,3fr)] lg:grid-cols-[280px_minmax(0,1fr)]'}`}>
                     <aside className="flex min-h-0 flex-col overflow-hidden border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-                        {(leftSidebarMode === 'builder' || leftSidebarMode === 'blockSettings' && previewSurface === 'canvas') && (
-                            <div className={leftSidebarMode === 'builder' ? 'contents' : 'hidden xl:contents'}>
+                        {leftSidebarMode === 'builder' && (
+                            <div className="contents">
                                 <div className="m-3 grid grid-cols-3 rounded-lg bg-slate-100 p-1 text-sm dark:bg-slate-800">
-                                    {(['structure', 'blocks', 'layouts'] as BuilderTab[]).map((tab) => (
+                                    {(['structure', 'blocks', 'layers'] as BuilderTab[]).map((tab) => (
                                         <button type="button" aria-pressed={builderTab === tab} key={tab} onClick={() => setBuilderTab(tab)} className={`rounded-md px-3 py-2 capitalize transition-colors focus-visible:outline-2 focus-visible:outline-[var(--focus-color)] ${builderTab === tab ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)] ring-1 ring-inset ring-[var(--brand-border)]' : 'text-slate-500 hover:bg-white hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100'}`}>{tab}</button>
                                     ))}
                                 </div>
@@ -1465,72 +1546,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                             </div>
                         )}
 
-                        {builderTab === 'layouts' && selectedSection && (
-                            <div className="min-h-0 flex-1 overflow-auto px-3 pb-4 space-y-3">
-                                <p className="text-sm font-semibold text-slate-900 dark:text-white">Section settings</p>
-                                <Field label="Name" value={selectedSection.name || ''} onChange={(value) => updateSection('name', value)} />
-                                <SelectField label="Background type" value={selectedSection.backgroundType || 'solid'} options={['solid']} onChange={(value) => updateSelectedSection((section) => { section.backgroundType = value as 'solid'; })} />
-                                <ColorField label="Background color" value={selectedSection.backgroundColor || '#ffffff'} onChange={(value) => updateSection('backgroundColor', value)} />
-                                <SelectField label="Border style" value={selectedSection.borderStyle || 'none'} options={['none', 'solid', 'dashed', 'dotted']} onChange={(value) => updateSelectedSection((section) => { section.borderStyle = value as EmailSection['borderStyle']; })} />
-                                {(selectedSection.borderStyle || 'none') !== 'none' && (
-                                    <>
-                                        <ColorField label="Border color" value={selectedSection.borderColor || '#e2e8f0'} onChange={(value) => updateSelectedSection((section) => { section.borderColor = value; })} />
-                                        <Field label="Border width" type="number" value={String(selectedSection.borderWidth ?? 1)} onChange={(value) => updateSelectedSection((section) => { section.borderWidth = Math.max(1, Number(value) || 1); })} />
-                                    </>
-                                )}
-                                <FourSideField label="Border radius" values={selectedSection.borderRadius || [0, 0, 0, 0]} onChange={updateSectionBorderRadiusSide} />
-                                <FourSideField label="Padding" values={parseBoxSpacing(selectedSection.padding || '0')} onChange={updateSectionPaddingSide} />
-                                <ToggleField label="Hide on desktop" checked={hideOnDesktop} onChange={setSectionHideOnDesktop} />
-                                <ToggleField label="Hide on mobile" checked={hideOnMobile} onChange={setSectionHideOnMobile} />
-                                <SelectField label="Mobile stack" value={selectedSection.stackMode || 'stack'} options={['stack', 'reverse', 'none']} onChange={(value) => updateSection('stackMode', value)} />
-                                <div className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Display condition</p>
-                                        <button
-                                            type="button"
-                                            onClick={() => updateSelectedSection((section) => {
-                                                const current = section.displayCondition?.enabled ?? false;
-                                                section.displayCondition = {
-                                                    enabled: !current,
-                                                    expression: section.displayCondition?.expression || 'customer.isVip',
-                                                };
-                                            })}
-                                            className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200"
-                                        >
-                                            {selectedSection.displayCondition?.enabled ? 'Remove condition' : 'Add condition'}
-                                        </button>
-                                    </div>
-                                    {selectedSection.displayCondition?.enabled && (
-                                        <Field
-                                            label="Condition expression"
-                                            value={selectedSection.displayCondition.expression || ''}
-                                            onChange={(value) => updateSelectedSection((section) => {
-                                                section.displayCondition = { enabled: true, expression: value };
-                                            })}
-                                        />
-                                    )}
-                                </div>
-                                <div className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Columns</p>
-                                        <button onClick={addSectionColumn} disabled={selectedSection.columns.length >= 4} className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-600 dark:text-slate-200">Add column</button>
-                                    </div>
-                                    {selectedSection.columns.map((column, index) => (
-                                        <div key={column.id} className="rounded-md border border-slate-200 p-2 dark:border-slate-700">
-                                            <div className="mb-1 flex items-center justify-between">
-                                                <span className="text-xs text-slate-600 dark:text-slate-300">Column {index + 1}</span>
-                                                <button onClick={() => removeSectionColumn(column.id)} disabled={selectedSection.columns.length <= 1} className="text-xs text-red-600 disabled:opacity-40">Remove</button>
-                                            </div>
-                                            <Field label="Width %" type="number" value={String(column.width)} onChange={(value) => updateSectionColumnWidth(column.id, value)} />
-                                            <ColorField label="Background color" value={column.backgroundColor || selectedSection.backgroundColor || design.document.theme.contentBackgroundColor || '#ffffff'} onChange={(value) => updateSectionColumn(column.id, (draft) => { draft.backgroundColor = value; })} />
-                                            <FourSideField label="Padding" values={parseBoxSpacing(column.padding || '0')} onChange={(sideIndex, value) => updateSectionColumnPaddingSide(column.id, sideIndex, value)} />
-                                            <SelectField label="Vertical align" value={column.verticalAlign || 'top'} options={['top', 'middle', 'bottom']} onChange={(value) => updateSectionColumn(column.id, (draft) => { draft.verticalAlign = value as EmailColumn['verticalAlign']; })} />
-                                        </div>
-                                    ))}
-                                </div>
-                                <button onClick={deleteSelectedSection} disabled={design.document.sections.length <= 1} className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-40"><Trash2 size={14} />Delete section</button>
-                            </div>
-                        )}
+                        {builderTab === 'layers' && <EmailLayersPanel sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelect={selectLayer} />}
                         {builderTab === 'global' && (
                             <div className="min-h-0 flex-1 overflow-auto px-3 pb-4 space-y-3">
                                 <p className="text-sm font-semibold text-slate-900 dark:text-white">Global styles</p>
@@ -1545,66 +1561,12 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                             </div>
                         )}
                                 <div className="mt-auto flex border-t border-slate-200 bg-white text-xs dark:border-slate-800 dark:bg-slate-900">
-                                    <button onClick={() => setBuilderTab('layouts')} className="flex flex-1 items-center justify-center gap-1 px-3 py-3 hover:bg-slate-50 dark:hover:bg-slate-800"><Settings size={14} />Layout Settings</button>
+                                    <button onClick={() => { setPreviewSurface('canvas'); setInspectorTab('section'); }} className="flex flex-1 items-center justify-center gap-1 px-3 py-3 hover:bg-slate-50 dark:hover:bg-slate-800"><Settings size={14} />Section Settings</button>
                                     <button onClick={() => setBuilderTab('global')} className="flex flex-1 items-center justify-center gap-1 px-3 py-3 hover:bg-slate-50 dark:hover:bg-slate-800"><Globe2 size={14} />Global Settings</button>
                                 </div>
                             </div>
                         )}
 
-                        {leftSidebarMode === 'blockSettings' && (
-                            <div className={`min-h-0 flex-1 overflow-auto p-4 ${previewSurface === 'canvas' ? 'xl:hidden' : ''}`}>
-                                <div className="mb-3 flex items-center justify-between">
-                                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Block settings</p>
-                                    <button type="button" onClick={() => setLeftSidebarMode('builder')} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100" aria-label="Close block settings"><X size={16} /></button>
-                                </div>
-                                <BlockEditor block={selectedBlock} onUpdate={updateBlock} onDelete={deleteSelectedBlock} canDelete={selectedBlock?.type !== 'footer'} sections={design.document.sections} selectedSectionId={selectedSectionId} onSelectBlock={setSelectedBlockId} onDropOnSection={handleDropOnSection} onSaveSocialDefaults={saveSocialLinksAsDefaults} token={token || undefined} accountId={currentAccount?.id} />
-                            </div>
-                        )}
-
-                        {leftSidebarMode === 'sectionSettings' && selectedSection && (
-                            <div className="min-h-0 flex-1 overflow-auto p-4 space-y-3">
-                                <PanelHeader title="Structure settings" onClose={() => setLeftSidebarMode('builder')} />
-                                <Field label="Name" value={selectedSection.name || ''} onChange={(value) => updateSection('name', value)} />
-                                <ColorField label="Background color" value={selectedSection.backgroundColor || design.document.theme.contentBackgroundColor || '#ffffff'} onChange={(value) => updateSection('backgroundColor', value)} />
-                                <LabeledSelectField
-                                    label="Border style"
-                                    value={selectedSection.borderStyle || 'none'}
-                                    options={[
-                                        { value: 'none', label: 'Not Set' },
-                                        { value: 'solid', label: 'Solid' },
-                                        { value: 'dashed', label: 'Dashed' },
-                                        { value: 'dotted', label: 'Dotted' },
-                                    ]}
-                                    onChange={(value) => updateSelectedSection((section) => { section.borderStyle = value as EmailSection['borderStyle']; })}
-                                />
-                                {(selectedSection.borderStyle || 'none') !== 'none' && (
-                                    <>
-                                        <ColorField label="Border color" value={selectedSection.borderColor || '#e2e8f0'} onChange={(value) => updateSelectedSection((section) => { section.borderColor = value; })} />
-                                        <Field label="Border width" type="number" value={String(selectedSection.borderWidth ?? 1)} onChange={(value) => updateSelectedSection((section) => { section.borderWidth = Math.max(1, Number(value) || 1); })} />
-                                    </>
-                                )}
-                                <LinkedFourSideField label="Border radius" values={selectedSection.borderRadius || [0, 0, 0, 0]} onChange={updateSectionBorderRadiusSide} />
-                                <LinkedFourSideField label="Padding" values={parseBoxSpacing(selectedSection.padding || '0')} onChange={updateSectionPaddingSide} defaultLinked />
-                                <ToggleField label="Responsive structure" checked={(selectedSection.stackMode || 'stack') !== 'none'} onChange={(checked) => updateSection('stackMode', checked ? 'stack' : 'none')} />
-                                <ToggleField label="Hide on mobile" checked={hideOnMobile} onChange={setSectionHideOnMobile} />
-                                <div className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Columns</p>
-                                    {selectedSection.columns.map((column, index) => (
-                                        <div key={column.id} className="space-y-2 rounded-md border border-slate-200 p-2 dark:border-slate-700">
-                                            <p className="text-xs text-slate-600 dark:text-slate-300">Column {index + 1}</p>
-                                            <Field label="Width %" type="number" value={String(column.width)} onChange={(value) => updateSectionColumnWidth(column.id, value)} />
-                                            <ColorField label="Background color" value={column.backgroundColor || selectedSection.backgroundColor || design.document.theme.contentBackgroundColor || '#ffffff'} onChange={(value) => updateSectionColumn(column.id, (draft) => { draft.backgroundColor = value; })} />
-                                            <LinkedFourSideField label="Padding" values={parseBoxSpacing(column.padding || '0')} onChange={(sideIndex, value) => updateSectionColumnPaddingSide(column.id, sideIndex, value)} />
-                                            <SelectField label="Vertical align" value={column.verticalAlign || 'top'} options={['top', 'middle', 'bottom']} onChange={(value) => updateSectionColumn(column.id, (draft) => { draft.verticalAlign = value as EmailColumn['verticalAlign']; })} />
-                                        </div>
-                                    ))}
-                                </div>
-                                <button type="button" onClick={saveSelectedSectionPreset} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--brand-border)] bg-[var(--brand-subtle)] px-3 py-2 text-sm font-semibold text-[var(--brand-text)] hover:bg-[var(--brand-subtle)]"><Layers size={14} />Save as reusable section</button>
-                                <SharedSections section={selectedSection} onInsert={insertBrandSection} onLink={linkBrandSection} onRefresh={refreshBrandSection} />
-                            </div>
-                        )}
-
-                        {leftSidebarMode === 'checklist' && <div className="min-h-0 flex-1 overflow-auto p-4"><PanelHeader title="Preflight checklist" onClose={() => setLeftSidebarMode('builder')} /><ChecklistPanel issues={issues} groupedIssues={groupedIssues} /></div>}
                         {leftSidebarMode === 'history' && <div className="min-h-0 flex-1 overflow-auto p-4"><PanelHeader title="Version history" onClose={() => setLeftSidebarMode('builder')} /><HistoryPanel snapshots={snapshots} onRestore={(snapshot) => { setDesign(cloneDesign(snapshot.design)); setSelectedSectionId(snapshot.design.document.sections[0]?.id || ''); setSelectedBlockId(null); }} /></div>}
                         {leftSidebarMode === 'test' && <div className="min-h-0 flex-1 overflow-auto p-4"><PanelHeader title="Send test email" onClose={() => setLeftSidebarMode('builder')} /><div className="space-y-3"><Field label="Recipient" value={testEmail} onChange={setTestEmail} type="email" />
                             {recentRecipients.length > 0 && <div className="flex flex-wrap gap-2">{recentRecipients.map((recipient) => <button key={recipient} onClick={() => setTestEmail(recipient)} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 hover:bg-[var(--brand-subtle)] hover:text-[var(--brand-text)] dark:bg-slate-800 dark:text-slate-300">{recipient}</button>)}</div>}
@@ -1614,22 +1576,6 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                     </aside>
 
                     <main className="min-h-0 overflow-auto bg-slate-200/70 p-4 dark:bg-slate-950">
-                        <div className="mx-auto mb-3 flex max-w-4xl items-center justify-between gap-3">
-                            <p className="text-sm text-slate-600 dark:text-slate-300">{previewSurface === 'canvas' ? 'Edit your layout here. Use Delivery preview to inspect server-prepared output.' : 'Prepared by the shared compiler and server merge/delivery pipeline. Inbox clients may render it differently.'}</p>
-                            <p className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 shadow-sm dark:bg-slate-900 dark:text-slate-300">{previewDevice.label} · {previewWidth}px</p>
-                        </div>
-                        {designWarnings.length > 0 && (
-                            <div className="mx-auto mb-3 max-w-4xl rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 shadow-sm dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-100">
-                                <div className="flex items-start gap-2">
-                                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                                    <div>
-                                        <p className="font-semibold">Designer warnings</p>
-                                        {designWarnings.slice(0, 3).map((warning) => <button key={warning.id} className="block text-left underline underline-offset-2" onClick={() => { setPreviewSurface('canvas'); if (warning.sectionId) setSelectedSectionId(warning.sectionId); if (warning.blockId) { setSelectedBlockId(warning.blockId); setLeftSidebarMode('blockSettings'); } else setLeftSidebarMode('sectionSettings'); }}>{warning.message}</button>)}
-                                        {designWarnings.length > 3 && <p>{designWarnings.length - 3} more warnings in the checklist.</p>}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                         {previewSurface === 'canvas' ? (
                             <ErrorBoundary
                                 onReset={() => {
@@ -1638,18 +1584,31 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPrev
                                 }}
                             >
                                 <PreviewOrderContext.Provider value={previewMergeContext?.order ?? null}>
-                                    <EmailDropCanvas theme={design.document.theme} previewWidth={previewWidth} isMobilePreview={isMobilePreview} sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelectSection={(id) => { setSelectedSectionId(id); setSelectedBlockId(null); }} onSelectBlock={setSelectedBlockId} onUpdateBlock={updateBlockById} onDuplicateBlock={duplicateBlock} onMoveBlock={stepBlock} warnings={designWarnings} onDeleteBlock={deleteBlockById} onDeleteSection={deleteSectionById} onOpenSettings={() => setLeftSidebarMode('blockSettings')} onOpenSectionSettings={() => setLeftSidebarMode('sectionSettings')} onDropOnSection={handleDropOnSection} onDropStructure={handleDropStructure} />
+                                    <EmailDropCanvas theme={design.document.theme} previewWidth={previewWidth} isMobilePreview={isMobilePreview} sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelectSection={(id) => { setSelectedSectionId(id); setSelectedBlockId(null); }} onSelectBlock={setSelectedBlockId} onUpdateBlock={updateBlockById} onDuplicateBlock={duplicateBlock} onMoveBlock={stepBlock} warnings={designWarnings} onDeleteBlock={deleteBlockById} onDeleteSection={deleteSectionById} onOpenSettings={() => setInspectorTab('block')} onOpenSectionSettings={() => setInspectorTab('section')} onDropOnSection={handleDropOnSection} onDropStructure={handleDropStructure} />
                                 </PreviewOrderContext.Provider>
                             </ErrorBoundary>
                         ) : (
-                            <DeliveryPreview design={design} width={previewWidth} category={emailCategory} deliveryOptions={deliveryOptions} onPrepared={setDeliveryArtifact} />
+                            <DeliveryPreview design={design} width={previewWidth} category={emailCategory} deliveryOptions={deliveryOptions} onPrepared={setDeliveryArtifact} contextContainer={previewContextContainer} />
                         )}
                     </main>
-                    {previewSurface === 'canvas' && selectedBlock && <aside aria-label="Contextual block inspector" className="hidden min-h-0 overflow-auto border-l border-slate-200 bg-white p-4 xl:block dark:border-slate-700 dark:bg-slate-900">
-                        <PanelHeader title="Selected block" onClose={() => { setSelectedBlockId(null); setLeftSidebarMode('builder'); }} />
+                    {previewSurface === 'canvas' && <aside aria-label="Email properties" className="flex min-h-0 flex-col overflow-hidden border-l border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+                        <div role="tablist" aria-label="Email properties" className="flex shrink-0 border-b border-slate-200 dark:border-slate-700">
+                            {(['section', 'block'] as const).map(tab => <button key={tab} type="button" role="tab" id={`email-${tab}-tab`} aria-controls={`email-${tab}-properties`} aria-selected={inspectorTab === tab} tabIndex={inspectorTab === tab ? 0 : -1} onClick={() => setInspectorTab(tab)} onKeyDown={event => {
+                                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                                event.preventDefault();
+                                const next = event.key === 'Home' ? 'section' : event.key === 'End' ? 'block' : tab === 'section' ? 'block' : 'section';
+                                setInspectorTab(next);
+                                document.getElementById(`email-${next}-tab`)?.focus();
+                            }} className={`border-b-2 px-5 py-3 text-sm capitalize focus-visible:outline-2 focus-visible:outline-[var(--focus-color)] ${inspectorTab === tab ? 'border-[var(--primary-color)] text-[var(--brand-text)]' : 'border-transparent text-slate-500 dark:text-slate-400'}`}>{tab}</button>)}
+                        </div>
+                        {inspectorTab === 'section' && <div role="tabpanel" id="email-section-properties" aria-labelledby="email-section-tab" className="min-h-0 flex-1 overflow-auto p-4">{sectionProperties || <p className="text-sm text-slate-500">Select a section to edit its properties.</p>}</div>}
+                        {inspectorTab === 'block' && <div role="tabpanel" id="email-block-properties" aria-labelledby="email-block-tab" className="min-h-0 flex-1 overflow-auto p-4">
+                        {selectedBlock ? <>
                         <div className="mb-3 flex flex-wrap gap-2"><button onClick={() => setStyleClipboard(copyEmailBlockStyles(selectedBlock))} className="rounded border px-2 py-1 text-xs">Copy styles</button><button disabled={!styleClipboard} onClick={() => updateBlock(block => { Object.assign(block.props, styleClipboard); })} className="rounded border px-2 py-1 text-xs disabled:opacity-40">Paste styles</button><button onClick={() => duplicateBlock(selectedBlock.id)} className="rounded border px-2 py-1 text-xs">Duplicate</button></div>
                         <p className="mb-3 text-xs text-slate-500">Alt + ↑/↓ moves the selected block outside text fields.</p>
                         <BlockEditor block={selectedBlock} onUpdate={updateBlock} onDelete={deleteSelectedBlock} canDelete={selectedBlock.type !== 'footer'} sections={design.document.sections} selectedSectionId={selectedSectionId} onSelectBlock={setSelectedBlockId} onDropOnSection={handleDropOnSection} onSaveSocialDefaults={saveSocialLinksAsDefaults} token={token || undefined} accountId={currentAccount?.id} />
+                        </> : <p className="text-sm text-slate-500">Select a block in the canvas or Layers panel to edit its properties.</p>}
+                        </div>}
                     </aside>}
 
                 </div>
@@ -1703,6 +1662,7 @@ function ToggleField({ label, checked, onChange }: { label: string; checked: boo
             <button
                 type="button"
                 role="switch"
+                aria-label={label}
                 aria-checked={checked}
                 onClick={() => onChange(!checked)}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${checked ? 'bg-[var(--primary-color)]' : 'bg-slate-300 dark:bg-slate-600'}`}
@@ -1841,8 +1801,8 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
 
     const patchProps = (props: Record<string, unknown>) => onUpdate((draft) => { Object.assign(draft.props, props); });
     const setVisibility = (value: string) => onUpdate((draft) => { draft.visibility = value as EmailDeviceVisibility; });
-    const blockAlign = ((block.props as { align?: 'left' | 'center' | 'right' }).align || 'center') as 'left' | 'center' | 'right';
-    const blockPadding = (block.props as { padding?: string }).padding || '8px 0';
+    const blockAlign = getEmailBlockAlignment(block);
+    const blockPadding = getEmailBlockPadding(block);
     const hideOnMobile = (block.visibility || 'all') === 'desktop';
 
     const handleImageUpload = async (file: File) => {
@@ -1909,8 +1869,7 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
                 patchProps({ padding: toBoxSpacing(next) });
             }} />
             <ToggleField label="Hide on mobile" checked={hideOnMobile} onChange={(checked) => setVisibility(checked ? 'desktop' : 'all')} />
-            <ToggleField label="Responsive structure" checked={Boolean(block.responsive)} onChange={(checked) => onUpdate((draft) => { draft.responsive = checked; })} />
-            <SelectField label="Visibility" value={block.visibility || 'all'} options={['all', 'desktop', 'mobile']} onChange={setVisibility} />
+            <ToggleField label="Responsive structure" checked={block.responsive !== false} onChange={(checked) => onUpdate((draft) => { draft.responsive = checked; })} />
             {block.type === 'siteLogo' && <><Field label="Logo URL" value={block.props.src} onChange={(value) => patchProps({ src: value })} /><Field label="Fallback text" value={block.props.fallbackText || ''} onChange={(value) => patchProps({ fallbackText: value })} /></>}
             {block.type === 'text' && <TextArea label="HTML" value={block.props.html} onChange={(value) => patchProps({ html: sanitizeEmailHtml(value) })} />}
             {block.type === 'image' && <>
@@ -2149,7 +2108,7 @@ function TextArea({ label, value, onChange }: { label: string; value: string; on
     );
 }
 
-function ChecklistPanel({ issues, groupedIssues }: { issues: PreflightIssue[]; groupedIssues: ReturnType<typeof groupPreflightIssues> }) {
+function ChecklistPanel({ issues, groupedIssues, onSelectIssue }: { issues: PreflightIssue[]; groupedIssues: ReturnType<typeof groupPreflightIssues>; onSelectIssue: (id: string) => void }) {
     if (issues.length === 0) {
         return <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"><CheckCircle size={18} className="mb-2" />No issues found.</div>;
     }
@@ -2157,7 +2116,7 @@ function ChecklistPanel({ issues, groupedIssues }: { issues: PreflightIssue[]; g
         <div className="space-y-3">
             <p className="font-semibold text-slate-900 dark:text-white">Preflight checklist</p>
             {[...groupedIssues.blocking, ...groupedIssues.warning].map((issue) => (
-                <div key={issue.id} className={`rounded-lg border px-3 py-2 text-sm ${issue.severity === 'blocking' ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}><AlertTriangle size={14} className="mb-1" />{issue.message}</div>
+                <button type="button" key={issue.id} onClick={() => onSelectIssue(issue.id)} className={`block w-full rounded-lg border px-3 py-2 text-left text-sm ${issue.severity === 'blocking' ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}><AlertTriangle size={14} className="mb-1" />{issue.message}</button>
             ))}
         </div>
     );

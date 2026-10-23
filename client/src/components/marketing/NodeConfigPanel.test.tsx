@@ -20,6 +20,8 @@ describe('node configuration dialog layout', () => {
         const dialog = screen.getByRole('dialog', { name: 'Send Email' });
         expect(dialog).toHaveClass('max-w-6xl', 'max-h-[92dvh]');
         expect(screen.getByText('Email configuration').parentElement).toHaveClass('overflow-y-auto');
+        expect(screen.getByRole('textbox', { name: 'Label' }).closest('.border-b')).toBeInTheDocument();
+        expect(screen.queryByText('Label')).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Apply to draft' }).parentElement?.parentElement).toHaveClass('shrink-0');
         fireEvent.click(screen.getByRole('button', { name: 'Apply to draft' }));
         expect(close).toHaveBeenCalledOnce();
