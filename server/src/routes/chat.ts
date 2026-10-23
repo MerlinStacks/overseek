@@ -645,7 +645,11 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
             const accountId = request.accountId;
             if (!accountId) return {};
             try { const { readChatSettings } = await import('../services/ChatSettingsStore'); return await readChatSettings(accountId); }
-            catch { return _reply.code(409).send({ error: 'Stored chat settings unavailable; reconcile legacy configuration before editing' }); }
+            catch (error) {
+                if ((error as Error).name === 'ZodError') return _reply.code(409).send({ error: 'Stored chat settings could not be validated; administrator review required', code: 'CHAT_SETTINGS_INVALID' });
+                Logger.error('Chat settings read failed', { accountId, error });
+                return _reply.code(503).send({ error: 'Chat settings temporarily unavailable', code: 'CHAT_SETTINGS_UNAVAILABLE' });
+            }
         });
 
         fastify.post('/settings', async (request, _reply) => {

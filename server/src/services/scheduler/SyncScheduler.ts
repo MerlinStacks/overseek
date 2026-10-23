@@ -26,6 +26,7 @@ interface CircuitBreakerState {
 export class SyncScheduler {
     private static queue = QueueFactory.createQueue('scheduler');
     private static readonly MAINTENANCE_LOG_WINDOW_MS = 12 * 60 * 60 * 1000;
+    private static dispatchInFlight: Promise<void> | null = null;
 
     /**
      * Check if an account has ≥3 consecutive failures in the last 30 minutes.
@@ -175,7 +176,19 @@ export class SyncScheduler {
     /**
      * Dispatch sync jobs to all accounts
      */
-    static async dispatchToAllAccounts() {
+    static dispatchToAllAccounts(): Promise<void> {
+        // Fast and full repeaters can become due together. Share this process's
+        // current pass rather than reading/dispatching the same due rows twice.
+        if (!this.dispatchInFlight) {
+            const pending = this.dispatchAccounts().finally(() => {
+                if (this.dispatchInFlight === pending) this.dispatchInFlight = null;
+            });
+            this.dispatchInFlight = pending;
+        }
+        return this.dispatchInFlight;
+    }
+
+    private static async dispatchAccounts() {
         const accounts = await prisma.account.findMany({ select: { id: true } });
         Logger.info(`Orchestrator: Checking sync schedules for ${accounts.length} accounts`);
 
@@ -206,19 +219,40 @@ export class SyncScheduler {
                 if (dispatchableTypes.length === 0) {
                     continue;
                 }
-                await service.runSync(acc.id, {
-                    types: dispatchableTypes,
-                    incremental: true
-                });
-                await Promise.all(dueSchedules
-                    .filter((schedule: any) => dispatchableTypes.includes(schedule.entityType))
-                    .map((schedule: any) => (prisma as any).syncSchedule.updateMany({
-                        where: { id: schedule.id, enabled: true, nextRunAt: { lte: now } },
-                        data: {
-                            lastScheduledAt: now,
-                            nextRunAt: new Date(now.getTime() + schedule.intervalMinutes * 60_000)
-                        }
-                    })));
+                const advanceSchedules = async (types: string[], dispatched: boolean) => {
+                    const updates = await Promise.all(dueSchedules
+                        .filter((schedule: any) => types.includes(schedule.entityType))
+                        .map((schedule: any) => (prisma as any).syncSchedule.updateMany({
+                            where: { id: schedule.id, accountId: acc.id, enabled: true, nextRunAt: schedule.nextRunAt, intervalMinutes: schedule.intervalMinutes },
+                            data: {
+                                ...(dispatched ? { lastScheduledAt: now } : {}),
+                                nextRunAt: new Date(now.getTime() + schedule.intervalMinutes * 60_000)
+                            }
+                        })));
+                    return updates.some((result: { count: number }) => result.count > 0);
+                };
+
+                // A retained BOM failure must not leave already-admitted order,
+                // product and customer schedules due on every subsequent tick.
+                const regularTypes = dispatchableTypes.filter(type => type !== 'bom');
+                if (regularTypes.length) {
+                    await service.runSync(acc.id, { types: regularTypes, incremental: true });
+                    await advanceSchedules(regularTypes, true);
+                }
+                if (dispatchableTypes.includes('bom')) {
+                    try {
+                        await service.runSync(acc.id, { types: ['bom'], incremental: true });
+                        await advanceSchedules(['bom'], true);
+                    } catch (error) {
+                        if ((error as { code?: string }).code !== 'BOM_SYNC_RECONCILIATION_REQUIRED') throw error;
+                        // This is a deferred recheck, not a successful dispatch.
+                        // CAS also avoids duplicate warnings from another process.
+                        if (await advanceSchedules(['bom'], false)) Logger.warn('Orchestrator: BOM sync deferred pending reconciliation', {
+                            accountId: acc.id, entityType: 'bom', code: 'BOM_SYNC_RECONCILIATION_REQUIRED',
+                            jobId: (error as { jobId?: string }).jobId,
+                        });
+                    }
+                }
             } catch (err: any) {
                 Logger.error(`Orchestrator: Failed to dispatch sync for account ${acc.id}`, { error: err.message });
             }

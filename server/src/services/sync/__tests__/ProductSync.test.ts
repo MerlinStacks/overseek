@@ -377,4 +377,32 @@ describe('ProductSync Reconciliation Performance', () => {
             })
         );
     });
+    it('ingests all 78 no-image variations from the reported five-parent payload pattern', async () => {
+        const groups = [
+            { id: 93754, firstVariation: 93755, count: 26 },
+            { id: 93930, firstVariation: 93931, count: 12 },
+            { id: 93943, firstVariation: 93944, count: 12 },
+            { id: 71343, firstVariation: 71344, count: 2 },
+            { id: 93902, firstVariation: 93903, count: 26 },
+        ];
+        const parents = groups.map(group => ({ id: group.id, name: `Parent ${group.id}`, type: 'variable', price: '10.00' }));
+        const stored = parents.map(parent => ({ id: `local-${parent.id}`, accountId, wooId: parent.id, rawData: parent, seoData: {} }));
+        const woo = {
+            getProducts: vi.fn().mockResolvedValueOnce({ data: parents, totalPages: 1 }).mockResolvedValue({ data: [], totalPages: 0 }),
+            getProductVariations: vi.fn(async (id: number) => {
+                const group = groups.find(row => row.id === id)!;
+                return Array.from({ length: group.count }, (_, i) => ({ id: group.firstVariation + i, price: '10.00', stock_quantity: 5, manage_stock: true, image: null }));
+            }),
+        };
+        mockPrisma.account.findUnique.mockResolvedValue(null);
+        mockPrisma.wooProduct.upsert.mockImplementation(async ({ create }) => stored.find(row => row.wooId === create.wooId));
+        mockPrisma.wooProduct.findMany.mockResolvedValue(stored);
+        await expect((productSync as any).sync(woo, accountId, false, undefined, 'no-image-regression')).resolves.toMatchObject({ itemsProcessed: 5 });
+        expect(mockPrisma.productVariation.upsert).toHaveBeenCalledTimes(78);
+        for (const [write] of mockPrisma.productVariation.upsert.mock.calls) {
+            expect(write.create).toMatchObject({ images: [], rawData: { image: null } });
+            expect(write.update).not.toHaveProperty('cogs');
+        }
+        expect(vi.mocked(Logger.warn).mock.calls.some(([message]) => message === 'Skipped invalid WooCommerce variation payloads')).toBe(false);
+    });
 });

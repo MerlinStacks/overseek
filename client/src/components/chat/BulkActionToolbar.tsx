@@ -5,11 +5,14 @@ import { useScopedMutation } from '../../hooks/useScopedMutation';
 import { api } from '../../services/api';
 import { isRecord } from '../../utils/responseValidation';
 import { Modal } from '../ui/Modal';
+import { CheckCheck, GitMerge, RotateCcw, Tag, UserRound } from 'lucide-react';
+import { workspaceStyles as ui } from '../ui/workspaceStyles';
 
 interface Props {
     selectedIds: string[]; onClearSelection: () => void; onActionComplete: () => void;
     users?: { id: string; fullName: string }[];
     labels?: { id: string; name: string; color: string }[];
+    conversations?: { id: string; customer: string; subject: string | null; channel?: string }[];
 }
 export function BulkActionToolbar(props: Props) {
     const { token } = useAuth(); const { currentAccount } = useAccount();
@@ -18,7 +21,7 @@ export function BulkActionToolbar(props: Props) {
     if (!token || !currentAccount || !ids.every(id => typeof id === 'string' && id.trim())) return <p role="alert">Select an account and valid conversations before applying bulk actions.</p>;
     return <ScopedToolbar key={JSON.stringify([token, currentAccount.id, ids])} {...props} selectedIds={ids} token={token} accountId={currentAccount.id} />;
 }
-function ScopedToolbar({ selectedIds, onClearSelection, onActionComplete, users = [], labels = [], token, accountId }: Props & { token: string; accountId: string }) {
+function ScopedToolbar({ selectedIds, onClearSelection, onActionComplete, users = [], labels = [], conversations = [], token, accountId }: Props & { token: string; accountId: string }) {
     const mutation = useScopedMutation(); const [mergeTarget, setMergeTarget] = useState<string | null>(null);
     const [assignee, setAssignee] = useState(''); const [label, setLabel] = useState('');
     const [confirmed, setConfirmed] = useState(false); const [feedback, setFeedback] = useState('');
@@ -48,20 +51,24 @@ function ScopedToolbar({ selectedIds, onClearSelection, onActionComplete, users 
         }
     };
     const locked = mutation.busy || confirmed;
-    return <aside aria-label="Bulk conversation actions" className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] max-w-3xl p-4 space-y-3 rounded-xl bg-slate-900 text-white border border-slate-700 shadow-xl">
-        <div className="flex justify-between gap-3"><p>{selectedIds.length} selected</p><button type="button" disabled={mutation.busy} onClick={onClearSelection}>Clear selection</button></div>
-        {mutation.error && <p role="alert">{mutation.error}</p>}{feedback && <p role="status">{feedback}</p>}{mutation.busy && <p role="status">Applying bulk operation...</p>}
-        <fieldset disabled={locked} className="flex flex-wrap items-end gap-3">
-            <button type="button" onClick={() => void run('close')}>Close</button><button type="button" onClick={() => void run('open')}>Reopen</button>
-            <label>Assignee<select value={assignee} onChange={event => setAssignee(event.target.value)} className="block bg-slate-800 p-2 rounded-lg"><option value="">Choose team member</option>{users.map(user => <option key={user.id} value={user.id}>{user.fullName || 'Unknown'}</option>)}</select></label><button type="button" disabled={!assignee} onClick={() => void run('assign')}>Assign</button>
-            <label>Label<select value={label} onChange={event => setLabel(event.target.value)} className="block bg-slate-800 p-2 rounded-lg"><option value="">Choose label</option>{labels.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><button type="button" disabled={!label} onClick={() => void run('addLabel')}>Add label</button>
-            {selectedIds.length > 1 && <button type="button" onClick={() => setMergeTarget(selectedIds[0])}>Merge</button>}
+    return <aside aria-label="Bulk conversation actions" className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 max-h-[70dvh] overflow-y-auto w-[calc(100%-2rem)] max-w-3xl p-4 space-y-3 rounded-xl bg-white text-slate-900 border border-slate-200 shadow-xl dark:bg-slate-900 dark:text-slate-100 dark:border-slate-700">
+        <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-semibold">{selectedIds.length} selected</p><button className={ui.secondary} type="button" disabled={mutation.busy} onClick={onClearSelection}>Clear selection</button></div>
+        {mutation.error && <p className={ui.alert} role="alert">{mutation.error}</p>}{feedback && <p className={ui.notice} role="status">{feedback}</p>}{mutation.busy && <p className={ui.muted} role="status">Applying bulk operation...</p>}
+        <fieldset disabled={locked} className="flex min-w-0 flex-wrap items-end gap-3 disabled:opacity-70">
+            <button className={ui.primary} type="button" onClick={() => void run('close')}><CheckCheck size={16} aria-hidden="true" />Close</button><button className={ui.secondary} type="button" onClick={() => void run('open')}><RotateCcw size={16} aria-hidden="true" />Reopen</button>
+            <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2"><label className={`${ui.label} min-w-36 flex-1`}>Assignee<select value={assignee} onChange={event => setAssignee(event.target.value)} className={ui.input}><option value="">Choose team member</option>{users.map(user => <option key={user.id} value={user.id}>{user.fullName || 'Unknown'}</option>)}</select></label><button className={ui.secondary} type="button" disabled={!assignee} onClick={() => void run('assign')}><UserRound size={15} aria-hidden="true" />Assign</button></div>
+            <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2"><label className={`${ui.label} min-w-36 flex-1`}>Label<select value={label} onChange={event => setLabel(event.target.value)} className={ui.input}><option value="">Choose label</option>{labels.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><button className={ui.secondary} type="button" disabled={!label} onClick={() => void run('addLabel')}><Tag size={15} aria-hidden="true" />Add label</button></div>
+            {selectedIds.length > 1 && <button className={ui.danger} type="button" onClick={() => setMergeTarget(selectedIds[0])}><GitMerge size={16} aria-hidden="true" />Merge</button>}
         </fieldset>
         <Modal isOpen={mergeTarget !== null} onClose={mutation.busy ? undefined : () => setMergeTarget(null)} title="Merge Conversations">
-            <p>This cannot be undone. Messages will move into the selected target; source conversations will be closed.</p>
-            {mutation.error && <p role="alert">{mutation.error}</p>}
-            <fieldset disabled={mutation.busy} className="space-y-3 my-4"><legend>Target conversation</legend>{selectedIds.map(id => <label key={id} className="flex gap-2"><input type="radio" name="merge-target" value={id} checked={mergeTarget === id} onChange={() => setMergeTarget(id)} />Conversation {id}</label>)}</fieldset>
-            <button type="button" disabled={locked || !mergeTarget} onClick={() => void run('merge')}>{mutation.busy ? 'Merging...' : 'Merge Conversations'}</button>
+            <p className={ui.alert}>This cannot be undone. Messages will move into the selected target; source conversations will be closed.</p>
+            {mutation.error && <p className={ui.alert} role="alert">{mutation.error}</p>}
+            <fieldset disabled={mutation.busy} className="min-w-0 space-y-3 my-4 disabled:opacity-70"><legend className={`${ui.title} mb-3`}>Target conversation</legend>{selectedIds.map(id => {
+                const conversation = conversations.find(row => row.id === id);
+                const name = [conversation?.customer || 'Conversation details unavailable', conversation?.subject || 'Subject not recorded', conversation?.channel, `Record ID: ${id}`].filter(Boolean).join(' · ');
+                return <label key={id} className={`flex min-w-0 cursor-pointer items-start gap-3 rounded-xl border p-3 ${mergeTarget === id ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-500 dark:bg-indigo-950/30' : 'border-slate-200 dark:border-slate-700'}`}><input className={`${ui.checkbox} mt-1`} aria-label={name} type="radio" name="merge-target" value={id} checked={mergeTarget === id} onChange={() => setMergeTarget(id)} /><span className="min-w-0 space-y-1"><span className="block break-words text-sm font-semibold">{conversation?.customer || 'Conversation details unavailable'}</span><span className="block break-words text-sm text-slate-600 dark:text-slate-300">{conversation?.subject || 'Subject not recorded'}</span>{conversation?.channel && <span className={ui.badge}>{conversation.channel}</span>}<span className={`block break-all font-mono ${ui.muted}`}>Record ID: {id}</span></span></label>;
+            })}</fieldset>
+            <div className="flex flex-wrap justify-end gap-3 border-t border-slate-200 pt-4 dark:border-slate-700"><button className={ui.secondary} type="button" disabled={mutation.busy} onClick={() => setMergeTarget(null)}>Cancel merge</button><button className={ui.danger} type="button" disabled={locked || !mergeTarget} onClick={() => void run('merge')}><GitMerge size={16} aria-hidden="true" />{mutation.busy ? 'Merging...' : 'Merge Conversations'}</button></div>
         </Modal>
     </aside>;
 }

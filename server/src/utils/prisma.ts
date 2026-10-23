@@ -1,7 +1,7 @@
 
 
 import { Pool } from 'pg';
-import { PrismaPg } from '@prisma/adapter-pg';
+import { SerializedPrismaPg } from './serializedPrismaPg';
 import { PrismaClient } from '@prisma/client';
 
 
@@ -19,7 +19,7 @@ function createPrismaClientWithPool(): PrismaClient {
         connectionTimeoutMillis: 30000,
     });
 
-    const adapter = new PrismaPg(pool);
+    const adapter = new SerializedPrismaPg(pool);
     return new PrismaClient({ adapter });
 }
 
@@ -44,6 +44,6 @@ export const prisma = new Proxy({} as PrismaClient, {
 /** standalone client for scripts that need their own connection */
 export function createPrismaClient(): PrismaClient {
     const scriptPool = new Pool({ connectionString: process.env.DATABASE_URL });
-    const scriptAdapter = new PrismaPg(scriptPool, { disposeExternalPool: true });
+    const scriptAdapter = new SerializedPrismaPg(scriptPool, { disposeExternalPool: true });
     return new PrismaClient({ adapter: scriptAdapter });
 }

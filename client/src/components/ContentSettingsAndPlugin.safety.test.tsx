@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const m = vi.hoisted(() => ({ account: { id: 'a', wooUrl: 'https://store.example' }, fetch: vi.fn(), allowed: true, superAdmin: true, status: null as unknown }));
@@ -12,6 +12,25 @@ import { StatusCenterPanel } from './settings/StatusCenterPanel';
 import { SeoContentPage } from '../pages/SeoContentPage';
 import { AdminLogsPage } from '../pages/admin/AdminLogsPage';
 const version = '2026-10-01T00:00:00.000Z', id = 'c05f9b38-5375-47d3-88aa-eb36049eb795';
+it('uses friendly status labels and distinct badges without fabricating missing observations', () => {
+    m.status = {
+        sync: { status: 'healthy', message: 'Sync observed', lastChecked: new Date().toISOString(), details: { failureRate24h: 0, responseTimeMs: 0 } },
+        webhooks: { status: 'warning', message: 'Webhook warning', lastChecked: new Date().toISOString(), details: {} },
+        storeHealth: { status: 'critical', message: 'Connection warning', lastChecked: new Date().toISOString(), details: { connected: false } },
+    };
+    render(<MemoryRouter><StatusCenterPanel /></MemoryRouter>);
+    const sync = screen.getByRole('region', { name: 'Store sync' });
+    expect(within(sync).getByText('Reported healthy')).toHaveClass('bg-emerald-50');
+    expect(within(sync).getByText('Failure rate (24 hours)')).toBeInTheDocument();
+    expect(within(sync).getByText('0%')).toBeInTheDocument();
+    expect(within(sync).getByText('0 ms')).toBeInTheDocument();
+    expect(screen.getByText('Reported warning')).toHaveClass('bg-amber-50');
+    expect(screen.getByText('Reported critical')).toHaveClass('bg-red-50');
+    expect(within(screen.getByRole('region', { name: 'Revenue alerts' })).getByText('Unknown / not current')).toBeInTheDocument();
+    expect(screen.queryByText('storeHealth')).toBeNull();
+    expect(screen.queryByText('failureRate24h')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Refresh status observations' })).toHaveClass('border-slate-200');
+});
 const response = (value: unknown) => ({ ok: true, json: async () => value });
 beforeEach(() => { vi.resetAllMocks(); m.account = { id: 'a', wooUrl: 'https://store.example' }; m.allowed = true; m.superAdmin = true; m.status = null; vi.stubGlobal('fetch', m.fetch); vi.spyOn(window, 'confirm').mockReturnValue(true); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -21,6 +40,6 @@ it('preserves private verification details as unknown, not configured or disable
 it('ignores a late verification after leaving its account scope', async () => { let resolve!: (value: unknown) => void; m.fetch.mockReturnValue(new Promise(r => { resolve = r; })); const props = pluginProps(), view = render(<PluginStep {...props} />); fireEvent.click(screen.getByRole('button', { name: 'Observe store plugin' })); const calls = props.setDraft.mock.calls.length; view.unmount(); await act(async () => resolve(response({ accountId: 'a', success: true, storeReachable: true, pluginInstalled: true, configured: true, accountMatch: true }))); expect(props.setDraft).toHaveBeenCalledTimes(calls); });
 it('never exposes failed alert reads as editable defaults', async () => { m.fetch.mockResolvedValue({ ok: false }); render(<InventoryAlertsSettings />); await screen.findByText(/Alert settings unavailable/); expect(screen.queryByRole('button', { name: 'Save alert settings' })).not.toBeInTheDocument(); });
 it('preserves zero thresholds and a conflicted alert draft under one admitted request', async () => { m.fetch.mockResolvedValue(response({ config: { isEnabled: false, lowStockThresholdDays: 0, alertEmails: [] }, version })); render(<InventoryAlertsSettings />); const threshold = await screen.findByLabelText('Threshold days (0–3650)'); expect(threshold).toHaveValue('0'); fireEvent.change(threshold, { target: { value: '7' } }); let resolve!: (value: unknown) => void; m.fetch.mockReturnValueOnce(new Promise(r => { resolve = r; })); const save = screen.getByRole('button', { name: 'Save alert settings' }); fireEvent.click(save); fireEvent.click(save); const writes = m.fetch.mock.calls.filter(([, options]) => options.method === 'POST'); expect(writes).toHaveLength(1); expect(JSON.parse(writes[0][1].body)).toMatchObject({ version, operationId: expect.any(String) }); await act(async () => resolve({ ok: false, status: 409 })); expect(threshold).toHaveValue('7'); expect(save).toBeDisabled(); });
-it('does not certify invalid/future health or guess currency from revenue keys', () => { m.status = { sync: { status: 'healthy', message: 'Observed', lastChecked: '2099-01-01T00:00:00Z', details: { todayRevenue: 20 } } }; render(<MemoryRouter><StatusCenterPanel /></MemoryRouter>); expect(screen.getByText('sync: Unknown / not current')).toBeInTheDocument(); expect(screen.getByText('Monetary basis unavailable')).toBeInTheDocument(); expect(screen.queryByText('All Systems Operational')).not.toBeInTheDocument(); });
+it('does not certify invalid/future health or guess currency from revenue keys', () => { m.status = { sync: { status: 'healthy', message: 'Observed', lastChecked: '2099-01-01T00:00:00Z', details: { todayRevenue: 20 } } }; render(<MemoryRouter><StatusCenterPanel /></MemoryRouter>); expect(within(screen.getByRole('region', { name: 'Store sync' })).getByText('Unknown / not current')).toBeInTheDocument(); expect(screen.getByText('Monetary basis unavailable')).toBeInTheDocument(); expect(screen.queryByText('All Systems Operational')).not.toBeInTheDocument(); });
 it('restricts content preview to inert formatting and sends the observed version', async () => { const item = { id, wooId: 1, title: 'Title', content: '<p>Text</p><img src="https://tracking.example/pixel"><script>bad()</script>', excerpt: '', slug: 'title', permalink: 'https://store.example/title', status: 'draft', updatedAt: version, dateModified: version }; m.fetch.mockImplementation(async (url: string) => response(url.includes(`/${id}`) ? item : { items: [item], pagination: { page: 1, limit: 25, total: 1, totalPages: 1 } })); render(<SeoContentPage />); fireEvent.click(await screen.findByRole('button', { name: 'Review / edit' })); await screen.findByLabelText('content'); fireEvent.click(screen.getByRole('button', { name: 'Toggle inert preview' })); const frame = screen.getByTitle('Inert content preview'); expect(frame).toHaveAttribute('sandbox', ''); expect(frame.getAttribute('srcdoc')).not.toContain('tracking.example'); expect(frame.getAttribute('srcdoc')).not.toContain('<script>'); fireEvent.change(screen.getByLabelText('title'), { target: { value: 'Draft update' } }); m.fetch.mockResolvedValueOnce({ ok: false, status: 409 }); fireEvent.click(screen.getByRole('button', { name: 'Save content changes' })); await screen.findByText(/Write unconfirmed\/conflicted/); const write = m.fetch.mock.calls.find(([, options]) => options.method === 'PATCH'); expect(JSON.parse(write![1].body)).toMatchObject({ version, operationId: expect.any(String), fields: { title: 'Draft update' } }); expect(screen.getByLabelText('title')).toHaveValue('Draft update'); });
 it('clears old admin data on auth readiness loss and does not call the API', async () => { m.superAdmin = false; render(<AdminLogsPage />); expect(screen.getByRole('alert')).toHaveTextContent('Super-admin access required'); await waitFor(() => expect(m.fetch).not.toHaveBeenCalled()); });

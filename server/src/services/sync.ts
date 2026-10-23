@@ -20,14 +20,14 @@ export class SyncService {
 
         // Observe backpressure without deleting previously admitted work.
         const SYNC_QUEUES = [
-            QUEUES.ORDERS,
-            QUEUES.PRODUCTS,
-            QUEUES.CUSTOMERS,
-            QUEUES.REVIEWS,
-            QUEUES.PAGES,
-            QUEUES.BLOG_POSTS,
-            QUEUES.BOM_SYNC
-        ];
+            ['orders', QUEUES.ORDERS],
+            ['products', QUEUES.PRODUCTS],
+            ['customers', QUEUES.CUSTOMERS],
+            ['reviews', QUEUES.REVIEWS],
+            ['pages', QUEUES.PAGES],
+            ['blog-posts', QUEUES.BLOG_POSTS],
+            ['bom', QUEUES.BOM_SYNC]
+        ].filter(([type]) => types.includes(type)).map(([, queue]) => queue);
         for (const queueName of SYNC_QUEUES) {
             await QueueFactory.enforceMaxQueueDepth(queueName);
         }

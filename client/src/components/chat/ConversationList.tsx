@@ -528,6 +528,10 @@ export function ConversationList({
             {/* Bulk Action Toolbar */}
             <BulkActionToolbar
                 selectedIds={Array.from(selectedIds)}
+                conversations={Array.from(selectedIds).flatMap(id => {
+                    const conversation = searchResults.find(row => row.id === id) || conversations.find(row => row.id === id);
+                    return conversation ? [{ id, customer: getDisplayName(conversation), subject: getPreview(conversation).subject, channel: conversation.channel }] : [];
+                })}
                 onClearSelection={() => {
                     setSelectedIds(new Set());
                     setIsSelectionMode(false);

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const m = vi.hoisted(() => ({ token: 'token', account: { id: 'a' }, request: vi.fn() }));
@@ -15,6 +15,34 @@ import { RecipientList } from './RecipientList';
 beforeEach(() => { vi.resetAllMocks(); m.token = 'token'; m.account = { id: 'a' }; });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('bulk selection isolation', () => {
+    it('styles bulk actions distinctly and uses loaded names and subjects to choose the exact merge target', async () => {
+        m.request.mockResolvedValue({ success: true, mergedCount: 1 });
+        render(<BulkActionToolbar selectedIds={['a', 'b']} onClearSelection={vi.fn()} onActionComplete={vi.fn()} conversations={[
+            { id: 'a', customer: 'Alex', subject: 'Order question', channel: 'EMAIL' },
+            { id: 'b', customer: 'Alex', subject: 'Delivery question', channel: 'CHAT' },
+        ]} />);
+        expect(screen.getByRole('button', { name: 'Close' })).toHaveClass('bg-indigo-600');
+        expect(screen.getByRole('button', { name: 'Merge' })).toHaveClass('bg-red-50');
+        expect(screen.getByRole('button', { name: 'Assign' })).toBeDisabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Merge' }));
+        const dialog = screen.getByRole('dialog');
+        const target = within(dialog).getByRole('radio', { name: 'Alex · Delivery question · CHAT · Record ID: b' });
+        fireEvent.click(target);
+        expect(target).toBeChecked();
+        expect(m.request).not.toHaveBeenCalled();
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Merge Conversations' }));
+        await waitFor(() => expect(m.request).toHaveBeenCalledOnce());
+        expect(JSON.parse(m.request.mock.calls[0][1].body)).toEqual({ targetId: 'b', sourceIds: ['a'] });
+    });
+    it('keeps missing conversation details honest and allows cancelling merge without a mutation', () => {
+        render(<BulkActionToolbar selectedIds={['a', 'b']} onClearSelection={vi.fn()} onActionComplete={vi.fn()} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Merge' }));
+        expect(screen.getAllByText('Conversation details unavailable')).toHaveLength(2);
+        expect(screen.getByText('Record ID: b')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel merge' }));
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(m.request).not.toHaveBeenCalled();
+    });
     it('serializes duplicate actions, reports failed confirmations and retains selections', async () => {
         let resolve!: (value: unknown) => void; m.request.mockReturnValue(new Promise(r => { resolve = r; })); const clear = vi.fn();
         render(<BulkActionToolbar selectedIds={['a', 'b']} onClearSelection={clear} onActionComplete={vi.fn()} />);

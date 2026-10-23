@@ -17,6 +17,7 @@ import { canonicalInvoiceService } from '../services/CanonicalInvoiceService';
 import { WholesaleCatalogWorker } from '../services/wholesale/worker';
 import { WholesaleCatalogShareWorker } from '../services/wholesale/shareWorker';
 import { WholesaleCatalogValidityWorker } from '../services/wholesale/validityWorker';
+import { assertJobLease } from '../services/queue/JobLease';
 
 /** Track all workers for graceful shutdown */
 const activeWorkers: Worker[] = [];
@@ -145,7 +146,8 @@ export async function startWorkers() {
             const { SyncCancellationService } = await import('../services/sync/SyncCancellationService');
             try {
                 await SyncCancellationService.assertNotRequested(job);
-                const result = await BOMInventorySyncService.syncAllBOMProducts(accountId, job);
+                await assertJobLease(job);
+                const result = await BOMInventorySyncService.syncAllBOMProducts(accountId, job, { assertLease: () => assertJobLease(job) });
                 Logger.info(`[BOM Worker] Completed BOM sync`, {
                     accountId,
                     synced: result.synced,

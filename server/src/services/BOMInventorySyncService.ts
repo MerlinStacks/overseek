@@ -13,6 +13,7 @@ import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { StockValidationService } from './StockValidationService';
 import type { Prisma } from '@prisma/client';
+import { JobLeaseLostError } from './queue/JobLease';
 
 /** Shared local stock inputs for single-product reads and bulk previews. */
 export const localBOMItems = {
@@ -892,6 +893,7 @@ export class BOMInventorySyncService {
 
         } catch (err: any) {
             // Distinguish 404 (deleted product) from transient failures
+            if (err instanceof JobLeaseLostError) throw err;
             const status = getWooErrorStatus(err);
             const is404 = status === 404 || err.message?.includes('404');
 
@@ -947,7 +949,8 @@ export class BOMInventorySyncService {
      */
     static async syncAllBOMProducts(
         accountId: string,
-        job: { id?: string | number; queueName?: string; updateProgress: (progress: any) => Promise<void> } | null = null
+        job: { id?: string | number; queueName?: string; updateProgress: (progress: any) => Promise<void> } | null = null,
+        options?: { assertLease: () => Promise<void> }
     ): Promise<{
         total: number;
         synced: number;
@@ -994,13 +997,17 @@ export class BOMInventorySyncService {
         }
 
         for (const bom of bomsWithChildProducts) {
+            // A worker can keep executing after losing its BullMQ lock. Stop at
+            // each boundary and recheck immediately before any provider write.
+            await options?.assertLease();
             if (job) {
                 const { SyncCancellationService } = await import('./sync/SyncCancellationService');
                 await SyncCancellationService.assertNotRequested(job);
             }
             // Wrap each product sync in try/catch so one failure doesn't crash the entire job
             try {
-                const result = await this.syncProductToWoo(accountId, bom.productId, bom.variationId);
+                const result = await this.syncProductToWoo(accountId, bom.productId, bom.variationId,
+                    options ? { beforeWrite: options.assertLease } : undefined);
 
                 if (result.success) {
                     if (result.previousStock === result.newStock) {
@@ -1012,6 +1019,7 @@ export class BOMInventorySyncService {
                     failed++;
                 }
             } catch (err: any) {
+                if (err instanceof JobLeaseLostError) throw err;
                 Logger.error(`[BOMInventorySync] Uncaught error syncing product ${bom.productId}`, {
                     accountId,
                     productId: bom.productId,

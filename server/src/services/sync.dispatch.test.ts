@@ -87,4 +87,11 @@ describe('SyncService dispatch', () => {
         await new SyncService().runSync('account-1', { types: ['bom'] });
         expect(mocks.queue.add.mock.calls[0][2].removeOnFail).toBe(false);
     });
+    it('does not let unrelated BOM backlog block order queue admission', async () => {
+        mocks.queue.getJob.mockResolvedValue(null);
+        mocks.enforceMaxQueueDepth.mockImplementation(async name => { if (name === 'bom-inventory-sync') throw new Error('BOM backlog'); return 0; });
+        await new SyncService().runSync('account-1', { types: ['orders'] });
+        expect(mocks.enforceMaxQueueDepth).toHaveBeenCalledExactlyOnceWith('sync-orders');
+        expect(mocks.queue.add).toHaveBeenCalledOnce();
+    });
 });

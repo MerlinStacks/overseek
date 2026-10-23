@@ -5,14 +5,15 @@ import { ConversationList } from './ConversationList';
 import type { Conversation } from './ConversationItem';
 
 let currentAccount = { id: 'account-1' };
+const bulkToolbar = vi.hoisted(() => vi.fn());
 vi.mock('../../context/AccountContext', () => ({ useAccount: () => ({ currentAccount }) }));
 vi.mock('../../context/AuthContext', () => ({ useAuth: () => ({ token: 'token' }) }));
 vi.mock('../../hooks/useDrafts', () => ({ useDrafts: () => ({ hasDraft: () => false }) }));
 vi.mock('../../utils/logger', () => ({ Logger: { error: vi.fn() } }));
-vi.mock('./BulkActionToolbar', () => ({ BulkActionToolbar: () => null }));
+vi.mock('./BulkActionToolbar', () => ({ BulkActionToolbar: (props: unknown) => { bulkToolbar(props); return null; } }));
 vi.mock('./ConversationItem', () => ({
-    ConversationItem: ({ conv, onSelect }: { conv: Conversation; onSelect: (id: string) => void }) =>
-        <button onClick={() => onSelect(conv.id)}>{conv.guestName}</button>,
+    ConversationItem: ({ conv, onSelect, onToggleSelection }: { conv: Conversation; onSelect: (id: string) => void; onToggleSelection: (id: string, event: React.MouseEvent) => void }) =>
+        <div><button onClick={() => onSelect(conv.id)}>{conv.guestName}</button><button onClick={event => onToggleSelection(conv.id, event)}>Select {conv.id} for bulk actions</button></div>,
 }));
 vi.mock('react-virtuoso', () => ({
     Virtuoso: ({ data, itemContent }: { data: Conversation[]; itemContent: (index: number, conversation: Conversation) => ReactNode }) =>
@@ -51,6 +52,15 @@ describe('inbox search refresh', () => {
         cleanup();
         vi.useRealTimers();
         vi.unstubAllGlobals();
+    });
+
+    it('passes selected customer and subject details from the loaded list into the merge chooser', async () => {
+        const conversation: Conversation = { id: 'local', guestName: 'Alice', channel: 'EMAIL', title: 'Order question', messages: [], updatedAt: '2026-09-21T00:00:00Z', status: 'OPEN' };
+        render(<ConversationList {...props} conversations={[conversation]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Select local for bulk actions' }));
+        expect(bulkToolbar.mock.calls.at(-1)?.[0]).toMatchObject({ selectedIds: ['local'], conversations: [{ id: 'local', customer: 'Alice', subject: 'Order question', channel: 'EMAIL' }] });
+        await act(async () => {});
+        expect(searchFetch).not.toHaveBeenCalled();
     });
 
     it('keeps the list mounted and selectable throughout a background refresh', async () => {

@@ -112,6 +112,7 @@ class OverSeek_Tracking_Transport
                     if ($order && $event_id !== '' && !empty($results[$event_id])
                         && (string) $order->get_meta('_overseek_event_id') === $event_id) {
                         $order->update_meta_data('_overseek_tracked', true);
+                        $order->delete_meta_data('_overseek_purchase_context');
                         $order->save_meta_data();
                     }
                 } catch (Throwable $error) {

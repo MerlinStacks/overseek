@@ -23,4 +23,14 @@ Google website enhancements and server-created conversion imports are different 
 - GA4 debug mode validates events but does not record them in production reports. Disable it for live revenue tracking.
 - The check is available through the existing authenticated `POST /api/capi/test/google` endpoint. No campaigns, goals, budgets or remote conversion actions are created or modified automatically.
 
+## Delayed WooCommerce payments
+
+The companion captures consented shopper context on classic order creation and the pre-payment Blocks checkout hook. Payment-completed and paid-status hooks can then send a purchase without a thank-you-page revisit. Pending, failed and on-hold orders still do not emit purchases.
+
+- Saved context contains the original visitor, IP/user agent, consent and platform/click/session identifiers. Gateway/admin cookies and IP addresses are never substituted. Paid order values are rebuilt at delivery; the occurrence time uses WooCommerce's paid timestamp when available.
+- Browser pixels, payment/status hooks and transport retries reuse the order's `_overseek_event_id`. Acknowledged orders are skipped. Context is removed on acknowledgement (including transport retry); abandoned context expires after seven days via WP-Cron. Service WP-Cron for cleanup/retries. Recovery also refuses expired context even if cron was delayed.
+- Missing, denied, expired or differently linked account context is not reconstructed. An observed consent denial on a later checkout/thank-you request removes saved context. A gateway callback cannot discover a consent change that was never communicated to WordPress.
+- This fixes event capture for Meta CAPI and Google's server transport, not browser execution after the customer leaves. **Google still needs the independent import action above to create a purchase when no browser purchase exists.** Website enhancements alone cannot recover it. No Google goals or Primary/Secondary settings are changed automatically.
+- This is forward-looking: orders created before the companion update without saved context are not automatically backfilled. Stage-test classic/Blocks delayed payment without returning to confirmation, repeated payment/status callbacks, denied consent and failed HTTP acknowledgement before rollout.
+
 References: [Offline conversion imports](https://developers.google.com/google-ads/api/docs/conversions/upload-offline), [Website enhancements](https://developers.google.com/google-ads/api/docs/conversions/upload-online).

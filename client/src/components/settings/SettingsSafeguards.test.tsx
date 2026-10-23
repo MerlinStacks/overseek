@@ -13,6 +13,16 @@ const response = (value: unknown) => ({ ok: true, json: async () => value });
 beforeEach(() => { vi.resetAllMocks(); m.account = { id: 'a', name: 'Account A', currency: 'EUR', goldPriceMargin: 0, goldPrice18ct: null }; m.user = { id: 'user-a' }; m.refresh.mockResolvedValue(undefined); vi.stubGlobal('fetch', m.fetch); vi.stubGlobal('confirm', vi.fn(() => true)); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('gold settings', () => {
+    it('distinguishes save actions from provider refresh and labels all controls without making requests', () => {
+        render(<GoldPriceSettings />);
+        expect(screen.getByRole('button', { name: 'Save All Prices' })).toHaveClass('bg-indigo-600');
+        expect(screen.getByRole('button', { name: 'Save Margin' })).toHaveClass('border-slate-200');
+        expect(screen.getByRole('button', { name: 'Refresh from Market' })).toHaveClass('border-slate-200');
+        expect(screen.getByText(/Refresh from Market requests a provider refresh/)).toBeInTheDocument();
+        expect(screen.getByLabelText('18ct Gold Price')).toHaveClass('focus:ring-2');
+        screen.getAllByRole('button').forEach(button => expect(button).toHaveAttribute('type', 'button'));
+        expect(m.fetch).not.toHaveBeenCalled();
+    });
     it('does not refresh account context after an old-account save resolves late', async () => {
         let resolve!: (value: unknown) => void; m.fetch.mockReturnValueOnce(new Promise(r => { resolve = r; }));
         const view = render(<GoldPriceSettings />); fireEvent.click(screen.getByRole('button', { name: 'Save Margin' }));

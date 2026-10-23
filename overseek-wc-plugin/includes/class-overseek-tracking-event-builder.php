@@ -128,7 +128,8 @@ class OverSeek_Tracking_Event_Builder
      * @param array<string, mixed> $meta_config Meta pixel config (contentIdFormat, contentIdPrefix, contentIdSuffix)
      * @return array<string, mixed>
      */
-    public static function build_purchase_payload($order, int $order_id, string $event_id, array $meta_config = array()): array
+    // Background payment callbacks pass false: their cookies are not the shopper's.
+    public static function build_purchase_payload($order, int $order_id, string $event_id, array $meta_config = array(), bool $include_browser_context = true): array
     {
         $items = array();
 
@@ -182,7 +183,6 @@ class OverSeek_Tracking_Event_Builder
             'billingCountry' => $order->get_billing_country(),
             'billingFirst' => $order->get_billing_first_name(),
             'billingLast' => $order->get_billing_last_name(),
-            'externalId' => OverSeek_Pixel_Matching_Utils::get_external_id(),
         );
 
         $recovery_enrollment_id = $order->get_meta('_overseek_recovery_enrollment_id');
@@ -197,6 +197,10 @@ class OverSeek_Tracking_Event_Builder
             $payload['recoverySessionId'] = (string) $recovery_session_id;
         }
 
+        if (!$include_browser_context) {
+            return $payload;
+        }
+        $payload['externalId'] = OverSeek_Pixel_Matching_Utils::get_external_id();
         return OverSeek_Tracking_Payload_Utils::attach_platform_cookies($payload);
     }
 

@@ -30,27 +30,33 @@ export function SupplyChainPage() {
     }, [activeTab, searchParams, setSearchParams]);
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col gap-4 border-b pb-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0 space-y-6">
+            <div className="flex flex-col gap-4 border-b border-slate-200 pb-4 lg:flex-row lg:items-end lg:justify-between dark:border-slate-700">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Stock & Suppliers</h1>
-                    <p className="text-sm text-gray-500">Manage suppliers, materials, and purchase orders</p>
+                    <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Stock & Suppliers</h1>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Manage suppliers, materials, and purchase orders</p>
                 </div>
 
                 <div className="flex gap-2 overflow-x-auto pb-1 sm:gap-4">
                     <button
+                        type="button"
+                        aria-pressed={activeTab === 'purchasing'}
                         onClick={() => setActiveTab('purchasing')}
                         className={`flex shrink-0 items-center gap-2 px-2 py-2 font-medium transition-colors border-b-2 ${activeTab === 'purchasing' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                     >
                         <Calculator size={18} /> Purchase Orders
                     </button>
                     <button
+                        type="button"
+                        aria-pressed={activeTab === 'suppliers'}
                         onClick={() => setActiveTab('suppliers')}
                         className={`flex shrink-0 items-center gap-2 px-2 py-2 font-medium transition-colors border-b-2 ${activeTab === 'suppliers' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                     >
                         <Truck size={18} /> Suppliers & Materials
                     </button>
                     <button
+                        type="button"
+                        aria-pressed={activeTab === 'movements'}
                         onClick={() => setActiveTab('movements')}
                         className={`flex shrink-0 items-center gap-2 px-2 py-2 font-medium transition-colors border-b-2 ${activeTab === 'movements' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                     >

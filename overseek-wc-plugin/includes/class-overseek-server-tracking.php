@@ -120,6 +120,11 @@ class OverSeek_Server_Tracking
 
         // Purchase completed - most important event (classic checkout)
         add_action('woocommerce_thankyou', array($this, 'track_purchase'), 10, 1);
+        // Save browser context before payment can move into a gateway callback.
+        add_action('woocommerce_checkout_order_created', array($this, 'capture_purchase_context'), 10, 1);
+        add_action('woocommerce_payment_complete', array($this, 'track_paid_purchase'), 10, 1);
+        add_action('woocommerce_order_status_changed', array($this, 'track_paid_purchase'), 10, 1);
+        add_action('overseek_expire_purchase_context', array($this, 'expire_purchase_context'), 10, 2);
 
         // WooCommerce Blocks checkout support (block-based checkout)
         // This hook fires when an order is placed via the Store API (Blocks checkout)
@@ -370,6 +375,15 @@ class OverSeek_Server_Tracking
             }
         }
 
+        $this->event_queue[] = $this->build_event_data($type, $payload, $is_404, $url_override, $title_override);
+        if ($checkout_session) {
+            $checkout_session->set('overseek_checkout_start', array('signature' => $checkout_signature, 'at' => time()));
+        }
+    }
+
+    /** Build a browser event without queueing or sending it (also used at checkout). */
+    private function build_event_data($type, $payload, $is_404 = false, $url_override = '', $title_override = null): array
+    {
         $visitor_id = $this->get_visitor_id();
         $visitor_ip = OverSeek_Tracking_Request_Utils::resolve_visitor_ip();
         $referrer_data = OverSeek_Tracking_Request_Utils::get_referrer_data();
@@ -430,10 +444,7 @@ class OverSeek_Server_Tracking
             $data['landingReferrer'] = $landing_referrer;
         }
 
-        $this->event_queue[] = $data;
-        if ($checkout_session) {
-            $checkout_session->set('overseek_checkout_start', array('signature' => $checkout_signature, 'at' => time()));
-        }
+        return $data;
     }
 
     /**
@@ -867,6 +878,113 @@ class OverSeek_Server_Tracking
     }
 
     /**
+     * Persist only the original browser identity/attribution, not a pending purchase.
+     * Checkout hooks run before gateway processing in classic and Blocks checkout.
+     * Never create customer context from a webhook, admin or cron request.
+     *
+     * @param WC_Order $order Checkout order.
+     */
+    public function capture_purchase_context($order): void
+    {
+        try {
+            $this->persist_purchase_context($order);
+        } catch (Throwable $error) {
+            // Tracking extensions must never prevent checkout/payment processing.
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('OverSeek: unable to persist purchase tracking context.');
+            }
+        }
+    }
+
+    /** Persist checkout context without performing network delivery. */
+    private function persist_purchase_context($order): void
+    {
+        if (!$order || !is_object($order) || $order->get_meta('_overseek_tracked')) {
+            return;
+        }
+        if (is_admin() || wp_doing_cron() || OverSeek_Tracking_Guard_Utils::is_bot_request()) {
+            return;
+        }
+        if (!OverSeek_Tracking_Guard_Utils::has_tracking_consent()) {
+            $order->delete_meta_data('_overseek_purchase_context');
+            $order->save_meta_data();
+            return;
+        }
+        $previous = $order->get_meta('_overseek_purchase_context');
+        if (is_array($previous) && ($previous['accountId'] ?? null) === $this->account_id) {
+            return;
+        }
+        $cookies = OverSeek_Tracking_Payload_Utils::attach_platform_cookies(array());
+        $cookies['externalId'] = OverSeek_Pixel_Matching_Utils::get_external_id();
+        $context = $this->build_event_data('purchase', $cookies, false, $order->get_checkout_order_received_url());
+        $context['capturedAt'] = time();
+        // Establish the same ID used by browser pixels and transport retries.
+        OverSeek_Tracking_Event_Builder::ensure_order_event_id($order);
+        $order->update_meta_data('_overseek_purchase_context', $context);
+        $order->save_meta_data();
+        wp_schedule_single_event($context['capturedAt'] + 7 * DAY_IN_SECONDS, 'overseek_expire_purchase_context', array($order->get_id(), $context['capturedAt']));
+    }
+
+    /** Remove abandoned checkout identity after the bounded recovery window. */
+    public function expire_purchase_context($order_id, $captured_at): void
+    {
+        $order = wc_get_order($order_id);
+        $context = $order ? $order->get_meta('_overseek_purchase_context') : null;
+        if (is_array($context) && ($context['capturedAt'] ?? null) === $captured_at && time() >= (int) $captured_at + 7 * DAY_IN_SECONDS) {
+            $order->delete_meta_data('_overseek_purchase_context');
+            $order->save_meta_data();
+        }
+    }
+
+    /**
+     * Recover a delayed payment without borrowing the gateway/admin's identity.
+     * Missing, expired, denied or differently linked context is never invented.
+     *
+     * @param int $order_id Order whose payment/status changed.
+     */
+    public function track_paid_purchase($order_id): void
+    {
+        try {
+            $this->send_paid_purchase($order_id);
+        } catch (Throwable $error) {
+            // Keep the context/ID for a subsequent hook or transport retry.
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('OverSeek: delayed purchase tracking failed; context retained.');
+            }
+        }
+    }
+
+    /** Deliver from saved shopper context, never the current callback request. */
+    private function send_paid_purchase($order_id): void
+    {
+        $order = $order_id ? wc_get_order($order_id) : false;
+        if (!$order || !$order->is_paid() || $order->get_meta('_overseek_tracked')) {
+            return;
+        }
+        $context = $order->get_meta('_overseek_purchase_context');
+        if (!is_array($context) || ($context['accountId'] ?? null) !== $this->account_id
+            || ($context['consentState'] ?? '') !== 'granted' || empty($context['visitorId'])
+            || !isset($context['capturedAt']) || (int) $context['capturedAt'] > time()
+            || time() - (int) $context['capturedAt'] >= 7 * DAY_IN_SECONDS) {
+            return;
+        }
+        $event_id = OverSeek_Tracking_Event_Builder::ensure_order_event_id($order);
+        $payload = OverSeek_Tracking_Event_Builder::build_purchase_payload($order, (int) $order_id, $event_id, $this->get_pixel_meta_config(), false);
+        $context['payload'] = array_merge($payload, $context['payload']);
+        $paid_at = $order->get_date_paid();
+        $context['occurredAt'] = $paid_at ? $paid_at->date('c') : gmdate('c');
+        $context['url'] = $order->get_checkout_order_received_url();
+        unset($context['capturedAt']);
+        $this->event_queue[] = $context;
+        $results = $this->flush_event_queue();
+        if (!empty($results[$event_id])) {
+            $order->update_meta_data('_overseek_tracked', true);
+            $order->delete_meta_data('_overseek_purchase_context');
+            $order->save_meta_data();
+        }
+    }
+
+    /**
      * Track purchase completion.
      */
     public function track_purchase($order_id)
@@ -879,6 +997,8 @@ class OverSeek_Server_Tracking
         if (!$order) {
             return;
         }
+
+        $this->capture_purchase_context($order);
 
         // The thank-you page can display failed payments, and the Blocks hook
         // can run before payment. Neither is proof of a completed purchase.
@@ -906,6 +1026,7 @@ class OverSeek_Server_Tracking
         // Mark as tracked only after the blocking purchase request succeeds.
         if (!empty($results[$event_id])) {
             $order->update_meta_data('_overseek_tracked', true);
+            $order->delete_meta_data('_overseek_purchase_context');
             $order->save();
             if (function_exists('WC') && WC() && WC()->session) {
                 WC()->session->__unset('overseek_checkout_start');

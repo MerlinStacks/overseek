@@ -84,7 +84,8 @@ export const WooProductVariationSchema = z.object({
     manage_stock: z.union([z.boolean(), z.literal('parent')]).optional(),
     weight: z.string().optional(),
     dimensions: WooDimensionsSchema.optional(),
-    image: WooImageSchema.optional(),
+    // Woo uses null when a variation has no dedicated image (parent fallback).
+    image: WooImageSchema.nullable().optional(),
     attributes: z.array(WooVariationAttributeSchema).optional()
 }).passthrough();
 

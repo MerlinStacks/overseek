@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { Logger } from '../../utils/logger';
+import { ROUTE_PATHS } from '../../utils/routeTitles';
 import { AlertTriangle, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -155,9 +157,9 @@ export function InventoryRiskWidget({ className }: WidgetProps) {
                 ))}
             </div>
 
-            <a href="/inventory/forecast" className="mt-4 flex items-center justify-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 pt-2 border-t border-slate-100 dark:border-slate-700">
+            <Link to={ROUTE_PATHS.inventoryForecasts} className="mt-4 flex items-center justify-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 pt-2 border-t border-slate-100 dark:border-slate-700">
                 View All Risks <ArrowRight size={12} />
-            </a>
+            </Link>
         </div>
     );
 }

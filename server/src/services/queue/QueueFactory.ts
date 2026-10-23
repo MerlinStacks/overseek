@@ -86,6 +86,13 @@ export class QueueFactory {
     }
 
     static createWorker(name: string, processor: (job: any) => Promise<void>) {
+        const workerStartedAt = Date.now();
+        type Run = { processedOn: number | null; accountId?: string; startedAt: number; lastLockRenewedAt: number | null; lockRenewalFailures: number };
+        const runs = new Map<string, Run>();
+        const currentRun = (job: { id?: string; processedOn?: number } | undefined) => {
+            const run = job?.id ? runs.get(job.id) : undefined;
+            return run && run.processedOn === (job?.processedOn ?? null) ? run : undefined;
+        };
         // Long-running jobs need extended lock durations to prevent false stall detection.
         // Why: A full order sync (32k+ orders) takes 5-10min. With the default 30s lock,
         // BullMQ kills the job thinking it's stalled, causing incomplete syncs.
@@ -97,6 +104,9 @@ export class QueueFactory {
         ].includes(name);
 
         const worker = new Worker(name, async (job) => {
+            if (job.id) runs.set(job.id, { processedOn: job.processedOn ?? null, accountId: job.data.accountId, startedAt: Date.now(), lastLockRenewedAt: null, lockRenewalFailures: 0 });
+            // Store only bounded scalar diagnostics, never retained job payloads/tokens.
+            while (runs.size > QUEUE_LIMITS.COMPLETED_JOBS_KEEP) runs.delete(runs.keys().next().value!);
             Logger.info(`Processing Job ${job.id}`, { jobId: job.id, accountId: job.data.accountId });
             await processor(job);
         }, {
@@ -112,17 +122,37 @@ export class QueueFactory {
         });
 
         worker.on('completed', (job) => {
+            if (currentRun(job)) runs.delete(job.id!);
             Logger.info(`Job ${job.id} Completed`);
         });
 
         worker.on('failed', (job, err) => {
+            const run = currentRun(job);
             Logger.error(`Job ${job?.id} Failed`, {
                 error: err.message, queueName: name, jobId: job?.id, accountId: job?.data?.accountId,
                 ...(name === QUEUES.BOM_SYNC && err.message.includes('stalled') ? {
                     code: 'BOM_SYNC_RECONCILIATION_REQUIRED', progress: job?.progress,
-                    recovery: 'Worker lock was lost, possibly during deployment. Inspect acknowledged Woo stock writes and job progress before a reviewed new sync; do not blindly retry or remove this job.',
+                    processId: process.pid, workerStartedAt, jobProcessedOn: job?.processedOn ?? null,
+                    executionOrigin: run ? 'this-worker' : job?.processedOn && job.processedOn < workerStartedAt ? 'pre-existing-or-other-worker' : 'not-observed-by-this-worker',
+                    processorStartedAt: run?.startedAt ?? null, lastLockRenewedAt: run?.lastLockRenewedAt ?? null,
+                    lockRenewalFailures: run?.lockRenewalFailures ?? null,
+                    recovery: 'Worker lock was lost. Use execution origin, processing time and lock-renewal evidence to distinguish inherited work from a live worker failure. Review acknowledged Woo stock writes before a new sync; do not blindly retry or remove this job.',
                 } : {}),
             });
+            if (run && job?.id) runs.delete(job.id);
+        });
+
+        worker.on('locksRenewed', ({ jobIds }) => {
+            for (const jobId of jobIds) { const run = runs.get(jobId); if (run) run.lastLockRenewedAt = Date.now(); }
+        });
+        worker.on('lockRenewalFailed', jobIds => {
+            for (const jobId of jobIds) {
+                const run = runs.get(jobId);
+                if (run) run.lockRenewalFailures++;
+                Logger.error('[QueueFactory] Job lock renewal failed', { queueName: name, jobId, processId: process.pid, accountId: run?.accountId,
+                    workerStartedAt, processorStartedAt: run?.startedAt ?? null, lastLockRenewedAt: run?.lastLockRenewedAt ?? null,
+                    lockRenewalFailures: run?.lockRenewalFailures ?? null });
+            }
         });
 
         worker.on('error', (err) => {
@@ -130,7 +160,7 @@ export class QueueFactory {
         });
 
         workers.add(worker);
-        worker.on('closed', () => workers.delete(worker));
+        worker.on('closed', () => { runs.clear(); workers.delete(worker); });
 
         return worker;
     }

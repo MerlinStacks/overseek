@@ -19,3 +19,29 @@ it('selects bounded template observations only after deliberate acknowledgement'
     fireEvent.click(await screen.findByRole('button', { name: /Saved email/ }));
     expect(await screen.findByRole('alert')).toHaveTextContent('not acknowledged'); expect(close).not.toHaveBeenCalled(); expect(select).toHaveBeenCalledOnce();
 });
+it('distinguishes an unmatched template search from an empty library and clears locally without selecting or refetching', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify([{ id: 'template', name: 'Saved email', subject: 'Summer sale', content: '<img src="https://remote.test/pixel">', designJson: null, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }])));
+    vi.stubGlobal('fetch', fetch);
+    const select = vi.fn();
+    const view = render(<EmailTemplateSelectorModal onClose={vi.fn()} onSelect={select} />);
+    await screen.findByRole('button', { name: /Saved email/ });
+    const search = screen.getByLabelText('Search templates');
+    fireEvent.change(search, { target: { value: 'no such subject' } });
+    expect(screen.getByRole('status')).toHaveTextContent('No matching templates.');
+    expect(screen.queryByText('No templates in this acknowledged response.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
+    expect(search).toHaveValue('');
+    expect(screen.getByRole('button', { name: /Saved email/ })).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: 'SUMMER' } });
+    expect(screen.getByRole('button', { name: /Saved email/ })).toBeInTheDocument();
+    expect(view.container.querySelector('img')).toBeNull();
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(select).not.toHaveBeenCalled();
+});
+it('shows a genuinely empty template library separately from read failures', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('[]')));
+    render(<EmailTemplateSelectorModal onClose={vi.fn()} onSelect={vi.fn()} />);
+    await screen.findByText('No templates in this acknowledged response.');
+    expect(screen.queryByText('No matching templates.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull();
+});
