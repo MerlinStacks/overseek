@@ -1148,7 +1148,11 @@ export class FeedMappingService {
                         sku: variation.sku || product.sku,
                         name: getVariationSourceValue('name', variation, product),
                         channel,
-                        columns: mapColumns((sourceField) => getVariationSourceValue(sourceField, variation, product, account || undefined, categoryPriority, channel), variationId),
+                        // Automatic Google/Meta offers share the product title; dimensions stay in variant fields.
+                        // Keep the descriptive row name above for identifying siblings in the editor.
+                        columns: mapColumns((sourceField) => automaticVariants && sourceField === 'name'
+                            ? getSourceValue(sourceField, product, account || undefined, categoryPriority, channel)
+                            : getVariationSourceValue(sourceField, variation, product, account || undefined, categoryPriority, channel), variationId),
                     });
                 });
             }

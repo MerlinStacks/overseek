@@ -651,6 +651,56 @@ describe('FeedMappingService channel data and health', () => {
         expect(exported).not.toContain(channel === 'google' ? '<g:id>2</g:id>' : '"SKU-2"');
     });
 
+    it.each(['google', 'meta'])('uses each parent title in automatic %s offers while retaining variant data', async (channel) => {
+        const names = ['Ultimate Car Pack Bundle', "Personalised Shirt for Buck's Party", "Personalised Shirt for Hen's Night"];
+        mockPrisma.wooProduct.findMany.mockResolvedValue(names.map((name, index) => ({
+            ...base(index + 1, { type: 'variable' }), name,
+            variations: ['Large', 'X-Large', '2X-Large'].map((size, option) => ({
+                wooId: (index + 1) * 10 + option, price: String(12 + option),
+                stockStatus: option === 2 ? 'outofstock' : 'instock',
+                rawData: { attributes: [{ name: 'Size', option: size }, { name: 'Colour', option: 'Black' }] },
+            })),
+        })));
+        const result = await FeedMappingService.getFeedRows('account-1', channel, 1, 50, '', 'automatic');
+        expect(result.rows).toHaveLength(9);
+        result.rows.forEach((row, index) => {
+            const parent = Math.floor(index / 3);
+            const option = index % 3;
+            expect(value(row, 'title')).toBe(names[parent]);
+            expect(value(row, 'item_group_id')).toBe(String(parent + 1));
+            expect(value(row, 'id')).toBe(`${parent + 1}-${(parent + 1) * 10 + option}`);
+            expect(value(row, 'size')).toBe(['Large', 'X-Large', '2X-Large'][option]);
+            expect(value(row, 'color')).toBe('Black');
+            expect(value(row, 'price')).toBe(`${12 + option}.00 AUD`);
+            expect(value(row, 'availability')).toBe(option === 2
+                ? channel === 'meta' ? 'out of stock' : 'out_of_stock'
+                : channel === 'meta' ? 'in stock' : 'in_stock');
+            expect(value(row, 'link')).toContain(`variation_id=${(parent + 1) * 10 + option}`);
+        });
+        const exported = channel === 'google' ? await FeedMappingService.getFeedExportXml('account-1', channel)
+            : await FeedMappingService.getFeedExportCsv('account-1', channel);
+        expect(exported).toContain('Ultimate Car Pack Bundle');
+        expect(exported).not.toContain('Ultimate Car Pack Bundle -');
+
+        const manual = await FeedMappingService.getFeedRows('account-1', channel, 1, 50, '', 'all_variations');
+        expect(value(manual.rows[0], 'title')).toBe('Ultimate Car Pack Bundle - Large / Black');
+        const pinterest = await FeedMappingService.getFeedRows('account-1', 'pinterest', 1, 50, '', 'automatic');
+        expect(value(pinterest.rows[0], 'title')).toBe('Ultimate Car Pack Bundle - Large / Black');
+    });
+
+    it.each(['google', 'meta'])('preserves explicit and AI variant titles in automatic %s offers', async (channel) => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{
+            ...base(1, { type: 'variable' }),
+            seoData: {
+                feedOverrides: { [channel]: { '1-11:title': 'Custom title' } },
+                feedAiSuggestions: { [channel]: { '1-12:title': 'Saved AI title' } },
+            },
+            variations: [11, 12].map((wooId) => ({ wooId, price: '10', stockStatus: 'instock', rawData: {} })),
+        }]);
+        const result = await FeedMappingService.getFeedRows('account-1', channel, 1, 50, '', 'automatic');
+        expect(result.rows.map((row) => value(row, 'title'))).toEqual(['Custom title', 'Saved AI title']);
+    });
+
     it('reports missing synced variants and ambiguous options rather than inventing offers', async () => {
         mockPrisma.wooProduct.findMany.mockResolvedValue([
             base(1, { type: 'variable', variations: [11] }),
