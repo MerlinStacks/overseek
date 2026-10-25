@@ -63,6 +63,8 @@ const saveMappingsSchema = z.object({
         targetField: z.string().min(1),
         sourceField: z.string().min(1),
         fallbackSourceField: z.string().min(1).optional(),
+        manualValue: z.string().max(10000).optional(),
+        fallbackManualValue: z.string().max(10000).optional(),
         required: z.boolean().optional(),
     })).min(1),
 });

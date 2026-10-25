@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
 
-const mocks = vi.hoisted(() => ({ health: vi.fn(), record: vi.fn(), enabled: vi.fn(), token: vi.fn(), xml: vi.fn(), csv: vi.fn(), filters: vi.fn(), rows: vi.fn(), refs: vi.fn() }));
+const mocks = vi.hoisted(() => ({ health: vi.fn(), record: vi.fn(), enabled: vi.fn(), token: vi.fn(), xml: vi.fn(), csv: vi.fn(), filters: vi.fn(), rows: vi.fn(), refs: vi.fn(), saveMappings: vi.fn() }));
 vi.mock('../services/feedHealth', () => ({ getFeedHealth: mocks.health, recordFeedExport: mocks.record }));
 vi.mock('../middleware/auth', () => ({ requireAuthFastify: async (request: any, reply: any) => {
     if (!request.headers.authorization) return reply.code(401).send({ error: 'Authentication required' });
@@ -17,6 +17,7 @@ vi.mock('../services/feedMapping', () => ({ FEED_FEATURE_KEY: 'FEED_EXPORTS', Fe
     },
     validateFeedExportToken: mocks.token, getFeedExportXml: mocks.xml, getFeedExportCsv: mocks.csv, setProductFilters: mocks.filters,
     getFeedRows: mocks.rows, getFeedRowRefs: mocks.refs,
+    saveMappings: mocks.saveMappings,
 } }));
 import feedsRoutes from './feeds';
 import feedExportRoutes from './feedExport';
@@ -39,6 +40,15 @@ describe('feed health and export routes', () => {
         await app.register(feedExportRoutes, { prefix: '/feeds' });
     });
     afterEach(async () => { await app.close(); });
+
+    it('preserves manual source and fallback values through the mapping schema', async () => {
+        const mappings = [{ targetField: 'brand', sourceField: 'manual', manualValue: 'CustomKings', fallbackSourceField: 'manual', fallbackManualValue: 'Fallback brand' }];
+        mocks.saveMappings.mockResolvedValue(mappings);
+        const response = await app.inject({ method: 'PUT', url: '/feeds/mappings/google', headers, payload: { mappings } });
+        expect(response.statusCode).toBe(200);
+        expect(mocks.saveMappings).toHaveBeenCalledWith('account-2', 'google', mappings);
+        expect(response.json().mappings).toEqual(mappings);
+    });
 
     it('requires authentication, account context and the feed feature for health', async () => {
         expect((await app.inject('/feeds/google/health')).statusCode).toBe(401);

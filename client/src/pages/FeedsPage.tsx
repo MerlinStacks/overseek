@@ -44,6 +44,8 @@ interface FeedMapping {
     targetField: string;
     sourceField: string;
     fallbackSourceField?: string;
+    manualValue?: string;
+    fallbackManualValue?: string;
     required?: boolean;
 }
 
@@ -70,6 +72,7 @@ const LOCKED_FEED_FIELDS = new Set(['id', 'sku']);
 const MIN_FEED_COLUMN_WIDTH = 120;
 const MAX_FEED_COLUMN_WIDTH = 720;
 const SOURCE_FIELD_OPTIONS = [
+    { value: 'manual', label: 'Manual' },
     { value: 'wooId', label: 'Product ID' },
     { value: 'sku', label: 'SKU' },
     { value: 'name', label: 'Product name' },
@@ -993,7 +996,7 @@ export function FeedsPage() {
                             <div>
                                 <h2 className="text-base font-semibold text-slate-900 dark:text-white">Column mapping ({activeChannel})</h2>
                                 <p className="text-xs text-slate-600 dark:text-slate-400">
-                                    Choose which product data feeds each catalog field. Product ID and SKU are locked. Only use a genuine manufacturer part number for MPN, not an internal SKU.
+                                    Choose product data or Manual to enter a fixed value for all items in this channel. Per-item overrides still take precedence. Product ID and SKU are locked. Only use a genuine manufacturer part number for MPN, not an internal SKU.
                                 </p>
                             </div>
                             <button
@@ -1051,6 +1054,7 @@ export function FeedsPage() {
                                                         <select
                                                             className="w-52 px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 disabled:opacity-60"
                                                             value={mapping.sourceField}
+                                                            aria-label={`Source for ${mapping.targetField}`}
                                                             disabled={locked}
                                                             onChange={(e) => updateMappingDraft(mapping.targetField, { sourceField: e.target.value })}
                                                         >
@@ -1058,11 +1062,23 @@ export function FeedsPage() {
                                                                 <option key={option.value} value={option.value}>{option.label}</option>
                                                             ))}
                                                         </select>
+                                                        {mapping.sourceField === 'manual' && !locked && (
+                                                            <input
+                                                                type="text"
+                                                                aria-label={`Manual value for ${mapping.targetField}`}
+                                                                placeholder="Value for all items"
+                                                                maxLength={10000}
+                                                                className="mt-2 block w-52 px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                                                                value={mapping.manualValue || ''}
+                                                                onChange={(e) => updateMappingDraft(mapping.targetField, { manualValue: e.target.value })}
+                                                            />
+                                                        )}
                                                     </td>
                                                     <td className="py-2 px-3">
                                                         <select
                                                             className="w-52 px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 disabled:opacity-60"
                                                             value={mapping.fallbackSourceField || ''}
+                                                            aria-label={`Fallback for ${mapping.targetField}`}
                                                             disabled={locked}
                                                             onChange={(e) => updateMappingDraft(mapping.targetField, { fallbackSourceField: e.target.value || undefined })}
                                                         >
@@ -1071,6 +1087,17 @@ export function FeedsPage() {
                                                                 <option key={option.value} value={option.value}>{option.label}</option>
                                                             ))}
                                                         </select>
+                                                        {mapping.fallbackSourceField === 'manual' && !locked && (
+                                                            <input
+                                                                type="text"
+                                                                aria-label={`Manual fallback value for ${mapping.targetField}`}
+                                                                placeholder="Value when source is empty"
+                                                                maxLength={10000}
+                                                                className="mt-2 block w-52 px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                                                                value={mapping.fallbackManualValue || ''}
+                                                                onChange={(e) => updateMappingDraft(mapping.targetField, { fallbackManualValue: e.target.value })}
+                                                            />
+                                                        )}
                                                     </td>
                                                     <td className="py-2 px-3">
                                                         <input

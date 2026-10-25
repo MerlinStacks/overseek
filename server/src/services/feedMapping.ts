@@ -38,7 +38,16 @@ export interface FeedFieldMapping {
     targetField: string;
     sourceField: string;
     fallbackSourceField?: string;
+    manualValue?: string;
+    fallbackManualValue?: string;
     required?: boolean;
+}
+
+/** Literal mapping values bypass product lookups, but not row overrides or validation. */
+function mappingSourceValue(mapping: FeedFieldMapping, read: (source: string) => string | null, fallback = false): string | null {
+    const source = fallback ? mapping.fallbackSourceField : mapping.sourceField;
+    if (!source) return null;
+    return source === 'manual' ? (fallback ? mapping.fallbackManualValue : mapping.manualValue) || null : read(source);
 }
 
 export interface GoogleProductCategoryOption {
@@ -1056,11 +1065,11 @@ export class FeedMappingService {
             const sharedAiSuggestions = getSharedFeedAiSuggestions(product.seoData);
             const mapColumns = (valueReader: (sourceField: string) => string | null, overridePrefix?: string) => {
                 const columns = mappings.map((mapping) => {
-                    const raw = valueReader(mapping.sourceField);
+                    const raw = mappingSourceValue(mapping, valueReader);
                     // An absent Woo sale is intentional; a regular-price fallback invents a sale.
                     const absentWooSale = (channel === 'google' || channel === 'meta')
                         && mapping.targetField === 'sale_price' && mapping.sourceField === 'salePrice' && !raw;
-                    const fallback = mapping.fallbackSourceField && !absentWooSale ? valueReader(mapping.fallbackSourceField) : null;
+                    const fallback = !absentWooSale ? mappingSourceValue(mapping, valueReader, true) : null;
                     const mapped = raw || fallback;
                     const overrideKey = overridePrefix ? `${overridePrefix}:${mapping.targetField}` : mapping.targetField;
                     const isSharedRewrite = SHARED_REWRITE_FIELDS.has(mapping.targetField);
@@ -1080,8 +1089,8 @@ export class FeedMappingService {
                         ? sharedAiSuggestions.description || aiSuggestions.description || googleAiSuggestions.description : null;
                     const useParentSource = inheritsDescription && product.seoData?.feedDescriptionInheritance?.[overridePrefix] === true;
                     const parentMapped = useParentSource
-                        ? getSourceValue(mapping.sourceField, product, account || undefined, categoryPriority, channel)
-                            || (mapping.fallbackSourceField ? getSourceValue(mapping.fallbackSourceField, product, account || undefined, categoryPriority, channel) : null)
+                        ? mappingSourceValue(mapping, (source) => getSourceValue(source, product, account || undefined, categoryPriority, channel))
+                            || mappingSourceValue(mapping, (source) => getSourceValue(source, product, account || undefined, categoryPriority, channel), true)
                         : null;
                     const finalValue = override || aiSuggestedValue || inheritedOverride || inheritedSuggestion || (useParentSource ? parentMapped : mapped);
 
@@ -1409,14 +1418,11 @@ export class FeedMappingService {
         const rowData = mappings
             .filter((m) => fields.includes(m.targetField))
             .map((m) => {
-                const raw = variation
-                    ? getVariationSourceValue(m.sourceField, variation, product)
-                    : getSourceValue(m.sourceField, product);
-                const fallback = m.fallbackSourceField
-                    ? (variation
-                        ? getVariationSourceValue(m.fallbackSourceField, variation, product)
-                        : getSourceValue(m.fallbackSourceField, product))
-                    : null;
+                const read = (source: string) => variation
+                    ? getVariationSourceValue(source, variation, product)
+                    : getSourceValue(source, product);
+                const raw = mappingSourceValue(m, read);
+                const fallback = mappingSourceValue(m, read, true);
                 return { targetField: m.targetField, value: raw || fallback || '' };
             });
 

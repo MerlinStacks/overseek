@@ -36,6 +36,33 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear(); });
 
 describe('Automatic feed groups', () => {
+    it('edits and saves manual source and fallback mapping values', async () => {
+        mocks.data['feed-mappings'] = { mappings: [
+            { targetField: 'id', sourceField: 'wooId' },
+            { targetField: 'brand', sourceField: 'brand' },
+        ] };
+        mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ mappings: [
+            { targetField: 'id', sourceField: 'wooId' },
+            { targetField: 'brand', sourceField: 'manual', manualValue: 'CustomKings', fallbackSourceField: 'manual', fallbackManualValue: 'Fallback brand' },
+        ] }) });
+        render(<FeedsPage />);
+        fireEvent.click(screen.getByRole('button', { name: 'Feed settings' }));
+        expect(screen.getByRole('combobox', { name: 'Source for id' })).toBeDisabled();
+        fireEvent.change(screen.getByRole('combobox', { name: 'Source for brand' }), { target: { value: 'manual' } });
+        fireEvent.change(screen.getByRole('textbox', { name: 'Manual value for brand' }), { target: { value: 'CustomKings' } });
+        fireEvent.change(screen.getByRole('combobox', { name: 'Fallback for brand' }), { target: { value: 'manual' } });
+        fireEvent.change(screen.getByRole('textbox', { name: 'Manual fallback value for brand' }), { target: { value: 'Fallback brand' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save mappings' }));
+        await waitFor(() => expect(mocks.fetch).toHaveBeenCalledWith('/api/feeds/mappings/google', expect.objectContaining({
+            method: 'PUT', body: JSON.stringify({ mappings: [
+                { targetField: 'id', sourceField: 'wooId' },
+                { targetField: 'brand', sourceField: 'manual', manualValue: 'CustomKings', fallbackSourceField: 'manual', fallbackManualValue: 'Fallback brand' },
+            ] }),
+        })));
+        await waitFor(() => expect(mocks.success).toHaveBeenCalledWith('Feed mappings saved.'));
+        expect(screen.getByRole('textbox', { name: 'Manual value for brand' })).toHaveValue('CustomKings');
+    });
+
     it('collapses variants and saves the group description without a variation prefix', async () => {
         render(<FeedsPage />);
         expect(screen.queryByText('SKU-11')).not.toBeInTheDocument();

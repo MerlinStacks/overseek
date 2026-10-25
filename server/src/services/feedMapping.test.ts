@@ -399,6 +399,43 @@ describe('FeedMappingService channel data and health', () => {
         mockPrisma.account.findUnique.mockResolvedValue({ name: 'Store', currency: 'AUD', timezone: 'Australia/Sydney' });
     });
 
+    it.each(['google', 'meta', 'pinterest', 'similar'])('persists and exports manual mapping values for %s products and variants', async (channel) => {
+        const mappings = [
+            { targetField: 'brand', sourceField: 'manual', manualValue: 'CustomKings & Co' },
+            { targetField: 'custom_label_1', sourceField: 'material', fallbackSourceField: 'manual', fallbackManualValue: '0' },
+            { targetField: 'id', sourceField: 'manual', manualValue: 'Do not change IDs' },
+        ];
+        const saved = await FeedMappingService.saveMappings('account-1', channel, mappings);
+        expect(saved.find((m) => m.targetField === 'brand')).toEqual(mappings[0]);
+        expect(saved.find((m) => m.targetField === 'id')?.sourceField).toBe('wooId');
+        const config = mockPrisma.accountFeature.upsert.mock.calls.at(-1)![0].update.config;
+        mockPrisma.accountFeature.findUnique.mockResolvedValue({ config });
+        expect(await FeedMappingService.getMappings('account-1', channel)).toEqual(expect.arrayContaining(saved));
+        mockPrisma.wooProduct.findMany.mockResolvedValue([
+            base(1),
+            { ...base(2, { type: 'variable' }), variations: [21, 22].map((wooId) => ({ wooId, price: '12', stockStatus: 'instock', rawData: {} })) },
+            { ...base(3), seoData: { feedOverrides: { [channel]: { brand: 'Individual brand' } } } },
+        ]);
+        const result = await FeedMappingService.getFeedRows('account-1', channel, 1, 50, '', 'all_variations');
+        expect(result.rows.map((row) => value(row, 'brand'))).toEqual(['CustomKings & Co', 'CustomKings & Co', 'CustomKings & Co', 'Individual brand']);
+        expect(result.rows.map((row) => value(row, 'id'))).toEqual(['1', '2-21', '2-22', '3']);
+        expect(value(result.rows[0], 'custom_label_1')).toBe('0');
+        expect(await FeedMappingService.getFeedExportXml('account-1', channel)).toContain('CustomKings &amp; Co');
+        expect(await FeedMappingService.getFeedExportCsv('account-1', channel)).toContain('"CustomKings & Co"');
+    });
+
+    it('uses manual fallbacks only when needed and validates empty required manual values', async () => {
+        mockPrisma.accountFeature.findUnique.mockResolvedValue({ config: { mappings: { google: [
+            { targetField: 'title', sourceField: 'manual', manualValue: '', required: true },
+            { targetField: 'brand', sourceField: 'brand', fallbackSourceField: 'manual', fallbackManualValue: 'Default brand' },
+        ] } } });
+        mockPrisma.wooProduct.findMany.mockResolvedValue([base(1, { brands: [{ name: 'Real brand' }] }), base(2)]);
+        const result = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'automatic');
+        expect(result.rows.map((row) => value(row, 'brand'))).toEqual(['Real brand', 'Default brand']);
+        expect(value(result.rows[0], 'title')).toBeNull();
+        expect(result.rows[0].columns.find((c: any) => c.targetField === 'title')?.isMissingRequired).toBe(true);
+    });
+
     it.each(['google', 'meta'])('exports regular/sale prices without SKU-as-MPN or invented identifiers for %s', async (channel) => {
         mockPrisma.wooProduct.findMany.mockResolvedValue([base(1)]);
         const result = await FeedMappingService.getFeedRows('account-1', channel, 1, 50, '', 'variable_parent');

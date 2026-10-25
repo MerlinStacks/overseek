@@ -10,6 +10,8 @@ Woo GMT timestamps take precedence. Local-only timestamps use the account timezo
 
 ## Identifiers and attributes
 
+In Feeds → Settings → Column mapping, choose **Manual** as a source and enter a fixed value, such as `CustomKings` for `brand`. Values are saved per account and channel and apply to simple products and variations in previews and exports. Manual is also available as a fallback when the primary source is empty. Existing per-item overrides/AI suggestions remain authoritative, validation still applies, and ID/SKU mappings remain locked. Empty manual values are treated as missing, not exported as the word "manual". No WooCommerce product data is changed.
+
 The Google/Meta defaults read Woo `global_unique_id`, GTIN/EAN/UPC fields and supported metadata; MPN comes only from explicit manufacturer-part-number fields/metadata. SKU is no longer automatically advertised as an MPN, merchant account name is no longer fabricated as the manufacturer brand, and variants no longer borrow parent barcodes/MPNs.
 
 Google `identifier_exists` is `yes` when identifiers are present, or the explicit configured value. Missing identifiers alone remain unknown, not automatically `no`. Confirm genuinely identifier-free goods by editing `identifier_exists` to `no` in the Google spreadsheet/product feed editor. MPN is now editable as well. Existing explicit overrides are preserved and conflicts flagged. Invalid GTINs remain visible with format/check-digit errors; the health scan also warns about repeated GTINs.
