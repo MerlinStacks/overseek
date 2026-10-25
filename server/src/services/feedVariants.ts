@@ -1,10 +1,14 @@
 type Raw = Record<string, any>;
 
+const rawRecord = (value: unknown): Raw | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Raw : null;
+
 export const VARIANT_FIELDS = ['color', 'size', 'material', 'pattern', 'age_group', 'gender', 'size_type', 'size_system'] as const;
 
-export function variantAttributeField(attribute: Raw): string | null {
+export function variantAttributeField(attribute: unknown): string | null {
+    const record = rawRecord(attribute);
+    if (!record) return null;
     const aliases: Record<string, string> = { colour: 'color', agegroup: 'age_group', sizetype: 'size_type', sizesystem: 'size_system' };
-    for (const value of [attribute.slug, attribute.name]) {
+    for (const value of [record.slug, record.name]) {
         const key = String(value || '').toLowerCase().replace(/^attribute_/, '').replace(/^pa_/, '').replace(/[\s-]+/g, '_');
         const field = aliases[key] || key;
         if ((VARIANT_FIELDS as readonly string[]).includes(field)) return field;
@@ -23,9 +27,12 @@ export function platformVariantValue(field: string, value: string | null, channe
 }
 
 /** Resolve Woo global attribute IDs against their real parent definitions, never guessed labels. */
-export function resolvedVariantRaw(raw: Raw = {}, parent: Raw = {}): Raw {
-    const definitions: Raw[] = Array.isArray(parent.attributes) ? parent.attributes : [];
-    const attrs: Raw[] = Array.isArray(raw.attributes) ? raw.attributes : [];
+export function resolvedVariantRaw(raw: Raw | null = {}, parent: Raw | null = {}): Raw {
+    // Synced JSON payloads may be explicitly null; parameter defaults only cover undefined.
+    raw = raw ?? {};
+    parent = parent ?? {};
+    const definitions: Raw[] = Array.isArray(parent.attributes) ? parent.attributes.map(rawRecord).filter((value): value is Raw => !!value) : [];
+    const attrs: Raw[] = Array.isArray(raw.attributes) ? raw.attributes.map(rawRecord).filter((value): value is Raw => !!value) : [];
     return { ...raw, attributes: attrs.map((attribute) => {
         const definition = definitions.find((candidate) =>
             (Number(attribute.id) > 0 && Number(candidate.id) === Number(attribute.id))

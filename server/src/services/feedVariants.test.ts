@@ -2,6 +2,28 @@ import { describe, expect, it } from 'vitest';
 import { isFeedVariable, platformVariantValue, resolvedVariantRaw, variantAttributeField, variantLandingLink } from './feedVariants';
 
 describe('automatic feed variant data', () => {
+    it.each([
+        [null, null], [null, {}], [{}, null], [undefined, undefined],
+    ])('handles missing Woo payloads (%j, %j) without inventing attributes', (raw, parent) => {
+        expect(resolvedVariantRaw(raw, parent)).toEqual({ attributes: [] });
+    });
+
+    it('preserves available variant data when the parent Woo payload is null', () => {
+        const raw = { price: '12', attributes: [{ name: 'Size', option: 'Large' }] };
+        expect(resolvedVariantRaw(raw, null)).toEqual(raw);
+        expect(variantLandingLink({ wooId: 11, rawData: null }, { rawData: null, permalink: 'https://example.com/product/' }))
+            .toEqual({ url: 'https://example.com/product/?variation_id=11', preselected: false });
+    });
+
+    it('ignores malformed entries inside Woo attribute arrays', () => {
+        const resolved = resolvedVariantRaw({ attributes: [null, 'bad', 12, [], { id: 7, option: 'Blue' }] }, {
+            attributes: [null, 'bad', { id: 7, name: 'Colour', slug: 'pa_colour' }],
+        });
+        expect(resolved.attributes).toEqual([{ id: 7, name: 'Colour', slug: 'pa_colour', option: 'Blue' }]);
+        expect(variantAttributeField(null)).toBeNull();
+        expect(variantAttributeField('Size')).toBeNull();
+    });
+
     it('detects actual relations, Woo type and Woo variant IDs', () => {
         expect(isFeedVariable({ rawData: { type: 'simple' }, variations: [] })).toBe(false);
         expect(isFeedVariable({ rawData: { type: 'variable' } })).toBe(true);

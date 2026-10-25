@@ -302,9 +302,14 @@ function variationsInheritMainVideo(rawData: any): boolean {
 }
 
 function mergeMappingsWithDefaults(channel: FeedChannel, mappings?: FeedFieldMapping[]): FeedFieldMapping[] {
-    if (!mappings || mappings.length === 0) return DEFAULT_MAPPINGS[channel];
+    const validMappings = Array.isArray(mappings) ? mappings.filter((mapping): mapping is FeedFieldMapping =>
+        !!mapping && typeof mapping === 'object'
+        && typeof mapping.targetField === 'string' && !!mapping.targetField
+        && typeof mapping.sourceField === 'string' && !!mapping.sourceField,
+    ) : [];
+    if (validMappings.length === 0) return DEFAULT_MAPPINGS[channel];
 
-    const normalizedMappings = mappings
+    const normalizedMappings = validMappings
         .filter((mapping) => channel !== 'google'
             || (!GOOGLE_LOCAL_INVENTORY_FIELDS.has(mapping.targetField)
                 && !GOOGLE_LOCAL_INVENTORY_SOURCES.has(mapping.sourceField)))
@@ -371,12 +376,12 @@ function variantIssues(variation: any, parent: any, columns: any[], channel: Fee
     if (values.item_group_id !== String(parent.wooId)) add('item_group_id', 'variant_group_mismatch', 'Use the same parent group ID for sibling variations. A custom mapping or override differs from the detected parent.');
     const raw = resolvedVariantRaw(variation.rawData, parent.rawData);
     const parentAttributes = Array.isArray(parent.rawData?.attributes) ? parent.rawData.attributes : [];
-    const dimensions = [...parentAttributes.filter((attr: any) => attr.variation === true), ...raw.attributes];
+    const dimensions = [...parentAttributes.filter((attr: any) => attr?.variation === true), ...raw.attributes];
     const expected = new Set([...siblingFields, ...dimensions.map(variantAttributeField).filter(Boolean)]);
     expected.forEach((field) => {
         if (!values[field]) add(field, 'missing_variant_attribute', `The product varies by ${field}, but this variation has no unambiguous ${field} value. Sync its selected option or provide a feed override.`);
     });
-    const unsupported = [...new Set(dimensions.filter((attr) => !variantAttributeField(attr)).map((attr) => attr.name || attr.slug || `attribute ${attr.id}`))];
+    const unsupported = [...new Set(dimensions.filter((attr) => attr && !variantAttributeField(attr)).map((attr) => attr?.name || attr?.slug || `attribute ${attr?.id || 'unknown'}`))];
     if (unsupported.length) add('item_group_id', 'unsupported_variant_dimensions', `No standard variant field was guessed for: ${unsupported.join(', ')}. These choices remain in the title/landing-page selection. Check platform grouping eligibility, especially on Google.`);
     if (raw.attributes.some((attr: any) => !attr.option && !(Array.isArray(attr.options) && attr.options.length === 1))) {
         add('link', 'ambiguous_variant_selection', 'This variation has an unspecified/Any option. No combinations or product details were invented; confirm the landing-page selection.');
@@ -429,6 +434,14 @@ function getModernSourceValue(sourceField: string, product: any, account?: FeedA
             return platformVariantValue(sourceField, feedAttribute(raw, sourceField) || (parent ? feedAttribute(parent.rawData, sourceField) : null), channel);
         default: return undefined;
     }
+}
+
+/** Keep malformed structured Woo values from reaching string-only validators/exporters. */
+function feedScalar(value: unknown): string | null {
+    if (value == null) return null;
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    return null;
 }
 
 function getSourceValue(sourceField: string, product: any, account?: FeedAccountContext, categoryPriority: string[] = [], channel?: FeedChannel): string | null {
@@ -530,13 +543,18 @@ function getFeedOverrides(seoData: any, channel: FeedChannel): Record<string, st
     if (!overrides || typeof overrides !== 'object') return {};
     const channelOverrides = overrides[channel];
     if (!channelOverrides || typeof channelOverrides !== 'object') return {};
-    return channelOverrides as Record<string, string>;
+    return stringValues(channelOverrides);
+}
+
+function stringValues(value: unknown): Record<string, string> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
 }
 
 function getSharedFeedOverrides(seoData: any): Record<string, string> {
     if (!seoData || typeof seoData !== 'object') return {};
     const overrides = seoData.feedOverrides?.shared;
-    return overrides && typeof overrides === 'object' ? overrides as Record<string, string> : {};
+    return stringValues(overrides);
 }
 
 function isProductExcludedFromFeeds(seoData: unknown): boolean {
@@ -549,13 +567,13 @@ function getFeedAiSuggestions(seoData: any, channel: FeedChannel): Record<string
     if (!suggestions || typeof suggestions !== 'object') return {};
     const channelSuggestions = suggestions[channel];
     if (!channelSuggestions || typeof channelSuggestions !== 'object') return {};
-    return channelSuggestions as Record<string, string>;
+    return stringValues(channelSuggestions);
 }
 
 function getSharedFeedAiSuggestions(seoData: any): Record<string, string> {
     if (!seoData || typeof seoData !== 'object') return {};
     const suggestions = seoData.feedAiSuggestions?.shared;
-    return suggestions && typeof suggestions === 'object' ? suggestions as Record<string, string> : {};
+    return stringValues(suggestions);
 }
 
 export class FeedMappingService {
@@ -650,6 +668,7 @@ export class FeedMappingService {
         const { rows } = await this.getFeedRows(accountId, channel, 1, Number.MAX_SAFE_INTEGER, '', variationMode);
 
         const xmlEscape = (value: string): string => value
+            .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
@@ -671,6 +690,8 @@ export class FeedMappingService {
             const gFields = Array.from(values.entries())
                 .flatMap(([key, value]) => {
                     if (key === 'link') return [];
+                    // A damaged/custom mapping must not create malformed XML element names.
+                    if (!/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(key)) return [];
 
                     const fieldValue = key === 'description' ? (stripHtml(value) || '') : value;
                     if (key === 'additional_image_link') {
@@ -1065,11 +1086,11 @@ export class FeedMappingService {
             const sharedAiSuggestions = getSharedFeedAiSuggestions(product.seoData);
             const mapColumns = (valueReader: (sourceField: string) => string | null, overridePrefix?: string) => {
                 const columns = mappings.map((mapping) => {
-                    const raw = mappingSourceValue(mapping, valueReader);
+                    const raw = feedScalar(mappingSourceValue(mapping, valueReader));
                     // An absent Woo sale is intentional; a regular-price fallback invents a sale.
                     const absentWooSale = (channel === 'google' || channel === 'meta')
                         && mapping.targetField === 'sale_price' && mapping.sourceField === 'salePrice' && !raw;
-                    const fallback = !absentWooSale ? mappingSourceValue(mapping, valueReader, true) : null;
+                    const fallback = !absentWooSale ? feedScalar(mappingSourceValue(mapping, valueReader, true)) : null;
                     const mapped = raw || fallback;
                     const overrideKey = overridePrefix ? `${overridePrefix}:${mapping.targetField}` : mapping.targetField;
                     const isSharedRewrite = SHARED_REWRITE_FIELDS.has(mapping.targetField);
@@ -1092,7 +1113,7 @@ export class FeedMappingService {
                         ? mappingSourceValue(mapping, (source) => getSourceValue(source, product, account || undefined, categoryPriority, channel))
                             || mappingSourceValue(mapping, (source) => getSourceValue(source, product, account || undefined, categoryPriority, channel), true)
                         : null;
-                    const finalValue = override || aiSuggestedValue || inheritedOverride || inheritedSuggestion || (useParentSource ? parentMapped : mapped);
+                    const finalValue = feedScalar(override || aiSuggestedValue || inheritedOverride || inheritedSuggestion || (useParentSource ? parentMapped : mapped));
 
                     return {
                         targetField: mapping.targetField,

@@ -32,7 +32,9 @@ const httpUrl = (value: string): boolean => {
 
 export function validateFeedColumns(channel: string, columns: FeedValidationColumn[], now = new Date()): FeedIssue[] {
     if (channel !== 'google' && channel !== 'meta') return [];
-    const values = Object.fromEntries(columns.map((column) => [column.targetField, (column.finalValue || '').trim()]));
+    const values = Object.fromEntries(columns.map((column) => [column.targetField,
+        typeof column.finalValue === 'string' ? column.finalValue.trim() : '',
+    ]));
     const issues: FeedIssue[] = [];
     const add = (field: string, code: string, message: string, severity: FeedIssue['severity'] = 'error') => {
         issues.push({ severity, field, code, message });

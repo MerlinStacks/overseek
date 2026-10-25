@@ -436,6 +436,86 @@ describe('FeedMappingService channel data and health', () => {
         expect(result.rows[0].columns.find((c: any) => c.targetField === 'title')?.isMissingRequired).toBe(true);
     });
 
+    it.each(['google', 'meta', 'pinterest', 'similar'])('keeps %s rows and exports available when Woo payloads are null', async (channel) => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([
+            base(1),
+            { ...base(2, { type: 'variable', attributes: [{ name: 'Size', variation: true, options: ['Large', 'Small'] }] }), variations: [
+                { wooId: 21, price: '12', stockStatus: 'instock', rawData: null },
+                { wooId: 22, price: '13', stockStatus: 'instock', rawData: { attributes: [{ name: 'Size', option: 'Small' }] } },
+            ] },
+            { ...base(3), rawData: null, variations: [
+                { wooId: 31, price: '14', stockStatus: 'instock', rawData: null },
+                { wooId: 32, price: '15', stockStatus: 'instock', rawData: { attributes: [{ name: 'Size', option: 'Large' }] } },
+            ] },
+            { ...base(4), rawData: null },
+        ]);
+        const result = await FeedMappingService.getFeedRows('account-1', channel, 1, 50, '', 'automatic', undefined, true, true);
+        expect(result.rows.map((row) => row.rowId)).toEqual(['p:1', 'v:2-21', 'v:2-22', 'v:3-31', 'v:3-32', 'p:4']);
+        expect(result.health?.included).toBe(6);
+        expect(value(result.rows[1], 'price')).toBe('12.00 AUD');
+        if (channel === 'google' || channel === 'meta') {
+            expect(value(result.rows[1], 'size')).toBeNull();
+            expect(result.rows[1].issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'missing_variant_attribute', field: 'size' })]));
+            expect(value(result.rows[4], 'size')).toBe('Large');
+        }
+        const refs = await FeedMappingService.getFeedRowRefs('account-1', channel, '', 'automatic');
+        expect(refs.rows.map((row) => row.rowId)).toEqual(result.rows.map((row) => row.rowId));
+        expect(await FeedMappingService.getFeedExportXml('account-1', channel)).toContain('3-31');
+        expect(await FeedMappingService.getFeedExportCsv('account-1', channel)).toContain('3-31');
+    });
+
+    it.each(['google', 'meta'])('isolates malformed Woo attributes and structured field values in %s feeds', async (channel) => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{
+            ...base(1, { type: 'variable', condition: { label: 'new' }, google_product_category: { id: 123 },
+                brands: [{ name: { text: 'Brand' } }], attributes: [null, 'bad', { name: 'Size', variation: true, options: ['Large'] }],
+            }),
+            variations: [{ wooId: 11, price: '12', stockStatus: 'instock', rawData: {
+                attributes: [null, false, [], { name: 'Size', option: 'Large' }],
+            } }],
+        }]);
+        const result = await FeedMappingService.getFeedRows('account-1', channel, 1, 50, '', 'automatic', undefined, true);
+        expect(result.rows).toHaveLength(1);
+        expect(value(result.rows[0], 'size')).toBe('Large');
+        expect(value(result.rows[0], 'brand')).toBeNull();
+        expect(value(result.rows[0], 'condition')).toBeNull();
+        expect(value(result.rows[0], 'google_product_category')).toBeNull();
+        expect(result.rows[0].issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'missing_required', field: 'condition' })]));
+        await expect(FeedMappingService.getFeedExportXml('account-1', channel)).resolves.toContain('Large');
+        await expect(FeedMappingService.getFeedExportCsv('account-1', channel)).resolves.toContain('Large');
+    });
+
+    it('falls back from malformed saved mappings and ignores non-string saved copy', async () => {
+        mockPrisma.accountFeature.findUnique.mockResolvedValue({ config: { mappings: {
+            google: [null, 'bad', {}, { targetField: 'brand', sourceField: 'manual', manualValue: { text: 'Bad brand' } },
+                { targetField: 'bad field><broken', sourceField: 'name' }],
+            meta: { title: 'not an array' },
+        } } });
+        const googleMappings = await FeedMappingService.getMappings('account-1', 'google');
+        const metaMappings = await FeedMappingService.getMappings('account-1', 'meta');
+        expect(googleMappings.find((mapping) => mapping.targetField === 'brand')?.sourceField).toBe('manual');
+        expect(metaMappings.find((mapping) => mapping.targetField === 'title')?.sourceField).toBe('name');
+
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{
+            ...base(1), seoData: { feedOverrides: { google: { title: { text: 'Bad title' }, brand: ['Bad brand'] } },
+                feedAiSuggestions: { google: { description: 123 } } },
+        }]);
+        const result = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'automatic', undefined, true);
+        expect(result.rows).toHaveLength(1);
+        expect(value(result.rows[0], 'title')).toBe('Product 1');
+        expect(value(result.rows[0], 'description')).toBe('A useful product');
+        expect(value(result.rows[0], 'brand')).toBeNull();
+        const xml = await FeedMappingService.getFeedExportXml('account-1', 'google');
+        expect(xml).toContain('Product 1');
+        expect(xml).not.toContain('bad field');
+    });
+
+    it('removes XML control characters without changing the feed item', async () => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{ ...base(1), name: 'Product\u0000 One\u000B' }]);
+        const xml = await FeedMappingService.getFeedExportXml('account-1', 'google');
+        expect(xml).toContain('<g:title>Product One</g:title>');
+        expect(xml).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/);
+    });
+
     it.each(['google', 'meta'])('exports regular/sale prices without SKU-as-MPN or invented identifiers for %s', async (channel) => {
         mockPrisma.wooProduct.findMany.mockResolvedValue([base(1)]);
         const result = await FeedMappingService.getFeedRows('account-1', channel, 1, 50, '', 'variable_parent');
