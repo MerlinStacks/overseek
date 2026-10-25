@@ -35,4 +35,15 @@ describe('MergeModal', () => {
         await waitFor(() => expect(onMerge).toHaveBeenCalledWith('source-1'));
         expect(screen.getByText('Messages from the selected conversation will be merged into the current one')).toBeInTheDocument();
     });
+
+    it('keeps the dialog open and shows a rejected merge', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ conversations: [{
+            id: 'source', guestName: 'Source', status: 'OPEN', updatedAt: '2026-08-07T00:00:00Z',
+        }] }))));
+        const close = vi.fn();
+        render(<MergeModal isOpen onClose={close} onMerge={vi.fn().mockRejectedValue(new Error('403'))} currentConversationId="target" />);
+        fireEvent.click((await screen.findByText('Source')).closest('button')!);
+        expect(await screen.findByRole('alert')).toHaveTextContent('Could not confirm merge');
+        expect(close).not.toHaveBeenCalled();
+    });
 });

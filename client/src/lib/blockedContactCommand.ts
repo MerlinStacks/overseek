@@ -11,14 +11,20 @@ export async function changeBlockedContact(token: string, accountId: string, tar
     uncertain.set(key, operationId);
     let submitted = false;
     const headers = { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId, 'Content-Type': 'application/json' };
-    const requestSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000);
+    // Older browsers support AbortController but not AbortSignal.any/timeout.
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
+    const timeout = setTimeout(abort, 15000);
+    const requestSignal = controller.signal;
     try {
         const readUrl = 'conversationId' in target ? `/api/chat/${encodeURIComponent(target.conversationId)}/block-state` : `/api/chat/block/check/${encodeURIComponent(target.email)}`;
         const read = await fetch(readUrl, { headers, signal: requestSignal });
         if (!read.ok) throw new Error('Block state unavailable; no command submitted');
         const observed = snapshot.parse(JSON.parse(new TextDecoder().decode(await readBoundedBytes(read, 64000))));
         if (observed.accountId !== accountId) throw new Error('Block scope mismatch');
-        requestSignal.throwIfAborted();
+        if (requestSignal.aborted) throw new Error('Block request cancelled');
         const path = 'conversationId' in target ? `/api/chat/${encodeURIComponent(target.conversationId)}/block` : blocked ? '/api/chat/block' : `/api/chat/block/${encodeURIComponent(observed.email)}`;
         const body = { operationId, version: observed.version, ...(observed.conversationVersion ? { conversationVersion: observed.conversationVersion } : {}), ...(blocked ? { email: observed.email, reason: 'Blocked from inbox' } : {}) };
         submitted = true;
@@ -30,5 +36,8 @@ export async function changeBlockedContact(token: string, accountId: string, tar
     } catch (error) {
         if (!submitted) { uncertain.delete(key); throw error; }
         throw Object.assign(new Error(`Block command unconfirmed. Reconcile operation ${operationId}; do not repeat with a new identity.`), { cause: error });
+    } finally {
+        clearTimeout(timeout);
+        signal?.removeEventListener('abort', abort);
     }
 }

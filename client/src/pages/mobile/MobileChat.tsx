@@ -95,6 +95,10 @@ export function MobileChat() {
         isRichText,
         isGeneratingDraft,
         sendError,
+        hasMoreMessages,
+        isLoadingOlderMessages,
+        historyError,
+        loadOlderMessages,
         messagesEndRef,
         messagesContainerRef,
         inputRef,
@@ -216,6 +220,11 @@ export function MobileChat() {
 
             {/* Messages */}
             <div ref={messagesContainerRef} className={`${expanded ? 'hidden' : ''} min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain bg-slate-950 p-4`}>
+                {hasMoreMessages && <button type="button" onClick={loadOlderMessages} disabled={isLoadingOlderMessages}
+                    className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 disabled:opacity-50">
+                    {isLoadingOlderMessages ? 'Loading older messages...' : 'Load older messages'}
+                </button>}
+                {historyError && <p role="alert" className="text-sm text-rose-200">{historyError}</p>}
                 {messages.length === 0 ? (
                     <div className="rounded-[2rem] border border-white/10 bg-slate-900 px-5 py-14 text-center">
                         <MessageSquare className="mx-auto mb-3 text-slate-600" size={36} />
@@ -236,13 +245,19 @@ export function MobileChat() {
                                     className={`flex mb-2 ${msg.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}
                                 >
                                     <div
-                                        className={`max-w-[82%] rounded-xl px-4 py-3 ${msg.deliveryStatus === 'FAILED'
-                                            ? 'rounded-br-lg border border-rose-400/40 bg-rose-500/20 text-rose-50'
+                                         className={`max-w-[82%] rounded-xl px-4 py-3 ${msg.deliveryStatus === 'FAILED'
+                                             ? 'rounded-br-lg border border-rose-400/40 bg-rose-500/20 text-rose-50'
+                                             : msg.isInternal
+                                             ? 'border border-amber-400/30 bg-amber-400/10 text-amber-100'
+                                             : msg.scheduledFor
+                                             ? 'border border-slate-400/40 bg-slate-800 text-slate-100'
                                             : msg.direction === 'outbound'
                                             ? 'mobile-brand-solid border border-transparent rounded-br-lg'
                                             : 'rounded-bl-lg border border-slate-200 bg-white text-slate-900'
                                             }`}
-                                    >
+                                     >
+                                        {msg.isInternal && <p className="mb-2 text-xs font-bold">Internal note · Only visible to your team</p>}
+                                        {msg.scheduledFor && <p className="mb-2 text-xs font-bold">Scheduled · Not sent · {new Date(msg.scheduledFor).toLocaleString('en-AU')}</p>}
                                         {/<[a-z][\s\S]*>/i.test(msg.body) ? (
                                             <div
                                                 className="text-sm leading-relaxed [&_a]:text-inherit [&_a]:underline [&_img]:max-w-full [&_img]:rounded-xl"

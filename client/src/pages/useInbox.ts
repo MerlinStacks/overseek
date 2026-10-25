@@ -349,6 +349,7 @@ export function useInbox() {
             headers: buildHeaders(token, accountId, true),
             body: JSON.stringify(body),
         });
+        if (!res.ok) throw new Error(`Conversation update failed (${res.status})`);
         return res.ok && selectedIdRef.current === conversationId && accountIdRef.current === accountId;
     }, [selectedId, token, currentAccount]);
 
@@ -381,6 +382,7 @@ export function useInbox() {
                 headers: buildHeaders(token, currentAccount.id, true),
                 body: JSON.stringify({ until: snoozeUntil.toISOString() }),
             });
+            if (!res.ok) throw new Error(`Snooze failed (${res.status})`);
             ok = res.ok && selectedIdRef.current === selectedId && accountIdRef.current === accountId;
         } else {
             ok = await patchConversation({ status: newStatus });
@@ -415,6 +417,7 @@ export function useInbox() {
             headers: buildHeaders(token, accountId, true),
             body: JSON.stringify({ sourceId: targetConversationId }),
         });
+        if (!res.ok) throw new Error(`Merge failed (${res.status})`);
         if (res.ok && selectedIdRef.current === targetId && accountIdRef.current === accountId) await fetchConversations();
     }, [selectedId, token, currentAccount, fetchConversations]);
 

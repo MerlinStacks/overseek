@@ -40,6 +40,43 @@ describe('useMobileChat', () => {
 
     afterEach(() => vi.unstubAllGlobals());
 
+    it('blocks using the observed email and versions and waits for a matching acknowledgement', async () => {
+        const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+            const url = String(input);
+            if (url.endsWith('/block-state')) return new Response(JSON.stringify({
+                accountId: 'account-1', email: 'customer@example.com', version: null,
+                conversationVersion: '2026-01-01T00:00:00.000Z',
+            }));
+            if (url.endsWith('/block')) return new Response(JSON.stringify({
+                success: true, accountId: 'account-1', email: 'customer@example.com', blocked: true,
+                operationId: JSON.parse(String(init?.body)).operationId,
+            }));
+            return response(200, conversation);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const { result } = renderHook(() => useMobileChat('mobile-block-success'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        let ok: boolean | undefined;
+        await act(async () => { ok = await result.current.handleBlock(); });
+        expect(ok).toBe(true);
+        const [, init] = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/block'))!;
+        expect(init?.method).toBe('POST');
+        expect(JSON.parse(String(init?.body))).toMatchObject({
+            email: 'customer@example.com', version: null, conversationVersion: '2026-01-01T00:00:00.000Z', operationId: expect.any(String),
+        });
+    });
+
+    it('keeps the chat open and shows an error when blocking cannot be confirmed', async () => {
+        vi.stubGlobal('fetch', vi.fn(async input => String(input).endsWith('/block-state')
+            ? new Response('{}', { status: 403 }) : response(200, conversation)));
+        const { result } = renderHook(() => useMobileChat('mobile-block-denied'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        let ok: boolean | undefined;
+        await act(async () => { ok = await result.current.handleBlock(); });
+        expect(ok).toBe(false);
+        expect(result.current.sendError).toContain('Block state unavailable');
+    });
+
     it('inserts readable saved replies and preserves an existing draft', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => response(200, conversation)));
         const { result } = renderHook(() => useMobileChat('conversation-1'));

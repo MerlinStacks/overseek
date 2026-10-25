@@ -23,6 +23,26 @@ describe('MobileChat composer', () => {
 
     beforeEach(() => vi.clearAllMocks());
 
+    it('labels private notes and unsent scheduled replies distinctly', () => {
+        useMobileChatMock.mockReturnValue({ ...state(), messages: [
+            { id: 'note', direction: 'outbound', body: 'Private', isInternal: true, createdAt: '2026-10-22T10:00:00Z' },
+            { id: 'scheduled', direction: 'outbound', body: 'Future reply', scheduledFor: '2099-01-01T10:00:00Z', createdAt: '2026-10-22T10:00:00Z' },
+        ] });
+        render(<MemoryRouter><MobileChat /></MemoryRouter>);
+        expect(screen.getByText(/Internal note · Only visible/)).toBeInTheDocument();
+        expect(screen.getByText(/Scheduled · Not sent/)).toBeInTheDocument();
+        expect(screen.getByText('Private').parentElement).not.toHaveClass('mobile-brand-solid');
+    });
+
+    it('offers history loading and shows failures without hiding the thread', () => {
+        const load = vi.fn();
+        useMobileChatMock.mockReturnValue({ ...state(), hasMoreMessages: true, loadOlderMessages: load, historyError: 'Could not load older messages.' });
+        render(<MemoryRouter><MobileChat /></MemoryRouter>);
+        fireEvent.click(screen.getByRole('button', { name: 'Load older messages' }));
+        expect(load).toHaveBeenCalledOnce();
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not load older messages.');
+    });
+
     it('renders incoming messages on a light surface with dark text and readable timestamps', () => {
         useMobileChatMock.mockReturnValue({ ...state(), messages: [{
             id: 'incoming', direction: 'inbound', body: '<p>Please check my order</p>',

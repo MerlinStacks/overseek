@@ -41,11 +41,13 @@ export function MergeModal({ isOpen, onClose, onMerge, currentConversationId }: 
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isMerging, setIsMerging] = useState(false);
+    const [mergeError, setMergeError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
         if (!isOpen || !token || !currentAccount) return;
         const controller = new AbortController();
+        setMergeError(null);
 
         const fetchConversations = async () => {
             setIsLoading(true);
@@ -78,9 +80,12 @@ export function MergeModal({ isOpen, onClose, onMerge, currentConversationId }: 
 
     const handleMerge = async (targetId: string) => {
         setIsMerging(true);
+        setMergeError(null);
         try {
             await onMerge(targetId);
             onClose();
+        } catch {
+            setMergeError('Could not confirm merge. Check the conversations before retrying.');
         } finally {
             setIsMerging(false);
         }
@@ -124,6 +129,7 @@ export function MergeModal({ isOpen, onClose, onMerge, currentConversationId }: 
             }
             maxWidth="max-w-md"
         >
+            {mergeError && <p role="alert" className="mb-4 text-sm text-red-600 dark:text-red-400">{mergeError}</p>}
             {/* Search */}
             <div className="mb-4 -mt-2">
                 <div className="relative">

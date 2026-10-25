@@ -244,9 +244,26 @@ describe('useInbox conversation actions', () => {
         act(() => result.current.setSelectedId('open-1'));
         await waitFor(() => expect(result.current.selectedId).toBe('open-1'));
 
-        await act(async () => result.current.handleStatusChange('CLOSED'));
+        await act(async () => { await expect(result.current.handleStatusChange('CLOSED')).rejects.toThrow('500'); });
 
         expect(result.current.conversations).toHaveLength(1);
+        expect(result.current.selectedId).toBe('open-1');
+    });
+
+    it.each(['assign', 'merge', 'snooze'])('reports a rejected %s instead of signalling success', async action => {
+        const base = mockOpenConversationFetch('resolve');
+        vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input, init) => {
+            if (init?.method === 'PUT' || String(input).endsWith('/merge') || String(input).endsWith('/snooze')) return response(403);
+            return base(input, init);
+        }));
+        const { result } = renderHook(() => useInbox(), { wrapper: wrapper('/inbox') });
+        await waitFor(() => expect(result.current.conversations).toHaveLength(1));
+        act(() => result.current.setSelectedId('open-1'));
+        await act(async () => {
+            const pending = action === 'assign' ? result.current.handleAssign('agent') : action === 'merge'
+                ? result.current.handleMerge('source') : result.current.handleStatusChange('SNOOZED', new Date(Date.now() + 60000));
+            await expect(pending).rejects.toThrow('403');
+        });
         expect(result.current.selectedId).toBe('open-1');
     });
 });

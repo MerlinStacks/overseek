@@ -7,7 +7,7 @@
  * the page component is purely presentational.
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -16,6 +16,7 @@ import { useCannedResponses } from '../../hooks/useCannedResponses';
 import type { MessageSendResponse } from '../../types/inbox';
 import { messageToPlainText } from '../../utils/messagePlainText';
 import { emailDraftHtml, mobileDraftKey, useMobileChatDraft } from './mobileChatDraft';
+import { changeBlockedContact } from '../../lib/blockedContactCommand';
 
 interface MessageApiResponse {
     id: string;
@@ -26,6 +27,8 @@ interface MessageApiResponse {
     clientRequestId?: string;
     deliveryStatus?: 'PENDING' | 'SENT' | 'FAILED';
     deliveryError?: string | null;
+    isInternal?: boolean;
+    scheduledFor?: string | null;
 }
 
 export interface MobileChatMessage {
@@ -37,6 +40,8 @@ export interface MobileChatMessage {
     clientRequestId?: string;
     deliveryStatus?: 'PENDING' | 'SENT' | 'FAILED';
     deliveryError?: string | null;
+    isInternal?: boolean;
+    scheduledFor?: string | null;
 }
 
 export interface MobileChatConversation {
@@ -81,6 +86,8 @@ function toMobileMessage(message: MessageApiResponse, fallbackBody = ''): Mobile
         clientRequestId: message.clientRequestId,
         deliveryStatus: message.deliveryStatus,
         deliveryError: message.deliveryError,
+        isInternal: message.isInternal,
+        scheduledFor: message.scheduledFor,
     };
 }
 
@@ -103,6 +110,13 @@ export function useMobileChat(conversationId: string | undefined) {
     const attachmentUploadProgress: number | null = null;
     const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
     const [sendError, setSendError] = useState<string | null>(null);
+    const [hasMoreMessages, setHasMoreMessages] = useState(false);
+    const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
+    const [historyError, setHistoryError] = useState<string | null>(null);
+    const nextMessageCursorRef = useRef<string | null>(null);
+    const olderControllerRef = useRef<AbortController | null>(null);
+    const historyScrollRef = useRef<{ height: number; top: number } | null>(null);
+    const skipAutoScrollRef = useRef(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -176,6 +190,8 @@ export function useMobileChat(conversationId: string | undefined) {
 
             const conv = await convRes.json();
             if (controller.signal.aborted || identityRef.current.conversationId !== conversationId || identityRef.current.accountId !== currentAccount.id) return;
+            nextMessageCursorRef.current = typeof conv.nextMessageCursor === 'string' ? conv.nextMessageCursor : null;
+            setHasMoreMessages(Boolean(conv.hasMoreMessages && nextMessageCursorRef.current));
             const customerName = conv.wooCustomer
                 ? `${conv.wooCustomer.firstName || ''} ${conv.wooCustomer.lastName || ''}`.trim() || conv.wooCustomer.email
                 : conv.guestName || conv.guestEmail || 'Unknown';
@@ -213,6 +229,46 @@ export function useMobileChat(conversationId: string | undefined) {
             if (!controller.signal.aborted) setLoading(false);
         }
     }, [currentAccount, token, conversationId, user?.id]);
+
+    const loadOlderMessages = useCallback(async () => {
+        if (!currentAccount || !token || !conversationId || !nextMessageCursorRef.current || olderControllerRef.current) return;
+        const controller = new AbortController();
+        olderControllerRef.current = controller;
+        const accountId = currentAccount.id;
+        setIsLoadingOlderMessages(true);
+        setHistoryError(null);
+        try {
+            const params = new URLSearchParams({ limit: '100', before: nextMessageCursorRef.current });
+            const res = await fetch(`/api/chat/${conversationId}?${params}`, { headers: buildHeaders(token, accountId), signal: controller.signal });
+            if (!res.ok) throw new Error('Could not load older messages. Please retry.');
+            const data = await res.json();
+            if (controller.signal.aborted || identityRef.current.accountId !== accountId || identityRef.current.conversationId !== conversationId) return;
+            const older = Array.isArray(data.messages) ? data.messages.map((message: MessageApiResponse) => toMobileMessage(message)) : [];
+            const container = messagesContainerRef.current;
+            if (container) historyScrollRef.current = { height: container.scrollHeight, top: container.scrollTop };
+            skipAutoScrollRef.current = true;
+            setMessages(previous => {
+                const known = new Set(previous.map(message => message.id));
+                return [...older.filter((message: MobileChatMessage) => !known.has(message.id)), ...previous];
+            });
+            nextMessageCursorRef.current = typeof data.nextMessageCursor === 'string' ? data.nextMessageCursor : null;
+            setHasMoreMessages(Boolean(data.hasMoreMessages && nextMessageCursorRef.current));
+        } catch (error) {
+            if (!controller.signal.aborted) setHistoryError(error instanceof Error ? error.message : 'Could not load older messages. Please retry.');
+        } finally {
+            if (olderControllerRef.current === controller) {
+                olderControllerRef.current = null;
+                setIsLoadingOlderMessages(false);
+            }
+        }
+    }, [currentAccount, token, conversationId]);
+
+    useLayoutEffect(() => {
+        const anchor = historyScrollRef.current;
+        const container = messagesContainerRef.current;
+        if (anchor && container) container.scrollTop = anchor.top + container.scrollHeight - anchor.height;
+        historyScrollRef.current = null;
+    }, [messages]);
 
     // -------------------------------------------------------
     // Actions
@@ -311,20 +367,13 @@ export function useMobileChat(conversationId: string | undefined) {
         const controller = new AbortController();
         actionControllerRef.current = controller;
         try {
-            const res = await fetch(`/api/chat/${requestConversationId}/block`, {
-                method: 'POST',
-                headers: buildHeaders(token, requestAccountId, true),
-                body: JSON.stringify({ reason: 'Blocked from mobile' }),
-                signal: controller.signal,
-            });
+            await changeBlockedContact(token, requestAccountId, { conversationId: requestConversationId }, true, controller.signal);
             if (controller.signal.aborted || identityRef.current.conversationId !== requestConversationId || identityRef.current.accountId !== requestAccountId) return false;
-            if (!res.ok) {
-                throw new Error(`Block failed with status ${res.status}`);
-            }
             return true; // Signal navigation to caller
         } catch (error) {
             if (controller.signal.aborted) return false;
             Logger.error('[MobileChat] Block error:', { error });
+            setSendError(error instanceof Error ? error.message : 'Could not confirm blocking. Check customer status before retrying.');
             return false;
         } finally {
             if (actionControllerRef.current === controller) actionControllerRef.current = null;
@@ -522,6 +571,14 @@ export function useMobileChat(conversationId: string | undefined) {
         draftControllerRef.current = null;
         actionControllerRef.current = null;
         retryUploadRef.current = null;
+        olderControllerRef.current?.abort();
+        olderControllerRef.current = null;
+        nextMessageCursorRef.current = null;
+        historyScrollRef.current = null;
+        skipAutoScrollRef.current = false;
+        setHasMoreMessages(false);
+        setIsLoadingOlderMessages(false);
+        setHistoryError(null);
         setConversation(null);
         setMessages([]);
         setPendingAttachment(null);
@@ -539,6 +596,7 @@ export function useMobileChat(conversationId: string | undefined) {
             uploadControllerRef.current?.abort();
             draftControllerRef.current?.abort();
             actionControllerRef.current?.abort();
+            olderControllerRef.current?.abort();
         };
     }, [conversationId, currentAccount?.id, user?.id]);
 
@@ -555,7 +613,7 @@ export function useMobileChat(conversationId: string | undefined) {
     }, [handleMessagesScroll]);
 
     useEffect(() => {
-        if (!socket || !conversationId || !user || !currentAccount?.id) {
+        if (!socket || !conversationId || !user || !currentAccount?.id || !token) {
             return;
         }
 
@@ -568,6 +626,9 @@ export function useMobileChat(conversationId: string | undefined) {
             }
         });
 
+        let readTimer: ReturnType<typeof setTimeout> | undefined;
+        const readController = new AbortController();
+
         const handleMessageNew = (payload: MessageApiResponse & { conversationId?: string; accountId?: string }) => {
             if (payload.accountId && payload.accountId !== currentAccount.id) return;
             if (payload.conversationId !== conversationId) return;
@@ -576,20 +637,33 @@ export function useMobileChat(conversationId: string | undefined) {
                 if (prev.some(msg => msg.id === payload.id)) return prev;
                 return [...prev, toMobileMessage(payload)];
             });
+            if (payload.senderType === 'CUSTOMER' && !payload.isInternal && !payload.scheduledFor) {
+                if (readTimer) clearTimeout(readTimer);
+                readTimer = setTimeout(() => {
+                    void fetch(`/api/chat/${conversationId}/read`, {
+                        method: 'POST', headers: buildHeaders(token, currentAccount.id), signal: readController.signal,
+                    }).catch(error => {
+                        if (!readController.signal.aborted) Logger.error('[MobileChat] Failed to mark incoming message as read', { error });
+                    });
+                }, 250);
+            }
         };
 
         socket.on('message:new', handleMessageNew);
 
         return () => {
+            if (readTimer) clearTimeout(readTimer);
+            readController.abort();
             socket.emit('leave:conversation', { conversationId });
             socket.off('message:new', handleMessageNew);
         };
-    }, [socket, conversationId, user, currentAccount?.id]);
+    }, [socket, conversationId, user, currentAccount?.id, token]);
 
     useEffect(() => {
         const hadMessages = previousMessageCountRef.current;
         const hasNewMessages = messages.length > hadMessages;
         previousMessageCountRef.current = messages.length;
+        if (skipAutoScrollRef.current) { skipAutoScrollRef.current = false; return; }
 
         if (messages.length === 0 || !hasNewMessages) return;
         if (!isNearBottomRef.current) return;
@@ -617,6 +691,10 @@ export function useMobileChat(conversationId: string | undefined) {
         isRichText,
         isGeneratingDraft,
         sendError,
+        hasMoreMessages,
+        isLoadingOlderMessages,
+        historyError,
+        loadOlderMessages,
 
         // Refs
         messagesEndRef,
