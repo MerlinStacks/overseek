@@ -33,13 +33,15 @@ const profile = () => ({
 });
 const respond = (value: unknown) => new Response(JSON.stringify(value));
 
-it('restores the profile summary and opens the latest visit with a chronological timeline', async () => {
+it('omits the activity summary and opens the latest visit with a chronological timeline', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respond(profile())));
     render(<VisitorProfileModal accountId="a" visitorId="v" onClose={vi.fn()} />);
     await screen.findByRole('heading', { name: 'Anonymous visitor' });
     expect(screen.getByRole('dialog', { name: 'Visitor profile' })).toBeInTheDocument();
-    expect(screen.getByText('Recorded events').nextElementSibling).toHaveTextContent('20');
-    expect(screen.getByText('Recorded visits').nextElementSibling).toHaveTextContent('3');
+    expect(screen.queryByLabelText('Visitor activity summary')).not.toBeInTheDocument();
+    expect(screen.queryByText('Recorded events')).not.toBeInTheDocument();
+    expect(screen.queryByText('Recorded visits')).not.toBeInTheDocument();
+    expect(screen.queryByText('Last activity')).not.toBeInTheDocument();
     expect(screen.getByRole('complementary', { name: 'Visitor details' })).toHaveTextContent('Melbourne, AU');
     const history = screen.getByRole('region', { name: 'Visit history' });
     const buttons = within(history).getAllByRole('button');
@@ -68,12 +70,12 @@ it('keeps coverage notes collapsed instead of crowding the visitor summary', asy
     expect(screen.queryByText('Direct')).toBeNull();
 });
 
-it('preserves unknown visit counts, zero money/quantity and purchase limitations in legacy timelines', async () => {
+it('preserves zero money/quantity and purchase limitations in legacy timelines', async () => {
     const data = observation('v');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respond({ ...data, session: { ...data.session, events: [{ ...event('purchase', 'purchase'), payload: { quantity: 0, total: 0, currency: 'AUD', orderId: 42 } }] } })));
     render(<VisitorProfileModal accountId="a" visitorId="v" onClose={vi.fn()} />);
     await screen.findByText('Purchase recorded');
-    expect(screen.getByText('Recorded visits').nextElementSibling).toHaveTextContent('—');
+    expect(screen.queryByText('Recorded visits')).not.toBeInTheDocument();
     expect(screen.getByText('Quantity: 0')).toBeInTheDocument();
     expect(screen.getByText('Total: AUD 0')).toBeInTheDocument();
     expect(screen.getByText('Payment and completion not verified.')).toBeInTheDocument();

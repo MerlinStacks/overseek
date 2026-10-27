@@ -96,6 +96,9 @@ jobs:
       - name: Test purchase links and checkout activity deduplication
         run: php overseek-wc-plugin/tests/purchase-links.php
 
+      - name: Test review summaries and product context detection
+        run: php overseek-wc-plugin/tests/review-summary.php
+
       - name: Test local delivery calculations and discovery contract
         run: |
           php overseek-wc-plugin/tests/delivery-engine.php

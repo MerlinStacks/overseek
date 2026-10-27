@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { z } from 'zod';
-import { Activity, ChevronDown, Clock, ExternalLink, Globe, Info, Loader2, MapPin, Search, ShoppingBag, ShoppingCart, User } from 'lucide-react';
+import { Activity, ChevronDown, ExternalLink, Globe, Info, Loader2, MapPin, Search, ShoppingBag, ShoppingCart, User } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -36,19 +36,19 @@ function EventObservation({ event }: { event: Event }) {
         : event.type.includes('cart') || event.type === 'checkout_start'
             ? { label: event.type.replace(/_/g, ' '), Icon: ShoppingCart, tone: 'bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400' }
             : event.type === 'search'
-                ? { label: 'Search', Icon: Search, tone: 'bg-violet-50 text-violet-600 dark:bg-violet-950 dark:text-violet-400' }
-                : { label: event.type === 'pageview' ? 'Page view' : event.type.replace(/_/g, ' '), Icon: Globe, tone: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400' };
+                ? { label: 'Search', Icon: Search, tone: 'bg-[var(--brand-subtle)] text-[var(--brand-text)]' }
+                : { label: event.type === 'pageview' ? 'Page view' : event.type.replace(/_/g, ' '), Icon: Globe, tone: 'bg-[var(--brand-subtle)] text-[var(--brand-text)]' };
     const { Icon } = presentation;
     const href = getSafeNavigationUrl(event.url);
     return <li className="relative flex min-w-0 gap-3 pb-5 last:pb-0">
-        <span aria-hidden="true" className={`relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full ring-4 ring-white dark:ring-slate-800 ${presentation.tone}`}><Icon size={14} /></span>
+        <span aria-hidden="true" className={`relative z-10 flex size-8 shrink-0 items-center justify-center rounded-lg ring-4 ring-[var(--surface)] ${presentation.tone}`}><Icon size={14} /></span>
         <div className="min-w-0 flex-1 pt-0.5">
             <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                 <h5 className="text-xs font-semibold capitalize">{presentation.label}</h5>
                 <time dateTime={event.createdAt} title={formatDateTimeSafe(event.createdAt)} className={`text-[11px] tabular-nums ${muted}`}>{formatTimeSafe(event.createdAt)}</time>
             </div>
             {(payload?.productName || payload?.name || event.pageTitle) && <p className="mt-1 break-words text-sm font-medium">{payload?.productName || payload?.name || event.pageTitle}</p>}
-            {(payload?.term || payload?.searchQuery) && <p className="mt-1 break-words text-sm text-violet-700 dark:text-violet-300">“{payload.term || payload.searchQuery}”</p>}
+            {(payload?.term || payload?.searchQuery) && <p className="mt-1 break-words text-sm text-[var(--brand-text)]">“{payload.term || payload.searchQuery}”</p>}
         {event.url && (href ? <a className="mt-1 flex min-w-0 items-center gap-1 text-xs text-[var(--brand-text)] hover:underline" href={href} target="_blank" rel="noopener noreferrer" title={event.url}><span className="truncate">{event.url}</span><ExternalLink size={11} className="shrink-0" aria-hidden="true" /></a> : <p className={`mt-1 break-all text-xs ${muted}`}>{event.url}</p>)}
             {payload && <div className={`mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs ${muted}`}>
                 {payload.sku && <span className="break-all">SKU: {payload.sku}</span>}
@@ -73,13 +73,13 @@ function VisitSection({ visit, latest }: { visit: Visit; latest: boolean }) {
     const contentId = useId();
     const seconds = Math.floor((Date.parse(visit.endedAt) - Date.parse(visit.startedAt)) / 1000);
     const interval = seconds >= 3600 ? `${Math.floor(seconds / 3600)}h ${Math.floor(seconds % 3600 / 60)}m` : seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
-    return <section aria-label={visit.visitNumber !== undefined ? `Visit #${visit.visitNumber}` : `Visit ${visit.id}`} className="min-w-0 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
-        <button type="button" aria-expanded={expanded} aria-controls={contentId} onClick={() => setExpanded(value => !value)} className="flex w-full items-start gap-2 bg-slate-50 px-3 py-3 text-left transition-colors hover:bg-slate-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-color)] dark:bg-slate-900 dark:hover:bg-slate-700">
+    return <section aria-label={visit.visitNumber !== undefined ? `Visit #${visit.visitNumber}` : `Visit ${visit.id}`} className="min-w-0 overflow-hidden rounded-[var(--card-radius)] border border-[var(--surface-border)] bg-[var(--surface)]">
+        <button type="button" aria-expanded={expanded} aria-controls={contentId} onClick={() => setExpanded(value => !value)} className="flex w-full items-start gap-3 bg-[var(--surface-muted)] p-4 text-left transition-colors hover:bg-[var(--brand-subtle)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-color)]">
             <ChevronDown size={16} aria-hidden="true" className={`mt-0.5 shrink-0 text-slate-400 transition-transform ${expanded ? '' : '-rotate-90'}`} />
-            <span className="min-w-0 flex-1"><span className="flex flex-wrap items-center gap-2"><span className="break-all text-sm font-semibold">{visit.visitNumber !== undefined ? `Visit #${visit.visitNumber}` : 'Visit'}</span>{latest && <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">Latest</span>}</span><time dateTime={visit.startedAt} className={`mt-1 block text-xs ${muted}`}>{formatDateTimeSafe(visit.startedAt)}</time></span>
+            <span className="min-w-0 flex-1"><span className="flex flex-wrap items-center gap-2"><span className="break-all text-sm font-semibold">{visit.visitNumber !== undefined ? `Visit #${visit.visitNumber}` : 'Visit'}</span>{latest && <span className="rounded-md border border-[var(--brand-border)] bg-[var(--brand-subtle)] px-2 py-0.5 text-[10px] font-medium text-[var(--brand-text)]">Latest</span>}</span><time dateTime={visit.startedAt} className={`mt-1 block text-xs ${muted}`}>{formatDateTimeSafe(visit.startedAt)}</time></span>
             <span className={`shrink-0 text-right text-[11px] ${muted}`}><span className="block">{visit.events.length} {visit.events.length === 1 ? 'event' : 'events'}</span><span className="mt-1 block" title="Observed interval, not engaged time">{interval} interval</span></span>
         </button>
-        <div id={contentId} hidden={!expanded} className="border-t border-slate-100 p-4 dark:border-slate-700">
+        <div id={contentId} hidden={!expanded} className="border-t border-[var(--surface-border)] p-4">
             {expanded && <>
                 {(visit.utmSource || visit.referrer) && <div className={`mb-4 space-y-1 border-b border-slate-100 pb-3 text-xs dark:border-slate-700 ${muted}`}>
                     {visit.utmSource && <p className="break-all">Source tag: <span className="font-medium text-slate-700 dark:text-slate-300">{visit.utmSource}</span></p>}
@@ -94,28 +94,23 @@ function VisitSection({ visit, latest }: { visit: Visit; latest: boolean }) {
 function VisitorProfile({ data, visitorId }: { data: VisitorObservation; visitorId: string }) {
     const session = data.session;
     const visits = data.visits ? [...data.visits].sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt)) : null;
-    const sectionTitle = 'text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500';
+    const sectionTitle = 'text-xs font-semibold text-slate-700 dark:text-slate-300';
     return <div className="min-w-0 space-y-5">
-        <header className="flex min-w-0 items-center gap-3">
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-[var(--brand-subtle)] text-[var(--brand-text)]"><User size={24} aria-hidden="true" /></div>
+        <header className="flex min-w-0 items-center gap-3 border-b border-[var(--surface-border)] pb-5">
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-[var(--brand-border)] bg-[var(--brand-subtle)] text-[var(--brand-text)]"><User size={24} aria-hidden="true" /></div>
             <div className="min-w-0"><h2 className="break-all text-lg font-semibold">{session.email || 'Anonymous visitor'}</h2><p className={`mt-1 break-all font-mono text-[11px] ${muted}`}>Visitor {visitorId}</p></div>
         </header>
-        <dl className="metric-strip" aria-label="Visitor activity summary">
-            <div className="metric-strip-item"><dt className={`text-xs ${muted}`}>Recorded events</dt><dd className="mt-1 text-xl font-semibold tabular-nums">{data.stats.totalEvents.toLocaleString()}</dd></div>
-            <div className="metric-strip-item"><dt className={`text-xs ${muted}`}>Recorded visits</dt><dd className="mt-1 text-xl font-semibold tabular-nums">{data.stats.totalVisits?.toLocaleString() ?? '—'}</dd></div>
-            <div className="metric-strip-item"><dt className={`flex items-center gap-1 text-xs ${muted}`}><Clock size={12} aria-hidden="true" />Last activity</dt><dd className="mt-1 text-xs font-medium"><time dateTime={session.lastActiveAt}>{formatDateTimeSafe(session.lastActiveAt)}</time></dd></div>
-        </dl>
-        <div className="grid min-w-0 gap-5 md:grid-cols-[220px_minmax(0,1fr)]">
-            <aside aria-label="Visitor details" className="min-w-0 space-y-5 rounded-xl bg-slate-50 p-4 dark:bg-slate-900/50">
+        <div className="grid min-w-0 items-start gap-6 md:grid-cols-[200px_minmax(0,1fr)]">
+            <aside aria-label="Visitor details" className="grid min-w-0 gap-5 rounded-[var(--card-radius)] border border-[var(--surface-border)] bg-[var(--surface-muted)] p-4 sm:grid-cols-2 md:grid-cols-1">
                 <section className="space-y-3"><h3 className={sectionTitle}>Details</h3>
                     <div className="flex items-start gap-2 text-sm"><MapPin size={15} aria-hidden="true" className="mt-0.5 shrink-0 text-slate-400" /><span className="break-words">{[session.city, session.country].filter(Boolean).join(', ') || 'Location unavailable'}</span></div>
                     <div className="space-y-1.5"><DeviceBrowserBadge deviceType={session.deviceType} browser={session.browser} os={session.os} /><p className="break-words text-xs capitalize">{session.deviceType || 'Device unavailable'}</p><p className={`break-words text-xs ${muted}`}>{session.browser || 'Browser unavailable'}{session.os ? ` · ${session.os}` : ''}</p></div>
                     {data.stats.firstSeen && <div className={`text-xs ${muted}`}>First seen<time className="mt-1 block text-slate-700 dark:text-slate-300" dateTime={data.stats.firstSeen.createdAt}>{formatDateTimeSafe(data.stats.firstSeen.createdAt)}</time></div>}
                 </section>
-                <section className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-700"><h3 className={sectionTitle}>Traffic source</h3><dl className="space-y-3 text-xs"><div><dt className={muted}>Source tag</dt><dd className="mt-1 break-all font-medium">{session.utmSource || 'Unavailable'}</dd></div><div><dt className={muted}>Referrer</dt><dd className="mt-1 break-all">{session.referrer || 'Unavailable'}</dd></div></dl></section>
+                <section className="space-y-3 border-t border-[var(--surface-border)] pt-4 sm:border-t-0 sm:pt-0 md:border-t md:pt-4"><h3 className={sectionTitle}>Traffic source</h3><dl className="space-y-3 text-xs"><div><dt className={muted}>Source tag</dt><dd className="mt-1 break-all font-medium">{session.utmSource || 'Unavailable'}</dd></div><div><dt className={muted}>Referrer</dt><dd className="mt-1 break-all">{session.referrer || 'Unavailable'}</dd></div></dl></section>
                 {data.customer && <section className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs dark:border-emerald-900 dark:bg-emerald-950/30"><h3 className="flex items-center gap-1.5 font-semibold text-emerald-800 dark:text-emerald-300"><ShoppingBag size={14} aria-hidden="true" />Associated customer</h3><p className="break-words font-medium">{[data.customer.firstName, data.customer.lastName].filter(Boolean).join(' ') || 'Name unavailable'}</p>{data.customer.email && <p className="break-all">{data.customer.email}</p>}{data.customer.wooId != null && <p className="break-all">WooCommerce #{data.customer.wooId}</p>}<p>Reported spend: {money(data.customer.totalSpent, data.customer.currency)}</p></section>}
             </aside>
-            <section aria-label="Visit history" className="min-w-0"><h3 className="mb-3 flex items-center gap-2 text-sm font-semibold"><Activity size={16} aria-hidden="true" className="text-indigo-500" />Visit history</h3><div className="space-y-3">
+            <section aria-label="Visit history" className="min-w-0"><h3 className="mb-3 flex items-center gap-2 text-sm font-semibold"><Activity size={16} aria-hidden="true" className="text-[var(--brand-text)]" />Visit history</h3><div className="space-y-3">
                 {visits ? visits.length ? visits.map((visit, index) => <VisitSection key={visit.id} visit={visit} latest={index === 0} />) : <p className={`py-6 text-center text-sm ${muted}`}>No visit rows in this response.</p> : <EventTimeline events={session.events || []} />}
             </div></section>
         </div>

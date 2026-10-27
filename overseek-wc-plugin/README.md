@@ -2,7 +2,7 @@
 
 A WordPress plugin that connects your WooCommerce store to your self-hosted OverSeek server.
 
-Current version: **2.25.11**.
+Current version: **2.25.12**.
 
 ### Simple delivery estimate setup
 
@@ -163,6 +163,13 @@ revalidation before reactivation. See `docs/companion-2.23.1-release.md` for the
 candidate validation gate and upgrade sequence.
 
 ## Changelog
+
+### 2.25.12 - 2026-10-27
+
+- Do not treat a homepage, ordinary page or blog post as a product when no product is selected for reviews. Store-wide summaries retain aggregate product ratings instead of the unrated-product invitation.
+- Preserve current WooCommerce product objects, product-page context, explicitly selected products and genuine unrated-product states.
+- Keep release notes in WordPress's native Changelog section using headings, paragraphs and lists, without a nested frame or scrolling preformatted box.
+- Include the earlier paid-order, delayed-payment and delivery-cache fixes when upgrading from the SLDevs-hosted 2.25.9 release. Update in place without uninstalling; no settings or stock migration is required.
 
 ### 2.25.11 - 2026-10-23
 

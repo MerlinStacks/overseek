@@ -2101,7 +2101,7 @@ class OverSeek_Reviews {
 		}
 
 		$post_id = get_the_ID();
-		return $post_id ? (int) $post_id : 0;
+		return $post_id && 'product' === get_post_type( $post_id ) ? (int) $post_id : 0;
 	}
 
 	/**

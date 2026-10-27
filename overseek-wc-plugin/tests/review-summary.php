@@ -22,6 +22,15 @@ function sanitize_hex_color( $value ) { return preg_match( '/^#[a-f0-9]{6}$/i', 
 function sanitize_key( $value ) { return preg_replace( '/[^a-z0-9_-]/', '', strtolower( $value ) ); }
 function sanitize_html_class( $value ) { return preg_replace( '/[^a-zA-Z0-9_-]/', '', $value ); }
 function wp_cache_get( $key, $group = '' ) { return $GLOBALS['badge_counts']; }
+function get_the_ID() { return $GLOBALS['current_post_id'] ?? false; }
+function get_post_type( $id ) { return $GLOBALS['post_types'][ $id ] ?? false; }
+function wc_get_product( $id ) { return 'product' === get_post_type( $id ) ? new WC_Product( $id ) : false; }
+class WC_Product {
+	public function __construct( private int $id ) {}
+	public function get_id(): int { return $this->id; }
+	public function get_review_count(): int { return 0; }
+	public function get_average_rating(): string { return '0'; }
+}
 require_once __DIR__ . '/../includes/class-overseek-review-renderer.php';
 require_once __DIR__ . '/../includes/class-overseek-reviews.php';
 
@@ -36,6 +45,13 @@ class Rated_Product_Reviews extends OverSeek_Reviews {
 	public function __construct() {}
 	public function get_summary( array $args ): array {
 		return [ 'total' => 23, 'average' => 4.8 ];
+	}
+}
+
+class Context_Product_Reviews extends OverSeek_Reviews {
+	public function __construct() {}
+	public function get_summary( array $args ): array {
+		return empty( $args['product_id'] ) ? [ 'total' => 23, 'average' => 4.8 ] : [ 'total' => 0, 'average' => 0 ];
 	}
 }
 
@@ -93,4 +109,26 @@ foreach ( [ [ 9499, 'gold' ], [ 9500, 'platinum' ], [ 9501, 'platinum' ], [ 1000
 	check( $badges[0]['tier'] === $expected, 'Use the actual publication percentage, not its rounded display value, for Platinum eligibility.' );
 	check( str_ends_with( $badges[0]['asset_url'], 'transparency-' . $expected . '.webp' ), 'Select the matching transparency artwork.' );
 }
+$GLOBALS['post_types'] = [ 10 => 'page', 20 => 'post', 42 => 'product' ];
+$GLOBALS['product'] = null;
+$context_reviews = new Context_Product_Reviews();
+$product_id_method = new ReflectionMethod( OverSeek_Reviews::class, 'get_current_product_id' );
+foreach ( [ 10, 20, 99, false ] as $post_id ) {
+	$GLOBALS['current_post_id'] = $post_id;
+	check( 0 === $product_id_method->invoke( $context_reviews ), 'Pages, posts, missing posts, and absent loop IDs must not become products.' );
+}
+$GLOBALS['current_post_id'] = 10;
+$html = $context_reviews->render_summary_shortcode();
+check( substr_count( $html, '4.80 / 5' ) === 2, 'A homepage summary without a selected product must retain the aggregate product rating.' );
+check( ! str_contains( $html, 'Be the first to review' ), 'The homepage must not be treated as an unrated product.' );
+$GLOBALS['current_post_id'] = 42;
+check( 42 === $product_id_method->invoke( $context_reviews ), 'Preserve product post context without a global product object.' );
+$html = $context_reviews->render_summary_shortcode();
+check( str_contains( $html, 'Be the first to review' ), 'A genuine unrated product must keep its empty state.' );
+$GLOBALS['current_post_id'] = 10;
+$GLOBALS['product'] = new WC_Product( 42 );
+check( 42 === $product_id_method->invoke( $context_reviews ), 'A global WooCommerce product must take precedence over the current page.' );
+$GLOBALS['product'] = null;
+$html = $context_reviews->render_summary_shortcode( [ 'product_id' => 42 ] );
+check( str_contains( $html, 'Be the first to review' ), 'An explicitly selected product must still override the homepage context.' );
 echo "Review summary regressions passed.\n";

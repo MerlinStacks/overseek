@@ -1,0 +1,24 @@
+OverSeek Integration for WooCommerce 2.25.12
+Released: 2026-10-27
+
+Correct review product detection:
+- When no product is selected, do not use the homepage, an ordinary page or a blog post as a product ID.
+- Store-wide review summaries retain aggregate product ratings instead of incorrectly showing "Be the first to review" for a page.
+- Preserve current WooCommerce product objects, product-page context and explicitly selected products. Genuine products with no ratings still invite their first review.
+
+Included maintenance fixes since the hosted 2.25.9 release:
+- Require paid orders for browser and server purchase tracking. Failed or unpaid thank-you pages are not proof of a completed purchase.
+- Preserve checkout attribution, consent and payment time for delayed-payment confirmations. Deduplicate successful retries while allowing failed acknowledgements to be retried.
+- Keep delivery-cache reads compatible with mixed ASCII and store database collations, including MariaDB.
+
+Native WordPress release notes:
+- Show release notes directly in WordPress's native Changelog section using headings, paragraphs and lists, without an embedded frame or scrolling preformatted box.
+- Retain SLDevs-hosted updates, classic and Blocks checkout support, and existing automatic-update preferences.
+
+Upgrade:
+- Deploy the matching OverSeek server and web application so their plugin-download checksum pins agree.
+- Replace the existing overseek-wc-plugin folder in place; do not uninstall first. No settings or stock migration is required.
+- Purge separately managed page caches/CDNs as needed. Delivery estimates may require readiness revalidation after the version change.
+- Check homepage/product review summaries, classic/Blocks checkout and the native plugin-details changelog on staging before production rollout.
+
+Requirements: WordPress 6.4+, PHP 8.1+, WooCommerce (plugin header minimum 7.0; Blocks checkout requires 8.0+) and a running OverSeek server. This release does not raise the WooCommerce requirement or tested-up-to declaration.
