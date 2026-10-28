@@ -24,8 +24,8 @@ describe('draft and published flow separation', () => {
         mocks.updateMany.mockResolvedValue({ count: 0 });
         await expect(new MarketingDraftService().save('account', 'flow', 1, draft)).rejects.toMatchObject({ statusCode: 409 });
     });
-    it('publishes the exact validated revision without enabling a paused flow', async () => {
-        mocks.findFirst.mockResolvedValue({ flowDefinition: live, draftDefinition: draft, draftRevision: 2 });
+    it.each([true, false])('publishes the exact validated revision without changing active status (%s)', async (isActive) => {
+        mocks.findFirst.mockResolvedValue({ flowDefinition: live, draftDefinition: draft, draftRevision: 2, isActive });
         const result = await new MarketingDraftService().publish('account', 'flow', 2);
         expect(mocks.validate).toHaveBeenCalledWith(draft);
         const input = mocks.updateMany.mock.calls[0][0];

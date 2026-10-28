@@ -113,7 +113,7 @@ function FlowHealthPanel({ issues, onOpenTest }: { issues: FlowIssue[]; onOpenTe
                     <div className="mt-0.5 text-xs text-slate-500">
                         {issues.length === 0 ? 'No obvious setup issues found.' : `${blocking.length} blocking, ${warnings.length} warning`}
                     </div>
-                    <div className="mt-1 text-[11px] text-slate-400">Changes autosave to a draft. Enabling the flow publishes the latest draft; disable and re-enable a live flow to apply changes.</div>
+                    <div className="mt-1 text-[11px] text-slate-400">Changes autosave to a draft. Use Save changes to publish the latest draft without disabling the flow.</div>
                 </div>
                 <button
                     type="button"

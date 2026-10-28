@@ -391,6 +391,7 @@ export function FlowsPage() {
     const [recentEnrollments, setRecentEnrollments] = useState<EnrollmentRow[]>([]);
     const [recentRunEvents, setRecentRunEvents] = useState<RunEventRow[]>([]);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+    const [isPublishing, setIsPublishing] = useState(false);
     const statusActionRef = useRef(false);
     const [toastMessage, setToastMessage] = useState('');
     const [toastVisible, setToastVisible] = useState(false);
@@ -818,7 +819,7 @@ export function FlowsPage() {
     }, [editingItem, editingFlowData, getDraftKey, persistLatestFlow]);
 
     const handleStartRenameFlow = () => {
-        if (!editingItem || isSavingRename) return;
+        if (!editingItem || isSavingRename || statusActionRef.current) return;
         shouldCommitRenameOnBlurRef.current = true;
         setRenameValue(editingItem.name);
         setIsRenamingFlow(true);
@@ -1251,6 +1252,62 @@ export function FlowsPage() {
         handleCloseEditor();
     };
 
+    const handleSaveFlow = async () => {
+        if (statusActionRef.current || isSavingRename || isRenamingFlow || !editingItem || !currentAccount || !editingFlowData || typeof editingFlowData.isActive !== 'boolean') return;
+        const scope = activeEditorScopeRef.current;
+        const reviewedFlow = latestSerializedFlowRef.current;
+        const currentFlow = latestFlowRef.current || editingFlowData.flowDefinition || { nodes: [], edges: [] };
+        const blockingIssues = validateFlow(currentFlow.nodes || [], currentFlow.edges || []).filter((issue) => issue.severity === 'blocking');
+        if (blockingIssues.length > 0) {
+            setInvalidNodeIds(getInvalidNodeIds(currentFlow));
+            showToast(blockingIssues[0]?.message || 'Fix blocking flow issues before saving changes.');
+            return;
+        }
+        if (!window.confirm(editingFlowData.isActive
+            ? 'Save changes to this live flow? Future steps of active enrollments will use the updated flow. The flow will stay enabled.'
+            : 'Save changes to this flow? The updated flow will be published, but will stay disabled.')) return;
+
+        statusActionRef.current = true;
+        setIsPublishing(true);
+        try {
+            if (autosaveTimerRef.current) { window.clearTimeout(autosaveTimerRef.current); autosaveTimerRef.current = null; }
+            const saved = await persistLatestFlow(true);
+            if (activeEditorScopeRef.current !== scope) return;
+            if (!saved || latestSerializedFlowRef.current !== baselineFlowRef.current) throw new Error('Could not save the latest draft. Your changes are kept; the published flow has not changed.');
+            if (latestSerializedFlowRef.current !== reviewedFlow) throw new Error('Draft changed during review. Review it and save changes again.');
+            const revision = draftRevisionRef.current;
+            const response = await fetch(`/api/marketing/automations/${editingItem.id}/publish`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'x-account-id': currentAccount.id },
+                body: JSON.stringify({ revision }),
+            });
+            const result = await response.json();
+            if (activeEditorScopeRef.current !== scope) return;
+            if (!response.ok) throw new Error(result.error || 'Failed to publish changes. Your draft is kept.');
+            // An autosave may have completed while publication was in flight.
+            // Never roll back its revision or clear a newer draft's pending status.
+            const hasNewerDraft = draftRevisionRef.current > revision;
+            draftRevisionRef.current = Math.max(draftRevisionRef.current, result.draftRevision ?? revision + 1);
+            setEditingFlowData(previous => previous ? {
+                ...previous,
+                ...result,
+                hasUnpublishedChanges: hasNewerDraft || Boolean(result.hasUnpublishedChanges),
+            } : previous);
+            if (latestSerializedFlowRef.current !== reviewedFlow) {
+                showToast('Reviewed changes published. Newer edits are still a draft; save changes again to publish them.', 'info');
+            } else {
+                showToast('Changes saved and published. Flow status unchanged.', 'success');
+            }
+        } catch (error) {
+            if (activeEditorScopeRef.current !== scope) return;
+            Logger.error('Failed to save and publish flow', { error });
+            showToast(error instanceof Error ? error.message : 'Failed to publish changes. Your draft is kept.');
+        } finally {
+            statusActionRef.current = false;
+            setIsPublishing(false);
+        }
+    };
+
     const handleToggleFlowStatus = async () => {
         if (statusActionRef.current || !editingItem || !currentAccount || !editingFlowData || typeof editingFlowData.isActive !== 'boolean') return;
         const nextIsActive = !editingFlowData.isActive;
@@ -1382,10 +1439,19 @@ export function FlowsPage() {
                                     </span>
                                     <span className="text-gray-500">{editingFlowData?.isActive ? 'Published flow is live' : 'Flow is disabled'} · {editingFlowData?.hasUnpublishedChanges || isDirty ? 'Unpublished changes' : 'Published version'}</span>
                                 </div>
-                                {editingFlowData?.isActive && (editingFlowData.hasUnpublishedChanges || isDirty) && <p className="mt-1 text-xs text-gray-500">Disable and re-enable this flow to publish the latest draft.</p>}
+                                {(editingFlowData?.hasUnpublishedChanges || isDirty) && <p className="mt-1 text-xs text-gray-500">Use Save changes to publish this draft without changing the flow's enabled status.</p>}
                             </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => void handleSaveFlow()}
+                                disabled={isPublishing || isUpdatingStatus || isSavingRename || isRenamingFlow || typeof editingFlowData?.isActive !== 'boolean' || !(editingFlowData?.hasUnpublishedChanges || isDirty)}
+                                aria-busy={isPublishing}
+                                className="rounded-md bg-[var(--primary-color)] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-color)] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {isPublishing ? 'Saving changes...' : 'Save changes'}
+                            </button>
                             <button
                                 type="button"
                                 onClick={() => undoRedoHandlersRef.current?.undo()}
@@ -1406,7 +1472,7 @@ export function FlowsPage() {
                             </button>
                             <div className="flex items-center gap-2 text-sm">
                                 <span className="text-gray-700" aria-live="polite">{isUpdatingStatus ? 'Updating...' : editingFlowData?.isActive ? 'Enabled' : 'Disabled'}</span>
-                                <button type="button" role="switch" aria-label="Flow enabled" aria-checked={Boolean(editingFlowData?.isActive)} aria-busy={isUpdatingStatus} onClick={() => void handleToggleFlowStatus()} disabled={isUpdatingStatus || typeof editingFlowData?.isActive !== 'boolean'} className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-color)] disabled:cursor-wait disabled:opacity-60 ${editingFlowData?.isActive ? 'bg-[var(--primary-color)]' : 'bg-slate-300 dark:bg-slate-600'}`}>
+                                <button type="button" role="switch" aria-label="Flow enabled" aria-checked={Boolean(editingFlowData?.isActive)} aria-busy={isUpdatingStatus} onClick={() => void handleToggleFlowStatus()} disabled={isPublishing || isUpdatingStatus || typeof editingFlowData?.isActive !== 'boolean'} className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-color)] disabled:cursor-wait disabled:opacity-60 ${editingFlowData?.isActive ? 'bg-[var(--primary-color)]' : 'bg-slate-300 dark:bg-slate-600'}`}>
                                     <span aria-hidden="true" className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${editingFlowData?.isActive ? 'translate-x-5' : 'translate-x-0.5'}`} />
                                 </button>
                             </div>

@@ -10,7 +10,7 @@ Existing executable flow definitions and activation states are preserved. No his
 
 - Node configuration is local until **Apply to draft**. Cancel does not send a compensating write to the parent flow.
 - Flow edits autosave only to `draftDefinition`. Saves and publication use `draftRevision` compare-and-swap, scoped to the current account. A conflicting editor receives 409 and keeps its local changes rather than overwriting someone else.
-- **Review & publish draft** validates the graph, confirms the live impact, and atomically replaces the executable definition and trigger configuration. Publication does not enable a disabled flow.
+- **Save changes** validates the graph, confirms the live impact, and atomically replaces the executable definition and trigger configuration. Publication leaves the enabled/disabled status unchanged; live flows do not need to be toggled off and on.
 - Publication of an enabled flow affects subsequent steps of existing enrollments too. This is not enrollment-version pinning.
 - New flows start disabled with an unpublished draft. Enable requires a published definition and no pending draft. The legacy automation upsert endpoint no longer updates existing flows; use the draft/status APIs.
 - Broadcast content can only be edited on an unsent DRAFT. Unschedule before editing a scheduled broadcast. Already-attempted broadcasts retain their content and recipient idempotency keys.
