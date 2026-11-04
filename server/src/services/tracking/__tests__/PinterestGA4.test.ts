@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PinterestCAPIService } from '../PinterestCAPIService';
 import { GA4MeasurementService } from '../GA4MeasurementService';
+import { prisma } from '../../../utils/prisma';
+import { Logger } from '../../../utils/logger';
 
 // Shared mocks for both services
 vi.mock('../../../utils/prisma', () => ({
@@ -122,6 +124,28 @@ describe('PinterestCAPIService', () => {
 
         const headers = (global.fetch as any).mock.calls[0][1].headers;
         expect(headers.Authorization).toBe('Bearer pin-tok');
+    });
+    it.each([400, 422])('retains rejection evidence and stops automatic payload replays for HTTP %s', async status => {
+        const responseBody = JSON.stringify({ code: 42, message: 'invalid field: buyer@test.com' });
+        vi.mocked(fetch).mockResolvedValue(new Response(responseBody, { status }));
+        await service.sendEvent(accountId, config, purchaseData, session);
+        expect(fetch).toHaveBeenCalledOnce();
+        expect(prisma.conversionDelivery.update).toHaveBeenCalledWith(expect.objectContaining({
+            where: { id: 'delivery-1' }, data: expect.objectContaining({ status: 'FAILED', httpStatus: status,
+                response: responseBody, lastError: 'NON_RETRYABLE: ' + responseBody, attempts: 1 }),
+        }));
+        expect(Logger.error).toHaveBeenCalledWith('[PinterestCAPI] Delivery failed', expect.objectContaining({
+            deliveryId: 'delivery-1', eventId: 'evt-uuid-4', responseStored: true, reason: 'payload_rejected',
+        }));
+        expect(JSON.stringify(vi.mocked(Logger.error).mock.calls)).not.toContain('buyer@test.com');
+        expect(JSON.stringify(vi.mocked(Logger.error).mock.calls)).not.toContain('pin-tok');
+    });
+    it('keeps credential failures eligible for retry after configuration repair', async () => {
+        vi.mocked(fetch).mockResolvedValue(new Response('Unauthorized', { status: 401 }));
+        await service.sendEvent(accountId, config, purchaseData, session);
+        expect(prisma.conversionDelivery.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ lastError: 'Unauthorized', httpStatus: 401 }),
+        }));
     });
 });
 

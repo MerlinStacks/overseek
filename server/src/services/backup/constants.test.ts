@@ -9,6 +9,6 @@ describe('backup constants', () => {
         expect(SENSITIVE_ACCOUNT_FIELDS).toEqual(['wooConsumerKey', 'wooConsumerSecret', 'webhookSecret', 'openRouterApiKey']);
     });
     it('defines bounded reads and a documented 100 MiB serialized-object budget', () => {
-        expect(BACKUP_LIMITS).toEqual({ batchSize: 500, maxSerializedBytes: 100 * 1024 * 1024, transactionTimeoutMs: 120000 });
+        expect(BACKUP_LIMITS).toEqual({ batchSize: 500, maxSerializedBytes: 100 * 1024 * 1024, maxStoredSerializedBytes: 1024 * 1024 * 1024, transactionTimeoutMs: 120000 });
     });
 });

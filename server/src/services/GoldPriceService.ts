@@ -5,14 +5,20 @@ import { prisma } from '../utils/prisma';
 // In a real scenario, we might want this in the DB per account if they bring their own key,
 // but for now we'll assume a system-wide free key or similar.
 const GOLD_API_URL = 'https://www.goldapi.io/api';
-// Using a placeholder token or env variable. In prod, use process.env.GOLD_API_KEY
-const API_TOKEN = process.env.GOLD_API_KEY || '';
+const REQUEST_TIMEOUT_MS = 10_000;
+
+function positivePrice(value: unknown): number {
+    const price = typeof value === 'number' || (typeof value === 'string' && value.trim()) ? Number(value) : NaN;
+    if (!Number.isFinite(price) || price <= 0) throw new Error('Gold price API returned an invalid price');
+    return price;
+}
 
 async function safeJson(response: Response, context: string): Promise<any> {
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
-        const bodySnippet = (await response.text()).slice(0, 200);
-        Logger.warn('GoldPriceService: Non-JSON response', { context, status: response.status, contentType, bodySnippet });
+        // Providers can echo credential-bearing request URLs in error pages.
+        await response.body?.cancel();
+        Logger.warn('GoldPriceService: Non-JSON response', { context, status: response.status, contentType });
         throw new Error('Gold price API returned non-JSON response');
     }
 
@@ -29,12 +35,14 @@ export class GoldPriceService {
      */
     static async fetchLivePrice(currency = 'USD'): Promise<number | null> {
         currency = normalizeCurrency(currency);
-        if (!API_TOKEN) {
+        const apiToken = process.env.GOLD_API_KEY?.trim();
+        if (!apiToken) {
             // Fallback to public endpoint
             Logger.info('GoldPriceService: No API Token, using public endpoint');
             try {
                 // This endpoint returns Ounce price in configured currency (default USD)
                 const response = await fetch(`https://data-asg.goldprice.org/dbXRates/${currency}`, {
+                    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
                     headers: {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                         'Accept': 'application/json',
@@ -50,35 +58,46 @@ export class GoldPriceService {
                 if (data && data.items && data.items.length > 0) {
                     const item = data.items[0];
                     // The API returns keys like xauPrice (which is in the requested currency)
-                    if (item.xauPrice) {
-                        const pricePerOunce = item.xauPrice;
+                    if (item.xauPrice !== undefined) {
+                        const pricePerOunce = positivePrice(item.xauPrice);
                         const pricePerGram = pricePerOunce / 31.1034768;
                         return pricePerGram;
                     }
                 }
-                return null;
+                throw new Error('Gold price API returned no price');
             } catch (primaryError) {
                 Logger.warn('GoldPriceService: Primary public endpoint failed, trying fallback', { error: (primaryError as Error).message });
 
-                // Secondary fallback: metals.dev free API (returns price per gram directly)
+                // Never send the old demo credential: it is not a production data source.
+                const metalsApiKey = process.env.METALS_API_KEY?.trim();
+                if (!metalsApiKey) {
+                    Logger.error('GoldPriceService: Public price unavailable and no authenticated provider configured', {
+                        primaryError: (primaryError as Error).message,
+                        configurationRequired: 'GOLD_API_KEY or METALS_API_KEY',
+                    });
+                    return null;
+                }
+                let fallbackStatus: number | undefined;
                 try {
-                    const fallbackResponse = await fetch(`https://api.metals.dev/v1/latest?api_key=demo&currency=${currency}&unit=g`, {
+                    const query = new URLSearchParams({ api_key: metalsApiKey, currency, unit: 'g' });
+                    const fallbackResponse = await fetch(`https://api.metals.dev/v1/latest?${query}`, {
+                        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
                         headers: { 'Accept': 'application/json' }
                     });
+                    fallbackStatus = fallbackResponse.status;
                     if (!fallbackResponse.ok) {
                         // eslint-disable-next-line preserve-caught-error -- This is the fallback HTTP failure, not the primary error being handled.
                         throw new Error(`HTTP ${fallbackResponse.status}`);
                     }
                     const fallbackData = await safeJson(fallbackResponse, 'metals.dev');
                     // metals.dev returns { metals: { gold: <price_per_gram> } }
-                    if (fallbackData?.metals?.gold) {
-                        return fallbackData.metals.gold;
-                    }
-                    return null;
-                } catch (fallbackError) {
+                    return positivePrice(fallbackData?.metals?.gold);
+                } catch {
                     Logger.error('GoldPriceService: Error fetching public price (both endpoints failed)', {
                         primaryError: (primaryError as Error).message,
-                        fallbackError: (fallbackError as Error).message
+                        // A transport error can contain the credential-bearing request URL.
+                        fallbackError: 'Authenticated metals provider failed',
+                        fallbackStatus,
                     });
                     return null;
                 }
@@ -89,8 +108,9 @@ export class GoldPriceService {
         try {
             const symbol = `XAU`;
             const response = await fetch(`${GOLD_API_URL}/${symbol}/${currency}`, {
+                signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
                 headers: {
-                    'x-access-token': API_TOKEN,
+                    'x-access-token': apiToken,
                     'Content-Type': 'application/json',
                 },
             });
@@ -101,10 +121,10 @@ export class GoldPriceService {
 
             const data = await safeJson(response, 'goldapi.io');
             // Response example: { "price": 2745.30, "currency": "USD", ... }
-            if (data && data.price) {
+            if (data && data.price !== undefined) {
                 // Gold price is usually per Ounce (Troy Ounce ~ 31.1035g)
                 // We want per GRAM for the calculator
-                const pricePerOunce = parseFloat(data.price);
+                const pricePerOunce = positivePrice(data.price);
                 const pricePerGram = pricePerOunce / 31.1034768;
                 return pricePerGram;
             }

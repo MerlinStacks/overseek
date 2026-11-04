@@ -11,9 +11,9 @@ vi.mock('../../utils/prisma', () => ({ prisma: { $transaction: mocks.transaction
 vi.mock('../../utils/logger', () => ({ Logger: { info: vi.fn(), warn: vi.fn() } }));
 vi.mock('./constants', async original => {
     const actual = await original<typeof import('./constants')>();
-    return { ...actual, BACKUP_LIMITS: { ...actual.BACKUP_LIMITS, batchSize: 2, maxSerializedBytes: 4096 } };
+    return { ...actual, BACKUP_LIMITS: { ...actual.BACKUP_LIMITS, batchSize: 2, maxSerializedBytes: 4096, maxStoredSerializedBytes: 16384 } };
 });
-import { generateBackup } from './backupGenerator';
+import { generateBackup, generateBackupJson } from './backupGenerator';
 import { SENSITIVE_ACCOUNT_FIELDS, SENSITIVE_EMAIL_FIELDS } from './constants';
 
 beforeEach(() => {
@@ -91,5 +91,41 @@ describe('account backup generation', () => {
     it('propagates transaction failures instead of returning a partial backup', async () => {
         mocks.tables.wooOrder.findMany.mockRejectedValue(new Error('Snapshot read failed'));
         await expect(generateBackup('tenant-1')).rejects.toThrow('Snapshot read failed');
+    });
+    it('streams the identical sanitized envelope above the materialized size limit', async () => {
+        vi.useFakeTimers();
+        try {
+            vi.setSystemTime(new Date('2026-11-05'));
+            mocks.tables.wooProduct.findMany.mockResolvedValue([{ id: 'p', rawData: { description: 'x'.repeat(5000) } }]);
+            const chunks: string[] = [];
+            const count = await generateBackupJson('tenant-1', async chunk => { chunks.push(chunk); });
+            const streamed = JSON.parse(chunks.join(''));
+            expect(count).toBe(1);
+            expect(streamed).toMatchObject({ exportedAt: new Date().toISOString(), version: '1.0', account: { wooConsumerKey: '********' } });
+            expect(streamed.data.products).toEqual([{ id: 'p', rawData: { description: 'x'.repeat(5000) } }]);
+            await expect(generateBackup('tenant-1')).rejects.toThrow('size limit');
+            mocks.tables.wooProduct.findMany.mockResolvedValue([{ id: 'small' }]);
+            chunks.length = 0;
+            await generateBackupJson('tenant-1', async chunk => { chunks.push(chunk); });
+            expect(JSON.parse(chunks.join(''))).toEqual(await generateBackup('tenant-1'));
+        } finally { vi.useRealTimers(); }
+    });
+    it('honors sink backpressure and does not fetch the next collection after a write fails', async () => {
+        mocks.tables.wooProduct.findMany.mockResolvedValue([{ id: 'p' }]);
+        await expect(generateBackupJson('tenant-1', async chunk => {
+            if (chunk.includes('"id":"p"')) throw new Error('disk full');
+        })).rejects.toThrow('disk full');
+        expect(mocks.tables.wooOrder.findMany).not.toHaveBeenCalled();
+    });
+    it('writes nothing for a missing account', async () => {
+        mocks.account.mockResolvedValue(null);
+        const write = vi.fn();
+        expect(await generateBackupJson('tenant-1', write)).toBeNull();
+        expect(write).not.toHaveBeenCalled();
+    });
+    it('retains a finite disk/work budget for streaming exports without silently truncating them', async () => {
+        mocks.tables.wooProduct.findMany.mockResolvedValue([{ id: 'p', description: 'x'.repeat(17000) }]);
+        await expect(generateBackupJson('tenant-1', async () => {})).rejects.toThrow('streaming export size limit');
+        expect(mocks.tables.wooOrder.findMany).not.toHaveBeenCalled();
     });
 });

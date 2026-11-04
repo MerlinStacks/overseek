@@ -94,6 +94,35 @@ describe('NotificationEngine', () => {
     });
 
     describe('handleOrderCreated', () => {
+        it('sends the invoice while push is blocked and still waits for both outcomes', async () => {
+            vi.mocked(prisma.account.findUnique).mockResolvedValue({ autoSendInvoiceOnNewOrder: true, invoiceRecipientEmail: 'orders@example.test', name: 'Store' } as any);
+            vi.mocked(canonicalInvoiceAttachmentService.resolveAbsolutePath).mockResolvedValue({ absolutePath: '/tmp/invoice.pdf', artifactId: 'artifact' });
+            let release!: () => void;
+            vi.mocked(PushNotificationService.sendToAccountWithDiagnostics).mockImplementation(() => new Promise(resolve => { release = () => resolve({ sent: 1, failed: 0, diagnostics: {} }); }));
+            let finished = false;
+            const send = (NotificationEngine as any).emailService.sendEmail;
+            const pending = (NotificationEngine as any).handleOrderCreated({ accountId: 'a', order: { id: 'o', number: '7', status: 'processing', total: '10', currency: 'AUD' } }).then(() => { finished = true; });
+            try {
+                await vi.waitFor(() => { expect(send).toHaveBeenCalledOnce(); expect(release).toBeTypeOf('function'); });
+                expect(finished).toBe(false);
+            } finally { release(); await pending; }
+        });
+
+        it('keeps invoice errors observed while push is still running', async () => {
+            vi.mocked(prisma.account.findUnique).mockResolvedValue({ autoSendInvoiceOnNewOrder: true, invoiceRecipientEmail: 'orders@example.test', name: 'Store' } as any);
+            vi.mocked(canonicalInvoiceAttachmentService.resolveAbsolutePath).mockResolvedValue({ absolutePath: '/tmp/invoice.pdf', artifactId: 'artifact' });
+            const send = (NotificationEngine as any).emailService.sendEmail;
+            send.mockRejectedValueOnce(new Error('email failed'));
+            let release!: () => void;
+            vi.mocked(PushNotificationService.sendToAccountWithDiagnostics).mockImplementation(() => new Promise(resolve => { release = () => resolve({ sent: 1, failed: 0, diagnostics: {} }); }));
+            let finished = false;
+            const pending = (NotificationEngine as any).handleOrderCreated({ accountId: 'a', order: { id: 'o', number: '7', status: 'processing' } }).catch((error: Error) => { finished = true; return error; });
+            await vi.waitFor(() => { expect(send).toHaveBeenCalledOnce(); expect(release).toBeTypeOf('function'); });
+            expect(finished).toBe(false);
+            release();
+            expect(await pending).toMatchObject({ message: 'email failed' });
+        });
+
         it('does not invent a zero/dollar amount when monetary evidence is absent', async () => {
             vi.mocked(prisma.notification.create).mockResolvedValue({ id: 'notification' } as any);
             vi.mocked(PushNotificationService.sendToAccountWithDiagnostics).mockResolvedValue({ sent: 0, failed: 0, diagnostics: {} } as any);

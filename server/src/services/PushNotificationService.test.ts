@@ -21,6 +21,13 @@ describe('push subscription and delivery scope', () => {
         m.subscriptions.mockResolvedValue([{ id: 'sub', userId: 'u', endpoint: 'https://push.test/device', p256dh: 'p', auth: 'a' }]);
         expect(await service.sendToAccount('a', { title: 'Order', body: 'Private' }, 'order')).toEqual({ sent: 1, failed: 0 }); expect(m.send.mock.calls[0][2]).toEqual({ timeout: 10000 });
     });
+    it('fans device sends out so one silent endpoint cannot stall the whole account', async () => {
+        m.subscriptions.mockResolvedValue(Array.from({ length: 20 }, (_, i) => ({ id: `sub${i}`, userId: 'u', endpoint: `https://push.test/${i}`, p256dh: 'p', auth: 'a' })));
+        let inFlight = 0, peak = 0;
+        m.send.mockImplementation(async () => { peak = Math.max(peak, ++inFlight); await new Promise(resolve => setTimeout(resolve, 5)); inFlight--; });
+        expect(await service.sendToAccount('a', { title: 'Order', body: 'Private' }, 'order')).toEqual({ sent: 20, failed: 0 });
+        expect(peak).toBeGreaterThan(1); expect(peak).toBeLessThanOrEqual(8);
+    });
     it('checks account access before transferring device ownership', async () => {
         m.user.mockResolvedValue(null); expect(await service.subscribe('u', 'a', { endpoint: 'https://push.test/device', keys: { p256dh: 'p', auth: 'a' } })).toMatchObject({ success: false }); expect(m.transaction).not.toHaveBeenCalled();
     });

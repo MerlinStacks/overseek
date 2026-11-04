@@ -135,7 +135,7 @@ export class NotificationEngine {
         const amount = /^[A-Z]{3}$/.test(order.currency ?? '') && Number.isFinite(total) ? `${order.currency} ${order.total}` : 'monetary basis unavailable';
         const headline = `Order #${orderNumber} - ${amount} (${itemText})`;
 
-        await this.sendNotification({
+        const outcomes = await Promise.allSettled([this.sendNotification({
             accountId,
             eventType: 'ORDER_CREATED',
             channels: ['in_app', 'push', 'socket'],
@@ -172,14 +172,15 @@ export class NotificationEngine {
                 }
             },
             payload: { orderId: order.id, orderNumber, total }
-        });
-
-        await this.sendInvoiceEmailIfEnabled({
+        }), this.sendInvoiceEmailIfEnabled({
             accountId,
             order,
             orderNumber,
             total
-        });
+        })]);
+        // Slow push devices must not delay the invoice, but neither branch can
+        // outlive acknowledgement of this durable event or hide a failed outcome.
+        for (const outcome of outcomes) if (outcome.status === 'rejected') throw outcome.reason;
     }
 
     private static async handleOrderStatusChanged(data: { accountId: string; order: any; newStatus?: string }): Promise<void> {

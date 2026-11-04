@@ -148,6 +148,11 @@ export class AccountBackupService {
     /** @see backupGenerator.generateBackup */
     static generateBackup = generateBackup;
 
+    static async generateStoredBackup(accountId: string, type: 'SCHEDULED' | 'MANUAL' = 'MANUAL', options: BackupOptions = {}) {
+        const { generateStoredBackup } = await import('./backup/backupStorage');
+        return generateStoredBackup(accountId, type, options);
+    }
+
     /** @see backupGenerator.getBackupPreview */
     static getBackupPreview = getBackupPreview;
 
@@ -198,14 +203,11 @@ export class AccountBackupService {
                 });
 
                 // Generate backup
-                const backup = await this.generateBackup(settings.accountId);
-                if (!backup) {
+                const stored = await this.generateStoredBackup(settings.accountId, 'SCHEDULED');
+                if (!stored) {
                     failed++;
                     continue;
                 }
-
-                // Save to storage
-                await this.saveBackupToStorage(settings.accountId, backup, 'SCHEDULED');
 
                 // Apply retention policy
                 await this.applyRetentionPolicy(settings.accountId);

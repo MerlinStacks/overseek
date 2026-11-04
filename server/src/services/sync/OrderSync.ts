@@ -87,9 +87,10 @@ export class OrderSync extends BaseSync {
                 } else {
                     totalSkipped++;
                     validationFailures++;
-                    Logger.debug(`Skipping invalid order`, {
+                    Logger.warn('Skipping invalid order', {
                         accountId, syncId, orderId: raw?.id,
-                        errors: result.error.issues.map(i => i.message).slice(0, 3)
+                        // Field paths and codes explain schema failures without logging customer data.
+                        errors: result.error.issues.slice(0, 3).map(i => ({ path: i.path.join('.'), code: i.code }))
                     });
                 }
             }
@@ -332,13 +333,13 @@ export class OrderSync extends BaseSync {
             }
         }
 
-        if (expectedTotal > 0 && totalProcessed < expectedTotal) {
-            Logger.warn(`Order sync incomplete: processed ${totalProcessed}/${expectedTotal} orders (${totalSkipped} skipped)`, {
-                accountId, syncId, expectedTotal, totalProcessed, totalSkipped, incremental
-            });
+        const excludedByStatus = totalSkipped - validationFailures;
+        const summary = { accountId, syncId, expectedTotal, totalProcessed, totalSkipped, excludedByStatus, validationFailures, incremental };
+        if (validationFailures > 0 || (expectedTotal > 0 && totalProcessed + excludedByStatus < expectedTotal)) {
+            Logger.warn(`Order sync incomplete: processed ${totalProcessed}/${expectedTotal} orders (${totalSkipped} skipped)`, summary);
         } else {
-            Logger.info(`Order sync complete: ${totalProcessed}/${expectedTotal} orders processed`, {
-                accountId, syncId, totalDeleted, totalSkipped, incremental
+            Logger.info(`Order sync complete: ${totalProcessed}/${expectedTotal} orders processed (${excludedByStatus} excluded by status)`, {
+                ...summary, totalDeleted
             });
         }
 

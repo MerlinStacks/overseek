@@ -2,8 +2,8 @@
  * BackupGenerator - Generate account data backups
  * 
  * Handles collecting and packaging account data for backup.
- * Reads a consistent snapshot in bounded batches. The legacy API still returns
- * one materialized object, so a serialized-size budget guards oversized exports.
+ * Reads a consistent snapshot in bounded parent-table batches. Legacy callers
+ * retain a size-bounded object API; stored exports use a backpressured JSON sink.
  */
 
 import { prisma } from '../../utils/prisma';
@@ -26,7 +26,35 @@ export async function generateBackup(
     });
 }
 
-async function generateBackupSnapshot(db: Prisma.TransactionClient, accountId: string, options: BackupOptions): Promise<AccountBackup | null> {
+/** Same versioned JSON envelope as generateBackup, without retaining all rows in memory. */
+export async function generateBackupJson(
+    accountId: string,
+    write: (chunk: string) => Promise<void>,
+    options: BackupOptions = {},
+): Promise<number | null> {
+    if (typeof accountId !== 'string' || !accountId.trim()) throw new Error('Account ID required');
+    let recordCount = 0;
+    let serializedBytes = 0;
+    const backup = await prisma.$transaction(tx => generateBackupSnapshot(tx, accountId, options, {
+        write: async chunk => {
+            serializedBytes += Buffer.byteLength(chunk, 'utf8');
+            if (serializedBytes > BACKUP_LIMITS.maxStoredSerializedBytes) {
+                throw new Error('Stored backup exceeds the streaming export size limit (1 GiB). Use a database backup.');
+            }
+            await write(chunk);
+        },
+        onRecord: () => { recordCount++; },
+    }), {
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+        timeout: BACKUP_LIMITS.transactionTimeoutMs,
+    });
+    return backup ? recordCount : null;
+}
+
+async function generateBackupSnapshot(
+    db: Prisma.TransactionClient, accountId: string, options: BackupOptions,
+    sink?: { write: (chunk: string) => Promise<void>; onRecord: () => void },
+): Promise<AccountBackup | null> {
     const { includeAuditLogs = false, includeAnalytics = false } = options;
 
     Logger.info('[AccountBackup] Starting backup generation', { accountId, options });
@@ -44,6 +72,8 @@ async function generateBackupSnapshot(db: Prisma.TransactionClient, accountId: s
 
     // Strip sensitive fields from account
     const sanitizedAccount = sanitizeAccount(account as Record<string, unknown>);
+    const exportedAt = new Date().toISOString();
+    if (sink) await sink.write('{"exportedAt":' + JSON.stringify(exportedAt) + ',"version":' + JSON.stringify(BACKUP_VERSION) + ',"account":' + JSON.stringify(sanitizedAccount) + ',"data":{');
 
     let serializedBytes = 0;
     function consume(value: unknown) {
@@ -53,21 +83,35 @@ async function generateBackupSnapshot(db: Prisma.TransactionClient, accountId: s
         }
     }
     consume(sanitizedAccount);
+    let collectionCount = 0;
+    let recordCount = 0;
     async function load<T extends { id: string }>(
+        name: string,
         fetchPage: (page: BackupPage) => Promise<T[]>,
         sanitize: (row: T) => unknown = row => row,
     ): Promise<unknown[]> {
         const rows: unknown[] = [];
+        if (sink) await sink.write((collectionCount++ ? ',' : '') + JSON.stringify(name) + ':[');
+        let rowCount = 0;
         let cursor: string | undefined;
         while (true) {
             const batch = await fetchPage({ take: BACKUP_LIMITS.batchSize, orderBy: { id: 'asc' },
                 ...(cursor ? { cursor: { id: cursor }, skip: 1 as const } : {}) });
             for (const row of batch) {
                 const safeRow = sanitize(row);
-                consume(safeRow);
-                rows.push(safeRow);
+                if (sink) {
+                    await sink.write((rowCount++ ? ',' : '') + (JSON.stringify(safeRow) ?? 'null'));
+                    sink.onRecord();
+                } else {
+                    consume(safeRow);
+                    rows.push(safeRow);
+                }
+                recordCount++;
             }
-            if (batch.length < BACKUP_LIMITS.batchSize) return rows;
+            if (batch.length < BACKUP_LIMITS.batchSize) {
+                if (sink) await sink.write(']');
+                return rows;
+            }
             cursor = batch[batch.length - 1].id;
         }
     }
@@ -76,7 +120,7 @@ async function generateBackupSnapshot(db: Prisma.TransactionClient, accountId: s
     const data: Record<string, unknown[]> = {};
 
     // Users (with user details, excluding passwordHash)
-    data.users = await load(page => db.accountUser.findMany({
+    data.users = await load('users', page => db.accountUser.findMany({
         ...page,
         where: { accountId },
         include: {
@@ -95,53 +139,53 @@ async function generateBackupSnapshot(db: Prisma.TransactionClient, accountId: s
     }));
 
     // Roles
-    data.roles = await load(page => db.accountRole.findMany({ ...page, where: { accountId } }));
+    data.roles = await load('roles', page => db.accountRole.findMany({ ...page, where: { accountId } }));
 
     // Features
-    data.features = await load(page => db.accountFeature.findMany({ ...page, where: { accountId } }));
+    data.features = await load('features', page => db.accountFeature.findMany({ ...page, where: { accountId } }));
 
     // Products with variations
-    data.products = await load(page => db.wooProduct.findMany({
+    data.products = await load('products', page => db.wooProduct.findMany({
         ...page,
         where: { accountId },
         include: { variations: { orderBy: { id: 'asc' } } },
     }));
 
     // Orders (batch to avoid memory issues)
-    data.orders = await load(page => db.wooOrder.findMany({ ...page, where: { accountId }, orderBy: [{ dateCreated: 'desc' }, { id: 'asc' }] }));
+    data.orders = await load('orders', page => db.wooOrder.findMany({ ...page, where: { accountId }, orderBy: [{ dateCreated: 'desc' }, { id: 'asc' }] }));
 
     // Customers
-    data.customers = await load(page => db.wooCustomer.findMany({ ...page, where: { accountId } }));
+    data.customers = await load('customers', page => db.wooCustomer.findMany({ ...page, where: { accountId } }));
 
     // Reviews
-    data.reviews = await load(page => db.wooReview.findMany({ ...page, where: { accountId } }));
+    data.reviews = await load('reviews', page => db.wooReview.findMany({ ...page, where: { accountId } }));
 
     // Suppliers with items
-    data.suppliers = await load(page => db.supplier.findMany({
+    data.suppliers = await load('suppliers', page => db.supplier.findMany({
         ...page,
         where: { accountId },
         include: { items: true },
     }));
 
     // Internal Products
-    data.internalProducts = await load(page => db.internalProduct.findMany({ ...page, where: { accountId } }));
+    data.internalProducts = await load('internalProducts', page => db.internalProduct.findMany({ ...page, where: { accountId } }));
 
     // BOMs with items
-    data.boms = await load(page => db.bOM.findMany({
+    data.boms = await load('boms', page => db.bOM.findMany({
         ...page,
         where: { product: { accountId } },
         include: { items: true },
     }));
 
     // Purchase Orders with items
-    data.purchaseOrders = await load(page => db.purchaseOrder.findMany({
+    data.purchaseOrders = await load('purchaseOrders', page => db.purchaseOrder.findMany({
         ...page,
         where: { accountId },
         include: { items: true },
     }));
 
     // Conversations with messages
-    data.conversations = await load(page => db.conversation.findMany({
+    data.conversations = await load('conversations', page => db.conversation.findMany({
         ...page,
         where: { accountId },
         include: {
@@ -152,53 +196,53 @@ async function generateBackupSnapshot(db: Prisma.TransactionClient, accountId: s
     }));
 
     // Canned responses
-    data.cannedResponses = await load(page => db.cannedResponse.findMany({ ...page, where: { accountId } }));
+    data.cannedResponses = await load('cannedResponses', page => db.cannedResponse.findMany({ ...page, where: { accountId } }));
 
     // Email accounts (mask credentials)
-    data.emailAccounts = await load(page => db.emailAccount.findMany({ ...page, where: { accountId } }),
+    data.emailAccounts = await load('emailAccounts', page => db.emailAccount.findMany({ ...page, where: { accountId } }),
         ea => redactFields({ ...ea, password: '********' }, SENSITIVE_EMAIL_FIELDS));
 
     // Email templates
-    data.emailTemplates = await load(page => db.emailTemplate.findMany({ ...page, where: { accountId } }));
+    data.emailTemplates = await load('emailTemplates', page => db.emailTemplate.findMany({ ...page, where: { accountId } }));
 
     // Marketing automations with steps
-    data.automations = await load(page => db.marketingAutomation.findMany({
+    data.automations = await load('automations', page => db.marketingAutomation.findMany({
         ...page,
         where: { accountId },
         include: { steps: true },
     }));
 
     // Campaigns
-    data.campaigns = await load(page => db.marketingCampaign.findMany({ ...page, where: { accountId } }));
+    data.campaigns = await load('campaigns', page => db.marketingCampaign.findMany({ ...page, where: { accountId } }));
 
     // Segments
-    data.segments = await load(page => db.customerSegment.findMany({ ...page, where: { accountId } }));
+    data.segments = await load('segments', page => db.customerSegment.findMany({ ...page, where: { accountId } }));
 
     // Invoice templates
-    data.invoiceTemplates = await load(page => db.invoiceTemplate.findMany({ ...page, where: { accountId } }));
+    data.invoiceTemplates = await load('invoiceTemplates', page => db.invoiceTemplate.findMany({ ...page, where: { accountId } }));
 
     // Policies
-    data.policies = await load(page => db.policy.findMany({ ...page, where: { accountId } }));
+    data.policies = await load('policies', page => db.policy.findMany({ ...page, where: { accountId } }));
 
     // Dashboards with widgets
-    data.dashboards = await load(page => db.dashboardLayout.findMany({
+    data.dashboards = await load('dashboards', page => db.dashboardLayout.findMany({
         ...page,
         where: { accountId },
         include: { widgets: true },
     }));
 
     // Sync states
-    data.syncStates = await load(page => db.syncState.findMany({ ...page, where: { accountId } }));
+    data.syncStates = await load('syncStates', page => db.syncState.findMany({ ...page, where: { accountId } }));
 
     // Ad accounts (mask tokens)
-    data.adAccounts = await load(page => db.adAccount.findMany({ ...page, where: { accountId } }), aa => ({
+    data.adAccounts = await load('adAccounts', page => db.adAccount.findMany({ ...page, where: { accountId } }), aa => ({
         ...aa,
         accessToken: '********',
         refreshToken: aa.refreshToken ? '********' : null,
     }));
 
     // Social accounts (mask tokens)
-    data.socialAccounts = await load(page => db.socialAccount.findMany({ ...page, where: { accountId } }), sa => ({
+    data.socialAccounts = await load('socialAccounts', page => db.socialAccount.findMany({ ...page, where: { accountId } }), sa => ({
         ...sa,
         accessToken: '********',
         refreshToken: sa.refreshToken ? '********' : null,
@@ -207,27 +251,28 @@ async function generateBackupSnapshot(db: Prisma.TransactionClient, accountId: s
 
     // Optional: Audit logs
     if (includeAuditLogs) {
-        data.auditLogs = await load(page => db.auditLog.findMany({ ...page, where: { accountId }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }] }));
+        data.auditLogs = await load('auditLogs', page => db.auditLog.findMany({ ...page, where: { accountId }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }] }));
     }
 
     // Optional: Analytics sessions
     if (includeAnalytics) {
-        data.analyticsSessions = await load(page => db.analyticsSession.findMany({
+        data.analyticsSessions = await load('analyticsSessions', page => db.analyticsSession.findMany({
             ...page,
             where: { accountId },
             include: { events: true },
         }));
     }
 
+    if (sink) await sink.write('}}');
     const elapsedMs = Date.now() - startTime;
     Logger.info('[AccountBackup] Backup generation complete', {
         accountId,
         elapsedMs,
-        recordCount: Object.values(data).reduce((sum, rows) => sum + rows.length, 0),
+        recordCount,
     });
 
     return {
-        exportedAt: new Date().toISOString(),
+        exportedAt,
         version: BACKUP_VERSION,
         account: sanitizedAccount,
         data,

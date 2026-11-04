@@ -169,8 +169,17 @@ export class PinterestCAPIService implements ConversionPlatformService {
                     }
                 }
 
-                await this.markDelivery(deliveryId, 'FAILED', response.status, responseBody, attempt, responseBody);
-                Logger.error('[PinterestCAPI] Delivery failed', { status: response.status, adAccountId });
+                // Replaying the same rejected payload cannot repair a validation error.
+                // Keep the response on the scoped delivery, not in general logs (it may echo PII).
+                const invalidPayload = response.status === 400 || response.status === 422;
+                await this.markDelivery(deliveryId, 'FAILED', response.status, responseBody, attempt,
+                    `${invalidPayload ? 'NON_RETRYABLE: ' : ''}${responseBody || `HTTP ${response.status}`}`);
+                Logger.error('[PinterestCAPI] Delivery failed', {
+                    status: response.status, adAccountId, deliveryId,
+                    eventId: payload.data?.[0]?.event_id,
+                    reason: invalidPayload ? 'payload_rejected' : 'provider_rejected',
+                    responseStored: deliveryId !== 'unknown',
+                });
                 return;
             } catch (error: any) {
                 if (attempt === MAX_RETRIES) {

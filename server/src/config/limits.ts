@@ -57,6 +57,18 @@ export const SCHEDULER_LIMITS = {
 } as const;
 
 
+export const EVENT_LIMITS = {
+    /** Critical-event outbox poll interval. This bounds wake-up latency only:
+     * receipts are claimed once by identity, so a shorter tick cannot duplicate work. */
+    DRAIN_INTERVAL_MS: 5_000,
+    /** Maximum receipts one drain pass may admit. */
+    DRAIN_BATCH_SIZE: 25,
+    /** Accounts dispatched at once. Work within one account stays in createdAt order,
+     * so a slow consumer in one account cannot hold the outbox of every other account. */
+    DRAIN_ACCOUNT_CONCURRENCY: 4,
+} as const;
+
+
 export const QUEUE_LIMITS = {
     /** Worker concurrency per queue (1 = serialize jobs to cap peak heap usage) */
     WORKER_CONCURRENCY: 1,

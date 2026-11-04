@@ -119,4 +119,19 @@ describe('ConversionRetryService', () => {
         });
         expect(fetch).not.toHaveBeenCalled();
     });
+    it('replays legacy Pinterest payloads unchanged and makes a repeated 422 terminal', async () => {
+        const payload = { data: [{ event_id: 'original', event_time: 1700000000, user_data: { em: ['hash'] } }] };
+        vi.mocked(prisma.conversionDelivery.findMany).mockResolvedValue([{
+            id: 'legacy', accountId: 'account-1', platform: 'PINTEREST', payload,
+            attempts: 1, status: 'FAILED', lastAttemptAt: null,
+        }] as any);
+        vi.mocked(prisma.accountFeature.findUnique).mockResolvedValue({ isEnabled: true, config: { adAccountId: 'pin', accessToken: 'secret' } } as any);
+        vi.mocked(prisma.conversionDelivery.updateMany).mockResolvedValue({ count: 1 } as any);
+        vi.mocked(fetch).mockResolvedValue(new Response('invalid payload', { status: 422 }));
+        expect(await retryFailedConversions()).toMatchObject({ totalAttempted: 1, totalRecovered: 0 });
+        expect(fetch).toHaveBeenCalledWith('https://api.pinterest.com/v5/ad_accounts/pin/events', expect.objectContaining({ body: JSON.stringify(payload) }));
+        expect(prisma.conversionDelivery.update).toHaveBeenCalledWith(expect.objectContaining({
+            where: { id: 'legacy' }, data: expect.objectContaining({ response: 'invalid payload', lastError: 'NON_RETRYABLE: invalid payload' }),
+        }));
+    });
 });

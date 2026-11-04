@@ -10,6 +10,7 @@ import { OrderTaggingService } from '../../OrderTaggingService';
 vi.mock('../../CriticalEventOutbox', () => ({ recordOrderLifecycle: vi.fn() }));
 import { IndexingService } from '../../search/IndexingService';
 import { campaignTrackingService } from '../../CampaignTrackingService';
+import { Logger } from '../../../utils/logger';
 
 vi.mock('../../CampaignTrackingService', () => ({ campaignTrackingService: { trackOrderPurchase: vi.fn() } }));
 
@@ -115,6 +116,26 @@ describe('OrderSync meta persistence', () => {
         (prisma.wooCustomer.findMany as any).mockResolvedValue([]);
         (prisma.$queryRaw as any).mockResolvedValue([]);
         (esClient.bulk as any).mockResolvedValue({ errors: false, items: [] });
+    });
+
+    it('counts intentional excluded-status orders without reporting an incomplete sync', async () => {
+        mockWoo.getOrders = vi.fn().mockResolvedValue({ data: [{ id: 42, number: '42', status: 'checkout-draft', currency: 'AUD', total: '25' }], totalPages: 1, total: 1 });
+        await (new OrderSync() as any).sync(mockWoo, accountId, true);
+        expect(prisma.wooOrder.upsert).not.toHaveBeenCalled();
+        expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(expect.any(String), accountId, [42]);
+        expect(Logger.warn).not.toHaveBeenCalledWith(expect.stringContaining('Order sync incomplete'), expect.anything());
+        expect(Logger.info).toHaveBeenCalledWith(expect.stringContaining('Order sync complete'), expect.objectContaining({
+            totalProcessed: 0, totalSkipped: 1, excludedByStatus: 1, validationFailures: 0,
+        }));
+    });
+
+    it('warns on actual schema failures with paths/codes but no customer values', async () => {
+        mockWoo.getOrders = vi.fn().mockResolvedValue({ data: [{ id: 42, status: 'processing', billing: 'private-customer-data' }], totalPages: 1, total: 1 });
+        await (new OrderSync() as any).sync(mockWoo, accountId, true);
+        expect(Logger.warn).toHaveBeenCalledWith('Skipping invalid order', expect.objectContaining({ orderId: 42, errors: expect.arrayContaining([expect.objectContaining({ code: expect.any(String), path: expect.any(String) })]) }));
+        expect(Logger.warn).toHaveBeenCalledWith(expect.stringContaining('Order sync incomplete'), expect.objectContaining({ validationFailures: 1, excludedByStatus: 0 }));
+        expect(JSON.stringify(vi.mocked(Logger.warn).mock.calls)).not.toContain('private-customer-data');
+        expect(prisma.wooOrder.deleteMany).not.toHaveBeenCalled();
     });
 
     it('locks existing orders and preserves stored manual tags through provider sync and indexing', async () => {

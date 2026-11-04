@@ -6,6 +6,7 @@ import { NotificationEngine } from '../services/NotificationEngine';
 import { drainCriticalEvents } from '../services/CriticalEventOutbox';
 import { prisma } from '../utils/prisma';
 import { shipmentAutomationContext } from '../services/shipping/shipmentContext';
+import { EVENT_LIMITS } from './limits';
 
 function subscribeAutomationTrigger(
     eventName: string,
@@ -106,7 +107,7 @@ export function subscribeEventBus(chatService: ChatService, automationEngine: Au
     NotificationEngine.init();
     let pending = false;
     const tick = async () => { if (pending) return; pending = true; try { await drainCriticalEvents(); } catch { Logger.error('[EventBus] Critical event drain unavailable'); } finally { pending = false; } };
-    const timer = setInterval(() => { void tick(); }, 30000);
+    const timer = setInterval(() => { void tick(); }, EVENT_LIMITS.DRAIN_INTERVAL_MS);
     timer.unref();
     return () => { clearInterval(timer); EventBus.removeAllListeners(); NotificationEngine.dispose(); };
 }

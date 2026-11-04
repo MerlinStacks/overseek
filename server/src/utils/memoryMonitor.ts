@@ -16,7 +16,7 @@ const heapHistory: Array<{ ts: number; heapUsedMb: number; rssMb: number }> = []
 
 const DEFAULT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const DEFAULT_WARN_HEAP_PCT = 80;
-const DEFAULT_SNAPSHOT_LOG_LEVEL: 'info' | 'warn' = 'warn';
+const DEFAULT_SNAPSHOT_LOG_LEVEL: 'info' | 'warn' = 'info';
 const DEFAULT_TREND_WINDOW_POINTS = 12;
 const DEFAULT_TREND_WARN_MB_PER_MIN = 8;
 const DEFAULT_HEAPDUMP_PCT = 92;

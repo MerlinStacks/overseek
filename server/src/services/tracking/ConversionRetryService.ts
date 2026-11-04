@@ -175,13 +175,15 @@ async function replayClaimedDelivery(delivery: RetryDelivery, config: Record<str
         const accepted = request.acceptsResponse
             ? request.acceptsResponse(response, responseBody)
             : response.ok;
+        const rejectedPinterestPayload = delivery.platform === 'PINTEREST'
+            && (response.status === 400 || response.status === 422);
 
         await finishAttempt(
             delivery.id,
             accepted ? 'SENT' : 'FAILED',
             response.status,
             responseBody,
-            accepted ? null : responseBody || `HTTP ${response.status}`,
+            accepted ? null : `${rejectedPinterestPayload ? NON_RETRYABLE_PREFIX + ' ' : ''}${responseBody || `HTTP ${response.status}`}`,
         );
         return accepted;
     } catch (error: any) {

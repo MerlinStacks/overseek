@@ -22,6 +22,8 @@ export type BackupFrequency = keyof typeof FREQUENCY_MS;
 export const BACKUP_LIMITS = {
     batchSize: 500,
     maxSerializedBytes: 100 * 1024 * 1024,
+    // Stored exports stream to disk, but still have a finite uncompressed work/disk budget.
+    maxStoredSerializedBytes: 1024 * 1024 * 1024,
     transactionTimeoutMs: 120_000,
 } as const;
 

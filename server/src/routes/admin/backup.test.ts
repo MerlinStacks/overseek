@@ -3,7 +3,7 @@ import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-    getBackupPreview: vi.fn(), generateBackup: vi.fn(), saveBackupToStorage: vi.fn(),
+    getBackupPreview: vi.fn(), generateBackup: vi.fn(), saveBackupToStorage: vi.fn(), generateStoredBackup: vi.fn(),
     applyRetentionPolicy: vi.fn(), getSettings: vi.fn(), updateSettings: vi.fn(),
     getStoredBackups: vi.fn(), getBackupFilePath: vi.fn(), deleteStoredBackup: vi.fn(),
     restoreFromBackup: vi.fn(), createReadStream: vi.fn(),
@@ -25,6 +25,7 @@ describe('admin backup routes', () => {
         vi.resetAllMocks();
         mocks.generateBackup.mockResolvedValue(backup);
         mocks.saveBackupToStorage.mockResolvedValue({ id: 'backup-1' });
+        mocks.generateStoredBackup.mockResolvedValue({ id: 'backup-1' });
         mocks.updateSettings.mockResolvedValue({ isEnabled: true });
         mocks.findBackup.mockResolvedValue({ accountId: 'tenant-1', status: 'COMPLETED', account: { name: 'My Store!' } });
         app = Fastify();
@@ -35,13 +36,15 @@ describe('admin backup routes', () => {
     it.each(['', '/save'])('allows an omitted options body and defaults flags to false: %s', async suffix => {
         const response = await app.inject({ method: 'POST', url: accountUrl + suffix });
         expect(response.statusCode).toBe(200);
-        expect(mocks.generateBackup).toHaveBeenCalledExactlyOnceWith('tenant-1', { includeAuditLogs: false, includeAnalytics: false });
+        if (suffix) expect(mocks.generateStoredBackup).toHaveBeenCalledExactlyOnceWith('tenant-1', 'MANUAL', { includeAuditLogs: false, includeAnalytics: false });
+        else expect(mocks.generateBackup).toHaveBeenCalledExactlyOnceWith('tenant-1', { includeAuditLogs: false, includeAnalytics: false });
     });
 
     it.each(['', '/save'])('preserves explicit boolean flags: %s', async suffix => {
         const response = await app.inject({ method: 'POST', url: accountUrl + suffix, payload: { includeAuditLogs: false, includeAnalytics: true } });
         expect(response.statusCode).toBe(200);
-        expect(mocks.generateBackup).toHaveBeenCalledWith('tenant-1', { includeAuditLogs: false, includeAnalytics: true });
+        if (suffix) expect(mocks.generateStoredBackup).toHaveBeenCalledWith('tenant-1', 'MANUAL', { includeAuditLogs: false, includeAnalytics: true });
+        else expect(mocks.generateBackup).toHaveBeenCalledWith('tenant-1', { includeAuditLogs: false, includeAnalytics: true });
     });
 
     describe.each(['', '/save'])('backup options for %s', suffix => {
@@ -56,6 +59,7 @@ describe('admin backup routes', () => {
             expect(response.statusCode).toBe(400);
             expect(response.json().error).toBe('Validation failed');
             expect(mocks.generateBackup).not.toHaveBeenCalled();
+            expect(mocks.generateStoredBackup).not.toHaveBeenCalled();
             expect(mocks.saveBackupToStorage).not.toHaveBeenCalled();
             expect(mocks.applyRetentionPolicy).not.toHaveBeenCalled();
         });
@@ -73,13 +77,15 @@ describe('admin backup routes', () => {
         const response = await app.inject({ method: 'POST', url: accountUrl + '/save', payload: {} });
         expect(response.statusCode).toBe(200);
         expect(response.json()).toEqual({ id: 'backup-1' });
-        expect(mocks.saveBackupToStorage).toHaveBeenCalledWith('tenant-1', backup, 'MANUAL');
+        expect(mocks.generateStoredBackup).toHaveBeenCalledWith('tenant-1', 'MANUAL', { includeAuditLogs: false, includeAnalytics: false });
+        expect(mocks.generateBackup).not.toHaveBeenCalled();
         expect(mocks.applyRetentionPolicy).toHaveBeenCalledWith('tenant-1');
-        expect(mocks.saveBackupToStorage.mock.invocationCallOrder[0]).toBeLessThan(mocks.applyRetentionPolicy.mock.invocationCallOrder[0]);
+        expect(mocks.generateStoredBackup.mock.invocationCallOrder[0]).toBeLessThan(mocks.applyRetentionPolicy.mock.invocationCallOrder[0]);
     });
 
     it.each(['', '/save'])('returns 404 when the account does not exist: %s', async suffix => {
         mocks.generateBackup.mockResolvedValue(null);
+        mocks.generateStoredBackup.mockResolvedValue(null);
         const response = await app.inject({ method: 'POST', url: accountUrl + suffix });
         expect(response.statusCode).toBe(404);
         expect(response.json()).toEqual({ error: 'Account not found' });
@@ -161,7 +167,7 @@ describe('admin backup routes', () => {
 
     it.each([
         { method: 'POST' as const, url: accountUrl, service: 'generateBackup' as const, error: 'Failed to generate backup' },
-        { method: 'POST' as const, url: accountUrl + '/save', service: 'saveBackupToStorage' as const, error: 'Failed to save backup' },
+        { method: 'POST' as const, url: accountUrl + '/save', service: 'generateStoredBackup' as const, error: 'Failed to save backup' },
         { method: 'POST' as const, url: '/backups/backup-1/restore', service: 'restoreFromBackup' as const, error: 'Failed to restore backup' },
         { method: 'PUT' as const, url: accountUrl + '/settings', service: 'updateSettings' as const, error: 'Failed to update backup settings' },
         { method: 'GET' as const, url: '/backups/backup-1/download', service: 'getBackupFilePath' as const, error: 'Failed to download backup' },

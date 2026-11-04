@@ -14,10 +14,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
 import * as crypto from 'crypto';
-import { Readable, Transform } from 'stream';
+import { PassThrough, Readable, Transform } from 'stream';
 import { pipeline } from 'stream/promises';
-import type { AccountBackup, StoredBackupInfo, BackupSettings } from './types';
+import type { AccountBackup, StoredBackupInfo, BackupSettings, BackupOptions } from './types';
 import { BACKUP_DIR, FREQUENCY_MS } from './constants';
+import { generateBackupJson } from './backupGenerator';
 
 /**
  * Result of a backup write operation
@@ -79,6 +80,56 @@ export async function saveBackupToStorage(
     backup: AccountBackup,
     type: 'SCHEDULED' | 'MANUAL' = 'MANUAL'
 ): Promise<StoredBackupInfo> {
+    const stored = await storeBackup(accountId, type, async filePath => ({
+        ...await streamSerializeToGzip(backup, filePath),
+        recordCount: Object.values(backup.data).reduce((total, records) => total + records.length, 0),
+    }));
+    return stored!;
+}
+
+/** Generate and compress inside one DB snapshot; publish only after the transaction commits. */
+export async function generateStoredBackup(
+    accountId: string,
+    type: 'SCHEDULED' | 'MANUAL' = 'MANUAL',
+    options: BackupOptions = {},
+): Promise<StoredBackupInfo | null> {
+    if (typeof accountId !== 'string' || !accountId.trim()) throw new Error('Account ID required');
+    return storeBackup(accountId, type, async filePath => {
+        const tempPath = `${filePath}.tmp.${crypto.randomUUID()}`;
+        const input = new PassThrough();
+        const hash = crypto.createHash('sha256');
+        let sizeBytes = 0;
+        const completion = pipeline(input, zlib.createGzip(), new Transform({
+            transform(chunk, _encoding, callback) { hash.update(chunk); sizeBytes += chunk.length; callback(null, chunk); },
+        }), fs.createWriteStream(tempPath, { flags: 'wx' }));
+        // Handle failures immediately, including while the producer is awaiting a DB page.
+        void completion.catch(() => {});
+        try {
+            const recordCount = await generateBackupJson(accountId, chunk => new Promise<void>((resolve, reject) => {
+                input.write(chunk, error => error ? reject(error) : resolve());
+            }), options);
+            input.end();
+            await completion;
+            if (recordCount === null) {
+                await fs.promises.unlink(tempPath);
+                return null;
+            }
+            await fs.promises.rename(tempPath, filePath);
+            return { sizeBytes, checksum: hash.digest('hex'), recordCount };
+        } catch (error) {
+            input.destroy(error instanceof Error ? error : new Error(String(error)));
+            await completion.catch(() => {});
+            await fs.promises.unlink(tempPath).catch(() => {});
+            throw error;
+        }
+    });
+}
+
+async function storeBackup(
+    accountId: string,
+    type: 'SCHEDULED' | 'MANUAL',
+    writeFile: (filePath: string) => Promise<(BackupWriteResult & { recordCount: number }) | null>,
+): Promise<StoredBackupInfo | null> {
     // Ensure backup directory exists
     const accountBackupDir = path.join(BACKUP_DIR, accountId);
     if (!fs.existsSync(accountBackupDir)) {
@@ -92,10 +143,9 @@ export async function saveBackupToStorage(
 
     // Stream-serialize to gzip to avoid V8 string length limits
     // EDGE CASE FIX: Uses atomic write (temp file + rename) with SHA256 checksum
-    const { sizeBytes, checksum } = await streamSerializeToGzip(backup, filePath);
-
-    // Count total records
-    const recordCount = Object.values(backup.data).reduce((total, records) => total + records.length, 0);
+    const result = await writeFile(filePath);
+    if (!result) return null;
+    const { sizeBytes, checksum, recordCount } = result;
 
     // Create DB record
     const stored = await prisma.storedBackup.create({

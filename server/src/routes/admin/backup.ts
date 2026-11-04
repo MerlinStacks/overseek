@@ -100,17 +100,14 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
             const { includeAuditLogs, includeAnalytics } = request.body || {};
             const { AccountBackupService } = await import('../../services/AccountBackupService');
 
-            const backup = await AccountBackupService.generateBackup(accountId, {
+            const stored = await AccountBackupService.generateStoredBackup(accountId, 'MANUAL', {
                 includeAuditLogs: includeAuditLogs ?? false,
                 includeAnalytics: includeAnalytics ?? false,
             });
 
-            if (!backup) {
+            if (!stored) {
                 return reply.code(404).send({ error: 'Account not found' });
             }
-
-            // Save to storage
-            const stored = await AccountBackupService.saveBackupToStorage(accountId, backup, 'MANUAL');
 
             // Apply retention policy
             await AccountBackupService.applyRetentionPolicy(accountId);

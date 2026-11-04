@@ -19,6 +19,26 @@ export class PushNotificationService {
         return Boolean(user);
     }
     private static vapidKeysCache: { publicKey: string; privateKey: string } | null = null;
+    /** Web push endpoints stop answering once a device is gone, and one request can
+     * hold its socket for the full 10s timeout. Sending sequentially makes that cost
+     * multiply by the subscription count and stall whoever is waiting, so sends are
+     * fanned out with a bounded width instead: one timeout is paid, not N. */
+    private static readonly PUSH_FANOUT_WIDTH = 8;
+    private static async fanOutSubscriptions<T>(subscriptions: T[], deliver: (subscription: T) => Promise<void>): Promise<void> {
+        let cursor = 0;
+        const runner = async () => {
+            while (cursor < subscriptions.length) {
+                const subscription = subscriptions[cursor++]!;
+                try {
+                    await deliver(subscription);
+                } catch (error) {
+                    // A caller that throws must not cancel delivery to the remaining devices.
+                    Logger.error('[PushNotificationService] Fan-out worker failed', { error });
+                }
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(this.PUSH_FANOUT_WIDTH, subscriptions.length) }, runner));
+    }
     private static cacheExpiry: number = 0;
     private static credentialVersion = 0;
     static clearCredentialsCache(): void {
@@ -380,9 +400,9 @@ export class PushNotificationService {
         // Collect stale endpoint IDs — delete in one batch after loop to avoid N individual DELETEs
         const staleIds: string[] = [];
 
-        for (const sub of subscriptions) {
+        await this.fanOutSubscriptions(subscriptions, async (sub) => {
             try {
-                if (!await this.canReceive(sub.userId, accountId)) { failed++; continue; }
+                if (!await this.canReceive(sub.userId, accountId)) { failed++; return; }
                 const pushSubscription: WebPushSubscription = {
                     endpoint: sub.endpoint,
                     keys: {
@@ -408,7 +428,7 @@ export class PushNotificationService {
                     Logger.error('[PushNotificationService] Send failed', { error, subId: sub.id });
                 }
             }
-        }
+        });
 
         // Single deleteMany replaces N individual delete() calls inside the loop
         if (staleIds.length > 0) {
@@ -484,9 +504,9 @@ export class PushNotificationService {
         let failed = 0;
         const staleIds: string[] = [];
 
-        for (const sub of subscriptions) {
+        await this.fanOutSubscriptions(subscriptions, async (sub) => {
             try {
-                if (!await this.canReceive(sub.userId, accountId)) { failed++; continue; }
+                if (!await this.canReceive(sub.userId, accountId)) { failed++; return; }
                 const pushSubscription: WebPushSubscription = {
                     endpoint: sub.endpoint,
                     keys: { p256dh: sub.p256dh, auth: sub.auth }
@@ -501,7 +521,7 @@ export class PushNotificationService {
                     staleIds.push(sub.id);
                 }
             }
-        }
+        });
 
         if (staleIds.length > 0) {
             await prisma.pushSubscription.deleteMany({ where: { id: { in: staleIds } } }).catch(() => { });
@@ -567,9 +587,9 @@ export class PushNotificationService {
         let failed = 0;
         const staleIds: string[] = [];
 
-        for (const sub of subscriptions) {
+        await this.fanOutSubscriptions(subscriptions, async (sub) => {
             try {
-                if (!await this.canReceive(sub.userId, accountId)) { failed++; continue; }
+                if (!await this.canReceive(sub.userId, accountId)) { failed++; return; }
                 const pushSubscription: WebPushSubscription = {
                     endpoint: sub.endpoint,
                     keys: {
@@ -593,7 +613,7 @@ export class PushNotificationService {
                     Logger.error('[PushNotificationService] Test notification failed', { error, subId: sub.id });
                 }
             }
-        }
+        });
 
         if (staleIds.length > 0) {
             await prisma.pushSubscription.deleteMany({ where: { id: { in: staleIds } } }).catch(() => { });
@@ -630,7 +650,7 @@ export class PushNotificationService {
         let failed = 0;
         const staleIds: string[] = [];
 
-        for (const sub of subscriptions) {
+        await this.fanOutSubscriptions(subscriptions, async (sub) => {
             try {
                 await webpush.sendNotification(
                     { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
@@ -646,7 +666,7 @@ export class PushNotificationService {
                     staleIds.push(sub.id);
                 }
             }
-        }
+        });
 
         if (staleIds.length > 0) {
             await prisma.pushSubscription.deleteMany({ where: { id: { in: staleIds } } }).catch(() => { });
@@ -692,7 +712,7 @@ export class PushNotificationService {
         let failed = 0;
         const staleIds: string[] = [];
 
-        for (const sub of subscriptions) {
+        await this.fanOutSubscriptions(subscriptions, async (sub) => {
             try {
                 const pushSubscription: WebPushSubscription = {
                     endpoint: sub.endpoint,
@@ -717,7 +737,7 @@ export class PushNotificationService {
                     Logger.error('[PushNotificationService] Broadcast send failed', { error, subId: sub.id });
                 }
             }
-        }
+        });
 
         if (staleIds.length > 0) {
             await prisma.pushSubscription.deleteMany({ where: { id: { in: staleIds } } }).catch(() => { });

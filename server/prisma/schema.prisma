@@ -1485,6 +1485,7 @@ model ScopedOperation {
   result Json
   createdAt DateTime @default(now())
   @@index([accountId, kind, createdAt])
+  // Pending critical-event partial index is managed in the outbox drain migration.
 }
 
 model MarketingLearning {

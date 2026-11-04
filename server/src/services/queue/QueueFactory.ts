@@ -29,11 +29,20 @@ export const QUEUES = {
 const queues = new Map<string, Queue>();
 const workers = new Set<Worker>();
 
+/** Queues whose durable evidence lives in a database row rather than in the job
+ * itself (an InvoiceArtifact carries the outcome of invoice generation), so a
+ * completed job needs no permanent Redis retention. Failures are still retained
+ * forever under the same reconciliation rules as side-effect work. */
+function completedWorkIsDisposable(name: string) {
+    return [QUEUES.INVOICE_CANONICAL_GENERATE].includes(name);
+}
+
 /** Only read/sync work is automatically retried. Side effects and unknown queues
  * retain evidence and require occurrence-aware reconciliation after failure. */
 export function queueWorkPolicy(name: string) {
     const replayable = [QUEUES.ORDERS, QUEUES.PRODUCTS, QUEUES.REVIEWS, QUEUES.CUSTOMERS, QUEUES.PAGES, QUEUES.BLOG_POSTS].includes(name);
-    return { replayable, attempts: replayable ? QUEUE_LIMITS.MAX_RETRIES : 1, removeOnComplete: replayable ? { count: QUEUE_LIMITS.COMPLETED_JOBS_KEEP } : false as const, removeOnFail: false as const };
+    const keepCompleted = replayable || completedWorkIsDisposable(name);
+    return { replayable, attempts: replayable ? QUEUE_LIMITS.MAX_RETRIES : 1, removeOnComplete: keepCompleted ? { count: QUEUE_LIMITS.COMPLETED_JOBS_KEEP } : false as const, removeOnFail: false as const };
 }
 
 export class QueueFactory {

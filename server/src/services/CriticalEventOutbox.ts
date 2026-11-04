@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'crypto';
-import type { Prisma } from '@prisma/client';
+import type { Prisma, ScopedOperation } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import { EventBus, EVENTS } from './events';
+import { EVENT_LIMITS } from '../config/limits';
 import { z } from 'zod';
 
 const automation: Record<string, string[]> = {
@@ -47,27 +48,66 @@ export async function recordOrderLifecycle(tx: Prisma.TransactionClient, account
     }
 }
 
+type CriticalEventValue = z.infer<typeof rowSchema>;
+/** Claims one pending receipt immediately before its own dispatch, so a crash can
+ * never leave more receipts in `dispatching` than this function has reached. */
+async function claimCriticalEvent(row: { id: string }, value: CriticalEventValue): Promise<boolean> {
+    return prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${row.id}, 0))`;
+        const current = await tx.scopedOperation.findUnique({ where: { id: row.id } });
+        if (!current || rowSchema.parse(current.result).state !== 'pending') return false;
+        await tx.scopedOperation.update({ where: { id: row.id }, data: { result: { ...value, state: 'dispatching' } as Prisma.InputJsonValue } });
+        return true;
+    });
+}
+
 /** Only never-attempted pending events are dispatched. A crash during/after
- * external work leaves dispatching/uncertain evidence and is NOT auto-replayed. */
-export async function drainCriticalEvents(limit = 25) {
-    z.number().int().min(1).max(25).parse(limit);
-    const rows = await prisma.scopedOperation.findMany({ where: { kind: 'critical-event-outbox', result: { path: ['state'], equals: 'pending' } }, orderBy: { createdAt: 'asc' }, take: limit });
+ * external work leaves dispatching/uncertain evidence and is NOT auto-replayed.
+ * Accounts are dispatched concurrently; receipts within one account stay ordered. */
+export async function drainCriticalEvents(limit: number = EVENT_LIMITS.DRAIN_BATCH_SIZE) {
+    z.number().int().min(1).max(EVENT_LIMITS.DRAIN_BATCH_SIZE).parse(limit);
+    // Keep these literal predicates aligned with the partial index. Only pending
+    // receipts are indexed; completed history must not be scanned on every tick.
+    const rows = await prisma.$queryRaw<Array<Pick<ScopedOperation, 'id' | 'accountId' | 'result'>>>`
+        SELECT "id", "accountId", "result" FROM "ScopedOperation"
+        WHERE "kind" = 'critical-event-outbox' AND "result"->>'state' = 'pending'
+        ORDER BY "createdAt" ASC, "id" ASC
+        LIMIT ${limit}
+    `;
+    const groups = new Map<string, typeof rows>();
     for (const row of rows) {
-        const value = rowSchema.parse(row.result);
-        if (!EventBus.hasRequiredSubscribers(value.event, value.subscribers)) continue;
-        const claimed = await prisma.$transaction(async tx => {
-            await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${row.id}, 0))`;
-            const current = await tx.scopedOperation.findUnique({ where: { id: row.id } });
-            if (!current || rowSchema.parse(current.result).state !== 'pending') return false;
-            await tx.scopedOperation.update({ where: { id: row.id }, data: { result: { ...value, state: 'dispatching' } as Prisma.InputJsonValue } });
-            return true;
-        });
-        if (!claimed) continue;
-        try {
-            await EventBus.publishRequired(value.event, value.payload);
-            await prisma.scopedOperation.update({ where: { id: row.id }, data: { result: { ...(row.result as Prisma.JsonObject), state: 'complete' } as Prisma.InputJsonValue } });
-        } catch {
-            await prisma.scopedOperation.updateMany({ where: { id: row.id }, data: { result: { ...value, state: 'uncertain' } as Prisma.InputJsonValue } });
-        }
+        const group = groups.get(row.accountId) ?? [];
+        group.push(row);
+        groups.set(row.accountId, group);
     }
+    const accounts = [...groups.values()];
+    const errors: unknown[] = [];
+    let cursor = 0;
+    const run = async () => {
+        while (cursor < accounts.length) {
+            const group = accounts[cursor++];
+            try {
+                for (const row of group) {
+                    const value = rowSchema.parse(row.result);
+                    if (!EventBus.hasRequiredSubscribers(value.event, value.subscribers)) continue;
+                    if (!await claimCriticalEvent(row, value)) continue;
+                    try {
+                        await EventBus.publishRequired(value.event, value.payload);
+                        await prisma.scopedOperation.update({ where: { id: row.id }, data: { result: { ...value, state: 'complete' } as Prisma.InputJsonValue } });
+                    } catch {
+                        await prisma.scopedOperation.updateMany({ where: { id: row.id }, data: { result: { ...value, state: 'uncertain' } as Prisma.InputJsonValue } });
+                    }
+                }
+            } catch (error) {
+                // Stop this account on infrastructure/validation failure, leaving
+                // unattempted rows pending. Other accounts can still make progress.
+                errors.push(error);
+            }
+        }
+    };
+    // Observe every worker immediately and wait for all work before allowing the
+    // timer's next drain, including when a claim or reconciliation write fails.
+    const settled = await Promise.allSettled(Array.from({ length: Math.min(EVENT_LIMITS.DRAIN_ACCOUNT_CONCURRENCY, accounts.length) }, run));
+    for (const result of settled) if (result.status === 'rejected') errors.push(result.reason);
+    if (errors.length) throw errors[0];
 }

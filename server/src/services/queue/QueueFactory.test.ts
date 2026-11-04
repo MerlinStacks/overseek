@@ -39,6 +39,7 @@ vi.mock('@bull-board/fastify', () => ({
 }));
 
 import { QueueFactory, queueWorkPolicy, QUEUES } from './QueueFactory';
+import { QUEUE_LIMITS } from '../../config/limits';
 import { Logger } from '../../utils/logger';
 
 describe('QueueFactory queue depth', () => {
@@ -65,6 +66,9 @@ describe('QueueFactory queue depth', () => {
     it('retains failures and restricts automatic retries to named sync work', () => {
         expect(queueWorkPolicy(QUEUES.ORDERS)).toMatchObject({ attempts: 2, removeOnFail: false });
         for (const name of [QUEUES.CAMPAIGNS, QUEUES.AUTOMATIONS, QUEUES.BOM_SYNC, 'unknown']) expect(queueWorkPolicy(name)).toMatchObject({ attempts: 1, removeOnComplete: false, removeOnFail: false });
+    });
+    it('keeps derived invoice artifacts in Postgres rather than in Redis job history', () => {
+        expect(queueWorkPolicy(QUEUES.INVOICE_CANONICAL_GENERATE)).toMatchObject({ attempts: 1, removeOnComplete: { count: QUEUE_LIMITS.COMPLETED_JOBS_KEEP }, removeOnFail: false });
     });
     it('makes lost BOM locks actionable without automatically replaying stock writes', async () => {
         QueueFactory.createWorker(QUEUES.BOM_SYNC, async () => {});

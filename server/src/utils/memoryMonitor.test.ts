@@ -23,3 +23,13 @@ it('still alerts immediately on genuine high heap pressure without waiting for a
     expect(m.warn).toHaveBeenCalledWith('[MemoryMonitor] High heap usage detected', expect.objectContaining({ heapUsedPct: 85 }));
     expect(m.alert).toHaveBeenCalledWith(expect.objectContaining({ category: 'memory', fingerprint: 'memory:high-heap-usage' }));
 });
+it('defaults routine snapshots to info while retaining an explicit legacy warn setting', () => {
+    vi.stubEnv('MEMORY_MONITOR_LOG_LEVEL', '');
+    startMemoryMonitor();
+    expect(m.info).toHaveBeenCalledWith('[MemoryMonitor] Snapshot', expect.any(Object));
+    expect(m.warn).not.toHaveBeenCalled();
+    stopMemoryMonitor(); vi.clearAllMocks();
+    vi.stubEnv('MEMORY_MONITOR_LOG_LEVEL', 'warn');
+    startMemoryMonitor();
+    expect(m.warn).toHaveBeenCalledWith('[MemoryMonitor] Snapshot', expect.any(Object));
+});

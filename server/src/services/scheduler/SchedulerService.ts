@@ -22,6 +22,7 @@ export class SchedulerService {
         'audience-refresh',
         'budget-rebalancer',
         'experiment-metrics-refresh',
+        'experiment-significance-check',
         'bom-inventory-sync'
     ]);
 
@@ -188,6 +189,7 @@ export class SchedulerService {
 
                 case 'budget-rebalancer':
                 case 'experiment-metrics-refresh':
+                case 'experiment-significance-check':
                     Logger.debug(`[Scheduler] ${job.name} is deprecated, skipping`);
                     break;
 

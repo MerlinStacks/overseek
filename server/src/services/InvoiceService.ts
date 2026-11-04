@@ -414,7 +414,7 @@ export class InvoiceService {
         options: { layoutMode?: 'template' | 'operational-a4'; expectedTemplateUpdatedAt?: Date; expectedOrderUpdatedAt?: Date } = {}
     ): Promise<{ relativeUrl: string, absolutePath: string }> {
         const layoutMode = options.layoutMode || 'template';
-        Logger.warn('[InvoiceService] Using non-canonical server PDF renderer (PDFKit)', {
+        Logger.info('[InvoiceService] Using non-canonical server PDF renderer (PDFKit)', {
             accountId,
             orderId,
             templateId,
@@ -1283,7 +1283,7 @@ export class InvoiceService {
             const footerConfig = getItemByType('footer');
 
             if (options.layoutMode === 'operational-a4' && (headerConfig || customerDetailsConfig || orderDetailsConfig || orderTableConfig)) {
-                Logger.warn('[InvoiceService] Rendering operational A4 invoice layout', {
+                Logger.debug('[InvoiceService] Rendering operational A4 invoice layout', {
                     accountId: order.accountId,
                     orderId: order.id,
                     pageWidth,
