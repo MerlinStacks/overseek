@@ -8,6 +8,7 @@ on:
       - 'server/scripts/*plugin*.js'
       - 'server/scripts/tests/plugin-package.test.js'
       - 'server/scripts/tests/plugin-download.test.js'
+      - 'server/scripts/tests/plugin-tracking-retries.php'
       - 'server/uploads/plugins/overseek-wc-plugin*'
       - 'client/src/utils/pluginRelease.ts'
       - 'server/Dockerfile'
@@ -23,6 +24,7 @@ on:
       - 'server/scripts/*plugin*.js'
       - 'server/scripts/tests/plugin-package.test.js'
       - 'server/scripts/tests/plugin-download.test.js'
+      - 'server/scripts/tests/plugin-tracking-retries.php'
       - 'server/uploads/plugins/overseek-wc-plugin*'
       - 'client/src/utils/pluginRelease.ts'
       - 'server/Dockerfile'
@@ -94,7 +96,9 @@ jobs:
           node-version: '22.23.1'
 
       - name: Test purchase links and checkout activity deduplication
-        run: php overseek-wc-plugin/tests/purchase-links.php
+        run: |
+          php overseek-wc-plugin/tests/purchase-links.php
+          php server/scripts/tests/plugin-tracking-retries.php
 
       - name: Test review summaries and product context detection
         run: php overseek-wc-plugin/tests/review-summary.php

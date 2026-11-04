@@ -14,6 +14,7 @@ function wp_get_document_title() { return 'Checkout'; }
 function sanitize_text_field($value) { return strip_tags($value); }
 function wc_get_order($id) { return $GLOBALS['orders'][$id] ?? false; }
 function wp_json_encode($value) { return json_encode($value); }
+function wp_generate_uuid4() { static $id = 0; return 'store-change-' . ++$id; }
 function is_admin() { return false; }
 function wp_doing_ajax() { return false; }
 function wp_doing_cron() { return false; }
@@ -248,8 +249,18 @@ echo "Delayed classic/Blocks payments preserve attribution, consent, payment tim
 $options = ['overseek_api_url' => 'https://overseek.test', 'overseek_account_id' => 'account-original'];
 $hook_tracker = new OverSeek_Server_Tracking();
 (new ReflectionProperty($hook_tracker, 'visitor_id'))->setValue($hook_tracker, 'original-visitor');
-foreach (['woocommerce_checkout_order_created', 'woocommerce_store_api_checkout_order_processed', 'woocommerce_payment_complete', 'woocommerce_order_status_changed', 'overseek_expire_purchase_context'] as $hook) {
-    check(count($actions[$hook] ?? []) === 1, $hook . ' is registered');
+foreach ([
+    'woocommerce_checkout_order_created' => ['capture_purchase_context'],
+    'woocommerce_store_api_checkout_order_processed' => ['track_purchase_blocks'],
+    'woocommerce_payment_complete' => ['track_paid_purchase', 'track_order_change'],
+    'woocommerce_order_status_changed' => ['track_paid_purchase', 'track_order_change'],
+    'overseek_expire_purchase_context' => ['expire_purchase_context'],
+] as $hook => $methods) {
+    $registered = $actions[$hook] ?? [];
+    check(count($registered) === count($methods), $hook . ' registers each intended callback exactly once');
+    foreach ($methods as $method) {
+        check(in_array([$hook_tracker, $method], $registered, true), $hook . ' registers ' . $method);
+    }
 }
 $order = $orders[700] = new Purchase_Order(700, $urls[0], 'pending');
 $actions['woocommerce_checkout_order_created'][0]($order);
@@ -267,3 +278,16 @@ $second = OverSeek_Tracking_Transport::$sent[$before + 1];
 check($first === $second, 'Payment/status retry preserves the complete event and original occurrence time');
 check($order->get_meta('_overseek_tracked'), 'Later acknowledgement marks purchase tracked');
 echo "Real hook registration and failed-acknowledgement replay passed.\n";
+
+// Running the complete payment hook must preserve analytics purchase deduplication
+// while also delivering the independent operational order refresh.
+$options['overseek_webhook_auth_token'] = 'store-token';
+$before = count(OverSeek_Tracking_Transport::$sent);
+foreach ($actions['woocommerce_payment_complete'] as $callback) {
+    $callback(700);
+}
+$hook_tracker->flush_event_queue();
+$new_events = array_slice(OverSeek_Tracking_Transport::$sent, $before);
+check(count($new_events) === 1 && $new_events[0]['type'] === 'order_changed', 'Payment hooks refresh the order without replaying a tracked purchase');
+check($new_events[0]['payload']['orderId'] === 700, 'Operational hook preserves the order identity');
+echo "Payment hooks keep operational order updates separate from purchase analytics.\n";

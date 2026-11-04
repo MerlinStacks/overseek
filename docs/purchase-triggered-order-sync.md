@@ -61,5 +61,7 @@ diagnostics every minute. Order imports from periodic sync also close matching
 observations. Failed BullMQ jobs remain retained under the existing policy.
 
 No database migration is needed. Deploy the server first, then install the updated
-companion plugin to enable the new operational hooks. Source/package validation
-does not publish a release or alter the pinned public plugin download.
+companion plugin to enable the new operational hooks. The repository's bundled
+installer ZIP/manifest and server/client checksum pins are synchronized at 2.25.13.
+This local packaging does not deploy the application or publish the external
+WordPress update feed.
