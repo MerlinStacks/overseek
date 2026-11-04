@@ -16,6 +16,8 @@ import { importOrderSnapshot } from '../deliveryEstimates/importOrderSnapshot';
 import { Prisma } from '@prisma/client';
 import { mergeOrderTags } from '../OrderTaggingService';
 import { campaignTrackingService } from '../CampaignTrackingService';
+import { SyncJobData } from '../queue/SyncQueue';
+import { parseWooOrderId } from '../../utils/orderIds';
 
 const PURCHASE_TRACKING_STATUSES = ['pending', 'processing', 'on-hold', 'completed'];
 
@@ -45,9 +47,13 @@ export class OrderSync extends BaseSync {
         return count === 1;
     }
 
-    protected async sync(woo: WooService, accountId: string, incremental: boolean, job?: any, syncId?: string): Promise<SyncResult> {
-        const after = incremental ? await this.getLastSync(accountId) : undefined;
-        const isBaselineSync = !after;
+    protected async sync(woo: WooService, accountId: string, incremental: boolean, job?: any, syncId?: string, jobData?: SyncJobData): Promise<SyncResult> {
+        const targeted = jobData?.wooOrderId !== undefined;
+        const orderId = targeted ? parseWooOrderId(jobData.wooOrderId) : null;
+        if (targeted && orderId === null) throw new Error('Invalid targeted WooCommerce order ID');
+        const after = !targeted && incremental ? await this.getLastSync(accountId) : undefined;
+        // A live purchase is not a historical baseline, even on a newly connected store.
+        const isBaselineSync = !targeted && !after;
         let page = 1;
         let hasMore = true;
         let totalProcessed = 0;
@@ -59,7 +65,10 @@ export class OrderSync extends BaseSync {
         let expectedTotal = 0;
 
         while (hasMore) {
-            const { data: rawOrders, totalPages, total } = await woo.getOrders({ page, after, per_page: 50 });
+            const { data: rawOrders, totalPages, total } = targeted
+                ? { data: [(await woo.getOrder(orderId!)).data], totalPages: 1, total: 1 }
+                : await woo.getOrders({ page, after, per_page: 50 });
+            if (targeted && rawOrders[0]?.id !== orderId) throw new Error('Targeted WooCommerce order unavailable or identity mismatch');
             if (page === 1) expectedTotal = total;
             if (!rawOrders.length) {
                 break;
@@ -85,6 +94,7 @@ export class OrderSync extends BaseSync {
                     }
                     orders.push(result.data);
                 } else {
+                    if (targeted) throw new Error('Invalid targeted WooCommerce order response');
                     totalSkipped++;
                     validationFailures++;
                     Logger.warn('Skipping invalid order', {
@@ -170,6 +180,14 @@ export class OrderSync extends BaseSync {
             });
             const existingMap = new Map(existingOrders.map(o => [o.wooId, o.status]));
             const persistedOrders = orders.map(order => ({ ...order, tags: manualTags.get(order.id) || [], deliveryEstimateSnapshot: snapshots.get(order.id) ?? null }));
+
+            // Full sync also closes signals recovered by the periodic safety net.
+            const { recordPurchasesImported } = await import('./SyncFreshness');
+            await recordPurchasesImported(accountId, orders.map(order => order.id));
+            if (targeted) {
+                const { queueOrderStockRefresh } = await import('./LiveStoreSync');
+                for (const order of orders) await queueOrderStockRefresh(accountId, order, jobData?.sourceEventId);
+            }
 
             let orderTagsMap: Map<number, string[]> | undefined;
             try {
@@ -270,7 +288,7 @@ export class OrderSync extends BaseSync {
         // loading any IDs into Node memory. Previously we loaded every stale wooId
         // (even just to evaluate the cap), which on a store with 100k stale rows
         // put ~10MB of objects on the heap for a decision that doesn't need them.
-        if (!incremental && totalProcessed > 0 && validationFailures === 0) {
+        if (!targeted && !incremental && totalProcessed > 0 && validationFailures === 0) {
             const staleCount = await prisma.wooOrder.count({
                 where: { accountId, updatedAt: { lt: syncStartedAt } }
             });
@@ -343,16 +361,19 @@ export class OrderSync extends BaseSync {
             });
         }
 
-        if (!incremental || isBaselineSync) {
-            await this.recalculateCustomerCounts(accountId, syncId);
-        } else {
-            // CustomerSync can change identities or replace totals even when no orders changed.
-            // updatedAt also retains old associations for recovery after a failed ES attempt.
-            await recalculateCustomerTotals(accountId, new Date(after!));
+        // Targeted imports already repair their affected totals in the transaction above.
+        if (!targeted) {
+            if (!incremental || isBaselineSync) {
+                await this.recalculateCustomerCounts(accountId, syncId);
+            } else {
+                // CustomerSync can change identities or replace totals even when no orders changed.
+                // updatedAt also retains old associations for recovery after a failed ES attempt.
+                await recalculateCustomerTotals(accountId, new Date(after!));
+            }
         }
 
         // After a full sync, refresh ES indices to ensure all changes (including deletes) are searchable
-        if (!incremental) {
+        if (!targeted && !incremental) {
             try {
                 await esClient.indices.refresh({ index: 'orders' });
                 Logger.info('Refreshed ES orders index after full sync', { accountId, syncId });

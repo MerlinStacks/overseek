@@ -124,6 +124,12 @@ class OverSeek_Server_Tracking
         add_action('woocommerce_checkout_order_created', array($this, 'capture_purchase_context'), 10, 1);
         add_action('woocommerce_payment_complete', array($this, 'track_paid_purchase'), 10, 1);
         add_action('woocommerce_order_status_changed', array($this, 'track_paid_purchase'), 10, 1);
+        // ID-only operational changes also run for admin edits and background gateways.
+        add_action('woocommerce_order_status_changed', array($this, 'track_order_change'), 30, 1);
+        add_action('woocommerce_payment_complete', array($this, 'track_order_change'), 30, 1);
+        add_action('woocommerce_order_refunded', array($this, 'track_order_change'), 30, 1);
+        add_action('woocommerce_reduce_order_stock', array($this, 'track_order_change'), 30, 1);
+        add_action('woocommerce_restore_order_stock', array($this, 'track_order_change'), 30, 1);
         add_action('overseek_expire_purchase_context', array($this, 'expire_purchase_context'), 10, 2);
 
         // WooCommerce Blocks checkout support (block-based checkout)
@@ -133,6 +139,9 @@ class OverSeek_Server_Tracking
         // Session Stitching: Link visitor to customer on login
         add_action('wp_login', array($this, 'track_identify'), 10, 2);
         add_action('woocommerce_created_customer', array($this, 'track_new_customer'), 10, 3);
+        add_action('wp_login', array($this, 'track_customer_login_change'), 30, 2);
+        add_action('woocommerce_created_customer', array($this, 'track_customer_change'), 30, 1);
+        add_action('woocommerce_update_customer', array($this, 'track_customer_change'), 30, 1);
 
         // Cart/checkout views - template_redirect covers block themes, Woo hooks cover classic templates.
         add_action('template_redirect', array($this, 'track_cart_checkout_view'), 20);
@@ -145,6 +154,9 @@ class OverSeek_Server_Tracking
 
         // Review Tracking - when customers leave product reviews
         add_action('comment_post', array($this, 'track_review'), 10, 3);
+        add_action('comment_post', array($this, 'track_review_change'), 30, 1);
+        add_action('edit_comment', array($this, 'track_review_change'), 30, 1);
+        add_action('transition_comment_status', array($this, 'track_review_status_change'), 30, 3);
 
         // WooCommerce Store API (Blocks) cart update support
         // The shutdown hook may not fire reliably for REST API requests,
@@ -378,6 +390,71 @@ class OverSeek_Server_Tracking
         $this->event_queue[] = $this->build_event_data($type, $payload, $is_404, $url_override, $title_override);
         if ($checkout_session) {
             $checkout_session->set('overseek_checkout_start', array('signature' => $checkout_signature, 'at' => time()));
+        }
+    }
+
+    /**
+     * Operational sync is not visitor analytics: send only an entity ID and an
+     * occurrence ID, with no cookies, IP, email, browsing context or conversion.
+     * Do not apply visitor-consent or admin-referrer filters to store operations.
+     */
+    private function queue_store_change(string $type, string $key, int $id): void
+    {
+        if ($id <= 0 || empty($this->account_id) || empty($this->api_url)
+            || !get_option('overseek_webhook_auth_token', '')) {
+            return;
+        }
+        // Several Woo hooks can describe the same change in one request.
+        foreach ($this->event_queue as $event) {
+            if (($event['type'] ?? '') === $type && ($event['payload'][$key] ?? 0) === $id) {
+                return;
+            }
+        }
+        $this->event_queue[] = array(
+            'accountId' => $this->account_id,
+            'visitorId' => 'store-sync',
+            'type' => $type,
+            'url' => '',
+            'occurredAt' => gmdate('c'),
+            'payload' => array($key => $id, 'eventId' => wp_generate_uuid4()),
+        );
+    }
+
+    public function track_order_change($order): void
+    {
+        $id = is_object($order) && is_callable(array($order, 'get_id')) ? $order->get_id() : $order;
+        $this->queue_store_change('order_changed', 'orderId', (int) $id);
+    }
+
+    public function track_customer_change($customer_id): void
+    {
+        $this->queue_store_change('customer_changed', 'customerId', (int) $customer_id);
+    }
+
+    public function track_customer_login_change($login, $user): void
+    {
+        if (!is_object($user) || empty($user->ID)) {
+            return;
+        }
+        if (is_callable(array($user, 'has_cap')) && ($user->has_cap('manage_woocommerce') || $user->has_cap('manage_options'))) {
+            return;
+        }
+        $this->track_customer_change($user->ID);
+    }
+
+    public function track_review_change($comment_id): void
+    {
+        $comment = get_comment($comment_id);
+        $post = $comment ? get_post($comment->comment_post_ID) : null;
+        if ($post && $post->post_type === 'product') {
+            $this->queue_store_change('review_changed', 'reviewId', (int) $comment_id);
+        }
+    }
+
+    public function track_review_status_change($new_status, $old_status, $comment): void
+    {
+        if ($new_status !== $old_status) {
+            $this->track_review_change($comment->comment_ID);
         }
     }
 
@@ -1056,6 +1133,7 @@ class OverSeek_Server_Tracking
     public function track_identify($user_login, $user)
     {
         $payload = array(
+            'storeSyncSignal' => true,
             'customerId' => $user->ID,
             'email' => $user->user_email,
             'firstName' => get_user_meta($user->ID, 'first_name', true),
@@ -1076,6 +1154,7 @@ class OverSeek_Server_Tracking
         }
 
         $payload = array(
+            'storeSyncSignal' => true,
             'customerId' => $customer_id,
             'email' => $user->user_email,
             'firstName' => get_user_meta($customer_id, 'first_name', true),
@@ -1226,6 +1305,7 @@ class OverSeek_Server_Tracking
         $rating = get_comment_meta($comment_id, 'rating', true);
 
         $payload = array(
+            'storeSyncSignal' => true,
             'reviewId' => $comment_id,
             'productId' => $comment->comment_post_ID,
             'productName' => $product ? $product->get_name() : $post->post_title,

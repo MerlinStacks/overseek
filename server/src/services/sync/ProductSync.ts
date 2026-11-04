@@ -12,19 +12,23 @@ import { EventBus, EVENTS } from '../events';
 import { Logger } from '../../utils/logger';
 import { parseWooDate } from '../../utils/wooDates';
 import { WooProductSchema, WooProduct, parseWooVariations } from './wooSchemas';
-import { reconcileWholesaleProductsBestEffort } from '../wholesale/reconciliation';
+import { SyncJobData } from '../queue/SyncQueue';
+import { parseWooOrderId } from '../../utils/orderIds';
 
 
 export class ProductSync extends BaseSync {
     protected entityType = 'products';
 
-    protected async sync(woo: WooService, accountId: string, incremental: boolean, job?: any, syncId?: string): Promise<SyncResult> {
+    protected async sync(woo: WooService, accountId: string, incremental: boolean, job?: any, syncId?: string, jobData?: SyncJobData): Promise<SyncResult> {
+        const targeted = jobData?.wooProductId !== undefined;
+        const productId = targeted ? parseWooOrderId(jobData.wooProductId) : null;
+        if (targeted && productId === null) throw new Error('Invalid targeted product ID');
         const account = await prisma.account.findUnique({
             where: { id: accountId },
             select: { openRouterApiKey: true, embeddingModel: true }
         });
 
-        const after = incremental ? await this.getLastSync(accountId) : undefined;
+        const after = !targeted && incremental ? await this.getLastSync(accountId) : undefined;
         let page = 1;
         let hasMore = true;
         let totalProcessed = 0;
@@ -36,12 +40,14 @@ export class ProductSync extends BaseSync {
         let variationValidationFailures = 0;
         let totalVariationsSynced = 0;
         const variationReconciliationParentIds = new Set<string>();
-        const wholesaleReconciliationProductIds = new Set<string>();
 
         const syncStartedAt = new Date();
 
         while (hasMore) {
-            const { data: rawProducts, totalPages } = await woo.getProducts({ page, after, per_page: 50 });
+            const { data: rawProducts, totalPages } = targeted
+                ? { data: [await woo.getProduct(productId!, { bypassCache: true })], totalPages: 1 }
+                : await woo.getProducts({ page, after, per_page: 50 });
+            if (targeted && rawProducts[0]?.id !== productId) throw new Error('Targeted product unavailable or identity mismatch');
             if (!rawProducts.length) {
                 break;
             }
@@ -57,6 +63,7 @@ export class ProductSync extends BaseSync {
                 if (result.success) {
                     products.push(result.data);
                 } else {
+                    if (targeted) throw new Error('Invalid targeted product response');
                     totalSkipped++;
                     validationFailures++;
                     Logger.debug(`Skipping invalid product`, {
@@ -180,7 +187,6 @@ export class ProductSync extends BaseSync {
                 }
             });
             const productMap = new Map(upsertedProducts.map(p => [p.wooId, p]));
-            upsertedProducts.forEach(product => wholesaleReconciliationProductIds.add(product.id));
 
             // Process scoring and indexing
             const scoringResults: { seoScore: number; merchantCenterScore: number }[] = [];
@@ -208,7 +214,7 @@ export class ProductSync extends BaseSync {
                         })
                     );
 
-                    EmbeddingService.updateProductEmbedding(upsertedProduct.id, accountId, account || undefined, upsertedProduct)
+                    if (!targeted) EmbeddingService.updateProductEmbedding(upsertedProduct.id, accountId, account || undefined, upsertedProduct)
                         .catch((err: any) => Logger.debug('Embedding generation skipped', { productId: upsertedProduct.id, reason: err.message }));
 
                     scoringResults.push({ seoScore: seoResult.score, merchantCenterScore: mcResult.score });
@@ -269,7 +275,7 @@ export class ProductSync extends BaseSync {
                     }
 
                     try {
-                        const rawVariations = await woo.getProductVariations(varProduct.id);
+                        const rawVariations = await woo.getProductVariations(varProduct.id, targeted ? { bypassCache: true } : undefined);
                         const { variations, failures: validationIssues } = parseWooVariations(rawVariations);
 
                         if (validationIssues.length > 0) {
@@ -402,7 +408,7 @@ export class ProductSync extends BaseSync {
         // Scan trash first, including during incremental sync. Only explicit status
         // is authoritative; a store ignoring the status filter must not trash live rows.
         let trashPage = 1;
-        while (true) {
+        while (!targeted) {
             const { data: trashedProducts, totalPages } = await woo.getProducts({ page: trashPage, per_page: 100, status: 'trash' });
             for (const product of trashedProducts) {
                 if (product.status === 'trash' && Number.isSafeInteger(product.id) && product.id > 0) {
@@ -416,7 +422,7 @@ export class ProductSync extends BaseSync {
         // Reconciliation: remove products/variations not touched during this full sync.
         // Count-first pattern: evaluate the 30% safety cap via SQL count() rather
         // than loading every stale id/wooId into Node memory.
-        if (!incremental && validationFailures === 0) {
+        if (!targeted && !incremental && validationFailures === 0) {
             const staleProductCount = await prisma.wooProduct.count({
                 where: { accountId, updatedAt: { lt: syncStartedAt } }
             });
@@ -477,9 +483,6 @@ export class ProductSync extends BaseSync {
                 }
             }
         }
-
-        await reconcileWholesaleProductsBestEffort(accountId, [...wholesaleReconciliationProductIds]);
-
         return { itemsProcessed: totalProcessed, itemsDeleted: totalDeleted };
     }
 }

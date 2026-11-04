@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Save, Loader2, ExternalLink, RefreshCw, Box, Tag, DollarSign, Layers, Search, FileText, Clock, ShoppingCart, ImageOff, Eye, Trash2, AlertTriangle, CheckCircle2, CircleDot, Rss, BookOpen } from 'lucide-react';
+import { Save, Loader2, ExternalLink, RefreshCw, Box, Tag, DollarSign, Layers, Search, FileText, Clock, ShoppingCart, ImageOff, Eye, Trash2, AlertTriangle, CheckCircle2, CircleDot, Rss } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import { SeoScoreBadge } from '../components/Seo/SeoScoreBadge';
@@ -36,8 +36,6 @@ import type { MerchantCenterIssue } from '../components/Seo/MerchantCenterScoreB
 import type { ProductVariant as VariantType } from '../components/products/variantTypes';
 import { FeedWritesPanel, type FeedWritesPanelRef } from '../components/products/FeedWritesPanel';
 import { useAccountFeature } from '../hooks/useAccountFeature';
-import { usePermissions } from '../hooks/usePermissions';
-import { WholesaleProductPanel, type WholesaleProductPanelRef } from '../components/wholesale/WholesaleProductPanel';
 
 type SupplierOption = { id: string; name: string };
 type GalleryImage = { id: string | number; src: string; alt?: string };
@@ -138,19 +136,13 @@ function ProductEditPageContent({
 }: ProductEditPageContentProps) {
     const activeTabParam = searchParams.get('tab');
     const hasFeedExports = useAccountFeature('FEED_EXPORTS');
-    const hasWholesaleCatalog = useAccountFeature('WHOLESALE_CATALOG');
-    const { hasPermission } = usePermissions();
-    const canViewWholesale = hasWholesaleCatalog && hasPermission('view_wholesale_catalog');
     const feedWritesPanelRef = useRef<FeedWritesPanelRef>(null);
-    const wholesaleProductPanelRef = useRef<WholesaleProductPanelRef>(null);
     const [hasUnsavedFeedWrites, setHasUnsavedFeedWrites] = useState(false);
-    const [hasUnsavedWholesaleChanges, setHasUnsavedWholesaleChanges] = useState(false);
-    const hasAnyUnsavedChanges = hasUnsavedChanges || hasUnsavedFeedWrites || hasUnsavedWholesaleChanges;
+    const hasAnyUnsavedChanges = hasUnsavedChanges || hasUnsavedFeedWrites;
 
     const handleSaveAll = useCallback(async () => {
         if (isSaving || isSyncing) return;
         await handleSave([
-            { name: 'wholesale pricing', save: async () => wholesaleProductPanelRef.current?.save() },
             { name: 'feed writes', save: async () => feedWritesPanelRef.current?.save() },
         ]);
     }, [handleSave, isSaving, isSyncing]);
@@ -182,11 +174,9 @@ function ProductEditPageContent({
         : null;
     const saveDisabled = isSaving || isSyncing;
     const isSavingAnything = isSaving;
-    const statusMessage = hasUnsavedWholesaleChanges
-        ? 'You have unsaved wholesale pricing changes.'
-        : hasUnsavedFeedWrites
-            ? 'You have unsaved feed writes.'
-            : saveMessage || (hasUnsavedChanges ? 'You have unsaved changes.' : 'All product changes are saved.');
+    const statusMessage = hasUnsavedFeedWrites
+        ? 'You have unsaved feed writes.'
+        : saveMessage || (hasUnsavedChanges ? 'You have unsaved changes.' : 'All product changes are saved.');
     const compactStatusLabel = saveState === 'error'
         ? 'Save failed'
         : saveState === 'partial'
@@ -381,13 +371,6 @@ function ProductEditPageContent({
                     onDirtyChange={setHasUnsavedFeedWrites}
                 />
             ),
-            keepMounted: true
-        }] : []),
-        ...(canViewWholesale ? [{
-            id: 'wholesale',
-            label: 'Wholesale',
-            icon: <BookOpen size={16} />,
-            content: <WholesaleProductPanel ref={wholesaleProductPanelRef} productId={product.id} canEdit={hasPermission('edit_wholesale_catalog')} onDirtyChange={setHasUnsavedWholesaleChanges} />,
             keepMounted: true
         }] : []),
         {

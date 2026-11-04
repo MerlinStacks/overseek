@@ -124,7 +124,7 @@ export const EXACT_ROUTE_TITLES: Record<string, string> = {
     [ROUTE_PATHS.supplyChain]: 'Stock & Suppliers',
     [ROUTE_PATHS.inventoryBomSync]: 'BOM Sync',
     [ROUTE_PATHS.inventoryForecasts]: 'Inventory Forecasts',
-    [ROUTE_PATHS.wholesaleCatalog]: 'Wholesale Catalog',
+    [ROUTE_PATHS.wholesaleCatalog]: 'Feature retired',
     [ROUTE_PATHS.contacts]: 'Contacts',
     [ROUTE_PATHS.customers]: 'Contacts',
     [ROUTE_PATHS.customerSegments]: 'Customer Segments',
@@ -194,7 +194,7 @@ const DYNAMIC_ROUTE_TITLES: Array<{ prefix: string; title: string }> = [
     { prefix: ROUTE_PREFIXES.mobileChat, title: 'Mobile Chat' },
     { prefix: ROUTE_PREFIXES.mobileCustomerDetails, title: 'Mobile Customer Details' },
     { prefix: ROUTE_PREFIXES.mobileVisitorDetails, title: 'Mobile Visitor Details' },
-    { prefix: ROUTE_PREFIXES.catalogView, title: 'Secure Catalog' },
+    { prefix: ROUTE_PREFIXES.catalogView, title: 'Feature retired' },
 ];
 
 export function getRouteTitle(pathname: string): string {

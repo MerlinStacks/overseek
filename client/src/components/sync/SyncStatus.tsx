@@ -9,6 +9,7 @@ import {
     TrendingDown, Zap, WifiOff, PlayCircle
 } from 'lucide-react';
 import { Logger } from '../../utils/logger';
+import { SyncFreshnessPanel } from './SyncFreshnessPanel';
 
 /** Entity types available for sync */
 const SYNC_ENTITIES = [
@@ -168,6 +169,7 @@ export function SyncStatus() {
 
     return (
         <div className="space-y-6">
+            {canManageSchedules && <SyncFreshnessPanel />}
             {/* ── Circuit Breaker Banner ───────────────────── */}
             {healthSummary?.circuitBreaker?.isOpen && (
                 <CircuitBreakerBanner

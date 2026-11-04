@@ -6,6 +6,8 @@ import { recordCriticalEvent } from '../CriticalEventOutbox';
 import { Logger } from '../../utils/logger';
 import { IndexingService } from '../search/IndexingService';
 import { WooReviewSchema, WooReview } from './wooSchemas';
+import { SyncJobData } from '../queue/SyncQueue';
+import { parseWooOrderId } from '../../utils/orderIds';
 
 
 /**
@@ -76,9 +78,12 @@ function namesMatch(reviewerName: string, billingFirst: string | undefined, bill
 export class ReviewSync extends BaseSync {
     protected entityType = 'reviews';
 
-    protected async sync(woo: WooService, accountId: string, incremental: boolean, job?: any, syncId?: string): Promise<SyncResult> {
-        const after = incremental ? await this.getLastSync(accountId) : undefined;
-        const isBaselineSync = !after;
+    protected async sync(woo: WooService, accountId: string, incremental: boolean, job?: any, syncId?: string, jobData?: SyncJobData): Promise<SyncResult> {
+        const targeted = jobData?.wooReviewId !== undefined;
+        const reviewId = targeted ? parseWooOrderId(jobData.wooReviewId) : null;
+        if (targeted && reviewId === null) throw new Error('Invalid targeted review ID');
+        const after = !targeted && incremental ? await this.getLastSync(accountId) : undefined;
+        const isBaselineSync = !targeted && !after;
         let page = 1;
         let hasMore = true;
         let totalProcessed = 0;
@@ -89,7 +94,10 @@ export class ReviewSync extends BaseSync {
         const syncStartedAt = new Date();
 
         while (hasMore) {
-            const { data: rawReviews, totalPages } = await woo.getReviews({ page, after, per_page: 50, status: 'all' });
+            const { data: rawReviews, totalPages } = targeted
+                ? { data: [(await woo.getReview(reviewId!)).data], totalPages: 1 }
+                : await woo.getReviews({ page, after, per_page: 50, status: 'all' });
+            if (targeted && rawReviews[0]?.id !== reviewId) throw new Error('Targeted review unavailable or identity mismatch');
             if (!rawReviews.length) {
                 break;
             }
@@ -101,6 +109,7 @@ export class ReviewSync extends BaseSync {
                 if (result.success) {
                     reviews.push(result.data);
                 } else {
+                    if (targeted) throw new Error('Invalid targeted review response');
                     totalSkipped++;
                     validationFailures++;
                     Logger.debug(`Skipping invalid review`, {
@@ -213,7 +222,6 @@ export class ReviewSync extends BaseSync {
                 where: { wooId: { in: batchWooIds }, accountId },
                 select: { wooId: true, status: true, rawData: true }
             });
-            const existingWooIds = new Set(existingReviews.map(r => r.wooId));
             const existingReviewByWooId = new Map(existingReviews.map(r => [r.wooId, r]));
 
             for (let reviewIndex = 0; reviewIndex < reviews.length; reviewIndex++) {
@@ -336,16 +344,20 @@ export class ReviewSync extends BaseSync {
                     });
                 }
 
+                let reviewBecameApproved = false;
                 await prisma.$transaction(async tx => {
                 await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${`review-event:${accountId}:${r.id}`}, 0))`;
-                const prior = await tx.wooReview.findUnique({ where: { accountId_wooId: { accountId, wooId: r.id } }, select: { id: true } });
+                const prior = await tx.wooReview.findUnique({ where: { accountId_wooId: { accountId, wooId: r.id } }, select: { id: true, status: true, rawData: true } });
+                const wasApproved = prior?.status === 'approved' || (prior?.rawData as Record<string, unknown> | null)?.overseekReviewApproved === true;
+                reviewBecameApproved = r.status === 'approved' && !wasApproved;
+                const persistedRawData = wasApproved || r.status === 'approved' ? { ...rawData, overseekReviewApproved: true } : rawData;
                 await tx.wooReview.upsert({
                     where: { accountId_wooId: { accountId, wooId: r.id } },
                     update: {
                         status: r.status,
                         content: r.review,
                         rating: r.rating,
-                        rawData,
+                        rawData: persistedRawData,
                         reviewerEmail: reviewerEmail || null,
                         wooCustomerId,
                         wooOrderId,
@@ -362,14 +374,14 @@ export class ReviewSync extends BaseSync {
                         status: r.status,
                         // Use date_created_gmt for accurate UTC timestamp
                         dateCreated: new Date((r as any).date_created_gmt || r.date_created),
-                        rawData,
+                        rawData: persistedRawData,
                         reviewerEmail: reviewerEmail || null,
                         wooCustomerId,
                         wooOrderId,
                         matchStatus // Track match status for filtering
                     }
                 });
-                if (!prior && !isBaselineSync && Date.now() - reviewDate.getTime() >= 0 && Date.now() - reviewDate.getTime() < 86400000) await recordCriticalEvent(tx, EVENTS.REVIEW.LEFT, { accountId, review: r });
+                if (reviewBecameApproved && !isBaselineSync && Date.now() - reviewDate.getTime() >= 0 && Date.now() - reviewDate.getTime() < 86400000) await recordCriticalEvent(tx, EVENTS.REVIEW.LEFT, { accountId, review: r });
                 });
 
                 // Emit Event
@@ -378,7 +390,7 @@ export class ReviewSync extends BaseSync {
                 // Detect "Review Left" for triggers
                 const isRecent = (new Date().getTime() - reviewDate.getTime()) < 24 * 60 * 60 * 1000;
 
-                if (!isBaselineSync && isRecent && !existingWooIds.has(r.id)) {
+                if (reviewBecameApproved && !isBaselineSync && isRecent) {
                     EventBus.emit(EVENTS.REVIEW.LEFT, { accountId, review: r });
                 }
 
@@ -415,7 +427,7 @@ export class ReviewSync extends BaseSync {
 
         // Reconciliation: remove reviews not touched during this full sync.
         // Uses updatedAt timestamps instead of accumulating all IDs in memory.
-        if (!incremental && totalProcessed > 0 && validationFailures === 0) {
+        if (!targeted && !incremental && totalProcessed > 0 && validationFailures === 0) {
             const staleCount = await prisma.wooReview.count({
                 where: { accountId, updatedAt: { lt: syncStartedAt } }
             });

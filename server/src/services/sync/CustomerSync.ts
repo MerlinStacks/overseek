@@ -7,13 +7,18 @@ import { WooCustomerSchema, WooCustomer } from './wooSchemas';
 import { materializeContact } from '../ContactMaterialization';
 import { queueContactProjection, queueContactKeys } from '../ContactProjection';
 import { updateCustomerTotals, withOrderTotalsTransaction } from './orderCustomerTotals';
+import { SyncJobData } from '../queue/SyncQueue';
+import { parseWooOrderId } from '../../utils/orderIds';
 
 
 export class CustomerSync extends BaseSync {
     protected entityType = 'customers';
 
-    protected async sync(woo: WooService, accountId: string, incremental: boolean, job?: any, syncId?: string): Promise<SyncResult> {
-        const after = incremental ? await this.getLastSync(accountId) : undefined;
+    protected async sync(woo: WooService, accountId: string, incremental: boolean, job?: any, syncId?: string, jobData?: SyncJobData): Promise<SyncResult> {
+        const targeted = jobData?.wooCustomerId !== undefined;
+        const customerId = targeted ? parseWooOrderId(jobData.wooCustomerId) : null;
+        if (targeted && customerId === null) throw new Error('Invalid targeted customer ID');
+        const after = !targeted && incremental ? await this.getLastSync(accountId) : undefined;
         let page = 1;
         let hasMore = true;
         let totalProcessed = 0;
@@ -27,7 +32,10 @@ export class CustomerSync extends BaseSync {
         while (hasMore) {
             // Use 50/page to balance throughput with memory safety (large
             // customer objects with heavy metadata can OOM at 100/page).
-            const { data: rawCustomers, totalPages } = await woo.getCustomers({ page, after, per_page: 50 });
+            const { data: rawCustomers, totalPages } = targeted
+                ? { data: [(await woo.getCustomer(customerId!)).data], totalPages: 1 }
+                : await woo.getCustomers({ page, after, per_page: 50 });
+            if (targeted && rawCustomers[0]?.id !== customerId) throw new Error('Targeted customer unavailable or identity mismatch');
             if (!rawCustomers.length) {
                 break;
             }
@@ -39,6 +47,7 @@ export class CustomerSync extends BaseSync {
                 if (result.success) {
                     customers.push(result.data);
                 } else {
+                    if (targeted) throw new Error('Invalid targeted customer response');
                     totalSkipped++;
                     validationFailures++;
                     Logger.debug(`Skipping invalid customer`, {
@@ -125,7 +134,7 @@ export class CustomerSync extends BaseSync {
         // Reconciliation: remove customers not touched during this full sync.
         // Count-first pattern: evaluate the 30% safety cap via SQL count() rather
         // than loading every stale wooId into Node memory.
-        if (!incremental && totalProcessed > 0 && validationFailures === 0) {
+        if (!targeted && !incremental && totalProcessed > 0 && validationFailures === 0) {
             // Local/inbox contacts use negative IDs and cannot be refreshed by Woo.
             // Use the same remote-only scope for every reconciliation operation.
             const remoteWhere = { accountId, wooId: { gt: 0 } };
@@ -183,7 +192,7 @@ export class CustomerSync extends BaseSync {
         }
         // --- Auto-Link: Link guest conversations to newly synced customers ---
         // Find guest conversations where guestEmail matches a WooCustomer email
-        const linkedCount = await this.linkGuestConversationsToCustomers(accountId);
+        const linkedCount = targeted ? 0 : await this.linkGuestConversationsToCustomers(accountId);
         if (linkedCount > 0) {
             Logger.info(`Auto-linked ${linkedCount} guest conversations to customers`, { accountId, syncId });
         }

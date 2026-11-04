@@ -1,5 +1,4 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const m = vi.hoisted(() => ({ fetch: vi.fn(), allowed: true }));
 vi.mock('../../context/AuthContext', () => ({ useAuth: () => ({ token: 't', user: { id: 'u' } }) }));
@@ -10,7 +9,6 @@ import { EmailAccountForm } from '../settings/EmailAccountForm';
 import { MergeCustomerModal } from '../customers/MergeCustomerModal';
 import { VariantTableRow } from '../products/VariantTableRow';
 import { BOMItemsTable } from '../products/bom/BOMItemsTable';
-import { ShippingHubPage } from '../../pages/shipping/ShippingHubPage';
 
 beforeEach(() => { vi.clearAllMocks(); m.allowed = true; vi.stubGlobal('fetch', m.fetch); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -71,17 +69,4 @@ it('keeps BOM editing and destructive controls disabled with the containing fiel
     expect(screen.getByRole('spinbutton', { name: 'Quantity for Part' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Remove Part' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Remove Part' })).toHaveClass('text-red-700');
-});
-
-it('filters dispatch cards without triggering carrier writes and distinguishes no matches', async () => {
-    const dispatch = { accountId: 'a', dispatchStatus: 'In Dispatch', basis: 'local', partial: false, policy: null, orders: [{ order: { id: 'order', accountId: 'a', wooId: 42, updatedAt: '2026-10-22T00:00:00.000Z', number: '42', status: 'processing', total: '10.00', currency: 'AUD', dateCreated: '2026-10-22T00:00:00.000Z' }, draft: null }] };
-    m.fetch.mockImplementation(async (url: string) => response(url.includes('/dispatch') ? dispatch : url.includes('/catalog') ? { accountId: 'a', partial: false, packages: [], overrides: [] } : { accountId: 'a', carrierAccount: null }));
-    render(<MemoryRouter><ShippingHubPage /></MemoryRouter>);
-    const prepare = await screen.findByRole('button', { name: 'Prepare local draft for 42' });
-    expect(prepare).toHaveClass('border');
-    const search = screen.getByLabelText('Filter this order window');
-    fireEvent.change(search, { target: { value: 'not-here' } });
-    expect(screen.getByText('No orders match this filter.')).toBeVisible();
-    expect(screen.queryByText('No local orders in this acknowledged dispatch window.')).toBeNull();
-    expect(m.fetch.mock.calls.every(([, options]) => !options.method || options.method === 'GET')).toBe(true);
 });

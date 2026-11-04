@@ -24,7 +24,6 @@ vi.mock('../services/MerchantCenterService', () => ({ MerchantCenterService: { v
 vi.mock('../services/search/IndexingService', () => ({ IndexingService: { indexProduct: vi.fn(), deleteProduct: vi.fn() } }));
 vi.mock('../services/search-console/SearchConsoleService', () => ({ SearchConsoleService: {} }));
 vi.mock('../services/AuditService', () => ({ AuditService: {} }));
-vi.mock('../services/wholesale/reconciliation', () => ({ reconcileWholesaleProductsBestEffort: vi.fn() }));
 vi.mock('../services/WebhookDeliveryService', () => ({ WebhookDeliveryService: {} }));
 vi.mock('../services/CampaignTrackingService', () => ({ campaignTrackingService: {} }));
 vi.mock('../services/EmailListService', () => ({ emailListService: {} }));
@@ -36,7 +35,6 @@ import routes from './products';
 import { processWebhookPayload } from './webhook';
 import { IndexingService } from '../services/search/IndexingService';
 import { ProductsService } from '../services/products';
-import { reconcileWholesaleProductsBestEffort } from '../services/wholesale/reconciliation';
 
 describe('Woo product transition entry paths', () => {
     let app: ReturnType<typeof Fastify>;
@@ -189,7 +187,6 @@ describe('Woo product transition entry paths', () => {
             expect(response.json().error).toContain('cleanup failed');
         }
         expect(IndexingService.indexProduct).not.toHaveBeenCalled();
-        expect(reconcileWholesaleProductsBestEffort).not.toHaveBeenCalled();
         if (stage === 'recipes') {
             expect(db.bOMItem.updateMany).toHaveBeenCalledTimes(2);
             expect(db.productVariation.deleteMany).not.toHaveBeenCalled();

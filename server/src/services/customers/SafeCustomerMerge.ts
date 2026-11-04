@@ -22,6 +22,7 @@ export async function mergeCustomersSafely(accountId: string, userId: string, ta
         const source = await tx.wooCustomer.findFirst({ where: { id: data.sourceId, accountId, updatedAt: new Date(data.sourceVersion) }, include: { emailListMemberships: { take: 1 }, wholesaleCatalogShares: { take: 1 } } });
         if (!target || !source || target.wooId <= 0 || source.wooId <= 0) throw fail('Customers changed or unavailable');
         if (!z.string().email().safeParse(target.email).success || target.email.trim().toLowerCase() !== source.email.trim().toLowerCase()) throw fail('Only exact-email duplicates may be merged');
+        // Catalogs are retired, but retain this safeguard for archived recipient relationships.
         if (source.emailListMemberships.length || source.wholesaleCatalogShares.length) throw fail('Source has list memberships or catalog shares; reconcile those explicitly before merging');
         // Serializable reads protect this bounded candidate set and all subsequent writes.
         const orders = await tx.wooOrder.findMany({ where: { accountId, rawData: { path: ['customer_id'], equals: source.wooId } }, orderBy: { id: 'asc' }, take: 501, select: { id: true, rawData: true, updatedAt: true } });

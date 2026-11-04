@@ -7,7 +7,6 @@ const m = vi.hoisted(() => ({
 vi.mock('../../utils/prisma', () => ({ prisma: m.db }));
 vi.mock('../../utils/cache', () => ({ invalidateCache: vi.fn() }));
 vi.mock('../search/IndexingService', () => ({ IndexingService: { deleteProduct: m.remove } }));
-vi.mock('../wholesale/reconciliation', () => ({ reconcileWholesaleProductsBestEffort: vi.fn() }));
 import { permanentlyDeleteWooProduct, trashWooProduct, isWooProductNotFound } from '../productDeletion';
 import { persistWooProduct } from '../persistWooProduct';
 

@@ -17,7 +17,7 @@ class OverSeek_Tracking_Transport
     public const RETRY_HOOK = 'overseek_retry_tracking_events';
     private const RETRY_BATCH_SIZE = 5;
     private const FAILED_EVENTS_TRANSIENT = '_overseek_failed_events';
-    private const BLOCKING_EVENT_TYPES = array('purchase');
+    private const BLOCKING_EVENT_TYPES = array('purchase', 'order_changed', 'customer_changed', 'review_changed');
 
     /**
      * @return array<int, array<string, mixed>>

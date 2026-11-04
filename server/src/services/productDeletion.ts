@@ -1,7 +1,6 @@
 import { prisma } from '../utils/prisma';
 import { invalidateCache } from '../utils/cache';
 import { IndexingService } from './search/IndexingService';
-import { reconcileWholesaleProductsBestEffort } from './wholesale/reconciliation';
 
 /** Only Woo's product-specific error authorizes permanent reconciliation. */
 export function isWooProductNotFound(error: unknown): boolean {
@@ -21,7 +20,6 @@ export async function trashWooProduct(accountId: string, wooId: number) {
     await invalidateCache('products', `products:list:${accountId}:`);
     // Always retry removal, even when there is no local row.
     await IndexingService.deleteProduct(accountId, wooId);
-    if (product) await reconcileWholesaleProductsBestEffort(accountId, [product.id], { deleted: true });
     return product;
 }
 
@@ -29,8 +27,6 @@ export async function permanentlyDeleteWooProduct(accountId: string, wooId: numb
     // Search first: a failed sync remains discoverable in the DB on the next run.
     // This is idempotent and deliberately independent of local row existence.
     await IndexingService.deleteProduct(accountId, wooId);
-    const local = await prisma.wooProduct.findUnique({ where: { accountId_wooId: { accountId, wooId } }, select: { id: true } });
-    if (local) await reconcileWholesaleProductsBestEffort(accountId, [local.id], { deleted: true });
     const count = await prisma.$transaction(async tx => {
         const product = await tx.wooProduct.findUnique({ where: { accountId_wooId: { accountId, wooId } }, select: { id: true } });
         if (!product) return 0;

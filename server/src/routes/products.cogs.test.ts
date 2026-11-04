@@ -17,7 +17,6 @@ vi.mock('../services/MerchantCenterService', () => ({ MerchantCenterService: {} 
 vi.mock('../services/search/IndexingService', () => ({ IndexingService: {} }));
 vi.mock('../services/search-console/SearchConsoleService', () => ({ SearchConsoleService: {} }));
 vi.mock('../services/AuditService', () => ({ AuditService: { log: vi.fn() } }));
-vi.mock('../services/wholesale/reconciliation', () => ({ reconcileWholesaleProductsBestEffort: vi.fn() }));
 import routes from './products';
 import { ProductsService } from '../services/products';
 

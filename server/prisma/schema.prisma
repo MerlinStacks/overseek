@@ -3507,7 +3507,8 @@ model CrawlerRule {
 }
 
 // ------------------------------------
-// Shipping Hub
+// Retired Shipping Hub: retain these tables for historical labels, audits and
+// existing shipment automation receipts. No active hub APIs or polling remain.
 // ------------------------------------
 
 model ShippingCarrierAccount {
@@ -3875,7 +3876,8 @@ model WebVitalSample {
 }
 
 // ------------------------------------
-// Wholesale Catalogs
+// Retired Wholesale Catalogs — retained for upgrade compatibility and historical data.
+// Do not drop these models or rewrite their previously deployed migrations.
 // ------------------------------------
 
 enum WholesalePersonalisationType {

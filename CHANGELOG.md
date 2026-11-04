@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Removed
+
+- Retired wholesale catalogs, including pricing panels, catalog settings, generation/sharing workers, reminders, and navigation. Legacy API URLs return `410 Gone`; saved links show a retirement notice. Existing database tables, migration history, private artifacts, feature flags, and historical audit records are preserved. See [upgrade notes](docs/wholesale-catalog-retirement.md).
+
 ### Added
 
 **Bot Shield & Crawler Management**
@@ -29,14 +33,6 @@ All notable changes to this project will be documented in this file.
 
 **Help Center**
 - Content seeding script for help article database population
-
-**Wholesale Catalog Generator**
-- Account-gated wholesale catalog workspace with granular view, edit, generate, and share permissions
-- Product-level wholesale profiles with quantity pricing, POA tiers, catalog notes, personalisation badges, image overrides, pricing history, and WooCommerce eligibility reconciliation
-- Multiple branded catalogs with product selection, category grouping, ordering, editable defaults, terms approval, WooCommerce tax/branding import, and AI-assisted terms shortening suggestions
-- Asynchronous BullMQ PDF generation with immutable snapshots, A4 landscape layouts, variation pages, one-page terms output, approval, staleness tracking, cancellation, retry, validity reminders, and artifact retention
-- Protected customer sharing with expiring password links, email activation, lockouts, viewer identity and confidentiality acceptance, customer/viewer watermarks, page-level analytics, and staff-only customer-specific PDF downloads
-- Isolated customer catalog viewer using rasterized pages and thumbnails without a public PDF, print, or download control
 
 ### Fixed
 - Restore delivery CI against the current Prisma schema and publish companion 2.25.10 with matching server/client download pins. Normalize delivery-cache UNION collations without data changes; verify in-place plugin upgrades preserve settings, stock and purchase metadata.

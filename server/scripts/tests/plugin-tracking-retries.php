@@ -23,6 +23,7 @@ class Retry_Test_Order
     }
     public function get_meta(string $key) { return $this->meta[$key] ?? ''; }
     public function update_meta_data(string $key, $value): void { $this->meta[$key] = $value; }
+    public function delete_meta_data(string $key): void { unset($this->meta[$key]); }
     public function save_meta_data(): void
     {
         if ($this->throw_on_save) {
@@ -53,6 +54,9 @@ function wp_json_encode($value): string { return json_encode($value, JSON_THROW_
 function is_wp_error($value): bool { return $value instanceof WP_Error; }
 function wp_remote_retrieve_response_code($value): int { return $value['response']['code'] ?? 0; }
 function wc_get_order($id) { return $GLOBALS['orders'][$id] ?? false; }
+function wp_generate_uuid4(): string { static $id = 0; return 'operational-event-' . ++$id; }
+function get_comment($id) { return $GLOBALS['comments'][$id] ?? null; }
+function get_post($id) { return $GLOBALS['posts'][$id] ?? null; }
 function wp_remote_post($url, $args)
 {
     $GLOBALS['requests'][] = ['url' => $url, 'args' => $args];
@@ -70,7 +74,7 @@ function reset_state(): void
         'overseek_enable_tracking' => '1',
         'overseek_webhook_auth_token' => 'test-token',
     ];
-    foreach (['transients', 'cron', 'orders', 'requests', 'actions'] as $key) {
+    foreach (['transients', 'cron', 'orders', 'requests', 'actions', 'comments', 'posts'] as $key) {
         $GLOBALS[$key] = [];
     }
     $GLOBALS['response'] = ['response' => ['code' => 200]];
@@ -213,6 +217,63 @@ $tests['disabled or unconfigured tracking never sends the backlog'] = static fun
         run_worker();
         check($GLOBALS['requests'] === [] && count(pending()) === 1, 'Disabled/unconfigured worker modified backlog');
     }
+};
+
+$tests['operational changes are private ID-only signals acknowledged and retried'] = static function (): void {
+    $_SERVER['HTTP_REFERER'] = 'https://store.example/wp-admin/orders';
+    $tracking = new OverSeek_Server_Tracking();
+    $tracking->track_order_change(42);
+    $tracking->track_order_change(42);
+    $tracking->flush_event_queue();
+    check(count($GLOBALS['requests']) === 1, 'Repeated hooks in one request should coalesce');
+    $request = $GLOBALS['requests'][0]['args'];
+    $body = json_decode($request['body'], true);
+    check($body['type'] === 'order_changed' && $body['payload']['orderId'] === 42, 'Wrong operational payload');
+    check(array_keys($body['payload']) === ['orderId', 'eventId'], 'Operational payload leaked order/customer details');
+    check(!isset($body['visitorIp'], $body['email'], $body['referrer'], $body['userAgent']), 'Operational envelope leaked visitor data');
+    check($body['visitorId'] === 'store-sync', 'Visitor identity must not be used for store operations');
+    check($request['blocking'] && $request['timeout'] === 2, 'Store changes need acknowledgement');
+    check($request['headers']['Authorization'] === 'Bearer test-token', 'Operational change not authenticated');
+    unset($_SERVER['HTTP_REFERER']);
+
+    $GLOBALS['response'] = new WP_Error();
+    $tracking->track_customer_change(7);
+    $tracking->flush_event_queue();
+    check(count(pending()) === 1 && pending()[0]['type'] === 'customer_changed', 'Failed operational signal not retained');
+    $event_id = pending()[0]['payload']['eventId'];
+    $GLOBALS['response'] = ['response' => ['code' => 200]];
+    $retry = pending()[0]; $retry['_retry_after'] = 0; seed([$retry]);
+    run_worker();
+    $last = json_decode(end($GLOBALS['requests'])['args']['body'], true);
+    check($last['payload']['eventId'] === $event_id && count(pending()) === 0, 'Retry lost operational occurrence identity');
+};
+
+$tests['review changes cover pending reviews and moderation but ignore non-products'] = static function (): void {
+    $GLOBALS['comments'][1] = (object) ['comment_ID' => 1, 'comment_post_ID' => 10];
+    $GLOBALS['comments'][2] = (object) ['comment_ID' => 2, 'comment_post_ID' => 20];
+    $GLOBALS['posts'][10] = (object) ['post_type' => 'product'];
+    $GLOBALS['posts'][20] = (object) ['post_type' => 'post'];
+    $tracking = new OverSeek_Server_Tracking();
+    $tracking->track_review_change(1);
+    $tracking->track_review_change(2);
+    $tracking->flush_event_queue();
+    check(count($GLOBALS['requests']) === 1, 'Should only send the product review');
+    $body = json_decode($GLOBALS['requests'][0]['args']['body'], true);
+    check($body['type'] === 'review_changed' && $body['payload']['reviewId'] === 1, 'Wrong review identity');
+    $tracking->track_review_status_change('approved', 'hold', $GLOBALS['comments'][1]);
+    $tracking->flush_event_queue();
+    check(count($GLOBALS['requests']) === 2, 'Moderation change not sent');
+    $next = json_decode($GLOBALS['requests'][1]['args']['body'], true);
+    check($next['payload']['eventId'] !== $body['payload']['eventId'], 'Later change reused a previous occurrence');
+};
+
+$tests['operational hooks require a configured tracking token'] = static function (): void {
+    $GLOBALS['options']['overseek_webhook_auth_token'] = '';
+    $tracking = new OverSeek_Server_Tracking();
+    $tracking->track_order_change(42);
+    $tracking->track_customer_change(7);
+    $tracking->flush_event_queue();
+    check(count($GLOBALS['requests']) === 0, 'Unsigned operational work must not be sent');
 };
 
 foreach ($tests as $name => $test) {

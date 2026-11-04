@@ -10,6 +10,9 @@ import { hasValidTrackingAuth, isValidAccount, isRateLimited, requiresTrackingAu
 import * as z from 'zod';
 import { incrementBotShieldMetric } from '../services/tracking/BotShieldMetrics';
 import { isConversionEvent } from '../services/tracking/conversionUtils';
+import { getPayloadWooOrderId, parseWooOrderId } from '../utils/orderIds';
+import { queuePurchaseOrderSync } from '../services/sync/PurchaseOrderSync';
+import { queueStoreChange } from '../services/sync/LiveStoreSync';
 
 // Transparent 1x1 GIF for pixel tracking
 const TRANSPARENT_GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
@@ -176,6 +179,46 @@ async function authorizeTrackingEvent(accountId: string, type: string, request: 
     return true;
 }
 
+async function syncTrackedEntity(accountId: string, type: string, payload: unknown, authorization: unknown): Promise<void> {
+    if (!['purchase', 'identify', 'review'].includes(type)) return;
+    const data = payload as Record<string, unknown> | null;
+    // Current plugins deliver these changes separately with acknowledged retries.
+    if (type !== 'purchase' && data?.storeSyncSignal === true) return;
+    const entityId = type === 'purchase' ? getPayloadWooOrderId(payload)
+        : parseWooOrderId(type === 'identify' ? data?.customerId : data?.reviewId);
+    // Legacy unsigned analytics remain compatible, but cannot cause Woo API work.
+    if (entityId === null || !(await hasValidTrackingAuth(accountId, authorization))) return;
+    // Await durable admission before acknowledging. Plugin retries can re-admit work
+    // even if analytics deduplication has already seen the same purchase event.
+    if (type === 'purchase') await queuePurchaseOrderSync(accountId, entityId);
+    else {
+        // Compatibility for existing plugin events; new versions send dedicated store changes.
+        const eventId = typeof data?.eventId === 'string' && data.eventId.length <= 150
+            ? data.eventId : `legacy-${type}-${entityId}-${Math.floor(Date.now() / 300000)}`;
+        await queueStoreChange(accountId, type === 'identify' ? 'customer_changed' : 'review_changed', entityId, eventId);
+    }
+}
+
+/** Operational ID-only signals never enter visitor analytics or conversion forwarding. */
+async function processStoreChange(body: { accountId: string; type: string; payload: unknown; eventId?: string }, request: any, reply: any): Promise<boolean | null> {
+    const { accountId, type, payload } = body;
+    if (type !== 'order_changed' && type !== 'customer_changed' && type !== 'review_changed') return false;
+    if (!(await hasValidTrackingAuth(accountId, request.headers.authorization))) {
+        reply.code(401).send({ error: 'Tracking auth required for store changes' });
+        return null;
+    }
+    const data = payload as Record<string, unknown> | null;
+    const id = type === 'order_changed' ? getPayloadWooOrderId(payload)
+        : parseWooOrderId(type === 'customer_changed' ? data?.customerId : data?.reviewId);
+    const eventId = body.eventId || data?.eventId;
+    if (id === null || typeof eventId !== 'string' || !eventId.trim() || eventId.length > 150) {
+        reply.code(400).send({ error: 'Store changes require a valid entity ID and event ID' });
+        return null;
+    }
+    await queueStoreChange(accountId, type, id, eventId);
+    return true;
+}
+
 const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
     /**
      * DEPRECATED: Returns no-op script (server-side tracking only).
@@ -201,6 +244,11 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
             const { accountId, visitorId, type, url, payload, pageTitle, referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, clickIdType, landingReferrer, eventId, occurredAt, visitorIp, consentState, customerId, email } = body;
 
             if (!(await authorizeTrackingEvent(accountId, type, request, reply))) return;
+
+            const storeChange = await processStoreChange(body, request, reply);
+            if (storeChange !== false) return storeChange ? { success: true } : undefined;
+
+            await syncTrackedEntity(accountId, type, payload, request.headers.authorization);
 
             Logger.debug('Tracking event received', { type, accountId });
 
@@ -246,6 +294,11 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
             const { accountId, visitorId, type, url, payload, pageTitle, referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, clickIdType, landingReferrer, eventId, occurredAt, visitorIp, consentState, customerId, email } = body;
 
             if (!(await authorizeTrackingEvent(accountId, type, request, reply))) return;
+
+            const storeChange = await processStoreChange(body, request, reply);
+            if (storeChange !== false) return storeChange ? { success: true } : undefined;
+
+            await syncTrackedEntity(accountId, type, payload, request.headers.authorization);
 
             // Prefer visitorIp from body (WC plugin sends real visitor IP for server-side events)
             const ip = normalizeIpHeader(visitorIp || request.headers['x-forwarded-for'] || request.headers['x-real-ip'] || request.ip);

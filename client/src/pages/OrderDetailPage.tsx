@@ -5,7 +5,6 @@ import type { ReactNode } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { usePermissions } from '../hooks/usePermissions';
-import { useAccountFeature } from '../hooks/useAccountFeature';
 import { formatDate, formatCurrency } from '../utils/format';
 import { User, MapPin, Mail, Phone, Package, RefreshCw, Printer, TrendingUp, Globe, Smartphone, Monitor, Tablet, Truck, ExternalLink, Copy, GripVertical } from 'lucide-react';
 import { Modal } from '../components/ui/Modal';
@@ -20,7 +19,6 @@ import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { useToast } from '../context/ToastContext';
 import { openSafeUrl } from '../utils/url';
 import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
-import { ShipmentMonitoringPanel } from '../components/shipping/ShipmentMonitoringPanel';
 import { InvoiceGenerationIssueModal } from '../components/invoicing/InvoiceGenerationIssueModal';
 import { generateCanonicalInvoice, InvoiceGenerationError } from '../utils/invoiceGeneration';
 import type { InvoiceGenerationIssue } from '../utils/invoiceGeneration';
@@ -93,7 +91,6 @@ export function OrderDetailPage() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const { hasPermission } = usePermissions();
-    const isShippingHubEnabled = useAccountFeature('SHIPPING_HUB');
     const toast = useToast();
 
     const [order, setOrder] = useState<OrderDetails | null>(null);
@@ -419,7 +416,7 @@ export function OrderDetailPage() {
     const billing = order.billing || {};
     const shipping = order.shipping || {};
     const hasTrackingItems = (order.tracking_items || []).length > 0;
-    const legacyTrackingPanel = hasTrackingItems ? (
+    const trackingPanel = hasTrackingItems ? (
         <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
             <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
                 <Truck size={18} className="text-[var(--brand-text)]" />
@@ -467,8 +464,6 @@ export function OrderDetailPage() {
             </div>
         </div>
     ) : null;
-
-    const shippingWooOrderId = Number(order.wooId);
 
     const sidebarPanels: Record<SidebarPanelId, ReactNode | null> = {
             tags: (
@@ -558,9 +553,7 @@ export function OrderDetailPage() {
                     </div>
                 </div>
             ),
-            tracking: isShippingHubEnabled && Number.isFinite(shippingWooOrderId) && shippingWooOrderId > 0
-                ? <ShipmentMonitoringPanel wooOrderId={shippingWooOrderId} fallback={legacyTrackingPanel} />
-                : legacyTrackingPanel,
+            tracking: trackingPanel,
             attribution: (
                 <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
                     <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">

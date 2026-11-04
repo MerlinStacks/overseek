@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ProductSync } from '../ProductSync';
 import { IndexingService } from '../../search/IndexingService';
 import { Logger } from '../../../utils/logger';
+import { EmbeddingService } from '../../EmbeddingService';
 
 // Mock dependencies
 const mockPrisma = vi.hoisted(() => ({
@@ -112,6 +113,32 @@ describe('ProductSync Reconciliation Performance', () => {
         expect(mockPrisma.bOM.deleteMany).not.toHaveBeenCalled();
         expect(woo.getProductVariations).not.toHaveBeenCalled();
         expect(mockPrisma.productVariation.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(IndexingService.bulkIndexProducts).mock.invocationCallOrder[0]);
+    });
+
+    it('refreshes uncached parent and variation stock without catalogue sweeps or paid embeddings', async () => {
+        const woo = {
+            getProduct: vi.fn().mockResolvedValue({ id: 10, name: 'Variable', type: 'variable', manage_stock: true, stock_quantity: 7, stock_status: 'instock' }),
+            getProductVariations: vi.fn().mockResolvedValue([{ id: 11, manage_stock: true, stock_quantity: 0, stock_status: 'outofstock', price: '10' }]),
+            getProducts: vi.fn()
+        };
+        mockPrisma.wooProduct.upsert.mockResolvedValue({ id: 'p', wooId: 10 });
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{ id: 'p', wooId: 10 }]);
+        const result = await (productSync as any).sync(woo, accountId, false, undefined, undefined, { accountId, wooProductId: 10 });
+        expect(result.itemsProcessed).toBe(1);
+        expect(woo.getProduct).toHaveBeenCalledExactlyOnceWith(10, { bypassCache: true });
+        expect(woo.getProductVariations).toHaveBeenCalledExactlyOnceWith(10, { bypassCache: true });
+        expect(woo.getProducts).not.toHaveBeenCalled();
+        expect(mockPrisma.wooProduct.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: expect.objectContaining({ stockQuantity: 7 }) }));
+        expect(mockPrisma.productVariation.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: expect.objectContaining({ stockQuantity: 0, stockStatus: 'outofstock' }) }));
+        expect(mockPrisma.wooProduct.deleteMany).not.toHaveBeenCalled();
+        expect(EmbeddingService.updateProductEmbedding).not.toHaveBeenCalled();
+    });
+
+    it.each([undefined, { id: 999, name: 'Wrong' }, { id: 10, name: 123 }])('rejects unavailable or invalid targeted products %j', async data => {
+        const woo = { getProduct: vi.fn().mockResolvedValue(data), getProducts: vi.fn() };
+        await expect((productSync as any).sync(woo, accountId, true, undefined, undefined, { accountId, wooProductId: 10 })).rejects.toThrow();
+        expect(mockPrisma.wooProduct.upsert).not.toHaveBeenCalled();
+        expect(woo.getProducts).not.toHaveBeenCalled();
     });
 
     it('does not delete variations for a missing type even in full reconciliation', async () => {

@@ -18,6 +18,18 @@ const item: BOMItem = { id: 'item', childProductId: 'child', displayName: 'Compo
 const bom = { items: [{ id: 'item', childProductId: 'child', quantity: '2', wasteFactor: '0.05', childProduct: { name: 'Component', cogs: '10' } }] };
 const response = (value: unknown, ok = true) => ({ ok, json: async () => value });
 describe('BOM values and controls', () => {
+    it('keeps long component names accessible and locks all row controls while busy', () => {
+        const change = vi.fn();
+        const named = { ...item, displayName: 'Children’s Cutlery Set with Engraved Name' };
+        const view = render(<BOMItemsTable items={[named]} selectedScope={0} onItemsChange={change} disabled />);
+        expect(screen.getByRole('table', { name: 'BOM components' })).toHaveTextContent(named.displayName);
+        expect(screen.getByRole('spinbutton', { name: `Quantity for ${named.displayName}` })).toBeDisabled();
+        expect(screen.getByRole('spinbutton', { name: `Waste percentage for ${named.displayName}` })).toBeDisabled();
+        expect(screen.getByRole('button', { name: `Remove ${named.displayName}` })).toBeDisabled();
+        view.rerender(<BOMItemsTable items={[named]} selectedScope={0} onItemsChange={change} />);
+        fireEvent.click(screen.getByRole('button', { name: `Remove ${named.displayName}` }));
+        expect(change).toHaveBeenCalledWith([]);
+    });
     it('converts percentages to fractions without mutating the supplied item', () => {
         const change = vi.fn(); const original = Object.freeze({ ...item });
         render(<BOMItemsTable items={[original]} selectedScope={0} currency="EUR" onItemsChange={change} />);

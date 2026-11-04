@@ -9,12 +9,12 @@
 - [Migration-history repair](migration-history-repair.md)
 - [Emergency startup rollback](startup-rollback.md)
 - [WooCommerce companion plugin](../overseek-wc-plugin/README.md)
-- [Shipping print agent](../print-agent/README.md)
 
 ## Feature guides and contracts
 
 ### Delivery and shipping
 
+- [Shipping Hub retirement and preserved order tracking](shipping-hub-retirement.md)
 - [Delivery release runbook](delivery/delivery-release-runbook.md)
 - [Launch completion contract](delivery/delivery-launch-contract.md)
 - [Launch control and receipt API](delivery/delivery-launch-api.md)
@@ -23,8 +23,6 @@
 - [Shipping-option contract](delivery/delivery-shipping-options.md)
 - [Presentation compatibility](delivery/delivery-estimates-compatibility.md)
 - [Variant supplier-lead contract](delivery/delivery-variant-supplier-leads.md)
-- [Shipping hub remaining work and runtime setup](shipping-hub-plan.md)
-- [Shipping hub changelog](shipping-hub-changelog.md)
 
 ### Email marketing
 
@@ -47,7 +45,7 @@ Plans record their own implementation and rollout status; they are not proof tha
 feature is enabled in a deployed environment.
 
 - [Delivery estimates replacement plan](../plan.md) — includes the frozen 2.23.0 rollout record and superseded design history.
-- [Wholesale catalog generator plan and rollout checklist](wholesale-catalog-generator-plan.md)
+- [Wholesale catalog retirement and upgrade notes](wholesale-catalog-retirement.md)
 - [Reviews roadmap](overseek-reviews-roadmap.md)
 - [Standalone design mockups](design/README.md)
 

@@ -30,7 +30,6 @@ import {
     FileText,
     Mail,
     Rss,
-    Truck,
     ClipboardList,
     Calculator
 } from 'lucide-react';
@@ -65,7 +64,6 @@ const navItems = [
             { icon: ShoppingCart, label: 'Orders', path: '/orders' },
             { icon: TrendingDown, label: 'Abandoned Carts', path: '/abandoned-carts' },
             { icon: Package, label: 'Inventory', path: '/inventory' },
-            { icon: BookOpen, label: 'Wholesale Catalog', path: '/wholesale-catalog' },
             { icon: Calculator, label: 'Stock & Suppliers', path: '/inventory/supply-chain' },
             { icon: TrendingDown, label: 'Forecasts', path: '/inventory/forecasts' },
             { icon: PenTool, label: 'Invoice Designer', path: '/invoices/design' },
@@ -106,19 +104,6 @@ const navItems = [
     { type: 'link', icon: BookOpen, label: 'Policies & SOP', path: '/policies' },
     { type: 'link', icon: UsersRound, label: 'Team', path: '/team' },
     { type: 'link', icon: HelpCircle, label: 'Help Center', path: '/help' },
-    {
-        type: 'group',
-        label: 'Shipping',
-        icon: Truck,
-        children: [
-            { icon: Truck, label: 'Hub', path: '/shipping' },
-            { icon: Package, label: 'Packages', path: '/shipping/packages' },
-            { icon: ClipboardList, label: 'Item Overwrites', path: '/shipping/item-overwrites' },
-            { icon: FileText, label: 'Past Labels / Invoices', path: '/shipping/labels' },
-            { icon: ClipboardList, label: 'Operations', path: '/shipping/operations' },
-            { icon: Settings, label: 'Settings', path: '/shipping/settings' },
-        ]
-    },
 ];
 
 /** Why memo: Sidebar subscribes to many contexts; wrapping in memo ensures
@@ -141,8 +126,6 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
     const isBotShieldEnabled = useAccountFeature('BOT_SHIELD');
     const isAiManagerEnabled = useAccountFeature('AI_MANAGER');
     const isFeedsEnabled = useAccountFeature('FEED_EXPORTS');
-    const isShippingEnabled = useAccountFeature('SHIPPING_HUB');
-    const isWholesaleCatalogEnabled = useAccountFeature('WHOLESALE_CATALOG');
     const { prefetch } = usePrefetch(); // Route prefetching for faster navigation
     const location = useLocation();
     const previousLocationRef = useRef(location);
@@ -250,7 +233,6 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                     if (child.path === '/contacts') return hasPermission('view_orders') || hasPermission('view_marketing');
                     if (child.path === '/orders' || child.path === '/abandoned-carts') return hasPermission('view_orders');
                     if (child.path === '/inventory' || child.path === '/inventory/supply-chain' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
-                    if (child.path === '/wholesale-catalog') return isWholesaleCatalogEnabled && hasPermission('view_wholesale_catalog');
                     if (child.path === '/reports') return hasPermission('view_finance');
                     if (child.path === '/reviews') return hasPermission('view_marketing');
                     return true;
@@ -265,7 +247,6 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                 });
                 return hasChild;
             }
-            if (item.label === 'Shipping') return isShippingEnabled && hasPermission('view_shipping');
             if (item.label === 'Analytics') return hasPermission('view_finance') || hasPermission('view_marketing');
             if (item.label === 'Team') return hasPermission('view_orders');
             return true;
@@ -277,11 +258,9 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                         if (child.path === '/crawlers') return isBotShieldEnabled && hasPermission('view_finance');
                         if (child.path === '/ai-manager') return isAiManagerEnabled && hasPermission('view_marketing');
                         if (child.path === '/feeds') return isFeedsEnabled && hasPermission('view_marketing');
-                        if (child.path?.startsWith('/shipping')) return isShippingEnabled && hasPermission('view_shipping');
                         if (child.path === '/contacts') return hasPermission('view_orders') || hasPermission('view_marketing');
                         if (child.path === '/orders' || child.path === '/abandoned-carts') return hasPermission('view_orders');
                         if (child.path === '/inventory' || child.path === '/inventory/supply-chain' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
-                        if (child.path === '/wholesale-catalog') return isWholesaleCatalogEnabled && hasPermission('view_wholesale_catalog');
                         if (child.path === '/reports') return hasPermission('view_finance');
                         if (child.path === '/reviews') return hasPermission('view_marketing');
                         if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/audiences' || child.path === '/emails/settings' || child.path === '/emails/logs' || child.path === '/sms/logs') {
@@ -299,7 +278,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
             }
             return item;
         });
-    }, [hasPermission, isAiManagerEnabled, isBotShieldEnabled, isEmailEnabled, isFeedsEnabled, isShippingEnabled, isWholesaleCatalogEnabled]);
+    }, [hasPermission, isAiManagerEnabled, isBotShieldEnabled, isEmailEnabled, isFeedsEnabled]);
 
     // State for expanded group
     const [expandedGroup, setExpandedGroup] = useState<string | null>(null);

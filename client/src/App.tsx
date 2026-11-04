@@ -70,14 +70,7 @@ const PoliciesPage = lazy(() => import('./pages/PoliciesPage').then(m => ({ defa
 const CrawlersPage = lazy(() => import('./pages/CrawlersPage').then(m => ({ default: m.CrawlersPage })));
 const UserProfilePage = lazy(() => import('./pages/UserProfilePage').then(m => ({ default: m.UserProfilePage })));
 const FeedsPage = lazy(() => import('./pages/FeedsPage').then(m => ({ default: m.FeedsPage })));
-const ShippingHubPage = lazy(() => import('./pages/shipping/ShippingHubPage').then(m => ({ default: m.ShippingHubPage })));
-const ShippingPackagesPage = lazy(() => import('./pages/shipping/ShippingPackagesPage').then(m => ({ default: m.ShippingPackagesPage })));
-const ShippingItemOverwritesPage = lazy(() => import('./pages/shipping/ShippingItemOverwritesPage').then(m => ({ default: m.ShippingItemOverwritesPage })));
-const ShippingLabelsPage = lazy(() => import('./pages/shipping/ShippingLabelsPage').then(m => ({ default: m.ShippingLabelsPage })));
-const ShippingOperationsPage = lazy(() => import('./pages/shipping/ShippingOperationsPage').then(m => ({ default: m.ShippingOperationsPage })));
-const ShippingSettingsPage = lazy(() => import('./pages/shipping/ShippingSettingsPage').then(m => ({ default: m.ShippingSettingsPage })));
-const WholesaleCatalogsPage = lazy(() => import('./pages/wholesale/WholesaleCatalogsPage').then(m => ({ default: m.WholesaleCatalogsPage })));
-const CatalogViewPage = lazy(() => import('./pages/wholesale/CatalogViewPage').then(m => ({ default: m.CatalogViewPage })));
+const RetiredWholesaleCatalogPage = lazy(() => import('./pages/RetiredWholesaleCatalogPage').then(m => ({ default: m.RetiredWholesaleCatalogPage })));
 
 // Analytics Sub-Pages
 const AnalyticsOverviewPage = lazy(() => import('./pages/analytics/AnalyticsOverviewPage').then(m => ({ default: m.AnalyticsOverviewPage })));
@@ -276,7 +269,8 @@ function App() {
                                         <Route path={ROUTE_PATHS.privacyPolicy} element={<PrivacyPolicyPage />} />
                                         <Route path={ROUTE_PATHS.dataDeletion} element={<DataDeletionPage />} />
                                         <Route path={ROUTE_PATHS.termsOfService} element={<TermsOfServicePage />} />
-                                        <Route path={ROUTE_PATTERNS.catalogView} element={<CatalogViewPage />} />
+                                        <Route path={`${ROUTE_PATHS.catalogView}/*`} element={<RetiredWholesaleCatalogPage />} />
+                                        <Route path={`${ROUTE_PATHS.wholesaleCatalog}/*`} element={<RetiredWholesaleCatalogPage />} />
                                         {/* Protected Routes */}
                                         <Route element={<ProtectedRoute />}>
                                             <Route path={ROUTE_PATHS.setup} element={<SetupWizard />} />
@@ -303,7 +297,6 @@ function App() {
                                                 <Route path={ROUTE_PATHS.supplyChain} element={<AccountGuard><SupplyChainPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.inventoryBomSync} element={<AccountGuard><Navigate to="/settings?tab=sync&view=bom" replace /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.inventoryForecasts} element={<AccountGuard><InventoryForecastPage /></AccountGuard>} />
-                                                <Route path={ROUTE_PATHS.wholesaleCatalog} element={<AccountGuard><FeatureGuard featureKey="WHOLESALE_CATALOG"><WholesaleCatalogsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATTERNS.productDetails} element={<AccountGuard><ProductEditPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATTERNS.purchaseOrderNew} element={<AccountGuard><PurchaseOrderEditPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATTERNS.purchaseOrderEdit} element={<AccountGuard><PurchaseOrderEditPage /></AccountGuard>} />
@@ -317,12 +310,6 @@ function App() {
                                                 <Route path={ROUTE_PATHS.seo} element={<AccountGuard><SeoPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.seoContent} element={<AccountGuard><SeoContentPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.feeds} element={<AccountGuard><FeatureGuard featureKey="FEED_EXPORTS"><FeedsPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/shipping" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingHubPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/shipping/packages" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingPackagesPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/shipping/item-overwrites" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingItemOverwritesPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/shipping/labels" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingLabelsPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/shipping/operations" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingOperationsPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/shipping/settings" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingSettingsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.aiManager} element={<AccountGuard><FeatureGuard featureKey="AI_MANAGER"><AiManagerPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.broadcasts} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><BroadcastsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.emailAudiences} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><AudiencesPage /></FeatureGuard></AccountGuard>} />

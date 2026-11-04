@@ -11,6 +11,10 @@ vi.mock('../../CriticalEventOutbox', () => ({ recordOrderLifecycle: vi.fn() }));
 import { IndexingService } from '../../search/IndexingService';
 import { campaignTrackingService } from '../../CampaignTrackingService';
 import { Logger } from '../../../utils/logger';
+import { recordPurchasesImported } from '../SyncFreshness';
+import { queueOrderStockRefresh } from '../LiveStoreSync';
+vi.mock('../SyncFreshness', () => ({ recordPurchasesImported: vi.fn() }));
+vi.mock('../LiveStoreSync', () => ({ queueOrderStockRefresh: vi.fn() }));
 
 vi.mock('../../CampaignTrackingService', () => ({ campaignTrackingService: { trackOrderPurchase: vi.fn() } }));
 
@@ -103,6 +107,7 @@ describe('OrderSync meta persistence', () => {
     const syncId = 'sync_meta';
     const mockWoo = {
         getOrders: vi.fn(),
+        getOrder: vi.fn(),
     } as unknown as WooService;
 
     beforeEach(() => {
@@ -116,6 +121,39 @@ describe('OrderSync meta persistence', () => {
         (prisma.wooCustomer.findMany as any).mockResolvedValue([]);
         (prisma.$queryRaw as any).mockResolvedValue([]);
         (esClient.bulk as any).mockResolvedValue({ errors: false, items: [] });
+    });
+
+    it('imports only the authoritative targeted order without sweeping or reading the checkpoint', async () => {
+        const incoming = { id: 42, number: '42', status: 'processing', currency: 'AUD', total: '25', date_created_gmt: new Date().toISOString() };
+        mockWoo.getOrder = vi.fn().mockResolvedValue({ data: incoming });
+        (prisma.wooOrder.upsert as any).mockImplementation(async ({ create }: any) => create);
+        const result = await (new OrderSync() as any).sync(mockWoo, accountId, false, undefined, syncId, { accountId, wooOrderId: 42 });
+        expect(mockWoo.getOrder).toHaveBeenCalledExactlyOnceWith(42);
+        expect(mockWoo.getOrders).not.toHaveBeenCalled();
+        expect(prisma.syncState.findUnique).not.toHaveBeenCalled();
+        expect(prisma.wooOrder.upsert).toHaveBeenCalledWith(expect.objectContaining({
+            where: { accountId_wooId: { accountId, wooId: 42 } }, create: expect.objectContaining({ total: '25' })
+        }));
+        expect(EventBus.emit).toHaveBeenCalledWith('order.created', expect.objectContaining({ accountId, order: expect.objectContaining({ id: 42 }) }));
+        expect(IndexingService.bulkIndexOrders).toHaveBeenCalledWith(accountId, expect.arrayContaining([expect.objectContaining({ id: 42 })]), expect.any(Map));
+        expect(prisma.wooOrder.deleteMany).not.toHaveBeenCalled();
+        expect(esClient.indices.refresh).not.toHaveBeenCalled();
+        expect(result).toEqual({ itemsProcessed: 1, itemsDeleted: 0 });
+        expect(recordPurchasesImported).toHaveBeenCalledWith(accountId, [42]);
+        expect(queueOrderStockRefresh).toHaveBeenCalledWith(accountId, expect.objectContaining({ id: 42 }), undefined);
+    });
+
+    it.each([undefined, { id: 43 }, { id: 42, billing: 'invalid' }])('rejects unavailable, mismatched or malformed targeted responses: %j', async data => {
+        mockWoo.getOrder = vi.fn().mockResolvedValue({ data });
+        await expect((new OrderSync() as any).sync(mockWoo, accountId, true, undefined, syncId, { accountId, wooOrderId: 42 })).rejects.toThrow();
+        expect(prisma.wooOrder.upsert).not.toHaveBeenCalled();
+        expect(mockWoo.getOrders).not.toHaveBeenCalled();
+    });
+
+    it('propagates early Woo API failures so the queue retries', async () => {
+        mockWoo.getOrder = vi.fn().mockRejectedValue(new Error('404 not yet visible'));
+        await expect((new OrderSync() as any).sync(mockWoo, accountId, true, undefined, syncId, { accountId, wooOrderId: 42 })).rejects.toThrow('404 not yet visible');
+        expect(prisma.wooOrder.upsert).not.toHaveBeenCalled();
     });
 
     it('counts intentional excluded-status orders without reporting an incomplete sync', async () => {

@@ -23,7 +23,6 @@ vi.mock('../services/MerchantCenterService', () => ({ MerchantCenterService: {} 
 vi.mock('../services/search/IndexingService', () => ({ IndexingService: {} }));
 vi.mock('../services/search-console/SearchConsoleService', () => ({ SearchConsoleService: {} }));
 vi.mock('../services/AuditService', () => ({ AuditService: {} }));
-vi.mock('../services/wholesale/reconciliation', () => ({ reconcileWholesaleProductsBestEffort: vi.fn() }));
 
 describe('product list filters', () => {
     let app: ReturnType<typeof Fastify>;

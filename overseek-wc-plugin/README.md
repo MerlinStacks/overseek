@@ -2,7 +2,7 @@
 
 A WordPress plugin that connects your WooCommerce store to your self-hosted OverSeek server.
 
-Current version: **2.25.12**.
+Current version: **2.25.13**.
 
 ### Simple delivery estimate setup
 
@@ -163,6 +163,16 @@ revalidation before reactivation. See `docs/companion-2.23.1-release.md` for the
 candidate validation gate and upgrade sequence.
 
 ## Changelog
+
+### 2.25.13 - 2026-11-05
+
+- Send authenticated, ID-only operational signals for payment/status changes,
+  refunds, stock reductions/restorations, customer registration/login/updates,
+  and product review submissions/moderation.
+- Keep store operations separate from visitor analytics: operational signals do
+  not contain visitor IPs, cookies, email addresses or conversion payloads.
+- Acknowledge operational delivery and retry failures in the existing background
+  retry queue, preserving each occurrence ID. Requires the matching server update.
 
 ### 2.25.12 - 2026-10-27
 

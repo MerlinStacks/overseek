@@ -14,7 +14,6 @@ vi.mock('../services/MerchantCenterService', () => ({ MerchantCenterService: {} 
 vi.mock('../services/search/IndexingService', () => ({ IndexingService: {} }));
 vi.mock('../services/search-console/SearchConsoleService', () => ({ SearchConsoleService: {} }));
 vi.mock('../services/AuditService', () => ({ AuditService: { log: vi.fn() } }));
-vi.mock('../services/wholesale/reconciliation', () => ({ reconcileWholesaleProductsBestEffort: vi.fn() }));
 import routes from './products';
 let app: ReturnType<typeof Fastify>;
 const hit = { _source: { id: 10, accountId: 'a', number: '#10', date_created: '2026-10-01', status: 'completed', billing: { email: 'a@example.test' } }, inner_hits: { matched_items: { hits: { total: { value: 1, relation: 'eq' }, hits: [{ _source: { quantity: 1, total: '0.00' } }] } } } };

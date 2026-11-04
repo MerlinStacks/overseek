@@ -121,6 +121,25 @@ describe('CustomerSync', () => {
         });
     });
 
+    it('targets the authenticated remote customer without a sweep, reconciliation or whole-account conversation scan', async () => {
+        const sync = new CustomerSync();
+        const woo = { getCustomer: vi.fn().mockResolvedValue({ data: { id: 456, email: 'customer@example.com', first_name: 'Customer' } }), getCustomers: vi.fn() };
+        const result = await (sync as any).sync(woo, 'account-1', false, undefined, undefined, { accountId: 'account-1', wooCustomerId: 456 });
+        expect(result.itemsProcessed).toBe(1);
+        expect(woo.getCustomer).toHaveBeenCalledExactlyOnceWith(456);
+        expect(woo.getCustomers).not.toHaveBeenCalled();
+        expect(mockPrisma.syncState.findUnique).not.toHaveBeenCalled();
+        expect(mockPrisma.wooCustomer.deleteMany).not.toHaveBeenCalled();
+        expect(mockPrisma.conversation.findMany).not.toHaveBeenCalled();
+        expect(mockPrisma.wooCustomer.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ accountId: 'account-1', wooId: 456 }) }));
+    });
+
+    it.each([undefined, { id: 999 }, { id: 456, email: 'bad-email' }])('rejects invalid targeted customer responses %j', async data => {
+        const woo = { getCustomer: vi.fn().mockResolvedValue({ data }) };
+        await expect((new CustomerSync() as any).sync(woo, 'a', true, undefined, undefined, { accountId: 'a', wooCustomerId: 456 })).rejects.toThrow();
+        expect(mockPrisma.wooCustomer.create).not.toHaveBeenCalled();
+    });
+
     it('restricts full-sync reconciliation and its safety cap to remote customers', async () => {
         mockPrisma.wooCustomer.upsert.mockResolvedValue({ id: 'current', wooId: 456 });
         mockPrisma.wooCustomer.count.mockResolvedValueOnce(1).mockResolvedValueOnce(20);

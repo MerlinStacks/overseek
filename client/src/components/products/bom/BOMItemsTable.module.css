@@ -1,0 +1,60 @@
+.container {
+    container-type: inline-size;
+}
+
+.component {
+    overflow-wrap: anywhere;
+}
+
+.mobileLabel {
+    display: none;
+}
+
+/* Use the panel width, not the viewport: BOMs also live in narrow variant panels. */
+@container (max-width: 36rem) {
+    .table,
+    .table tbody {
+        display: block;
+    }
+
+    /* Keep column headers available to assistive technology. */
+    .table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .table tbody tr {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.75rem;
+        padding: 1rem;
+    }
+
+    .table tbody td {
+        min-width: 0;
+        padding: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .component,
+    .actions,
+    .table tbody td[colspan] {
+        grid-column: 1 / -1;
+    }
+
+    .actions {
+        justify-self: end;
+    }
+
+    .mobileLabel {
+        display: block;
+        margin-bottom: 0.375rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+}

@@ -1,29 +1,23 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppearanceSettings } from './AppearanceSettings';
 
 const m = vi.hoisted(() => ({
     account: { id: 'a', name: 'Account A', appearance: { appName: 'Brand A', primaryColor: '#ffffff', logoUrl: '' } },
-    api: { isReady: true },
-    service: { getBranding: vi.fn(), importBranding: vi.fn(), saveBranding: vi.fn() },
     toast: { success: vi.fn(), error: vi.fn() },
-    wholesale: false,
+    canEdit: true,
 }));
 vi.mock('../../context/AccountContext', () => ({ useAccount: () => ({ currentAccount: m.account, refreshAccounts: vi.fn() }) }));
 vi.mock('../../context/AuthContext', () => ({ useAuth: () => ({ token: 'token' }) }));
 vi.mock('../../context/ToastContext', () => ({ useToast: () => m.toast }));
-vi.mock('../../hooks/useApi', () => ({ useApi: () => m.api }));
-vi.mock('../../hooks/useAccountFeature', () => ({ useAccountFeature: () => m.wholesale }));
-vi.mock('../../hooks/usePermissions', () => ({ usePermissions: () => ({ hasPermission: () => true }) }));
-vi.mock('../../services/wholesaleCatalogService', () => ({ createWholesaleCatalogService: () => m.service }));
-vi.mock('./WholesaleBrandingSettings', () => ({ WholesaleBrandingSettings: () => null }));
+vi.mock('../../hooks/usePermissions', () => ({ usePermissions: () => ({ hasPermission: () => m.canEdit }) }));
 
 beforeEach(() => {
     vi.clearAllMocks();
-    m.wholesale = false;
+    m.canEdit = true;
     m.account = { id: 'a', name: 'Account A', appearance: { appName: 'Brand A', primaryColor: '#ffffff', logoUrl: '' } };
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('appearance preview and account isolation', () => {
     it('previews draft identity with the same accessible foreground as mobile and desktop', () => {
@@ -37,16 +31,32 @@ describe('appearance preview and account isolation', () => {
         expect(within(preview).getByText('Draft name')).toBeInTheDocument();
     });
 
-    it('does not apply a previous account’s late branding response to the next account', async () => {
-        m.wholesale = true;
-        let resolve!: (value: unknown) => void;
-        m.service.getBranding.mockReturnValueOnce(new Promise(r => { resolve = r; })).mockReturnValueOnce(new Promise(() => {}));
+    it('does not carry draft branding to the next account', () => {
         const view = render(<AppearanceSettings />);
+        fireEvent.change(screen.getByLabelText('Brand name', { exact: false }), { target: { value: 'Draft A' } });
         m.account = { id: 'b', name: 'Account B', appearance: { appName: '', primaryColor: '', logoUrl: '' } };
         view.rerender(<AppearanceSettings />);
-        await act(async () => resolve({ branding: { businessDetails: { name: 'Leaked A' }, logoUrl: '/a.png', primaryColor: '#ff0000' } }));
         expect(screen.getByRole('region', { name: 'Appearance preview' })).toHaveTextContent('Account B');
-        expect(screen.queryByText('Leaked A')).not.toBeInTheDocument();
+        expect(screen.queryByText('Draft A')).not.toBeInTheDocument();
         expect(screen.getByLabelText('Primary colour hex value')).toHaveValue('#2563eb');
+    });
+
+    it('saves existing workspace branding without calling the retired catalog API', async () => {
+        const fetch = vi.fn().mockResolvedValue({ ok: true });
+        vi.stubGlobal('fetch', fetch);
+        render(<AppearanceSettings />);
+        fireEvent.click(screen.getByRole('button', { name: 'Save branding' }));
+        await waitFor(() => expect(m.toast.success).toHaveBeenCalled());
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(fetch).toHaveBeenCalledWith('/api/accounts/a', expect.objectContaining({
+            method: 'PUT',
+            body: expect.stringContaining('"appName":"Brand A"'),
+        }));
+    });
+
+    it('keeps appearance preview-only without workspace permissions', () => {
+        m.canEdit = false;
+        render(<AppearanceSettings />);
+        expect(screen.queryByRole('button', { name: 'Save branding' })).not.toBeInTheDocument();
     });
 });

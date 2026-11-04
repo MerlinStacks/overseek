@@ -1,5 +1,7 @@
 # Wholesale PDF Catalog Generator Plan
 
+> Archived: this feature has been retired. This document is historical, not an active rollout checklist. See [retirement and upgrade notes](wholesale-catalog-retirement.md).
+
 ## Goal
 
 Add an account-level `WHOLESALE_CATALOG` feature that a super admin can enable in the existing Manage Accounts screen. Enabled accounts can maintain wholesale-only product information, generate multiple branded PDF catalogs whose final page contains wholesale ordering instructions and terms, and share them through protected customer-specific page viewers.

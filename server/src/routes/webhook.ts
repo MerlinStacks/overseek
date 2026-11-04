@@ -19,7 +19,6 @@ import { redisClient } from '../utils/redis';
 import { isExcludedOrderStatus, normalizeOrderStatus } from '../constants/orderStatus';
 import { campaignTrackingService } from '../services/CampaignTrackingService';
 import { emailListService } from '../services/EmailListService';
-import { reconcileWholesaleProductsBestEffort } from '../services/wholesale/reconciliation';
 import { updateCustomerTotals, withOrderTotalsTransaction } from '../services/sync/orderCustomerTotals';
 import { materializeContact } from '../services/ContactMaterialization';
 import { queueContactProjection } from '../services/ContactProjection';
@@ -322,7 +321,6 @@ export async function processWebhookPayload(
             Logger.warn('[Webhook] Failed to upsert product to DB', { accountId, productId: body.id, error: err.message });
             throw err; // Let delivery retry; never index a snapshot that failed to commit.
         }
-        if (persistedProduct) await reconcileWholesaleProductsBestEffort(accountId, [persistedProduct.id]);
 
         try {
             await IndexingService.indexProduct(accountId, persistedProduct

@@ -99,4 +99,16 @@ describe('BaseSync', () => {
             }
         });
     });
+
+    it.each(['wooOrderId', 'wooProductId', 'wooCustomerId', 'wooReviewId'])('records targeted %s success without advancing the account-wide checkpoint', async field => {
+        const sync = new TestSync();
+        const run = vi.spyOn(sync as any, 'sync');
+        const data = { accountId: 'account-1', [field]: 42, incremental: true };
+        await sync.perform(data);
+        expect(run).toHaveBeenCalledWith(expect.anything(), 'account-1', true, undefined, expect.any(String), data);
+        expect(mockPrisma.syncState.upsert).not.toHaveBeenCalled();
+        expect(mockPrisma.syncLog.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ status: 'SUCCESS', itemsProcessed: 1 })
+        }));
+    });
 });

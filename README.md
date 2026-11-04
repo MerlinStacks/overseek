@@ -20,7 +20,6 @@
 </p>
 <p align="center">
   <img src="docs/screenshots/analytics.svg" alt="Analytics and attribution" width="48%">
-  <img src="docs/screenshots/commerce-shipping.svg" alt="Commerce and shipping hub" width="48%">
 </p>
 <p align="center">
   <img src="docs/screenshots/growth-seo.svg" alt="Growth, SEO, and reviews" width="48%">
@@ -38,17 +37,16 @@ It is built for teams that want practical ownership of their commerce data inste
 - **Custom dashboard:** drag-and-drop widgets for revenue, live visitors, inbox status, product shortcuts, email health, SEO keywords, ads, and operational alerts.
 - **Orders and abandoned carts:** WooCommerce order sync, order detail panels, fulfilment context, COGS, customer attribution, and abandoned-cart monitoring.
 - **Inventory and supply chain:** product management, BOM sync, stock forecasting, purchase orders, supplier context, and product-level SEO/merchant health.
-- **Shipping hub:** feature-gated shipping workspace for package presets, item overwrites, label history, dispatch operations, carrier settings, and print-agent workflows.
+- **Order tracking:** shipment tracking numbers, carrier links, and copy controls on the order detail page.
 - **Inbox:** customer conversations, live chat, email-style replies, canned responses, AI draft assistance, unread state, attachments, and customer/order context.
 - **Email marketing:** email hub, flows, broadcasts, customer segments, lists, suppression/blocked contacts, delivery logs, and email settings.
 - **Analytics:** revenue, attribution, cohorts, CLV, reports, live acquisition views, crawler/bot shield, and conversion API health checks.
 - **Growth:** paid ads, reviews, SEO keywords, SEO content tools, product feeds, and optional AI manager features.
-- **Wholesale catalogs:** account-gated wholesale pricing and product content, multiple branded A4 PDF catalogs, queued generation and approval, and protected customer-specific sharing with expiring links and watermarked page viewing.
 - **Customers and team:** customer profiles, segmentation, role-based permissions, team management, policies/SOPs, help center, and superadmin tools.
 - **Mobile PWA:** installed-app routes for dashboard, orders, inbox, analytics, inventory, customers, live visitors, notifications, profile, and settings.
 - **Developer access:** shared core package, MCP server, CLI package, Docker Compose deployment, and WooCommerce connector plugin.
 
-Some modules are account-feature gated, including email, shipping, wholesale catalogs, feeds, AI manager, and bot shield. Wholesale catalogs also use granular view, edit, generate, and share permissions.
+Some modules are account-feature gated, including email, feeds, AI manager, and bot shield.
 
 ## Quick Start
 
@@ -132,7 +130,6 @@ overseek/
 ├── server/              # Fastify API, workers, Prisma schema, scripts
 ├── packages/            # Shared core, MCP server, CLI
 ├── overseek-wc-plugin/  # WordPress/WooCommerce connector plugin
-├── print-agent/         # Local print agent for shipping workflows
 ├── docs/                # Documentation and README screenshots
 ├── docker-compose.yml   # Production-style service stack
 ├── setup.sh             # Guided stack.env generator
@@ -153,9 +150,8 @@ overseek/
 - [Documentation index](./docs/README.md)
 - [Deployment guide](./DEPLOYMENT.md)
 - [Contributing guide](./CONTRIBUTING.md)
-- [Wholesale catalog generator plan and rollout checklist](./docs/wholesale-catalog-generator-plan.md)
+- [Wholesale catalog retirement and upgrade notes](./docs/wholesale-catalog-retirement.md)
 - [WooCommerce plugin README](./overseek-wc-plugin/README.md)
-- [Print agent README](./print-agent/README.md)
 
 ## License
 

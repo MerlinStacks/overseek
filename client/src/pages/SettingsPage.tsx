@@ -149,7 +149,7 @@ export function SettingsPage() {
             dateTime: <DateTimeSettings />,
             deliveryEstimates: <DeliveryEstimatesSettingsPage />,
             appearance: (
-                <SettingsCard title="Branding & Appearance" description="Manage shared branding for your dashboard, emails, and wholesale catalogs.">
+                <SettingsCard title="Branding & Appearance" description="Manage shared branding for your dashboard and emails.">
                     <AppearanceSettings />
                 </SettingsCard>
             ),

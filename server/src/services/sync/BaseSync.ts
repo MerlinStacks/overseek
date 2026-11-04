@@ -1,7 +1,7 @@
 import { prisma } from '../../utils/prisma';
 import { WooService } from '../woo';
 import { Logger } from '../../utils/logger';
-import { SyncJobData } from '../queue/SyncQueue';
+import { SyncJobData, isTargetedSync } from '../queue/SyncQueue';
 import { randomUUID } from 'crypto';
 import { EventBus, EVENTS } from '../events';
 import { SyncCancellationService } from './SyncCancellationService';
@@ -53,10 +53,11 @@ export abstract class BaseSync {
         try {
             await SyncCancellationService.assertNotRequested(job);
             const woo = await WooService.forAccount(accountId);
-            const result = await this.sync(woo, accountId, incremental, job, syncId);
+            const result = await this.sync(woo, accountId, incremental, job, syncId, jobData);
 
             await this.updateLog(log.id, 'SUCCESS', undefined, result.itemsProcessed, retryCount);
-            await this.updateState(accountId, this.entityType, checkpointAt);
+            // Fetching one order says nothing about other changes since the last sweep.
+            if (!isTargetedSync(jobData)) await this.updateState(accountId, this.entityType, checkpointAt);
             await this.clearReconnectFlag(accountId);
 
             Logger.info(`Sync Complete: ${this.entityType}`, {
@@ -76,6 +77,14 @@ export abstract class BaseSync {
             });
 
         } catch (error: any) {
+            if (jobData.liveEvent === 'purchase' && jobData.wooOrderId) {
+                try {
+                    const { recordPurchaseFailure } = await import('./SyncFreshness');
+                    await recordPurchaseFailure(accountId, jobData.wooOrderId, SyncCancellationService.isCancellation(error) || retryCount + 1 >= (job?.opts?.attempts ?? 1));
+                } catch (monitorError) {
+                    Logger.warn('Could not record purchase sync failure', { accountId, monitorError });
+                }
+            }
             const cancelled = SyncCancellationService.isCancellation(error);
             const status = cancelled ? 'CANCELLED' : 'FAILED';
             if (cancelled) {
@@ -103,7 +112,7 @@ export abstract class BaseSync {
         }
     }
 
-    protected abstract sync(woo: WooService, accountId: string, incremental: boolean, job?: any, syncId?: string): Promise<SyncResult>;
+    protected abstract sync(woo: WooService, accountId: string, incremental: boolean, job?: any, syncId?: string, jobData?: SyncJobData): Promise<SyncResult>;
 
     protected async assertNotCancelled(job?: any) {
         await SyncCancellationService.assertNotRequested(job);

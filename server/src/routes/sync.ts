@@ -79,6 +79,16 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
     };
 
     // Trigger Manual Sync
+    fastify.get('/freshness', async (request, reply) => {
+        if (!await canManageSchedules(request, reply)) return;
+        try {
+            return await (await import('../services/sync/SyncFreshness')).getSyncFreshness(request.accountId!);
+        } catch (error) {
+            Logger.error('Failed to read sync freshness', { error });
+            return reply.code(503).send({ error: 'Sync freshness is temporarily unavailable' });
+        }
+    });
+
     fastify.post('/manual', async (request, reply) => {
         const { accountId: bodyAccountId, types, incremental } = request.body as any;
         const accountId = request.accountId;
@@ -250,7 +260,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
             });
 
             const state = await prisma.syncState.findMany({
-                where: { accountId: String(accountId), NOT: { entityType: { startsWith: 'contact-projection:' } } }
+                where: { accountId: String(accountId), NOT: [{ entityType: { startsWith: 'contact-projection:' } }, { entityType: { startsWith: 'purchase-signal:' } }] }
             });
 
             const lastSuccess = recent.find((log) => log.status === 'SUCCESS');
@@ -555,7 +565,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
             });
 
             const state = await prisma.syncState.findMany({
-                where: { accountId: String(accountId), NOT: { entityType: { startsWith: 'contact-projection:' } } }
+                where: { accountId: String(accountId), NOT: [{ entityType: { startsWith: 'contact-projection:' } }, { entityType: { startsWith: 'purchase-signal:' } }] }
             });
 
             return { logs, state };

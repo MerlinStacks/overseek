@@ -30,7 +30,6 @@ vi.mock('../services/search/IndexingService', () => ({ IndexingService: { indexO
 vi.mock('../services/WebhookDeliveryService', () => ({ WebhookDeliveryService: {} }));
 vi.mock('../services/CampaignTrackingService', () => ({ campaignTrackingService: { trackOrderPurchase: vi.fn() } }));
 vi.mock('../services/EmailListService', () => ({ emailListService: {} }));
-vi.mock('../services/wholesale/reconciliation', () => ({ reconcileWholesaleProductsBestEffort: vi.fn() }));
 vi.mock('../services/events', () => ({ EventBus: { emit: vi.fn() }, EVENTS: { ORDER: {
     CREATED: 'created', STATUS_CHANGED: 'status_changed', PAID: 'paid', COMPLETED: 'completed', FIRST: 'first', SYNCED: 'synced'
 } } }));

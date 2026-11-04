@@ -28,6 +28,7 @@ export class MaintenanceScheduler {
      * Register all maintenance-related repeatable jobs
      */
     static async register() {
+        await this.queue.add('sync-freshness-monitor', {}, { repeat: { every: 60000 }, jobId: 'sync-freshness-monitor-minute' });
         await this.queue.add('order-tag-index-recovery', {}, { repeat: { every: 30000 }, jobId: 'order-tag-index-recovery-30sec' });
         await this.queue.add('oauth-state-cleanup', {}, { repeat: { every: 3600000 }, jobId: 'oauth-state-cleanup-hourly' });
         // DB-backed contact projection intent is independent of Woo sync and Redis delivery.
@@ -105,11 +106,6 @@ export class MaintenanceScheduler {
         });
         Logger.info('Scheduled Review Delete Cleanup (Daily at 03:45 UTC)');
 
-        await this.queue.add('wholesale-catalog-maintenance', {}, {
-            repeat: { pattern: '15 4 * * *' },
-            jobId: 'wholesale-catalog-maintenance-daily'
-        });
-        Logger.info('Scheduled Wholesale Catalog Maintenance (Daily at 04:15 UTC)');
     }
 
     /**
@@ -144,18 +140,6 @@ export class MaintenanceScheduler {
         }).catch(() => {
             // Script may not exist in older deployments - safe to ignore
         });
-    }
-
-    static async dispatchWholesaleCatalogMaintenance() {
-        const [{ WholesaleRetentionService }, { sendWholesaleValidityReminders }] = await Promise.all([
-            import('../wholesale/retention'),
-            import('../wholesale/reminders'),
-        ]);
-        const [retention, reminders] = await Promise.all([
-            WholesaleRetentionService.cleanup(),
-            sendWholesaleValidityReminders(),
-        ]);
-        Logger.info('[Scheduler] Wholesale catalog maintenance completed', { retention, reminders });
     }
 
     /**

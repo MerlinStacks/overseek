@@ -12,7 +12,6 @@ import { SyncScheduler } from './SyncScheduler';
 import { MessageScheduler } from './MessageScheduler';
 import { MarketingScheduler } from './MarketingScheduler';
 import { MaintenanceScheduler } from './MaintenanceScheduler';
-import { ShippingTrackingScheduler } from './ShippingTrackingScheduler';
 import { DeliveryInputScheduler } from './DeliveryInputScheduler';
 import { GuardedReceiptScheduler } from './GuardedReceiptScheduler';
 
@@ -23,7 +22,10 @@ export class SchedulerService {
         'budget-rebalancer',
         'experiment-metrics-refresh',
         'experiment-significance-check',
-        'bom-inventory-sync'
+        'bom-inventory-sync',
+        'wholesale-catalog-maintenance',
+        'shipping-tracking-poll',
+        'shipping-label-storage-cleanup'
     ]);
 
     /**
@@ -38,7 +40,6 @@ export class SchedulerService {
         await SyncScheduler.register();
         await MarketingScheduler.register();
         await MaintenanceScheduler.register();
-        await ShippingTrackingScheduler.register();
 
         // Remove stale repeatable jobs from older deployments.
         await this.cleanupDeprecatedJobs();
@@ -102,6 +103,9 @@ export class SchedulerService {
                     break;
 
                 // Maintenance jobs
+                case 'sync-freshness-monitor':
+                    await (await import('../sync/SyncFreshness')).monitorSyncFreshness();
+                    break;
                 case 'order-tag-index-recovery':
                     await (await import('../OrderTagIndexOutbox')).drainOrderTagIndexes(50);
                     break;
@@ -142,13 +146,11 @@ export class SchedulerService {
                     await MaintenanceScheduler.dispatchReviewDeleteCleanup();
                     break;
                 case 'wholesale-catalog-maintenance':
-                    await MaintenanceScheduler.dispatchWholesaleCatalogMaintenance();
+                    // Queued legacy jobs must not send reminders or delete retained data.
                     break;
                 case 'shipping-tracking-poll':
-                    await ShippingTrackingScheduler.dispatchTrackingPoll();
-                    break;
                 case 'shipping-label-storage-cleanup':
-                    await ShippingTrackingScheduler.dispatchLabelStorageCleanup();
+                    // Retired Shipping Hub jobs may still be queued from older deployments.
                     break;
 
                 // Marketing jobs

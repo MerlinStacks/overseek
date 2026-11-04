@@ -37,16 +37,8 @@ const AVAILABLE_PERMISSIONS = [
     { key: 'edit_order_tags', label: 'Edit Order Tags' },
     { key: 'view_finance', label: 'View Finance & Analytics' },
     { key: 'view_marketing', label: 'View Marketing & AI' },
-    { key: 'view_shipping', label: 'View Shipping Hub' },
-    { key: 'view_wholesale_catalog', label: 'View Wholesale Catalog' },
-    { key: 'edit_wholesale_catalog', label: 'Edit Wholesale Catalog' },
-    { key: 'generate_wholesale_catalog', label: 'Generate Wholesale Catalog' },
-    { key: 'share_wholesale_catalog', label: 'Share Wholesale Catalog' },
-    { key: 'create_shipping_labels', label: 'Create Shipping Labels' },
-    { key: 'print_shipping_labels', label: 'Print Shipping Labels' },
-    { key: 'cancel_shipping_labels', label: 'Cancel Shipping Labels' },
-    { key: 'manage_shipping_packages', label: 'Manage Shipping Packages' },
-    { key: 'manage_shipping_settings', label: 'Manage Shipping Settings' },
+    { key: 'view_shipping', label: 'View Delivery Estimates' },
+    { key: 'manage_shipping_settings', label: 'Manage Delivery Estimates' },
     { key: 'manage_roles', label: 'Manage Roles & Team' },
 ];
 

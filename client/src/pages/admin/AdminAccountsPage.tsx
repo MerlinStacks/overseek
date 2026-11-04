@@ -32,11 +32,9 @@ const KNOWN_FEATURES = [
     'AD_TRACKING',
     'EMAIL',
     'EMAIL_DESIGNER_V2',
-    'SHIPPING_HUB',
     'DELIVERY_ESTIMATES',
     'FEED_EXPORTS',
     'BOT_SHIELD',
-    'WHOLESALE_CATALOG',
     'TRACKING_EMAIL_EVENTS'
 ];
 
@@ -50,11 +48,9 @@ const FEATURE_LABELS: Record<string, string> = {
     AD_TRACKING: 'Ad Tracking',
     EMAIL: 'Email',
     EMAIL_DESIGNER_V2: 'Email Designer V2',
-    SHIPPING_HUB: 'Shipping Hub',
     DELIVERY_ESTIMATES: 'Delivery Estimates',
     FEED_EXPORTS: 'Feeds',
     BOT_SHIELD: 'Bot Shield',
-    WHOLESALE_CATALOG: 'Wholesale Catalog',
     TRACKING_EMAIL_EVENTS: 'Tracking Email',
 };
 

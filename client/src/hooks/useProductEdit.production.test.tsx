@@ -392,7 +392,7 @@ describe('main product production save', () => {
         const bom = vi.fn(async () => true); const stock = vi.fn(async () => true); const external = vi.fn(async () => true);
         Object.assign(result.current.bomPanelRef, { current: { save: bom } });
         Object.assign(result.current.stockPanelRef, { current: { save: stock } });
-        await act(async () => { expect(await result.current.handleSave([{ name: 'wholesale', save: external }])).toBe(true); });
+        await act(async () => { expect(await result.current.handleSave([{ name: 'feed writes', save: external }])).toBe(true); });
         expect(mocks.patch).not.toHaveBeenCalled(); expect(puts()).toHaveLength(1);
         expect(JSON.parse((puts()[0][1] as RequestInit).body as string).productionMinDays).toBe(0);
         expect(bom).toHaveBeenCalledOnce(); expect(stock).toHaveBeenCalledOnce(); expect(external).toHaveBeenCalledOnce();
@@ -414,7 +414,7 @@ describe('main product production save', () => {
         act(() => result.current.updateFormData({ name: 'Submitted' }));
         const pending = deferred<boolean>();
         let save!: Promise<boolean>;
-        await act(async () => { save = result.current.handleSave([{ name: 'wholesale', save: () => pending.promise }]); });
+        await act(async () => { save = result.current.handleSave([{ name: 'feed writes', save: () => pending.promise }]); });
         expect(result.current.isSaving).toBe(true); expect(result.current.saveState).toBe('saving');
         act(() => result.current.updateFormData({ name: 'Newer' }));
         await act(async () => { expect(await result.current.handleSave()).toBe(false); pending.resolve(false); await save; });

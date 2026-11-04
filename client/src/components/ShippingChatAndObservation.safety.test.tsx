@@ -5,14 +5,12 @@ const m = vi.hoisted(() => ({ account: { id: 'a' }, fetch: vi.fn(), allowed: tru
 vi.mock('../context/AuthContext', () => ({ useAuth: () => ({ token: 't', user: { id: 'u' } }) }));
 vi.mock('../context/AccountContext', () => ({ useAccount: () => ({ currentAccount: m.account }) }));
 vi.mock('../hooks/usePermissions', () => ({ usePermissions: () => ({ hasPermission: () => m.allowed }) }));
-vi.mock('../pages/shipping/ShippingPageShell', () => ({ ShippingPageShell: ({ children }: any) => <div>{children}</div> }));
 import { RoadblocksView } from './analytics/RoadblocksView';
 import { ChatSettings } from './chat/ChatSettings';
 import { PurchaseOrderList } from './inventory/PurchaseOrderList';
 import { ConversationItem } from './chat/ConversationItem';
 import { AdminSidebar } from './layout/AdminSidebar';
 import { AdsStep } from './onboarding/steps/AdsStep';
-import { ShippingLabelsPage } from '../pages/shipping/ShippingLabelsPage';
 const version = '2026-10-01T00:00:00.000Z';
 const response = (value: unknown) => ({ ok: true, json: async () => value });
 const config = () => ({ enabled: false, position: 'bottom-right', showOnMobile: true, primaryColor: '#2563eb', headerText: 'Header', welcomeMessage: '', autoReply: { enabled: false, message: '' }, businessHours: { enabled: false, days: Object.fromEntries(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map(key => [key, { open: '09:00', close: '17:00', isOpen: false }])), offlineMessage: '' }, businessTimezone: '' });
@@ -72,4 +70,3 @@ it('aborts chat reads on account changes and does not display late old-account s
     expect(m.fetch.mock.calls.at(-1)![1].headers['X-Account-ID']).toBe('b');
 });
 it('clears saved Meta secrets and does not promote a stored row to verified connection', async () => { m.fetch.mockImplementation(async (url: string) => response(url.endsWith('/onboarding/meta') ? { id: 'ad', platform: 'META', externalId: 'act_123', credentialState: 'saved-unverified' } : [])); const props = adsProps(); render(<AdsStep {...props} />); await screen.findByRole('button', { name: 'Save Meta credentials (unverified)' }); fireEvent.change(screen.getByLabelText('Meta access token'), { target: { value: 'private-test-secret' } }); fireEvent.change(screen.getByLabelText('Meta ad account ID'), { target: { value: 'act_123' } }); fireEvent.click(screen.getByRole('button', { name: 'Save Meta credentials (unverified)' })); await screen.findByText(/Credentials saved locally/); expect(screen.getByLabelText('Meta access token')).toHaveValue(''); const update = props.setDraft.mock.calls.at(-1)![0]({ ads: {} }); expect(update.ads).toMatchObject({ metaConnected: false, metaAccessToken: undefined }); });
-it('blocks duplicate/conflicting label mutations and records the scoped operation', async () => { const label = { id: 'l', wooOrderId: 42, carrier: 'AUSPOST', status: 'created', trackingNumber: null, serviceName: null, labelStoredUntil: null, cancelledAt: null, createdAt: version, updatedAt: version }; m.fetch.mockImplementation(async (url: string) => response(url.includes('/transactions') ? { transactions: [] } : { labels: [label] })); render(<ShippingLabelsPage />); const cancel = await screen.findByRole('button', { name: 'cancel' }); let resolve!: (value: unknown) => void; m.fetch.mockReturnValueOnce(new Promise(r => { resolve = r; })); fireEvent.click(cancel); fireEvent.click(cancel); const writes = m.fetch.mock.calls.filter(([, options]) => options.method === 'POST'); expect(writes).toHaveLength(1); expect(writes[0][1].headers['X-Account-ID']).toBe('a'); expect(JSON.parse(writes[0][1].body)).toMatchObject({ version, operationId: expect.any(String) }); await act(async () => resolve({ ok: false, status: 409 })); expect(screen.getByRole('button', { name: 'reprint' })).toBeDisabled(); expect(screen.getByText(/Outcome unconfirmed. Reconcile operation/)).toBeInTheDocument(); });
