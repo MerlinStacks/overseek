@@ -103,6 +103,11 @@ jobs:
       - name: Test review summaries and product context detection
         run: php overseek-wc-plugin/tests/review-summary.php
 
+      - name: Test invoice storage and customer recovery
+        run: |
+          php overseek-wc-plugin/tests/invoice-storage.php
+          php overseek-wc-plugin/tests/invoice-recovery.php
+
       - name: Test local delivery calculations and discovery contract
         run: |
           php overseek-wc-plugin/tests/delivery-engine.php

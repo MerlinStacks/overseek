@@ -2,7 +2,7 @@
 
 A WordPress plugin that connects your WooCommerce store to your self-hosted OverSeek server.
 
-Current version: **2.25.13**.
+Current version: **2.25.14**.
 
 ### Simple delivery estimate setup
 
@@ -163,6 +163,14 @@ revalidation before reactivation. See `docs/companion-2.23.1-release.md` for the
 candidate validation gate and upgrade sequence.
 
 ## Changelog
+
+### 2.25.14 - 2026-11-05
+
+- Include the invoice recovery and retry safety fixes in the downloadable plugin.
+- Keep invoice delivery failures distinct from pending generation and preserve
+  customer/order authorization checks during recovery.
+- Update in place without uninstalling. Requires the matching OverSeek server;
+  no settings or stock migration is required.
 
 ### 2.25.13 - 2026-11-05
 
