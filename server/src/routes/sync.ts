@@ -3,6 +3,7 @@
  */
 
 import { FastifyPluginAsync } from 'fastify';
+import { hasUnsettledBOMProgress } from '../services/bom/BOMJobOutcome';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { SyncService } from '../services/sync';
@@ -187,7 +188,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                             return reply.code(403).send({ error: 'Cannot cancel jobs for another account' });
                         }
                         const state = await job.getState();
-                        if (queueName === 'bom-inventory-sync' && (state === 'failed' || (state === 'completed' && job.data.bomRecovery))) return reply.code(409).send({ error: 'BOM stock-sync recovery evidence must be reconciled, not removed through cancellation', code: 'BOM_SYNC_RECONCILIATION_REQUIRED' });
+                        if (queueName === 'bom-inventory-sync' && (state === 'failed' || (state === 'completed' && (job.data.bomRecovery || job.data.bomRepair || hasUnsettledBOMProgress(job))))) return reply.code(409).send({ error: 'BOM stock-sync recovery evidence must be reconciled, not removed through cancellation', code: 'BOM_SYNC_RECONCILIATION_REQUIRED' });
                         let cancellationRequested = state === 'active';
                         if (state === 'active') {
                             await SyncCancellationService.request(queueName, String(jobId));

@@ -82,6 +82,10 @@ foreach ($options as $option) {
 // ─── Transients ─────────────────────────────────────────────────────────────
 // Static transient key used for failed event retry queue.
 wp_unschedule_hook('overseek_retry_tracking_events');
+wp_unschedule_hook('overseek_send_store_change');
+if (function_exists('as_unschedule_all_actions')) {
+    as_unschedule_all_actions('overseek_send_store_change', array(), 'overseek-store-sync');
+}
 delete_transient('_overseek_failed_events');
 
 // Dynamic transients keyed by account ID hash. We can't know the exact hash,

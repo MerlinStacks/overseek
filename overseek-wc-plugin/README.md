@@ -2,7 +2,7 @@
 
 A WordPress plugin that connects your WooCommerce store to your self-hosted OverSeek server.
 
-Current version: **2.25.14**.
+Current version: **2.25.16**.
 
 ### Simple delivery estimate setup
 
@@ -129,6 +129,7 @@ The plugin registers the following endpoints under `wp-json/overseek/v1/`:
 - Check the OverSeek dashboard -> Settings -> Plugin Health
 - Verify your Secret Key matches in both OverSeek and WordPress
 - Failed purchase events retry through the `overseek_retry_tracking_events` WP-Cron hook, in batches of at most five. Checkout never drains this backlog; the current purchase still uses its existing two-second acknowledgement timeout.
+- Operational order/customer/review changes schedule independent `overseek_send_store_change` background jobs using WooCommerce Action Scheduler (group `overseek-store-sync`), with WP-Cron fallback. Bulk edits perform no operational HTTP inline, and operational retries cannot displace purchases from their retry queue. The background runner must be serviced; delivery failures retain the occurrence ID and retry after 30, 120 and 480 seconds.
 - Ensure WP-Cron is running. If `DISABLE_WP_CRON` is enabled, configure a system scheduler to service WordPress cron regularly (ideally every minute). The existing retry queue is capped at 50 events with a one-hour transient lifetime, so it is not durable storage for prolonged outages.
 
 ### Live chat not appearing
@@ -163,6 +164,18 @@ revalidation before reactivation. See `docs/companion-2.23.1-release.md` for the
 candidate validation gate and upgrade sequence.
 
 ## Changelog
+
+### 2.25.16 - 2026-11-05
+
+- Recover WooCommerce Blocks script caches containing local WooCommerce filesystem paths incorrectly appended beneath the OverSeek plugin URL.
+- Correct only that exact malformed URL pattern for WooCommerce script handles, deriving the replacement from WooCommerce's entry point; valid URLs and other plugins are unchanged.
+- Keep the 2.25.15 background sync and purchase retry isolation fixes. After upgrading in place, purge storefront/CDN HTML and reload cart/checkout. This is targeted incident recovery; the original source of the malformed URLs has not been established.
+
+### 2.25.15 - 2026-11-05
+
+- Move operational order/customer/review HTTP into independently persisted background jobs so bulk updates do not wait on API timeouts.
+- Isolate operational retries from the capped purchase retry queue; preserve purchase acknowledgements, event identity and retry backoff.
+- Migrate old operational retries as they drain, support WP-Cron fallback, and remove operational scheduled jobs on uninstall.
 
 ### 2.25.14 - 2026-11-05
 

@@ -28,11 +28,13 @@ it('persists the full manifest and an in-flight checkpoint before each product, 
         const saved = readBOMCheckpoint(job.data, job.progress)!;
         expect(saved.targets).toEqual(targets);
         expect(saved.targets[saved.checkpoint.inFlightIndex!].productId).toBe(productId);
-        return { success: productId !== 'p2', productId, wooId: 1, previousStock: 1, newStock: 2 };
+        return { success: productId !== 'p2', productId, wooId: 1, previousStock: 1, newStock: 2, error: productId === 'p2' ? '401 credentials in provider URL' : undefined };
     });
     await BOMInventorySyncService.syncAllBOMProducts('a', job, { assertLease: vi.fn() });
     expect(sync).toHaveBeenCalledTimes(3);
     expect(readBOMCheckpoint(job.data, job.progress)?.checkpoint).toEqual({ version: 1, nextIndex: 3, inFlightIndex: null, uncertainIndexes: [1] });
+    expect(job.progress.productFailures).toEqual([{ index: 1, reason: expect.stringContaining('API key') }]);
+    expect(JSON.stringify(job.progress)).not.toContain('provider URL');
 });
 
 it('retains the exact interrupted product on lock loss and never starts later products', async () => {

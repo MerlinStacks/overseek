@@ -240,6 +240,9 @@ export class MaintenanceScheduler {
 
             const queue = QueueFactory.getQueue(QUEUES.BOM_SYNC);
             const { bomSyncJobIds } = await import('../bom/BOMSyncRecovery');
+            const { isBOMJobReconciled } = await import('../bom/BOMReconciliationEvidence');
+            const { isVerifiedBOMRepair } = await import('../bom/BOMRepairState');
+            const { requiresBOMJobReview } = await import('../bom/BOMJobOutcome');
 
             for (const accountId of accountIds) {
                 const jobId = `bom_sync_${accountId.replace(/:/g, '_')}`;
@@ -249,16 +252,20 @@ export class MaintenanceScheduler {
                     const candidate = await queue.getJob(candidateId);
                     if (!candidate) continue;
                     const state = await candidate.getState();
-                    if (state !== 'completed' || candidateId === bomSyncJobIds(accountId)[2] || candidate.data?.accountId !== accountId) { blocked = true; break; }
+                    if (candidate.data?.accountId !== accountId || requiresBOMJobReview(candidate, state, bomSyncJobIds(accountId).slice(2).includes(candidateId))) { blocked = true; break; }
                 }
                 if (blocked) {
                     Logger.info('[Scheduler] BOM work retained; running work or reconciliation blocks new admission', { accountId });
                     continue;
                 }
+                for (const candidateId of bomSyncJobIds(accountId).filter(id => id !== jobId)) {
+                    const reviewed = await queue.getJob(candidateId);
+                    if (reviewed && (isBOMJobReconciled(reviewed) || (await reviewed.getState() === 'completed' && isVerifiedBOMRepair(reviewed)))) await reviewed.remove();
+                }
                 const existingJob = await queue.getJob(jobId);
                 if (existingJob) {
                     const state = await existingJob.getState();
-                    if (['active', 'waiting', 'delayed'].includes(state)) {
+                    if (existingJob.data?.accountId !== accountId || requiresBOMJobReview(existingJob, state)) {
                         Logger.info(`[Scheduler] Skipping BOM sync for ${accountId} - job already ${state}`);
                         continue;
                     }

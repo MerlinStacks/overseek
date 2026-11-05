@@ -2,6 +2,11 @@
 
 ## What it does
 
+**[Repair & resume](bom-auto-repair.md)** is now the recommended recovery action.
+The continuation described here is under **Advanced: continue untouched products
+only** and does not unlock normal sync. An existing repair attempt blocks this
+older continuation path so it cannot replay uncertain repair targets.
+
 The BOM Inventory Sync page offers **Review continuation** to users with current
 `manage_inventory` permission when a retained failed run blocks Sync All.
 
@@ -71,5 +76,9 @@ the existing failed occurrence. An authorized inventory review is still needed t
 establish a safe recovery for those older jobs.
 
 Do not use queue cleanup, manual retries, `DEL`, or cancellation to erase failed or
-completed recovery evidence. After explicit reconciliation, use a separately
-reviewed maintenance procedure to archive evidence and release the blocked slots.
+completed recovery evidence. To release the block after explicit inventory review,
+use **Complete inventory review & unlock** on the BOM page. Follow
+[Review inventory and unlock BOM sync](bom-inventory-review.md): the operator's
+notes and normalized execution evidence are archived before an occurrence-bound
+release marker is applied. This is separate from continuation and also supports
+counter-only legacy runs after a full inventory review.

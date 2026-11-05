@@ -26,6 +26,7 @@ import { SyncStatsCards } from '../components/bom/SyncStatsCards';
 import { SyncProductRow } from '../components/bom/SyncProductRow';
 import { DeactivatedItemsBanner } from '../components/bom/DeactivatedItemsBanner';
 import { BOMRecoveryControls } from '../components/bom/BOMRecoveryControls';
+import { BOMSyncDiagnostics } from '../components/bom/BOMSyncDiagnostics';
 import { useAccount } from '../context/AccountContext';
 
 export function BOMSyncPage() {
@@ -46,10 +47,13 @@ export function BOMSyncPage() {
         recoveryError,
         isLoadingRecovery,
         isRecovering,
+        isRepairing,
+        repairSummary,
         syncProgress,
         handleSyncAll,
         handleReviewRecovery,
         handleContinueRecovery,
+        handleRepair,
         handleSyncSingle,
         handleRetryFailed,
         handleCancelSync,
@@ -164,12 +168,16 @@ export function BOMSyncPage() {
                     <p className="font-semibold">{syncError.code === 'BOM_SYNC_RECONCILIATION_REQUIRED' ? 'BOM sync needs reconciliation' : 'BOM sync could not start'}</p>
                     <p className="mt-1 text-sm">{syncError.message}</p>
                     {syncError.code && <p className="mt-1 text-xs">Reference: {syncError.code}</p>}
+                    {syncError.code === 'BOM_SYNC_RECONCILIATION_REQUIRED' && <BOMSyncDiagnostics onReconciled={handleRefresh} onRepair={handleRepair} syncing={isSyncing} />}
                     {syncError.code === 'BOM_SYNC_RECONCILIATION_REQUIRED' && activePermissions?.manage_inventory && (
+                        <details className="mt-3 text-sm">
+                        <summary className="cursor-pointer font-semibold">Advanced: continue untouched products only</summary>
                         <BOMRecoveryControls
                             key={recoveryPlan?.fingerprint ?? 'review'}
                             plan={recoveryPlan} error={recoveryError} loading={isLoadingRecovery} syncing={isSyncing}
                             onReview={handleReviewRecovery} onContinue={handleContinueRecovery}
                         />
+                        </details>
                     )}
                 </div>
             )}
@@ -178,7 +186,7 @@ export function BOMSyncPage() {
                 <div className="bg-[var(--brand-subtle)] border border-[var(--brand-border)] rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium text-[var(--brand-text)]">
-                            {isRecovering ? 'Continuing unaffected products; excluded stock still needs review…' : 'Syncing products...'}
+                            {isRepairing ? 'Repairing and verifying BOM inventory from fresh stock…' : isRecovering ? 'Continuing unaffected products; excluded stock still needs review…' : 'Syncing products...'}
                         </span>
                         <span className="text-sm text-[var(--brand-text)]">
                             {syncProgress.current} / {syncProgress.total}
@@ -192,6 +200,10 @@ export function BOMSyncPage() {
                     </div>
                 </div>
             )}
+
+            {repairSummary?.verified && !isSyncing && <div role="status" className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
+                Automatic repair complete: {repairSummary.repaired} repaired, {repairSummary.unchanged} already correct. All {repairSummary.total} targets verified; normal BOM syncing is available again.
+            </div>}
 
             {/* Sync Result Toast */}
             {syncResult && !syncProgress && (
@@ -259,7 +271,7 @@ export function BOMSyncPage() {
                                     item={item}
                                     isExpanded={expandedRows.has(key)}
                                     isSyncingThis={syncingProductId === key}
-                                    isSyncingAll={isSyncing}
+                                    isSyncingAll={isSyncing || syncError?.code === 'BOM_SYNC_RECONCILIATION_REQUIRED'}
                                     errorMsg={syncErrors[key] || null}
                                     onToggleExpand={() => toggleRow(key)}
                                     onSync={() => handleSyncSingle(item.productId, item.variationId)}

@@ -13,6 +13,11 @@ export async function processBOMSyncJob(job: Job) {
         if (typeof accountId !== 'string' || !accountId || accountId.length > 128) throw new Error('BOM worker requires a valid account scope');
         await SyncCancellationService.assertNotRequested(job);
         await assertJobLease(job);
+        if (job.data.bomRepair) {
+            const { processBOMRepairJob } = await import('./processBOMRepairJob');
+            await processBOMRepairJob(job, QueueFactory.getQueue(QUEUES.BOM_SYNC));
+            return;
+        }
         let targets: BOMSyncTarget[] | undefined;
         if (job.data.bomRecovery) {
             if (job.id !== bomSyncJobIds(accountId)[2]) throw new Error('Invalid BOM recovery job identity');

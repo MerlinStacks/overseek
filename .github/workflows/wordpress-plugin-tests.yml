@@ -103,6 +103,9 @@ jobs:
       - name: Test review summaries and product context detection
         run: php overseek-wc-plugin/tests/review-summary.php
 
+      - name: Test WooCommerce cart and checkout asset URL recovery
+        run: php overseek-wc-plugin/tests/woocommerce-assets.php
+
       - name: Test invoice storage and customer recovery
         run: |
           php overseek-wc-plugin/tests/invoice-storage.php
@@ -204,6 +207,16 @@ jobs:
               throw new RuntimeException("Missing dormant delivery cart hooks.");
             }
           '
+
+      - name: Verify native WooCommerce cart and checkout asset URLs
+        env:
+          OVERSEEK_RUN_DISPOSABLE_DB_TESTS: '1'
+        run: wp eval-file "$GITHUB_WORKSPACE/overseek-wc-plugin/tests/woocommerce-assets-integration.php" --path=wordpress --use-include
+
+      - name: Verify native operational background delivery and purchase isolation
+        env:
+          OVERSEEK_RUN_DISPOSABLE_DB_TESTS: '1'
+        run: wp eval-file "$GITHUB_WORKSPACE/overseek-wc-plugin/tests/tracking-background-integration.php" --path=wordpress --use-include
 
       - name: Verify guarded receipts against native Woo stock and MySQL
         env:

@@ -4,10 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
     prisma: {
         bOM: { findMany: vi.fn(), findUnique: vi.fn(), count: vi.fn() },
-        wooProduct: { findFirst: vi.fn() },
+        wooProduct: { findFirst: vi.fn(), findMany: vi.fn() },
+        auditLog: { create: vi.fn() },
         productVariation: { findUnique: vi.fn() }
     },
-    queue: { getJob: vi.fn(), add: vi.fn() },
+    queue: { name: 'bom-inventory-sync', getJob: vi.fn(), add: vi.fn() },
     requestCancellation: vi.fn(),
     hasPermission: vi.fn(),
     enforceMaxQueueDepth: vi.fn(),
@@ -33,6 +34,7 @@ vi.mock('../../services/queue/QueueFactory', () => ({
 
 import { bomSyncRoutes } from './bomSync';
 import { BOMInventorySyncService, localBOMItems } from '../../services/BOMInventorySyncService';
+import { bomExecutionFingerprint } from '../../services/bom/BOMReconciliationEvidence';
 
 function fixture(variationId = 0): any {
     return {
@@ -130,7 +132,19 @@ describe('BOM local preview', () => {
             bom.product, bom, { stockQuantity: 0, rawData: { stock_quantity: 100 } }
         );
         expect(result).toMatchObject({ currentWooStock: 0, effectiveStock: -2, needsSync: true });
-        expect(result?.components[0]).toMatchObject({ childWooId: 20, childName: 'Part (Variant BLUE)', childStock: -3 });
+        expect(result?.components[0]).toMatchObject({ childWooId: 21, childName: 'Part (Variant BLUE)', childStock: -3 });
+    });
+
+    it.each([false, true])('matches live physical-owner pooling for sibling components (inherited=%s)', inherited => {
+        const row = fixture();
+        row.product.stockQuantity = inherited ? 49 : 98;
+        row.items = [21, 22].map(wooId => ({ childProductId: 'child', childVariationId: `v${wooId}`, quantity: 1, wasteFactor: 0,
+            childProduct: { id: 'child', wooId: 20, name: 'Part', stockQuantity: 98, rawData: { manage_stock: true } },
+            childVariation: { wooId, sku: `PART-${wooId}`, stockQuantity: inherited ? null : 98, rawData: { manage_stock: inherited ? 'parent' : true } }
+        }));
+        const result = BOMInventorySyncService.calculateEffectiveStockFromLocalData(row.product, row);
+        expect(result).toMatchObject({ effectiveStock: inherited ? 49 : 98, needsSync: false });
+        expect(result?.components.map(component => component.childWooId)).toEqual(inherited ? [20] : [21, 22]);
     });
 
     it('returns null without loading a BOM for a product outside the account', async () => {
@@ -164,6 +178,7 @@ describe('BOM local preview', () => {
 
     it.each(['bom_sync_account_one', 'sync_bom_account_one'])('recognizes running jobs at %s', async (id) => {
         const job = {
+            data: { accountId: 'account:one' },
             getState: vi.fn().mockResolvedValue('prioritized'), remove: vi.fn(),
             processedOn: Date.now() - 3600000, progress: { current: 2, total: 3 }
         };
@@ -186,8 +201,89 @@ describe('BOM local preview', () => {
         expect(mocks.queue.add).toHaveBeenCalledWith('bom-inventory-sync', { accountId: 'account:one' },
             expect.objectContaining({ jobId: 'bom_sync_account_one', removeOnComplete: false, removeOnFail: false }));
     });
+    it.each([false, true])('requires permission and explicit review confirmations (permission=%s)', async permission => {
+        mocks.hasPermission.mockResolvedValue(permission);
+        const response = await app.inject({ method: 'POST', url: '/bom/sync-reconcile', payload: {} });
+        expect(response.statusCode).toBe(permission ? 400 : 403);
+        expect(mocks.queue.add).not.toHaveBeenCalled();
+    });
+    it('starts automatic repair of a legacy run after a single settlement confirmation, not inventory notes', async () => {
+        const job = { id: 'bom_sync_account_one', ...queueJob('failed'), progress: { current: 367, total: 1908 }, failedReason: 'job stalled' };
+        mocks.queue.getJob.mockImplementation(async id => id === job.id ? job : null);
+        const diagnostics = (await app.inject('/bom/sync-diagnostics')).json();
+        expect(diagnostics.repair).toEqual({ canStart: true, requiresStoppedConfirmation: true });
+        expect(diagnostics.runs[0].hasCheckpoint).toBe(false);
+        const denied = await app.inject({ method: 'POST', url: '/bom/sync-repair', payload: { fingerprint: diagnostics.fingerprint } });
+        expect(denied.statusCode).toBe(409);
+        expect(denied.json().code).toBe('BOM_REPAIR_SETTLEMENT_REQUIRED');
+        expect(mocks.queue.add).not.toHaveBeenCalled();
+        const admitted = await app.inject({ method: 'POST', url: '/bom/sync-repair', payload: { fingerprint: diagnostics.fingerprint, confirmedStoppedAndSettled: true } });
+        expect(admitted.json()).toEqual({ status: 'queued', jobId: 'bom_repair_account_one' });
+        expect(mocks.queue.add).toHaveBeenCalledWith('bom-inventory-sync', expect.objectContaining({ accountId: 'account:one', bomRepair: expect.objectContaining({ requestedBy: 'operator' }) }), expect.objectContaining({ attempts: 1, removeOnComplete: false, removeOnFail: false }));
+        expect(job.remove).not.toHaveBeenCalled();
+    });
+    it('does not replay an older completed job which still reports product failures', async () => {
+        const job = { id: 'bom_sync_account_one', ...queueJob('completed'), progress: { current: 3, total: 3, failed: 1 } };
+        mocks.queue.getJob.mockImplementation(async id => id === job.id ? job : null);
+        const status = (await app.inject('/bom/sync-status')).json();
+        expect(status.requiresReconciliation).toBe(true);
+        const dispatch = await app.inject({ method: 'POST', url: '/bom/sync-all' });
+        expect(dispatch.statusCode).toBe(409);
+        expect(job.remove).not.toHaveBeenCalled(); expect(mocks.queue.add).not.toHaveBeenCalled();
+        const diagnostics = (await app.inject('/bom/sync-diagnostics')).json();
+        expect(diagnostics.repair).toMatchObject({ canStart: true, requiresStoppedConfirmation: true });
+        expect(diagnostics.runs[0].jobId).toBe(job.id);
+    });
+    it('enforces repair permission and rejects malformed requests', async () => {
+        mocks.hasPermission.mockResolvedValue(false);
+        expect((await app.inject({ method: 'POST', url: '/bom/sync-repair', payload: {} })).statusCode).toBe(403);
+        mocks.hasPermission.mockResolvedValue(true);
+        expect((await app.inject({ method: 'POST', url: '/bom/sync-repair', payload: { fingerprint: 'not-a-fingerprint' } })).statusCode).toBe(400);
+        expect(mocks.queue.add).not.toHaveBeenCalled();
+    });
+    it('treats active repair as running work and prevents individual stock sync overlap', async () => {
+        const job = { id: 'bom_repair_account_one', ...queueJob('active'), progress: { current: 1, total: 3 } };
+        mocks.queue.getJob.mockImplementation(async id => id === job.id ? job : null);
+        expect((await app.inject('/bom/sync-status')).json()).toMatchObject({ isSyncing: true, isRepair: true });
+        expect((await app.inject({ method: 'POST', url: '/bom/sync-all' })).json().status).toBe('already_running');
+        expect((await app.inject({ method: 'POST', url: '/products/parent/bom/sync' })).statusCode).toBe(409);
+        expect(mocks.prisma.wooProduct.findFirst).not.toHaveBeenCalled();
+    });
+    it.each([false, true])('only resumes after a fully verified repair report (verified=%s)', async verified => {
+        const job = { id: 'bom_repair_account_one', ...queueJob('completed'), processedOn: 100 };
+        Object.assign(job.data, { bomRepair: { requestedBy: 'operator' }, bomRepairResult: { total: 2, checked: 2, repaired: 1, unchanged: verified ? 1 : 0,
+            failed: verified ? 0 : 1, uncertainWrites: 0, issues: [], verified, processedOn: 100, auditId: 'audit' } });
+        mocks.queue.getJob.mockImplementation(async id => id === job.id ? job : null);
+        const status = (await app.inject('/bom/sync-status')).json();
+        expect(status.repairSummary.verified).toBe(verified);
+        expect(Boolean(status.requiresReconciliation)).toBe(!verified);
+        const dispatch = await app.inject({ method: 'POST', url: '/bom/sync-all' });
+        expect(dispatch.statusCode).toBe(verified ? 200 : 409);
+        expect(mocks.queue.add.mock.calls.length).toBe(verified ? 1 : 0);
+    });
+    it('never removes or exposes a verified repair owned by a colliding normalized account ID', async () => {
+        const job = { id: 'bom_repair_account_one', ...queueJob('completed', 'account_one'), processedOn: 100 };
+        Object.assign(job.data, { bomRepair: {}, bomRepairResult: { total: 0, checked: 0, repaired: 0, unchanged: 0,
+            failed: 0, uncertainWrites: 0, issues: [], verified: true, processedOn: 100, auditId: 'foreign-audit' } });
+        mocks.queue.getJob.mockImplementation(async id => id === job.id ? job : null);
+        expect((await app.inject({ method: 'POST', url: '/bom/sync-all' })).statusCode).toBe(403);
+        expect((await app.inject('/bom/sync-status')).statusCode).toBe(503);
+        expect(job.remove).not.toHaveBeenCalled(); expect(job.getState).not.toHaveBeenCalled();
+        expect(mocks.queue.add).not.toHaveBeenCalled();
+    });
+    it('unlocks status and manual bulk admission for archived, occurrence-bound reviews', async () => {
+        const job = { id: 'bom_recovery_account_one', data: { accountId: 'account:one' } as any, progress: { current: 1 },
+            getState: vi.fn().mockResolvedValue('completed'), remove: vi.fn() };
+        job.data.bomReconciliation = { auditId: 'audit', fingerprint: bomExecutionFingerprint(job as any) };
+        mocks.queue.getJob.mockImplementation(async id => id === job.id ? job : null);
+        expect((await app.inject('/bom/sync-status')).json()).toEqual({ isSyncing: false, state: null });
+        const response = await app.inject({ method: 'POST', url: '/bom/sync-all' });
+        expect(response.json().status).toBe('queued');
+        expect(job.remove).toHaveBeenCalledOnce();
+        expect(mocks.queue.add).toHaveBeenCalledOnce();
+    });
     it.each(['bom_sync_account_one', 'sync_bom_account_one'])('preserves failed stock-write evidence and surfaces reconciliation at %s', async id => {
-        const job = { getState: vi.fn().mockResolvedValue('failed'), remove: vi.fn(), progress: { current: 2, total: 3, failed: 1 } };
+        const job = { data: { accountId: 'account:one' }, getState: vi.fn().mockResolvedValue('failed'), remove: vi.fn(), progress: { current: 2, total: 3, failed: 1 } };
         mocks.queue.getJob.mockImplementation(async key => key === id ? job : null);
         const response = await app.inject({ method: 'POST', url: '/bom/sync-all' });
         expect(response.statusCode).toBe(409);
@@ -197,8 +293,8 @@ describe('BOM local preview', () => {
     });
 
     it('checks shared running work even when a completed legacy job exists', async () => {
-        const completed = { getState: vi.fn().mockResolvedValue('completed'), remove: vi.fn() };
-        const active = { getState: vi.fn().mockResolvedValue('active') };
+        const completed = { data: { accountId: 'account:one' }, getState: vi.fn().mockResolvedValue('completed'), remove: vi.fn() };
+        const active = { data: { accountId: 'account:one' }, getState: vi.fn().mockResolvedValue('active') };
         mocks.queue.getJob.mockImplementation(async (id) => id.startsWith('bom_sync_') ? completed : active);
         expect((await app.inject({ method: 'POST', url: '/bom/sync-all' })).json().status).toBe('already_running');
         expect((await app.inject('/bom/sync-status')).json()).toMatchObject({ isSyncing: true, state: 'active' });
@@ -208,12 +304,21 @@ describe('BOM local preview', () => {
 
     it('does not enqueue if a terminal job becomes locked during removal', async () => {
         const completed = {
+            data: { accountId: 'account:one' },
             getState: vi.fn().mockResolvedValue('completed'),
             remove: vi.fn().mockRejectedValue(new Error('locked by another worker'))
         };
         mocks.queue.getJob.mockImplementation(async (id) => id.startsWith('bom_sync_') ? completed : null);
         const response = await app.inject({ method: 'POST', url: '/bom/sync-all' });
         expect(response.statusCode).toBe(500);
+        expect(mocks.queue.add).not.toHaveBeenCalled();
+    });
+    it('does not erase an unreviewed failure discovered after admission preflight', async () => {
+        const job = { data: { accountId: 'account:one' }, getState: vi.fn().mockResolvedValueOnce('completed').mockResolvedValue('failed'), remove: vi.fn() };
+        mocks.queue.getJob.mockImplementation(async id => id === 'bom_sync_account_one' ? job : null);
+        const response = await app.inject({ method: 'POST', url: '/bom/sync-all' });
+        expect(response.statusCode).toBe(409);
+        expect(job.remove).not.toHaveBeenCalled();
         expect(mocks.queue.add).not.toHaveBeenCalled();
     });
 

@@ -1,6 +1,9 @@
 import { QueueFactory, QUEUES } from './queue/QueueFactory';
 import { SyncJobData } from './queue/SyncQueue';
 import { Logger } from '../utils/logger';
+import { isBOMJobReconciled } from './bom/BOMReconciliationEvidence';
+import { isVerifiedBOMRepair } from './bom/BOMRepairState';
+import { requiresBOMJobReview } from './bom/BOMJobOutcome';
 
 export class SyncService {
 
@@ -39,15 +42,29 @@ export class SyncService {
             // Use consistent ID without timestamp to prevent duplicates (Sync Deduplication)
             const stableJobId = jobIdBase;
 
-            const existingJob = await queue.getJob(stableJobId);
+            let existingJob = await queue.getJob(stableJobId);
             if (queueName === QUEUES.BOM_SYNC) {
                 const legacy = await queue.getJob(`bom_sync_${accountId.replace(/:/g, '_')}`);
                 const recovery = await queue.getJob(`bom_recovery_${accountId.replace(/:/g, '_')}`);
-                for (const candidate of [recovery, existingJob, legacy]) {
+                const repair = await queue.getJob(`bom_repair_${accountId.replace(/:/g, '_')}`);
+                for (const candidate of [repair, recovery, existingJob, legacy]) {
                     if (!candidate) continue;
+                    if (candidate.data?.accountId !== accountId) throw Object.assign(new Error('BOM job ownership could not be verified'), { statusCode: 409, code: 'BOM_SYNC_RECONCILIATION_REQUIRED' });
                     const state = await candidate.getState();
                     if (['active', 'waiting', 'delayed', 'prioritized', 'waiting-children'].includes(state)) return;
-                    if (state !== 'completed' || candidate === recovery) throw Object.assign(new Error('BOM sync requires reconciliation of the previous failed or stalled job before another run'), { statusCode: 409, code: 'BOM_SYNC_RECONCILIATION_REQUIRED', jobId: candidate.id });
+                    if (requiresBOMJobReview(candidate, state, candidate === recovery || candidate === repair)) throw Object.assign(new Error('BOM sync requires repair of the previous failed or stalled job before another run'), { statusCode: 409, code: 'BOM_SYNC_RECONCILIATION_REQUIRED', jobId: candidate.id });
+                }
+                for (const candidate of [repair, recovery, legacy]) {
+                    if (candidate && candidate.id !== existingJob?.id && (isBOMJobReconciled(candidate) || (await candidate.getState() === 'completed' && isVerifiedBOMRepair(candidate)))) await candidate.remove();
+                }
+                existingJob = await queue.getJob(stableJobId);
+                if (existingJob) {
+                    if (existingJob.data?.accountId !== accountId) throw Object.assign(new Error('BOM job ownership could not be verified'), { statusCode: 409, code: 'BOM_SYNC_RECONCILIATION_REQUIRED' });
+                    const state = await existingJob.getState();
+                    if (['active', 'waiting', 'delayed', 'prioritized', 'waiting-children'].includes(state)) return;
+                    if (requiresBOMJobReview(existingJob, state)) {
+                        throw Object.assign(new Error('A new or changed BOM run requires inventory review'), { statusCode: 409, code: 'BOM_SYNC_RECONCILIATION_REQUIRED', jobId: existingJob.id });
+                    }
                 }
             }
 

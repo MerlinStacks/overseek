@@ -58,6 +58,7 @@ class OverSeek_Pixel_Matching_Utils {
 }
 class OverSeek_Tracking_Transport {
     public const RETRY_HOOK = 'retry-test';
+    public const STORE_CHANGE_HOOK = 'store-change-test';
     public static bool $acknowledge = true;
     public static function schedule_failed_events_retry() {}
     public static array $sent = [];

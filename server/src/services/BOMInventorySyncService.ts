@@ -15,6 +15,8 @@ import { StockValidationService } from './StockValidationService';
 import type { Prisma } from '@prisma/client';
 import { JobLeaseLostError } from './queue/JobLease';
 import { bomManifestSchema, targetKey, MAX_BOM_SYNC_TARGETS, type BOMSyncTarget, type BOMSyncCheckpoint } from './bom/BOMSyncCheckpoint';
+import { describeBOMFailure } from './bom/BOMFailureReason';
+import { assertBOMRepairStockInputs } from './bom/BOMRepairStockGuard';
 
 /** Shared local stock inputs for single-product reads and bulk previews. */
 export const localBOMItems = {
@@ -30,7 +32,7 @@ export const localBOMItems = {
             select: { id: true, wooId: true, name: true, stockQuantity: true, rawData: true }
         },
         childVariation: {
-            select: { wooId: true, sku: true, stockQuantity: true }
+            select: { wooId: true, sku: true, stockQuantity: true, rawData: true }
         },
         internalProduct: {
             select: { id: true, name: true, stockQuantity: true }
@@ -85,6 +87,8 @@ interface EffectiveStockResult {
     needsSync: boolean;
     /** True if we couldn't fetch current stock from WooCommerce */
     couldNotFetchStock?: boolean;
+    liveAllowsBackorders?: boolean;
+    liveStockStatus?: string;
     components: {
         childProductId: string;
         childName: string;
@@ -104,6 +108,7 @@ interface SyncResult {
     error?: string;
     /** True if we updated local DB to match WooCommerce (stock already correct) */
     localDbUpdated?: boolean;
+    writeUncertain?: boolean;
 }
 
 function allowsBackorders(rawData: any): boolean {
@@ -116,6 +121,15 @@ function getStockStatusForQuantity(quantity: number, allowBackorders: boolean): 
     if (quantity > 0) return 'instock';
     if (allowBackorders) return 'onbackorder';
     return 'outofstock';
+}
+
+function repairTargetMirror(raw: Prisma.JsonValue | undefined, live: Record<string, unknown>): Prisma.InputJsonObject {
+    const mirror: Record<string, Prisma.JsonValue> = raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : {};
+    mirror.manage_stock = true;
+    mirror.stock_quantity = live.stock_quantity as number;
+    for (const field of ['type', 'stock_status', 'backorders']) if (typeof live[field] === 'string') mirror[field] = live[field];
+    if (typeof live.backorders_allowed === 'boolean') mirror.backorders_allowed = live.backorders_allowed;
+    return mirror;
 }
 
 function getWooErrorStatus(error: any): number | undefined {
@@ -143,7 +157,8 @@ export class BOMInventorySyncService {
         accountId: string,
         productId: string,
         variationId: number = 0,
-        requireLiveStock = false
+        requireLiveStock = false,
+        repairMode = false
     ): Promise<EffectiveStockResult | null> {
         const wooService = await WooService.forAccount(accountId);
 
@@ -179,10 +194,10 @@ export class BOMInventorySyncService {
                         },
                         include: {
                             childProduct: {
-                                select: { id: true, wooId: true, name: true, accountId: true, status: true }
+                                select: { id: true, wooId: true, name: true, accountId: true, status: true, rawData: true }
                             },
                             childVariation: {
-                                select: { wooId: true, sku: true, stockQuantity: true, productId: true }
+                                select: { wooId: true, sku: true, stockQuantity: true, productId: true, rawData: true }
                             },
                             internalProduct: {
                                 select: { id: true, name: true, stockQuantity: true, accountId: true }
@@ -212,6 +227,12 @@ export class BOMInventorySyncService {
         // that shares the same parent product.
         const variationCache = new Map<number, any[] | null>();
         const receiptProductCache = new Map<number, Promise<any>>();
+        const repairVariationCache = new Map<string, Promise<any>>();
+        const getRepairVariation = (parentId: number, variantId: number) => {
+            const key = `${parentId}:${variantId}`;
+            if (!repairVariationCache.has(key)) repairVariationCache.set(key, wooService.getProductVariation(parentId, variantId));
+            return repairVariationCache.get(key)!;
+        };
         const getLiveProduct = (wooId: number): Promise<any> => {
             if (!requireLiveStock) return wooService.getProduct(wooId);
             if (!receiptProductCache.has(wooId)) receiptProductCache.set(wooId, wooService.getProduct(wooId, { bypassCache: true }));
@@ -238,12 +259,25 @@ export class BOMInventorySyncService {
 
         // Get current WooCommerce stock for the target (variation or parent product)
         let currentWooStock: number | null = null;
+        let liveAllowsBackorders: boolean | undefined;
+        let liveStockStatus: string | undefined;
         try {
             if (variationId > 0) {
                 // For variations, fetch the specific variation's stock via the variations endpoint
-                const variations = await getCachedVariations(product.wooId);
+                const variations = repairMode ? [await getRepairVariation(product.wooId, variationId)] : await getCachedVariations(product.wooId);
                 if (variations) {
                     const targetVariation = variations.find((v: any) => v.id === variationId);
+                    if (repairMode && (!targetVariation || targetVariation.manage_stock !== true || !Number.isSafeInteger(targetVariation.stock_quantity))) {
+                        throw new Error('BOM_REPAIR_TARGET_INVALID: target variation is missing or does not manage its own stock');
+                    }
+                    if (repairMode && targetVariation.parent_id !== undefined && targetVariation.parent_id !== product.wooId) throw new Error('BOM_REPAIR_TARGET_INVALID: live variation parent mismatch');
+                    if (repairMode) { liveAllowsBackorders = allowsBackorders(targetVariation); liveStockStatus = targetVariation.stock_status; }
+                    if (repairMode) {
+                        const local = await prisma.productVariation.findUnique({ where: { productId_wooId: { productId, wooId: variationId } }, select: { rawData: true } });
+                        if (!local) throw new Error('BOM_REPAIR_TARGET_INVALID: variation mapping is missing locally');
+                        await prisma.productVariation.updateMany({ where: { wooId: variationId, product: { id: productId, accountId } },
+                            data: { stockQuantity: targetVariation.stock_quantity, rawData: repairTargetMirror(local.rawData, targetVariation) } });
+                    }
                     currentWooStock = targetVariation?.stock_quantity ?? null;
 
                     if (!targetVariation) {
@@ -268,6 +302,12 @@ export class BOMInventorySyncService {
             } else {
                 // For main products, fetch the product directly
                 const wooProduct = await getLiveProduct(product.wooId);
+                if (repairMode && (wooProduct.id !== product.wooId || wooProduct.type !== 'simple' || wooProduct.manage_stock !== true || !Number.isSafeInteger(wooProduct.stock_quantity))) {
+                    throw new Error('BOM_REPAIR_TARGET_INVALID: use a stock-managed simple product or an explicitly stock-managed variation');
+                }
+                if (repairMode) { liveAllowsBackorders = allowsBackorders(wooProduct); liveStockStatus = wooProduct.stock_status; }
+                if (repairMode) await prisma.wooProduct.update({ where: { id: productId },
+                    data: { stockQuantity: wooProduct.stock_quantity, rawData: repairTargetMirror(product.rawData, wooProduct) } });
                 currentWooStock = wooProduct.stock_quantity ?? null;
             }
         } catch (err: any) {
@@ -356,6 +396,9 @@ export class BOMInventorySyncService {
             if (bomItem.supplierItemId && !bomItem.childProductId && !bomItem.internalProductId) continue;
             const waste = Number(bomItem.wasteFactor) || 0;
             const requiredQty = Number(bomItem.quantity) * (1 + waste);
+            if (repairMode && (!Number.isFinite(Number(bomItem.wasteFactor ?? 0)) || waste < 0 || !Number.isFinite(requiredQty) || requiredQty <= 0)) throw new Error('BOM_REPAIR_COMPONENT_INVALID: invalid component quantity or waste factor');
+            if (repairMode && ((bomItem.internalProductId && bomItem.childProductId) || (bomItem.childVariationId && !bomItem.childVariation)
+                || (bomItem.internalProductId && !bomItem.internalProduct) || (bomItem.childProductId && !bomItem.childProduct))) throw new Error('BOM_REPAIR_COMPONENT_INVALID: missing or ambiguous component mapping');
             if (requiredQty <= 0) continue;
 
             let childStock: number;
@@ -381,6 +424,7 @@ export class BOMInventorySyncService {
 
                     // Check if this is a variant component
                     if (bomItem.childProduct.status === 'trash') {
+                        if (repairMode) throw new Error('BOM_REPAIR_COMPONENT_INVALID: component is in the trash');
                         childStock = 0;
                     } else if (bomItem.childVariationId && bomItem.childVariation) {
                         if (requireLiveStock && bomItem.childVariation.productId !== bomItem.childProduct.id) throw new Error('BOM component variation parent mismatch');
@@ -390,19 +434,25 @@ export class BOMInventorySyncService {
                         // Fetch variant stock from WooCommerce via parent's variations endpoint.
                         // Uses in-memory cache so we only call the API once per parent.
                         const parentWooId = bomItem.childProduct.wooId;
-                        const variations = await getCachedVariations(parentWooId);
+                        const variations = repairMode ? [await getRepairVariation(parentWooId, childWooId)] : await getCachedVariations(parentWooId);
 
                         if (variations) {
                             const targetVariation = variations.find((v: any) => v.id === childWooId);
                             if (requireLiveStock && !targetVariation) throw new Error(`BOM component variation ${childWooId} is missing in Woo`);
+                            if (repairMode && targetVariation?.parent_id !== undefined && targetVariation.parent_id !== parentWooId) throw new Error('BOM_REPAIR_COMPONENT_INVALID: live variation parent mismatch');
                             childStock = targetVariation?.stock_quantity ?? bomItem.childVariation.stockQuantity ?? 0;
                             if (requireLiveStock) {
                                 if (targetVariation.manage_stock !== true) {
                                     const parent = await getLiveProduct(parentWooId);
+                                    if (repairMode && parent.id !== parentWooId) throw new Error('BOM_REPAIR_COMPONENT_INVALID: live stock owner identity mismatch');
                                     if (parent.manage_stock !== true) throw new Error(`BOM component ${parentWooId}/${childWooId} has no native managed owner`);
                                     childStock = parent.stock_quantity;
                                     // Strict receipt cascades pool inherited siblings by physical owner.
                                     childWooId = parentWooId;
+                                    if (repairMode) await prisma.wooProduct.update({ where: { id: bomItem.childProduct.id }, data: {
+                                        stockQuantity: parent.stock_quantity,
+                                        rawData: { ...((bomItem.childProduct.rawData as Record<string, Prisma.JsonValue>) ?? {}), manage_stock: true, stock_quantity: parent.stock_quantity }
+                                    } });
                                 } else childStock = targetVariation.stock_quantity;
                                 if (typeof childStock !== 'number' || !Number.isFinite(childStock)) throw new Error('Live BOM component stock unavailable');
                             }
@@ -426,13 +476,16 @@ export class BOMInventorySyncService {
                             } else {
                                 // Update local DB with live stock so UI calculations match
                                 const liveStock = targetVariation.stock_quantity;
-                                if (!requireLiveStock && liveStock !== null && liveStock !== undefined && liveStock !== bomItem.childVariation.stockQuantity) {
+                                if (repairMode || (!requireLiveStock && liveStock !== null && liveStock !== undefined && liveStock !== bomItem.childVariation.stockQuantity)) {
                                     await prisma.productVariation.updateMany({
                                         where: {
-                                            wooId: childWooId,
+                                            wooId: bomItem.childVariation.wooId,
                                             product: { id: bomItem.childProduct.id }
                                         },
-                                        data: { stockQuantity: liveStock }
+                                        data: { stockQuantity: liveStock, ...(repairMode ? { rawData: {
+                                            ...((bomItem.childVariation.rawData as Record<string, Prisma.JsonValue>) ?? {}),
+                                            stock_quantity: liveStock, manage_stock: targetVariation.manage_stock
+                                        } } : {}) }
                                     });
                                 }
                             }
@@ -447,6 +500,7 @@ export class BOMInventorySyncService {
                         // Standard product component
                         try {
                             const childWooProduct = await getLiveProduct(childWooId);
+                            if (repairMode && childWooProduct.id !== childWooId) throw new Error('BOM_REPAIR_COMPONENT_INVALID: live component identity mismatch');
                             if (requireLiveStock && (childWooProduct.manage_stock !== true || typeof childWooProduct.stock_quantity !== 'number' || !Number.isFinite(childWooProduct.stock_quantity))) throw new Error(`Live managed BOM component stock unavailable: ${childWooId}`);
                             childStock = childWooProduct.stock_quantity ?? 0;
 
@@ -455,7 +509,7 @@ export class BOMInventorySyncService {
                             const liveStock = childWooProduct.stock_quantity;
                             const localStock = localProductStockMap.get(bomItem.childProduct.id) ?? null;
 
-                            if (!requireLiveStock && liveStock !== null && liveStock !== undefined && liveStock !== localStock) {
+                            if ((!requireLiveStock || repairMode) && liveStock !== null && liveStock !== undefined && liveStock !== localStock) {
                                 await prisma.wooProduct.update({
                                     where: { id: bomItem.childProduct.id },
                                     data: { stockQuantity: liveStock }
@@ -491,9 +545,11 @@ export class BOMInventorySyncService {
                     }
                 } else {
                     // No valid component, skip
+                    if (repairMode) throw new Error('BOM_REPAIR_COMPONENT_INVALID: component mapping is missing');
                     continue;
                 }
 
+                if (repairMode && (!Number.isSafeInteger(childStock) || Math.abs(childStock) > 2147483647)) throw new Error('BOM_REPAIR_COMPONENT_INVALID: component stock is unknown or outside supported bounds');
                 // Calculate buildable units from this component
                 const buildableUnits = Math.floor(childStock / requiredQty);
 
@@ -565,12 +621,14 @@ export class BOMInventorySyncService {
         }
 
         const effectiveStock = minBuildableUnits;
+        if (repairMode && (!Number.isSafeInteger(effectiveStock) || Math.abs(effectiveStock) > 2147483647)) throw new Error('BOM_REPAIR_COMPONENT_INVALID: calculated stock is outside supported bounds');
 
         // Sync is needed if:
         // 1. We couldn't fetch current stock (null) - force sync to set it
         // 2. Or if stocks differ
         const couldNotFetchStock = currentWooStock === null;
-        const needsSync = couldNotFetchStock || Number(currentWooStock) !== Number(effectiveStock);
+        const needsSync = couldNotFetchStock || Number(currentWooStock) !== Number(effectiveStock)
+            || (repairMode && typeof liveStockStatus === 'string' && liveStockStatus !== getStockStatusForQuantity(effectiveStock, liveAllowsBackorders === true));
 
         return {
             productId: product.id,
@@ -579,6 +637,7 @@ export class BOMInventorySyncService {
             currentWooStock,
             needsSync,
             couldNotFetchStock,
+            ...(repairMode ? { liveAllowsBackorders, liveStockStatus } : {}),
             components
         };
     }
@@ -673,7 +732,11 @@ export class BOMInventorySyncService {
                     childStock = 0;
                 } else if (bomItem.childVariationId && bomItem.childVariation) {
                     childName = `${childName} (Variant ${bomItem.childVariation.sku || '#' + bomItem.childVariation.wooId})`;
-                    childStock = bomItem.childVariation.stockQuantity ?? 0;
+                    const variationRaw = bomItem.childVariation.rawData as any;
+                    const parentRaw = bomItem.childProduct.rawData as any;
+                    const inherited = (variationRaw?.manage_stock === false || variationRaw?.manage_stock === 'parent') && parentRaw?.manage_stock === true;
+                    childWooId = inherited ? bomItem.childProduct.wooId : bomItem.childVariation.wooId;
+                    childStock = inherited ? bomItem.childProduct.stockQuantity ?? parentRaw?.stock_quantity ?? 0 : bomItem.childVariation.stockQuantity ?? 0;
                 } else {
                     // Standard product - use local stockQuantity or rawData
                     const childRawData = bomItem.childProduct.rawData as any;
@@ -741,10 +804,13 @@ export class BOMInventorySyncService {
         accountId: string,
         productId: string,
         variationId: number = 0,
-        options?: { requireLiveStock?: boolean; beforeWrite?: () => Promise<void> }
+        options?: { requireLiveStock?: boolean; beforeWrite?: () => Promise<void>; repairMode?: boolean }
     ): Promise<SyncResult> {
+        if (options?.repairMode && !options.requireLiveStock) options = { ...options, requireLiveStock: true };
         const calculation = options?.requireLiveStock
-            ? await this.calculateEffectiveStock(accountId, productId, variationId, true)
+            ? options.repairMode
+                ? await this.calculateEffectiveStock(accountId, productId, variationId, true, true)
+                : await this.calculateEffectiveStock(accountId, productId, variationId, true)
             : await this.calculateEffectiveStock(accountId, productId, variationId);
 
         if (!calculation) {
@@ -759,6 +825,11 @@ export class BOMInventorySyncService {
         }
 
         await options?.beforeWrite?.();
+        const assertRepairInputs = async (observed: EffectiveStockResult) => {
+            if (options?.repairMode) await assertBOMRepairStockInputs(accountId,
+                [variationId || observed.wooId, ...observed.components.map(component => component.childWooId)]);
+        };
+        await assertRepairInputs(calculation);
         if (!calculation.needsSync) {
             Logger.info(`[BOMInventorySync] Product ${productId} already in sync (stock: ${calculation.effectiveStock})`, { accountId });
 
@@ -798,6 +869,7 @@ export class BOMInventorySyncService {
             };
         }
 
+        let writeUncertain = false;
         try {
             const wooService = await WooService.forAccount(accountId);
 
@@ -818,16 +890,19 @@ export class BOMInventorySyncService {
                     where: { productId_wooId: { productId, wooId: variationId } },
                     select: { rawData: true }
                 });
-                const allowBackorders = allowsBackorders(variationRecord?.rawData);
+                const allowBackorders = options?.repairMode ? calculation.liveAllowsBackorders === true : allowsBackorders(variationRecord?.rawData);
 
                 // Update variation stock via WooCommerce variations API
                 await options?.beforeWrite?.();
+                await assertRepairInputs(calculation);
+                writeUncertain = true;
                 const acknowledged = await wooService.updateProductVariation(parentProduct.wooId, variationId, {
                     stock_quantity: calculation.effectiveStock,
                     manage_stock: true,
                     stock_status: getStockStatusForQuantity(calculation.effectiveStock, allowBackorders)
                 });
                 if (options?.requireLiveStock && (acknowledged?.stock_quantity !== calculation.effectiveStock || acknowledged?.manage_stock !== true)) throw new Error('BOM variation stock write was not acknowledged');
+                writeUncertain = false;
             } else {
                 // Guard: do not set manage_stock on variable parent products
                 const productRecord = await prisma.wooProduct.findFirst({
@@ -836,9 +911,9 @@ export class BOMInventorySyncService {
                 });
                 const productRaw = productRecord?.rawData as any;
                 const isVariable = productRaw?.type?.includes('variable') || productRaw?.variations?.length > 0;
-                const allowBackorders = allowsBackorders(productRaw);
+                const allowBackorders = options?.repairMode ? calculation.liveAllowsBackorders === true : allowsBackorders(productRaw);
 
-                if (isVariable) {
+                if (isVariable && !options?.repairMode) {
                     Logger.warn(`[BOMInventorySync] Refusing to set manage_stock on variable parent product`, {
                         accountId, productId, wooId: calculation.wooId
                     });
@@ -854,12 +929,29 @@ export class BOMInventorySyncService {
 
                 // Update main product stock
                 await options?.beforeWrite?.();
+                await assertRepairInputs(calculation);
+                writeUncertain = true;
                 const acknowledged = await wooService.updateProduct(calculation.wooId, {
                     stock_quantity: calculation.effectiveStock,
                     manage_stock: true,
                     stock_status: getStockStatusForQuantity(calculation.effectiveStock, allowBackorders)
                 });
                 if (options?.requireLiveStock && (acknowledged?.stock_quantity !== calculation.effectiveStock || acknowledged?.manage_stock !== true)) throw new Error('BOM product stock write was not acknowledged');
+                writeUncertain = false;
+            }
+
+            if (options?.repairMode) {
+                await options.beforeWrite?.();
+                const verified = await this.calculateEffectiveStock(accountId, productId, variationId, true, true);
+                if (!verified || verified.needsSync || verified.currentWooStock !== calculation.effectiveStock) {
+                    throw new Error('BOM_REPAIR_VERIFY_FAILED: stock or components changed during repair; refresh and retry this product');
+                }
+                await assertRepairInputs(verified);
+                if (variationId > 0) {
+                    await prisma.productVariation.updateMany({ where: { wooId: variationId, product: { id: productId, accountId } }, data: { stockQuantity: verified.currentWooStock } });
+                } else {
+                    await prisma.wooProduct.update({ where: { id: productId }, data: { stockQuantity: verified.currentWooStock } });
+                }
             }
 
             // Log the stock change for audit trail
@@ -940,7 +1032,8 @@ export class BOMInventorySyncService {
                 wooId: calculation.wooId,
                 previousStock: calculation.currentWooStock,
                 newStock: calculation.effectiveStock,
-                error: err.message
+                error: err.message,
+                ...(options?.repairMode ? { writeUncertain } : {})
             };
         }
     }
@@ -1000,12 +1093,14 @@ export class BOMInventorySyncService {
         const total = targets.length;
         Logger.info(`[BOMInventorySync] Starting bulk sync for ${total} products`, { accountId });
 
-        // Only track counters — accumulating full SyncResult[] caused unbounded
-        // heap growth on every hourly run, contributing to OOM (exit 137).
+        // Track counters and bounded failure summaries, not full SyncResult[].
+        // Unbounded result accumulation previously contributed to OOM (exit 137).
         let processed = 0;
         let synced = 0;
         let skipped = 0;
         let failed = 0;
+        // Bounded, credential-free explanations alongside durable target indexes.
+        const productFailures: { index: number; reason: string }[] = [];
 
         if (job) {
             await job.updateProgress({ current: 0, total, synced: 0, skipped: 0, failed: 0, checkpoint: { ...checkpoint } });
@@ -1021,7 +1116,7 @@ export class BOMInventorySyncService {
                 checkpoint.inFlightIndex = processed;
                 // Persist BEFORE any calculation/write; an interrupted target is
                 // uncertain even if the request never reached WooCommerce.
-                await job.updateProgress({ current: processed, total, synced, skipped, failed, checkpoint: { ...checkpoint, uncertainIndexes: [...checkpoint.uncertainIndexes] } });
+                await job.updateProgress({ current: processed, total, synced, skipped, failed, productFailures: [...productFailures], checkpoint: { ...checkpoint, uncertainIndexes: [...checkpoint.uncertainIndexes] } });
                 await options?.assertLease();
             }
             // Wrap each product sync in try/catch so one failure doesn't crash the entire job
@@ -1038,6 +1133,7 @@ export class BOMInventorySyncService {
                 } else {
                     failed++;
                     checkpoint.uncertainIndexes.push(processed);
+                    if (productFailures.length < 100) productFailures.push({ index: processed, reason: describeBOMFailure(result.error) });
                 }
             } catch (err: any) {
                 if (err instanceof JobLeaseLostError) throw err;
@@ -1049,6 +1145,7 @@ export class BOMInventorySyncService {
                 });
                 failed++;
                 checkpoint.uncertainIndexes.push(processed);
+                if (productFailures.length < 100) productFailures.push({ index: processed, reason: describeBOMFailure(err.message) });
             }
 
             processed++;
@@ -1061,6 +1158,7 @@ export class BOMInventorySyncService {
                     synced,
                     skipped,
                     failed,
+                    productFailures: [...productFailures],
                     checkpoint: { ...checkpoint, uncertainIndexes: [...checkpoint.uncertainIndexes] }
                 });
             }

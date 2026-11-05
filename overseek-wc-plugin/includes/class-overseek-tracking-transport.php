@@ -15,9 +15,54 @@ if (!defined('ABSPATH')) {
 class OverSeek_Tracking_Transport
 {
     public const RETRY_HOOK = 'overseek_retry_tracking_events';
+    public const STORE_CHANGE_HOOK = 'overseek_send_store_change';
     private const RETRY_BATCH_SIZE = 5;
     private const FAILED_EVENTS_TRANSIENT = '_overseek_failed_events';
     private const BLOCKING_EVENT_TYPES = array('purchase', 'order_changed', 'customer_changed', 'review_changed');
+    private const STORE_CHANGE_TYPES = array('order_changed', 'customer_changed', 'review_changed');
+
+    /** Persist each operational signal independently, outside the purchase retry queue. */
+    private static function schedule_store_change(array $event, int $delay = 1): bool
+    {
+        $timestamp = time() + $delay;
+        // WooCommerce's persistent action queue avoids a capped, shared transient.
+        // Keep WP-Cron as a fallback for stores without an available scheduler.
+        if (function_exists('as_schedule_single_action')) {
+            try {
+                if (as_schedule_single_action($timestamp, self::STORE_CHANGE_HOOK, array($event), 'overseek-store-sync')) {
+                    return true;
+                }
+            } catch (Throwable $error) {
+                // Fall back to WordPress scheduling if Action Scheduler rejects admission.
+            }
+        }
+        $scheduled = wp_schedule_single_event($timestamp, self::STORE_CHANGE_HOOK, array($event));
+        if (!$scheduled || is_wp_error($scheduled)) {
+            error_log('OverSeek: Could not schedule operational sync event.');
+            return false;
+        }
+        return true;
+    }
+
+    /** Background-only HTTP; retain the occurrence ID across retries and relinks. */
+    public static function send_store_change(array $event): void
+    {
+        $api_url = untrailingslashit((string) get_option('overseek_api_url', ''));
+        $account_id = (string) get_option('overseek_account_id', '');
+        if (!in_array($event['type'] ?? '', self::STORE_CHANGE_TYPES, true)
+            || !get_option('overseek_enable_tracking') || $api_url === '' || $account_id === ''
+            || (string) ($event['accountId'] ?? '') !== $account_id) {
+            return;
+        }
+        try {
+            self::send_events($api_url, array($event));
+        } catch (Throwable $error) {
+            self::store_failed_event($event);
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('OverSeek operational sync failed: ' . $error->getMessage());
+            }
+        }
+    }
 
     /**
      * @return array<int, array<string, mixed>>
@@ -134,6 +179,20 @@ class OverSeek_Tracking_Transport
      */
     public static function flush_events(string $api_url, array $events): array
     {
+        $immediate = array();
+        foreach ($events as $event) {
+            if (in_array($event['type'] ?? '', self::STORE_CHANGE_TYPES, true)) {
+                self::schedule_store_change($event);
+            } else {
+                $immediate[] = $event;
+            }
+        }
+        return self::send_events($api_url, $immediate);
+    }
+
+    /** Purchases are acknowledged inline; operational calls only enter here from the worker. */
+    private static function send_events(string $api_url, array $events): array
+    {
         if (empty($events)) {
             return array();
         }
@@ -245,6 +304,15 @@ class OverSeek_Tracking_Transport
      */
     private static function store_failed_event(array $data): void
     {
+        if (in_array($data['type'] ?? '', self::STORE_CHANGE_TYPES, true)) {
+            $attempt = (int) ($data['_retry_count'] ?? 0);
+            if ($attempt < 3) {
+                $data['_retry_count'] = $attempt + 1;
+                self::schedule_store_change($data, (int) (30 * pow(4, $attempt)));
+            }
+            return;
+        }
+
         $failed_events = get_transient(self::FAILED_EVENTS_TRANSIENT);
 
         if (!is_array($failed_events)) {

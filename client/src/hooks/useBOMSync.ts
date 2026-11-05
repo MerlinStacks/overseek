@@ -62,9 +62,17 @@ export interface BOMRecoveryPlan {
     uncertainProducts: number;
     excludedProducts: number;
 }
+export interface BOMRepairSummary {
+    total: number;
+    checked: number;
+    repaired: number;
+    unchanged: number;
+    failed: number;
+    verified: boolean;
+}
 
 const reconciliationCode = 'BOM_SYNC_RECONCILIATION_REQUIRED';
-const reconciliationMessage = 'BOM sync is blocked by a previous failed or stalled run. An inventory operator must review its stock writes and retained job progress before another bulk sync can start.';
+const reconciliationMessage = 'A previous BOM run failed or stalled. Use Repair & resume to verify fresh stock and repair mismatches automatically. An inventory operator is only needed when the previous worker’s pending writes cannot be confirmed stopped.';
 
 interface UseBOMSyncReturn {
     // Data
@@ -87,6 +95,8 @@ interface UseBOMSyncReturn {
     recoveryError: string | null;
     isLoadingRecovery: boolean;
     isRecovering: boolean;
+    isRepairing: boolean;
+    repairSummary: BOMRepairSummary | null;
     syncProgress: SyncProgress | null;
     nextSyncIn: string | null;
 
@@ -94,6 +104,7 @@ interface UseBOMSyncReturn {
     handleSyncAll: () => Promise<void>;
     handleReviewRecovery: () => Promise<void>;
     handleContinueRecovery: () => Promise<void>;
+    handleRepair: (fingerprint: string, confirmedStoppedAndSettled: boolean) => Promise<void>;
     handleSyncSingle: (productId: string, variationId: number) => Promise<void>;
     handleRetryFailed: () => Promise<void>;
     handleCancelSync: () => Promise<void>;
@@ -125,6 +136,8 @@ export function useBOMSync(): UseBOMSyncReturn {
     const [recoveryError, setRecoveryError] = useState<string | null>(null);
     const [isLoadingRecovery, setIsLoadingRecovery] = useState(false);
     const [isRecovering, setIsRecovering] = useState(false);
+    const [isRepairing, setIsRepairing] = useState(false);
+    const [repairSummary, setRepairSummary] = useState<BOMRepairSummary | null>(null);
     const recoveryRequestRef = useRef<AbortSignal | null>(null);
     /** Ref to break the fetchPendingChanges -> syncErrors -> useEffect loop */
     const syncErrorsRef = useRef(syncErrors);
@@ -229,7 +242,9 @@ export function useBOMSync(): UseBOMSyncReturn {
                 if (!res.ok) throw new Error(`Failed to check sync status (HTTP ${res.status})`);
                 const data = await res.json();
                 if (signal.aborted || version !== statusVersionRef.current) return;
+                setRepairSummary(data.repairSummary ?? null);
                 if (data.isSyncing) {
+                    setIsRepairing(data.isRepair === true);
                     setIsRecovering(data.isRecovery === true);
                     setRecoveryPlan(null);
                     setSyncError(null);
@@ -240,6 +255,7 @@ export function useBOMSync(): UseBOMSyncReturn {
                         setSyncProgress({ current: data.progress.current, total: data.progress.total });
                     }
                 } else {
+                    setIsRepairing(false);
                     setIsRecovering(false);
                     if (data.requiresReconciliation || data.code === reconciliationCode) {
                         setSyncError({ message: reconciliationMessage, code: reconciliationCode });
@@ -270,7 +286,7 @@ export function useBOMSync(): UseBOMSyncReturn {
 
     const handleSyncSingle = useCallback(async (productId: string, variationId: number, refresh = true) => {
         const signal = getSignal();
-        if (!signal || !accountId || singleSyncRef.current === signal || runningRef.current || typeof productId !== 'string' || !productId || !Number.isInteger(variationId) || variationId < 0 || variationId > 2147483647) return;
+        if (!signal || !accountId || singleSyncRef.current === signal || runningRef.current || syncError?.code === reconciliationCode || typeof productId !== 'string' || !productId || !Number.isInteger(variationId) || variationId < 0 || variationId > 2147483647) return;
         singleSyncRef.current = signal;
         const key = `${productId}-${variationId}`;
         setSyncingProductId(key);
@@ -309,7 +325,7 @@ export function useBOMSync(): UseBOMSyncReturn {
             if (singleSyncRef.current === signal) singleSyncRef.current = null;
             if (!signal.aborted) setSyncingProductId(null);
         }
-    }, [accountId, token, getSignal, fetchPendingChanges]);
+    }, [accountId, token, getSignal, fetchPendingChanges, syncError]);
 
     const handleSyncAll = useCallback(async () => {
         const signal = getSignal();
@@ -411,6 +427,34 @@ export function useBOMSync(): UseBOMSyncReturn {
             if (!signal.aborted) setIsLoadingRecovery(false);
         }
     }, [accountId, token, getSignal]);
+
+    const handleRepair = useCallback(async (fingerprint: string, confirmedStoppedAndSettled: boolean) => {
+        const signal = getSignal();
+        if (!signal || !accountId || runningRef.current || singleSyncRef.current === signal) return;
+        runningRef.current = true; startingRef.current = true; statusVersionRef.current++;
+        setIsSyncing(true); setIsRepairing(true); setSyncResult(null); setRepairSummary(null);
+        setSyncProgress({ current: 0, total: statsRef.current.total });
+        try {
+            const res = await fetch('/api/inventory/bom/sync-repair', {
+                signal, method: 'POST',
+                headers: { Authorization: `Bearer ${token}`, 'x-account-id': accountId, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fingerprint, confirmedStoppedAndSettled })
+            });
+            const data = await res.json();
+            if (signal.aborted) return;
+            if (!res.ok || data.status !== 'queued') throw new Error(extractBomApiError(data, 'Repair was not acknowledged. Refresh sync status before retrying.').message);
+            runningRef.current = true; setIsSyncing(true);
+            setSyncError(null); setRecoveryPlan(null); setSyncResult({ synced: -2, failed: 0 });
+        } catch (error) {
+            if (signal.aborted) return;
+            // A lost response may follow admission. Only status may release the
+            // local write guard; if unavailable, keep polling instead of guessing.
+            await checkSyncStatus();
+            throw error;
+        } finally {
+            if (!signal.aborted) startingRef.current = false;
+        }
+    }, [accountId, token, getSignal, checkSyncStatus]);
 
     const handleContinueRecovery = useCallback(async () => {
         const signal = getSignal();
@@ -568,6 +612,8 @@ export function useBOMSync(): UseBOMSyncReturn {
         setRecoveryError(null);
         setIsLoadingRecovery(false);
         setIsRecovering(false);
+        setIsRepairing(false);
+        setRepairSummary(null);
         syncErrorsRef.current = {};
         setSyncProgress(null);
         if (accountId && token) {
@@ -608,11 +654,14 @@ export function useBOMSync(): UseBOMSyncReturn {
         recoveryError,
         isLoadingRecovery,
         isRecovering,
+        isRepairing,
+        repairSummary,
         syncProgress,
         nextSyncIn: null,
         handleSyncAll,
         handleReviewRecovery,
         handleContinueRecovery,
+        handleRepair,
         handleSyncSingle,
         handleRetryFailed,
         handleCancelSync,

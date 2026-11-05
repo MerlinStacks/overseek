@@ -39,10 +39,22 @@ function get_transient($key) { return $GLOBALS['transients'][$key] ?? false; }
 function set_transient($key, $value, $ttl): bool { $GLOBALS['transients'][$key] = $value; return true; }
 function delete_transient($key): bool { unset($GLOBALS['transients'][$key]); return true; }
 function wp_next_scheduled($hook) { return $GLOBALS['cron'][$hook] ?? false; }
-function wp_schedule_single_event($timestamp, $hook): bool
+function wp_schedule_single_event($timestamp, $hook, $args = []): bool
 {
+    if ($hook === OverSeek_Tracking_Transport::STORE_CHANGE_HOOK) {
+        $GLOBALS['store_jobs'][] = ['timestamp' => $timestamp, 'args' => $args, 'scheduler' => 'cron'];
+        return true;
+    }
     $GLOBALS['cron'][$hook] = $timestamp;
     return true;
+}
+function as_schedule_single_action($timestamp, $hook, $args, $group)
+{
+    if ($GLOBALS['action_scheduler'] === 'throw') throw new RuntimeException('Scheduler unavailable');
+    if (!$GLOBALS['action_scheduler']) return 0;
+    check($hook === OverSeek_Tracking_Transport::STORE_CHANGE_HOOK && $group === 'overseek-store-sync', 'Wrong scheduler hook/group');
+    $GLOBALS['store_jobs'][] = ['timestamp' => $timestamp, 'args' => $args, 'scheduler' => 'action'];
+    return count($GLOBALS['store_jobs']);
 }
 function wp_unschedule_event($timestamp, $hook): bool { unset($GLOBALS['cron'][$hook]); return true; }
 function add_action($hook, $callback, ...$args): void { $GLOBALS['actions'][$hook][] = $callback; }
@@ -60,6 +72,7 @@ function get_post($id) { return $GLOBALS['posts'][$id] ?? null; }
 function wp_remote_post($url, $args)
 {
     $GLOBALS['requests'][] = ['url' => $url, 'args' => $args];
+    if ($GLOBALS['response'] instanceof Throwable) throw $GLOBALS['response'];
     return $GLOBALS['response'];
 }
 
@@ -74,10 +87,11 @@ function reset_state(): void
         'overseek_enable_tracking' => '1',
         'overseek_webhook_auth_token' => 'test-token',
     ];
-    foreach (['transients', 'cron', 'orders', 'requests', 'actions', 'comments', 'posts'] as $key) {
+    foreach (['transients', 'cron', 'orders', 'requests', 'actions', 'comments', 'posts', 'store_jobs'] as $key) {
         $GLOBALS[$key] = [];
     }
     $GLOBALS['response'] = ['response' => ['code' => 200]];
+    $GLOBALS['action_scheduler'] = false;
 }
 function check(bool $condition, string $message): void
 {
@@ -100,6 +114,13 @@ function run_worker(): void
     // WordPress removes a single event before invoking its callback.
     unset($GLOBALS['cron'][OverSeek_Tracking_Transport::RETRY_HOOK]);
     OverSeek_Tracking_Transport::retry_failed_events();
+}
+function run_store_worker(): array
+{
+    $job = array_shift($GLOBALS['store_jobs']);
+    check(is_array($job), 'No operational job scheduled');
+    OverSeek_Tracking_Transport::send_store_change(...$job['args']);
+    return $job;
 }
 
 $tests = [];
@@ -132,6 +153,7 @@ $tests['worker registers and recovers pre-upgrade queues without HTTP'] = static
     seed([event(1)]);
     new OverSeek_Server_Tracking();
     check(is_callable($GLOBALS['actions'][OverSeek_Tracking_Transport::RETRY_HOOK][0]), 'Worker callback missing');
+    check(is_callable($GLOBALS['actions'][OverSeek_Tracking_Transport::STORE_CHANGE_HOOK][0]), 'Operational worker callback missing');
     check(wp_next_scheduled(OverSeek_Tracking_Transport::RETRY_HOOK) !== false, 'Legacy queue not scheduled');
     check($GLOBALS['requests'] === [], 'Initialization must not send retries');
 };
@@ -225,7 +247,9 @@ $tests['operational changes are private ID-only signals acknowledged and retried
     $tracking->track_order_change(42);
     $tracking->track_order_change(42);
     $tracking->flush_event_queue();
-    check(count($GLOBALS['requests']) === 1, 'Repeated hooks in one request should coalesce');
+    check(count($GLOBALS['requests']) === 0, 'Operational signals must never perform HTTP inline');
+    check(count($GLOBALS['store_jobs']) === 1, 'Repeated hooks in one request should coalesce');
+    run_store_worker();
     $request = $GLOBALS['requests'][0]['args'];
     $body = json_decode($request['body'], true);
     check($body['type'] === 'order_changed' && $body['payload']['orderId'] === 42, 'Wrong operational payload');
@@ -239,13 +263,15 @@ $tests['operational changes are private ID-only signals acknowledged and retried
     $GLOBALS['response'] = new WP_Error();
     $tracking->track_customer_change(7);
     $tracking->flush_event_queue();
-    check(count(pending()) === 1 && pending()[0]['type'] === 'customer_changed', 'Failed operational signal not retained');
-    $event_id = pending()[0]['payload']['eventId'];
+    run_store_worker();
+    check(pending() === [] && count($GLOBALS['store_jobs']) === 1, 'Operational retry must not enter purchase queue');
+    $retry = $GLOBALS['store_jobs'][0];
+    $event_id = $retry['args'][0]['payload']['eventId'];
+    check($retry['timestamp'] >= time() + 29 && $retry['args'][0]['_retry_count'] === 1, 'Operational retry backoff lost');
     $GLOBALS['response'] = ['response' => ['code' => 200]];
-    $retry = pending()[0]; $retry['_retry_after'] = 0; seed([$retry]);
-    run_worker();
+    run_store_worker();
     $last = json_decode(end($GLOBALS['requests'])['args']['body'], true);
-    check($last['payload']['eventId'] === $event_id && count(pending()) === 0, 'Retry lost operational occurrence identity');
+    check($last['payload']['eventId'] === $event_id && $GLOBALS['store_jobs'] === [], 'Retry lost operational occurrence identity');
 };
 
 $tests['review changes cover pending reviews and moderation but ignore non-products'] = static function (): void {
@@ -257,11 +283,14 @@ $tests['review changes cover pending reviews and moderation but ignore non-produ
     $tracking->track_review_change(1);
     $tracking->track_review_change(2);
     $tracking->flush_event_queue();
+    check(count($GLOBALS['store_jobs']) === 1, 'Should only schedule the product review');
+    run_store_worker();
     check(count($GLOBALS['requests']) === 1, 'Should only send the product review');
     $body = json_decode($GLOBALS['requests'][0]['args']['body'], true);
     check($body['type'] === 'review_changed' && $body['payload']['reviewId'] === 1, 'Wrong review identity');
     $tracking->track_review_status_change('approved', 'hold', $GLOBALS['comments'][1]);
     $tracking->flush_event_queue();
+    run_store_worker();
     check(count($GLOBALS['requests']) === 2, 'Moderation change not sent');
     $next = json_decode($GLOBALS['requests'][1]['args']['body'], true);
     check($next['payload']['eventId'] !== $body['payload']['eventId'], 'Later change reused a previous occurrence');
@@ -274,6 +303,83 @@ $tests['operational hooks require a configured tracking token'] = static functio
     $tracking->track_customer_change(7);
     $tracking->flush_event_queue();
     check(count($GLOBALS['requests']) === 0, 'Unsigned operational work must not be sent');
+    check($GLOBALS['store_jobs'] === [], 'Unsigned operational work must not be scheduled');
+};
+
+$tests['bulk changes do not block or evict any of fifty purchase retries'] = static function (): void {
+    $backlog = array_map('event', range(1, 50));
+    seed($backlog);
+    $GLOBALS['response'] = new WP_Error();
+    $tracking = new OverSeek_Server_Tracking();
+    for ($id = 1; $id <= 80; $id++) $tracking->track_order_change($id);
+    $tracking->flush_event_queue();
+    check($GLOBALS['requests'] === [], 'Bulk edit performed inline HTTP');
+    check(count($GLOBALS['store_jobs']) === 80, 'Bulk operational signals were capped or lost');
+    check(pending() === $backlog, 'Bulk scheduling displaced purchase retries');
+    for ($id = 1; $id <= 80; $id++) run_store_worker();
+    check(count($GLOBALS['store_jobs']) === 80, 'Failed bulk delivery lost retries');
+    check(pending() === $backlog, 'Operational failures displaced purchase retries');
+};
+
+$tests['mixed checkout still acknowledges only the purchase inline'] = static function (): void {
+    $tracking = new OverSeek_Server_Tracking();
+    $tracking->track_order_change(42);
+    $queue = new ReflectionProperty($tracking, 'event_queue');
+    $queue->setValue($tracking, array_merge($queue->getValue($tracking), [event(42)]));
+    check($tracking->flush_event_queue() === ['purchase-42' => true], 'Purchase acknowledgement changed');
+    check(count($GLOBALS['requests']) === 1 && count($GLOBALS['store_jobs']) === 1, 'Operational HTTP leaked into checkout');
+    check(json_decode($GLOBALS['requests'][0]['args']['body'], true)['type'] === 'purchase', 'Wrong inline event');
+};
+
+$tests['operational retries are bounded, including transport exceptions'] = static function (): void {
+    foreach ([new WP_Error(), new RuntimeException('Transport extension failed')] as $response) {
+        reset_state();
+        $GLOBALS['response'] = $response;
+        $tracking = new OverSeek_Server_Tracking();
+        $tracking->track_order_change(42);
+        $tracking->flush_event_queue();
+        foreach ([30, 120, 480] as $delay) {
+            run_store_worker();
+            check(count($GLOBALS['store_jobs']) === 1, 'Missing operational retry');
+            check($GLOBALS['store_jobs'][0]['timestamp'] >= time() + $delay - 1, 'Incorrect retry backoff');
+        }
+        run_store_worker();
+        check(count($GLOBALS['requests']) === 4 && $GLOBALS['store_jobs'] === [], 'Retry limit not respected');
+        check(pending() === [], 'Operational exception contaminated purchase retries');
+    }
+};
+
+$tests['operational jobs use Action Scheduler with WP-Cron fallback'] = static function (): void {
+    foreach ([true => 'action', false => 'cron', 'throw' => 'cron'] as $mode => $expected) {
+        reset_state();
+        $GLOBALS['action_scheduler'] = $mode;
+        $tracking = new OverSeek_Server_Tracking();
+        $tracking->track_order_change(42);
+        $tracking->flush_event_queue();
+        check(count($GLOBALS['store_jobs']) === 1 && $GLOBALS['store_jobs'][0]['scheduler'] === $expected, 'Wrong scheduling backend');
+        run_store_worker();
+        check(count($GLOBALS['requests']) === 1, 'Background job did not deliver');
+    }
+};
+
+$tests['old operational transient entries move out without touching purchase retries'] = static function (): void {
+    $old = event(42); $old['type'] = 'order_changed';
+    seed([$old, event(1, 400)]);
+    run_worker();
+    check($GLOBALS['requests'] === [] && count($GLOBALS['store_jobs']) === 1, 'Legacy operational retry must defer HTTP');
+    check(count(pending()) === 1 && pending()[0]['type'] === 'purchase', 'Legacy migration disturbed purchase retry');
+    run_store_worker();
+    check(count($GLOBALS['requests']) === 1, 'Legacy operational job not delivered');
+};
+
+$tests['operational worker rejects foreign-account and non-operational jobs'] = static function (): void {
+    foreach (['foreign', 'purchase'] as $mode) {
+        $job = event(42); $job['type'] = 'order_changed';
+        if ($mode === 'foreign') $job['accountId'] = 'old-store';
+        else $job['type'] = 'purchase';
+        OverSeek_Tracking_Transport::send_store_change($job);
+    }
+    check($GLOBALS['requests'] === [] && $GLOBALS['store_jobs'] === [], 'Invalid job replayed');
 };
 
 foreach ($tests as $name => $test) {

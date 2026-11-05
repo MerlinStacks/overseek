@@ -2,11 +2,13 @@ import { createHash } from 'node:crypto';
 import type { Job, Queue } from 'bullmq';
 import { prisma } from '../../utils/prisma';
 import { readBOMCheckpoint, targetKey, MAX_BOM_SYNC_TARGETS, type BOMSyncTarget } from './BOMSyncCheckpoint';
+import { isBOMJobReconciled } from './BOMReconciliationEvidence';
+import { hasUnsettledBOMProgress } from './BOMJobOutcome';
 
 export const bomRunningStates = ['active', 'waiting', 'delayed', 'prioritized', 'waiting-children'];
 export function bomSyncJobIds(accountId: string) {
     const suffix = accountId.replace(/:/g, '_');
-    return [`bom_sync_${suffix}`, `sync_bom_${suffix}`, `bom_recovery_${suffix}`];
+    return [`bom_sync_${suffix}`, `sync_bom_${suffix}`, `bom_recovery_${suffix}`, `bom_repair_${suffix}`];
 }
 
 export function recoveryError(message: string, code = 'BOM_RECOVERY_UNAVAILABLE') {
@@ -26,12 +28,13 @@ export async function getBOMJobs(queue: Queue, accountId: string) {
 
 /** Passive, local-only observation. Never infers target identity from a counter. */
 export async function buildBOMRecoveryPlan(queue: Queue, accountId: string, executingRecoveryId?: string) {
-    const jobs = (await getBOMJobs(queue, accountId)).filter(({ job }) => job.id !== executingRecoveryId);
-    if (jobs.some(({ state }) => bomRunningStates.includes(state))) throw recoveryError('A BOM sync is still running or queued.');
-    if (jobs.some(({ job }) => job.id === bomSyncJobIds(accountId)[2])) {
-        throw recoveryError('A continuation has already been attempted. Review its retained results before another recovery.');
+    const observed = (await getBOMJobs(queue, accountId)).filter(({ job }) => job.id !== executingRecoveryId);
+    if (observed.some(({ state }) => bomRunningStates.includes(state))) throw recoveryError('A BOM sync is still running or queued.');
+    const jobs = observed.filter(({ job }) => !isBOMJobReconciled(job));
+    if (jobs.some(({ job }) => bomSyncJobIds(accountId).slice(2).includes(String(job.id)))) {
+        throw recoveryError('A continuation or repair has already been attempted. Review its retained results and use Repair & resume rather than replaying its targets.');
     }
-    const failed = jobs.filter(({ state }) => state === 'failed');
+    const failed = jobs.filter(({ job, state }) => state === 'failed' || hasUnsettledBOMProgress(job));
     if (!failed.length || jobs.some(({ state }) => !['completed', 'failed'].includes(state))) {
         throw recoveryError('No stable failed BOM run is available for continuation.');
     }

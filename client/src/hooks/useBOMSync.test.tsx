@@ -1,4 +1,4 @@
-import { act, cleanup, render, renderHook, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBOMSync } from './useBOMSync';
 import { BOMSyncPage } from '../pages/BOMSyncPage';
@@ -44,6 +44,7 @@ describe('useBOMSync', () => {
         fetchMock = vi.fn((url: string, options?: RequestInit) => {
             if (url.endsWith('pending-changes')) return previewReply();
             if (url.endsWith('sync-status')) return statusReply();
+            if (url.endsWith('sync-diagnostics')) return Promise.resolve(response({ fingerprint: 'b'.repeat(64), canReconcile: true, runs: [], repair: { canStart: true, requiresStoppedConfirmation: true } }));
             if (url.endsWith('deactivated-items')) return Promise.resolve(response({ items: [] }));
             if (url.endsWith('sync-recovery') && options?.method !== 'POST') return recoveryReply();
             return mutationReply();
@@ -126,7 +127,7 @@ describe('useBOMSync', () => {
         statusReply = async () => response({ isSyncing: false, requiresReconciliation: true, code: 'BOM_SYNC_RECONCILIATION_REQUIRED' });
         render(<BOMSyncPage />); await flush();
         expect(screen.getByRole('alert').textContent).toContain('BOM sync needs reconciliation');
-        expect(screen.getByRole('alert').textContent).toContain('review its stock writes');
+        expect(screen.getByRole('alert').textContent).toContain('Repair & resume');
         expect(screen.getByRole('button', { name: /Sync All/ }).hasAttribute('disabled')).toBe(true);
         statusReply = async () => response({ isSyncing: false });
         await act(async () => screen.getByTitle('Refresh').click());
@@ -166,14 +167,71 @@ describe('useBOMSync', () => {
         expect(result.current.syncError).toBeNull();
     });
 
+    it('repairs a legacy run without inventory notes and unlocks after verified worker completion', async () => {
+        statusReply = async () => response({ isSyncing: false, requiresReconciliation: true });
+        render(<BOMSyncPage />); await flush();
+        const button = screen.getByRole('button', { name: 'Repair & resume' });
+        expect(button.hasAttribute('disabled')).toBe(true);
+        await act(async () => screen.getByRole('checkbox', { name: /The older run cannot prove/ }).click());
+        await act(async () => button.click());
+        const request = fetchMock.mock.calls.find(([url]) => url.endsWith('sync-repair'))!;
+        expect(JSON.parse(request[1].body as string)).toEqual({ fingerprint: 'b'.repeat(64), confirmedStoppedAndSettled: true });
+        expect(screen.getByText('Repairing and verifying BOM inventory from fresh stock…')).toBeTruthy();
+        statusReply = async () => response({ isSyncing: false, repairSummary: { total: 2, checked: 2, repaired: 1, unchanged: 1, failed: 0, verified: true } });
+        await tick();
+        expect(screen.getByText(/Automatic repair complete/)).toBeTruthy();
+        expect(screen.getByRole('button', { name: /Sync All/ }).hasAttribute('disabled')).toBe(false);
+        expect(count('sync-all')).toBe(0);
+    });
+
+    it('keeps polling and blocks duplicate writes after an ambiguous repair admission', async () => {
+        const { result } = renderHook(() => useBOMSync()); await flush();
+        mutationReply = async () => { throw new Error('response lost'); };
+        statusReply = async () => response({}, 503);
+        await act(async () => {
+            await expect(result.current.handleRepair('a'.repeat(64), true)).rejects.toThrow('response lost');
+        });
+        expect(result.current.isSyncing).toBe(true);
+        await act(async () => result.current.handleSyncSingle('1', 0));
+        expect(fetchMock.mock.calls.filter(([url]) => url.includes('/bom/sync?'))).toHaveLength(0);
+        statusReply = async () => response({ isSyncing: true, isRepair: true, progress: { current: 1, total: 2 } });
+        await tick();
+        expect(result.current.isRepairing).toBe(true);
+        expect(result.current.syncProgress).toEqual({ current: 1, total: 2 });
+    });
+
+    it('refreshes authoritative status after inventory review and re-enables Sync All without starting a run', async () => {
+        let blocked = true;
+        statusReply = async () => response({ isSyncing: false, requiresReconciliation: blocked });
+        const originalFetch = fetchMock.getMockImplementation()!;
+        fetchMock.mockImplementation((url, options) => {
+            if (String(url).endsWith('sync-reconcile')) {
+                blocked = false;
+                return Promise.resolve(response({ success: true, auditId: 'audit' }));
+            }
+            return originalFetch(url, options);
+        });
+        render(<BOMSyncPage />); await flush();
+        expect(screen.getByRole('button', { name: /Sync All/ }).hasAttribute('disabled')).toBe(true);
+        fireEvent.change(screen.getByLabelText('Inventory review notes (required)'), { target: { value: 'Checked live and physical inventory and retired the old worker.' } });
+        screen.getAllByRole('checkbox').forEach(box => fireEvent.click(box));
+        await act(async () => screen.getByRole('button', { name: 'Complete inventory review & unlock' }).click());
+        await flush();
+        expect(screen.queryByText('BOM sync needs reconciliation')).toBeNull();
+        expect(screen.getByRole('button', { name: /Sync All/ }).hasAttribute('disabled')).toBe(false);
+        expect(count('sync-all')).toBe(0);
+        expect(count('sync-reconcile')).toBe(1);
+    });
+
     it('requires explicit worker confirmation before continuing and sends only the reviewed fingerprint', async () => {
         statusReply = async () => response({ isSyncing: false, requiresReconciliation: true });
         render(<BOMSyncPage />); await flush();
+        await act(async () => screen.getByText('Advanced: continue untouched products only').click());
         await act(async () => screen.getByRole('button', { name: 'Review continuation' }).click());
         const button = screen.getByRole('button', { name: 'Continue unaffected products (5)' });
         expect(button.hasAttribute('disabled')).toBe(true);
         expect(screen.getByText(/uncertain products require review/).textContent).toContain('1');
-        await act(async () => screen.getByRole('checkbox').click());
+        await act(async () => screen.getByRole('checkbox', { name: /I have verified the previous worker/ }).click());
         expect(button.hasAttribute('disabled')).toBe(false);
         await act(async () => button.click());
         const request = fetchMock.mock.calls.find(([url, options]) => url.endsWith('sync-recovery') && options?.method === 'POST')!;
@@ -189,9 +247,10 @@ describe('useBOMSync', () => {
         statusReply = async () => response({ isSyncing: false, requiresReconciliation: true });
         recoveryReply = async () => response({ error: 'This older run has no reliable per-product checkpoint.', code: 'BOM_RECOVERY_LEGACY_CHECKPOINT' }, 409);
         render(<BOMSyncPage />); await flush();
+        await act(async () => screen.getByText('Advanced: continue untouched products only').click());
         await act(async () => screen.getByRole('button', { name: 'Review continuation' }).click());
         expect(screen.getByRole('status').textContent).toContain('no reliable per-product checkpoint');
-        expect(screen.queryByRole('checkbox')).toBeNull();
+        expect(screen.queryByRole('checkbox', { name: /I have verified the previous worker/ })).toBeNull();
         expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
     });
 

@@ -89,6 +89,7 @@ class OverSeek_Server_Tracking
         }
 
         add_action(OverSeek_Tracking_Transport::RETRY_HOOK, array('OverSeek_Tracking_Transport', 'retry_failed_events'));
+        add_action(OverSeek_Tracking_Transport::STORE_CHANGE_HOOK, array('OverSeek_Tracking_Transport', 'send_store_change'));
         // Recover queues created before the background worker existed, or after a missed schedule.
         OverSeek_Tracking_Transport::schedule_failed_events_retry();
 
@@ -96,7 +97,7 @@ class OverSeek_Server_Tracking
         // to the browser collector, private Woo pages initialize at template_redirect.
         add_action('init', array($this, 'init_visitor_cookie'), 1);
 
-        // Flush event queue at shutdown (non-blocking for performance)
+        // Flush at shutdown: purchases await acknowledgement; store changes only schedule jobs.
         add_action('shutdown', array($this, 'flush_event_queue'));
 
         $this->browser_views = (bool) apply_filters('overseek_browser_views', true);
@@ -526,7 +527,7 @@ class OverSeek_Server_Tracking
 
     /**
      * Flush only this request's events. Purchases require acknowledgement;
-     * other events remain non-blocking. Backlog retries run exclusively in cron.
+     * store changes are persisted for background delivery, analytics stay non-blocking.
      */
     public function flush_event_queue(): array
     {
