@@ -42,11 +42,12 @@ export class SyncService {
             const existingJob = await queue.getJob(stableJobId);
             if (queueName === QUEUES.BOM_SYNC) {
                 const legacy = await queue.getJob(`bom_sync_${accountId.replace(/:/g, '_')}`);
-                for (const candidate of [existingJob, legacy]) {
+                const recovery = await queue.getJob(`bom_recovery_${accountId.replace(/:/g, '_')}`);
+                for (const candidate of [recovery, existingJob, legacy]) {
                     if (!candidate) continue;
                     const state = await candidate.getState();
-                    if (['active', 'waiting', 'delayed', 'prioritized'].includes(state)) return;
-                    if (state !== 'completed') throw Object.assign(new Error('BOM sync requires reconciliation of the previous failed or stalled job before another run'), { statusCode: 409, code: 'BOM_SYNC_RECONCILIATION_REQUIRED', jobId: candidate.id });
+                    if (['active', 'waiting', 'delayed', 'prioritized', 'waiting-children'].includes(state)) return;
+                    if (state !== 'completed' || candidate === recovery) throw Object.assign(new Error('BOM sync requires reconciliation of the previous failed or stalled job before another run'), { statusCode: 409, code: 'BOM_SYNC_RECONCILIATION_REQUIRED', jobId: candidate.id });
                 }
             }
 
@@ -84,7 +85,9 @@ export class SyncService {
             await queue.add(queueName, jobData, {
                 jobId: stableJobId,
                 priority,
-                removeOnComplete: true, // Ensure it clears after success to allow next run
+                // Count/age cleanup can evict OTHER completed jobs in this queue,
+                // including retained BOM recovery evidence for another account.
+                removeOnComplete: queueName === QUEUES.BOM_SYNC ? false : true,
                 removeOnFail: false // Failed work is evidence, especially stock writes.
             });
             jobCount++;

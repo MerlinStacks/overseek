@@ -11,6 +11,8 @@ import { requireAuthFastify } from '../../middleware/auth';
 import { Logger } from '../../utils/logger';
 import { BOMInventorySyncService, localBOMItems } from '../../services/BOMInventorySyncService';
 import { z } from 'zod';
+import { PermissionService } from '../../services/PermissionService';
+import { bomSyncJobIds, buildBOMRecoveryPlan, bomRunningStates } from '../../services/bom/BOMSyncRecovery';
 
 const variationQuerySchema = z.object({
     variationId: z.coerce.number().int().nonnegative().default(0)
@@ -20,13 +22,12 @@ const limitQuerySchema = z.object({
     limit: z.coerce.number().int().positive().max(100).default(50)
 });
 
-const runningJobStates = ['active', 'waiting', 'delayed', 'prioritized', 'waiting-children'];
-
-function bomJobIds(accountId: string) {
-    const suffix = accountId.replace(/:/g, '_');
-    // Keep the scheduler's ID until all producers can migrate together.
-    return [`bom_sync_${suffix}`, `sync_bom_${suffix}`];
-}
+const runningJobStates = bomRunningStates;
+const bomJobIds = bomSyncJobIds;
+const recoverySchema = z.object({
+    fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    confirmedStoppedAndSettled: z.literal(true)
+}).strict();
 
 function sendBomError(reply: any, statusCode: number, error: string, code: string, details?: unknown) {
     if (details !== undefined) {
@@ -212,10 +213,10 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         const queue = QueueFactory.getQueue(QUEUES.BOM_SYNC);
-        const [jobId, sharedJobId] = bomJobIds(accountId);
+        const [jobId] = bomJobIds(accountId);
 
         // Recognize jobs dispatched through the shared sync endpoint as well.
-        for (const candidateId of [jobId, sharedJobId]) {
+        for (const candidateId of [bomJobIds(accountId)[2], ...bomJobIds(accountId).slice(0, 2)]) {
             const candidate = await queue.getJob(candidateId);
             if (candidate) {
                 const state = await candidate.getState();
@@ -228,7 +229,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
                         estimatedProducts: bomCount
                     };
                 }
-                if (state !== 'completed') return sendBomError(reply, 409, 'Previous BOM sync failed or stalled. Reconcile its stock writes and retained job progress before starting another run.', 'BOM_SYNC_RECONCILIATION_REQUIRED');
+                if (state !== 'completed' || candidateId === bomJobIds(accountId)[2]) return sendBomError(reply, 409, 'Previous BOM sync failed or stalled. Reconcile its stock writes and retained job progress before starting another run.', 'BOM_SYNC_RECONCILIATION_REQUIRED');
             }
         }
 
@@ -241,7 +242,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
         await queue.add(QUEUES.BOM_SYNC, { accountId }, {
             jobId,
             priority: 10,
-            removeOnComplete: 20,
+            removeOnComplete: false,
             removeOnFail: false
         });
 
@@ -255,21 +256,80 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
         };
     });
 
+    /** Read-only plan. No provider requests and no failed-job removal. */
+    fastify.get('/bom/sync-recovery', async (request, reply) => {
+        const accountId = request.accountId!;
+        if (!request.user?.id || !await PermissionService.hasPermission(request.user.id, accountId, 'manage_inventory')) {
+            return sendBomError(reply, 403, 'Inventory management permission required', 'BOM_RECOVERY_FORBIDDEN');
+        }
+        try {
+            const { QueueFactory, QUEUES } = await import('../../services/queue/QueueFactory');
+            const { targets: _targets, ...plan } = await buildBOMRecoveryPlan(QueueFactory.getQueue(QUEUES.BOM_SYNC), accountId);
+            return plan;
+        } catch (error: any) {
+            if (error.statusCode === 409) return sendBomError(reply, 409, error.message, error.code);
+            Logger.error('Could not inspect BOM recovery', { error, accountId });
+            return sendBomError(reply, 503, 'Recovery evidence is unavailable. No continuation was started.', 'BOM_RECOVERY_UNAVAILABLE');
+        }
+    });
+
+    fastify.post('/bom/sync-recovery', async (request, reply) => {
+        const accountId = request.accountId!;
+        if (!request.user?.id || !await PermissionService.hasPermission(request.user.id, accountId, 'manage_inventory')) {
+            return sendBomError(reply, 403, 'Inventory management permission required', 'BOM_RECOVERY_FORBIDDEN');
+        }
+        const parsed = recoverySchema.safeParse(request.body);
+        if (!parsed.success) return sendBomError(reply, 400, 'Review the recovery plan and confirm the previous worker and outstanding stock requests have stopped.', 'BOM_RECOVERY_CONFIRMATION_REQUIRED');
+        try {
+            const { QueueFactory, QUEUES } = await import('../../services/queue/QueueFactory');
+            const queue = QueueFactory.getQueue(QUEUES.BOM_SYNC);
+            const jobId = bomJobIds(accountId)[2];
+            const existing = await queue.getJob(jobId);
+            if (existing) {
+                if (existing.data.accountId !== accountId || existing.data.bomRecovery?.fingerprint !== parsed.data.fingerprint) {
+                    return sendBomError(reply, 409, 'A different recovery already exists. Refresh its status.', 'BOM_RECOVERY_CHANGED');
+                }
+                const state = await existing.getState();
+                return { status: runningJobStates.includes(state) ? 'already_running' : state, jobId };
+            }
+            const plan = await buildBOMRecoveryPlan(queue, accountId);
+            if (plan.fingerprint !== parsed.data.fingerprint) return sendBomError(reply, 409, 'The failed run or BOM dependencies changed. Review a fresh recovery plan.', 'BOM_RECOVERY_CHANGED');
+            if (!plan.targets.length) return sendBomError(reply, 409, 'No provably unaffected products remain to continue.', 'BOM_RECOVERY_EMPTY');
+            await QueueFactory.enforceMaxQueueDepth(QUEUES.BOM_SYNC);
+            await queue.add(QUEUES.BOM_SYNC, {
+                accountId,
+                bomRecovery: { fingerprint: plan.fingerprint, sourceJobIds: plan.sourceJobIds, requestedBy: request.user.id, confirmedStoppedAndSettledAt: new Date().toISOString() }
+            }, { jobId, priority: 10, attempts: 1, removeOnComplete: false, removeOnFail: false });
+            Logger.info('BOM continuation requested; failed jobs retained', { accountId, jobId, requestedBy: request.user.id, sourceJobIds: plan.sourceJobIds, eligibleProducts: plan.eligibleProducts });
+            return { status: 'queued', jobId, estimatedProducts: plan.eligibleProducts };
+        } catch (error: any) {
+            if (error.statusCode === 409) return sendBomError(reply, 409, error.message, error.code);
+            Logger.error('BOM continuation admission not acknowledged', { error, accountId });
+            return sendBomError(reply, 503, 'Continuation was not acknowledged. Refresh status before retrying; the same recovery identity is retained.', 'BOM_RECOVERY_UNCERTAIN');
+        }
+    });
+
     /**
      * GET /bom/sync-status
      * Check current status of BOM sync job for this account.
      */
-    fastify.get('/bom/sync-status', async (request, _reply) => {
+    fastify.get('/bom/sync-status', async (request, reply) => {
         const accountId = request.accountId!;
         const { QueueFactory, QUEUES } = await import('../../services/queue/QueueFactory');
 
         const queue = QueueFactory.getQueue(QUEUES.BOM_SYNC);
 
         try {
-            for (const jobId of bomJobIds(accountId)) {
-                const existingJob = await queue.getJob(jobId);
+            // Running work wins over retained failed evidence from the source run.
+            const jobs = await Promise.all(bomJobIds(accountId).map(async jobId => {
+                const job = await queue.getJob(jobId);
+                return job ? { job, state: await job.getState() } : null;
+            }));
+            const ordered = [...jobs.filter(entry => entry && runningJobStates.includes(entry.state)), ...jobs.filter(entry => entry && !runningJobStates.includes(entry.state))];
+            for (const entry of ordered) {
+                const existingJob = entry!.job;
+                const state = entry!.state;
                 if (existingJob) {
-                    const state = await existingJob.getState();
                     const rawProgress = existingJob.progress as any;
                     const progress = rawProgress && typeof rawProgress === 'object'
                         ? {
@@ -281,15 +341,15 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
                         }
                         : null;
                     if (runningJobStates.includes(state)) {
-                        return { isSyncing: true, state, progress };
+                        return { isSyncing: true, state, progress, isRecovery: existingJob.id === bomJobIds(accountId)[2] };
                     }
-                    if (state === 'failed') return { isSyncing: false, state, progress, requiresReconciliation: true, code: 'BOM_SYNC_RECONCILIATION_REQUIRED' };
+                    if (state === 'failed' || existingJob.id === bomJobIds(accountId)[2]) return { isSyncing: false, state, progress, requiresReconciliation: true, code: 'BOM_SYNC_RECONCILIATION_REQUIRED' };
                 }
             }
             return { isSyncing: false, state: null };
         } catch (err) {
             Logger.error('Error checking BOM sync status', { error: err, accountId });
-            return { isSyncing: false, state: null };
+            return sendBomError(reply, 503, 'BOM sync status is unavailable. Do not assume the worker has stopped.', 'BOM_SYNC_STATUS_UNAVAILABLE');
         }
     });
 

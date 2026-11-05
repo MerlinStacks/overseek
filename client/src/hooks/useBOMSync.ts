@@ -50,6 +50,22 @@ interface SyncProgress {
     total: number;
 }
 
+interface SyncError {
+    message: string;
+    code: string | null;
+}
+
+export interface BOMRecoveryPlan {
+    fingerprint: string;
+    sourceJobIds: string[];
+    eligibleProducts: number;
+    uncertainProducts: number;
+    excludedProducts: number;
+}
+
+const reconciliationCode = 'BOM_SYNC_RECONCILIATION_REQUIRED';
+const reconciliationMessage = 'BOM sync is blocked by a previous failed or stalled run. An inventory operator must review its stock writes and retained job progress before another bulk sync can start.';
+
 interface UseBOMSyncReturn {
     // Data
     pendingChanges: PendingChange[];
@@ -66,11 +82,18 @@ interface UseBOMSyncReturn {
     // Results
     syncResult: { synced: number; failed: number } | null;
     syncErrors: Record<string, string>;
+    syncError: SyncError | null;
+    recoveryPlan: BOMRecoveryPlan | null;
+    recoveryError: string | null;
+    isLoadingRecovery: boolean;
+    isRecovering: boolean;
     syncProgress: SyncProgress | null;
     nextSyncIn: string | null;
 
     // Actions
     handleSyncAll: () => Promise<void>;
+    handleReviewRecovery: () => Promise<void>;
+    handleContinueRecovery: () => Promise<void>;
     handleSyncSingle: (productId: string, variationId: number) => Promise<void>;
     handleRetryFailed: () => Promise<void>;
     handleCancelSync: () => Promise<void>;
@@ -97,6 +120,12 @@ export function useBOMSync(): UseBOMSyncReturn {
     const [syncingProductId, setSyncingProductId] = useState<string | null>(null);
     const [syncResult, setSyncResult] = useState<{ synced: number; failed: number } | null>(null);
     const [syncErrors, setSyncErrors] = useState<Record<string, string>>({});
+    const [syncError, setSyncError] = useState<SyncError | null>(null);
+    const [recoveryPlan, setRecoveryPlan] = useState<BOMRecoveryPlan | null>(null);
+    const [recoveryError, setRecoveryError] = useState<string | null>(null);
+    const [isLoadingRecovery, setIsLoadingRecovery] = useState(false);
+    const [isRecovering, setIsRecovering] = useState(false);
+    const recoveryRequestRef = useRef<AbortSignal | null>(null);
     /** Ref to break the fetchPendingChanges -> syncErrors -> useEffect loop */
     const syncErrorsRef = useRef(syncErrors);
     syncErrorsRef.current = syncErrors;
@@ -201,6 +230,9 @@ export function useBOMSync(): UseBOMSyncReturn {
                 const data = await res.json();
                 if (signal.aborted || version !== statusVersionRef.current) return;
                 if (data.isSyncing) {
+                    setIsRecovering(data.isRecovery === true);
+                    setRecoveryPlan(null);
+                    setSyncError(null);
                     runningRef.current = true;
                     setIsSyncing(true);
                     setSyncResult({ synced: -3, failed: 0 });
@@ -208,6 +240,13 @@ export function useBOMSync(): UseBOMSyncReturn {
                         setSyncProgress({ current: data.progress.current, total: data.progress.total });
                     }
                 } else {
+                    setIsRecovering(false);
+                    if (data.requiresReconciliation || data.code === reconciliationCode) {
+                        setSyncError({ message: reconciliationMessage, code: reconciliationCode });
+                        setSyncResult(null);
+                    } else {
+                        setSyncError(previous => previous?.code === reconciliationCode ? null : previous);
+                    }
                     const completed = runningRef.current;
                     runningRef.current = false;
                     setIsSyncing(false);
@@ -274,12 +313,13 @@ export function useBOMSync(): UseBOMSyncReturn {
 
     const handleSyncAll = useCallback(async () => {
         const signal = getSignal();
-        if (!signal || !accountId || runningRef.current || singleSyncRef.current === signal) return;
+        if (!signal || !accountId || runningRef.current || singleSyncRef.current === signal || syncError?.code === reconciliationCode) return;
         runningRef.current = true;
         startingRef.current = true;
         statusVersionRef.current++;
 
         setIsSyncing(true);
+        setSyncError(null);
         setSyncResult(null);
         setSyncProgress({ current: 0, total: statsRef.current.needsSync });
 
@@ -312,8 +352,12 @@ export function useBOMSync(): UseBOMSyncReturn {
                     setSyncProgress(null);
                 }
             } else {
+                const data = await res.json().catch(() => null);
+                if (signal.aborted) return;
+                const error = extractBomApiError(data, `Failed to start BOM sync (HTTP ${res.status}).`);
+                setSyncError(error.code === reconciliationCode ? { message: reconciliationMessage, code: error.code } : error);
                 runningRef.current = false;
-                setSyncResult({ synced: 0, failed: -1 });
+                setSyncResult(null);
                 setIsSyncing(false);
                 setSyncProgress(null);
             }
@@ -321,13 +365,14 @@ export function useBOMSync(): UseBOMSyncReturn {
             if (signal.aborted) return;
             runningRef.current = false;
             Logger.error('Failed to sync all', { error: err });
-            setSyncResult({ synced: 0, failed: -1 });
+            setSyncError({ message: err instanceof Error ? err.message : 'Failed to start BOM sync. Check your connection and refresh the sync status.', code: null });
+            setSyncResult(null);
             setIsSyncing(false);
             setSyncProgress(null);
         } finally {
             if (!signal.aborted) startingRef.current = false;
         }
-    }, [accountId, token, getSignal, fetchPendingChanges]);
+    }, [accountId, token, getSignal, fetchPendingChanges, syncError]);
 
     const handleRetryFailed = useCallback(async () => {
         const signal = getSignal();
@@ -339,6 +384,73 @@ export function useBOMSync(): UseBOMSyncReturn {
         }
         if (failedItems.length && !signal.aborted) await fetchPendingChanges();
     }, [pendingChanges, syncErrors, handleSyncSingle, getSignal, fetchPendingChanges]);
+
+    const handleReviewRecovery = useCallback(async () => {
+        const signal = getSignal();
+        if (!signal || !accountId || runningRef.current || recoveryRequestRef.current === signal) return;
+        recoveryRequestRef.current = signal;
+        setIsLoadingRecovery(true);
+        setRecoveryPlan(null);
+        setRecoveryError(null);
+        try {
+            const res = await fetch('/api/inventory/bom/sync-recovery', {
+                signal, headers: { Authorization: `Bearer ${token}`, 'x-account-id': accountId }
+            });
+            const data = await res.json();
+            if (signal.aborted) return;
+            if (!res.ok) throw new Error(extractBomApiError(data, 'Could not inspect the failed run.').message);
+            if (!/^[a-f0-9]{64}$/.test(data.fingerprint) || !Array.isArray(data.sourceJobIds)
+                || !['eligibleProducts', 'uncertainProducts', 'excludedProducts'].every(key => Number.isInteger(data[key]) && data[key] >= 0 && data[key] <= 10000)) {
+                throw new Error('Invalid recovery plan. Refresh before continuing.');
+            }
+            setRecoveryPlan(data);
+        } catch (error) {
+            if (!signal.aborted) setRecoveryError(error instanceof Error ? error.message : 'Could not inspect the failed run.');
+        } finally {
+            if (recoveryRequestRef.current === signal) recoveryRequestRef.current = null;
+            if (!signal.aborted) setIsLoadingRecovery(false);
+        }
+    }, [accountId, token, getSignal]);
+
+    const handleContinueRecovery = useCallback(async () => {
+        const signal = getSignal();
+        if (!signal || !accountId || !recoveryPlan || recoveryPlan.eligibleProducts === 0 || runningRef.current || singleSyncRef.current === signal) return;
+        runningRef.current = true;
+        startingRef.current = true;
+        statusVersionRef.current++;
+        setIsSyncing(true);
+        setRecoveryError(null);
+        try {
+            const res = await fetch('/api/inventory/bom/sync-recovery', {
+                signal, method: 'POST',
+                headers: { Authorization: `Bearer ${token}`, 'x-account-id': accountId, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fingerprint: recoveryPlan.fingerprint, confirmedStoppedAndSettled: true })
+            });
+            const data = await res.json();
+            if (signal.aborted) return;
+            if (!res.ok) throw new Error(extractBomApiError(data, 'Continuation was not acknowledged. Refresh sync status before retrying.').message);
+            if (['queued', 'already_running'].includes(data.status)) {
+                setIsRecovering(true);
+                setSyncError(null);
+                setRecoveryPlan(null);
+                setSyncProgress({ current: 0, total: recoveryPlan.eligibleProducts });
+                setSyncResult({ synced: -2, failed: 0 });
+            } else {
+                runningRef.current = false;
+                setIsSyncing(false);
+                setRecoveryPlan(null);
+                await checkSyncStatus();
+            }
+        } catch (error) {
+            if (signal.aborted) return;
+            setRecoveryError(error instanceof Error ? error.message : 'Continuation was not acknowledged. Refresh sync status before retrying.');
+            // A lost response may follow successful queue admission. Keep writes
+            // blocked and polling alive until an authoritative status is available.
+            await checkSyncStatus();
+        } finally {
+            if (!signal.aborted) startingRef.current = false;
+        }
+    }, [accountId, token, getSignal, recoveryPlan, checkSyncStatus]);
 
     const handleCancelSync = useCallback(async () => {
         const signal = getSignal();
@@ -404,7 +516,8 @@ export function useBOMSync(): UseBOMSyncReturn {
     const handleRefresh = useCallback(() => {
         fetchPendingChanges();
         fetchDeactivatedItems();
-    }, [fetchPendingChanges, fetchDeactivatedItems]);
+        checkSyncStatus();
+    }, [fetchPendingChanges, fetchDeactivatedItems, checkSyncStatus]);
 
     /** Reactivate a single deactivated item, then refresh the list */
     const handleReactivateItem = useCallback(async (itemId: string) => {
@@ -438,6 +551,7 @@ export function useBOMSync(): UseBOMSyncReturn {
         runningRef.current = false;
         startingRef.current = false;
         singleSyncRef.current = null;
+        recoveryRequestRef.current = null;
         statusVersionRef.current++;
         setPendingChanges([]);
         setDeactivatedItems([]);
@@ -449,6 +563,11 @@ export function useBOMSync(): UseBOMSyncReturn {
         setSyncingProductId(null);
         setSyncResult(null);
         setSyncErrors({});
+        setSyncError(null);
+        setRecoveryPlan(null);
+        setRecoveryError(null);
+        setIsLoadingRecovery(false);
+        setIsRecovering(false);
         syncErrorsRef.current = {};
         setSyncProgress(null);
         if (accountId && token) {
@@ -484,9 +603,16 @@ export function useBOMSync(): UseBOMSyncReturn {
         syncingProductId,
         syncResult,
         syncErrors,
+        syncError,
+        recoveryPlan,
+        recoveryError,
+        isLoadingRecovery,
+        isRecovering,
         syncProgress,
         nextSyncIn: null,
         handleSyncAll,
+        handleReviewRecovery,
+        handleContinueRecovery,
         handleSyncSingle,
         handleRetryFailed,
         handleCancelSync,

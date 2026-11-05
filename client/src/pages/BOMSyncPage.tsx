@@ -25,8 +25,11 @@ import { useBOMSync } from '../hooks/useBOMSync';
 import { SyncStatsCards } from '../components/bom/SyncStatsCards';
 import { SyncProductRow } from '../components/bom/SyncProductRow';
 import { DeactivatedItemsBanner } from '../components/bom/DeactivatedItemsBanner';
+import { BOMRecoveryControls } from '../components/bom/BOMRecoveryControls';
+import { useAccount } from '../context/AccountContext';
 
 export function BOMSyncPage() {
+    const { activePermissions } = useAccount();
     const {
         pendingChanges,
         deactivatedItems,
@@ -38,8 +41,15 @@ export function BOMSyncPage() {
         syncingProductId,
         syncResult,
         syncErrors,
+        syncError,
+        recoveryPlan,
+        recoveryError,
+        isLoadingRecovery,
+        isRecovering,
         syncProgress,
         handleSyncAll,
+        handleReviewRecovery,
+        handleContinueRecovery,
         handleSyncSingle,
         handleRetryFailed,
         handleCancelSync,
@@ -125,7 +135,7 @@ export function BOMSyncPage() {
                     )}
                     <button
                         onClick={handleSyncAll}
-                        disabled={isSyncing || isLoadingPending || Boolean(loadError) || stats.needsSync === 0}
+                        disabled={isSyncing || isLoadingPending || Boolean(loadError) || syncError?.code === 'BOM_SYNC_RECONCILIATION_REQUIRED' || stats.needsSync === 0}
                         className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${stats.needsSync === 0
                             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                             : 'bg-[var(--primary-color)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]'
@@ -149,11 +159,26 @@ export function BOMSyncPage() {
             )}
 
             {/* Sync Progress Bar */}
+            {syncError && (
+                <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
+                    <p className="font-semibold">{syncError.code === 'BOM_SYNC_RECONCILIATION_REQUIRED' ? 'BOM sync needs reconciliation' : 'BOM sync could not start'}</p>
+                    <p className="mt-1 text-sm">{syncError.message}</p>
+                    {syncError.code && <p className="mt-1 text-xs">Reference: {syncError.code}</p>}
+                    {syncError.code === 'BOM_SYNC_RECONCILIATION_REQUIRED' && activePermissions?.manage_inventory && (
+                        <BOMRecoveryControls
+                            key={recoveryPlan?.fingerprint ?? 'review'}
+                            plan={recoveryPlan} error={recoveryError} loading={isLoadingRecovery} syncing={isSyncing}
+                            onReview={handleReviewRecovery} onContinue={handleContinueRecovery}
+                        />
+                    )}
+                </div>
+            )}
+
             {syncProgress && (
                 <div className="bg-[var(--brand-subtle)] border border-[var(--brand-border)] rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium text-[var(--brand-text)]">
-                            Syncing products...
+                            {isRecovering ? 'Continuing unaffected products; excluded stock still needs review…' : 'Syncing products...'}
                         </span>
                         <span className="text-sm text-[var(--brand-text)]">
                             {syncProgress.current} / {syncProgress.total}

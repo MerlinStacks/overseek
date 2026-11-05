@@ -50,11 +50,18 @@ export function EmailSettingsPage() {
 }
 function decodeSettings(data: unknown): EmailSettings {
     if (!isRecord(data) || typeof data.bounceTrackingEnabled !== 'boolean' || typeof data.maxSendPerSecond !== 'number' || !Number.isInteger(data.maxSendPerSecond) || data.maxSendPerSecond < 1 || data.maxSendPerSecond > 1000 || typeof data.maxSendPerDay !== 'number' || !Number.isInteger(data.maxSendPerDay) || data.maxSendPerDay < 1 || data.maxSendPerDay > 1000000 || typeof data.version !== 'string' || data.version !== 'default' && !Number.isFinite(Date.parse(data.version))) throw new Error('Invalid settings response');
-    return data as unknown as EmailSettings;
+    // Keep database metadata out of state: the save endpoint accepts a strict settings contract.
+    return {
+        bounceTrackingEnabled: data.bounceTrackingEnabled,
+        maxSendPerSecond: data.maxSendPerSecond,
+        maxSendPerDay: data.maxSendPerDay,
+        version: data.version,
+    };
 }
 function ScopedEmailSettings() {
     const { token } = useAuth();
     const { currentAccount, refreshAccounts } = useAccount();
+    const accountId = currentAccount?.id;
     const toast = useToast();
     const { hasPermission } = usePermissions();
     const attempt = useRecoveryAttempt();
@@ -66,20 +73,20 @@ function ScopedEmailSettings() {
     const [isSaving, setIsSaving] = useState(false);
     const [isSavingMarketing, setIsSavingMarketing] = useState(false);
     const [isSavingFooter, setIsSavingFooter] = useState(false);
-    const [subscribeNewCustomersByDefault, setSubscribeNewCustomersByDefault] = useState(true);
+    const [subscribeNewCustomersByDefault, setSubscribeNewCustomersByDefault] = useState(() => currentAccount?.subscribeNewCustomersByDefault ?? true);
     const [emailLists, setEmailLists] = useState<EmailListSetting[]>([]);
 
     useEffect(() => {
         const controller = new AbortController(); let disposed = false;
         const timer = setTimeout(() => controller.abort(), 30000);
         async function loadSettings() {
-            if (!currentAccount || !token) return;
+            if (!accountId || !token) return;
 
             setIsLoading(true);
             try {
                 const headers = {
                     Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount.id,
+                    'x-account-id': accountId,
                 };
                 const [response, listsResponse] = await Promise.all([
                     fetch('/api/email/settings', { headers, signal: controller.signal }),
@@ -99,7 +106,6 @@ function ScopedEmailSettings() {
                 if (disposed) return;
                 if (!Array.isArray(lists) || lists.length > 1000 || lists.some(list => typeof list.id !== 'string' || typeof list.name !== 'string' || typeof list.isDefault !== 'boolean')) throw new Error('Invalid email lists');
                 setEmailLists(lists);
-                setSubscribeNewCustomersByDefault(currentAccount.subscribeNewCustomersByDefault ?? true);
             } catch (error) {
                 if (disposed) return;
                 setError('Settings unavailable. Reload before editing.');
@@ -114,7 +120,8 @@ function ScopedEmailSettings() {
 
         loadSettings();
         return () => { disposed = true; clearTimeout(timer); controller.abort(); };
-    }, [currentAccount, token, toast]);
+    // The parent remounts on identity changes. Same-account refreshes must not replace local drafts.
+    }, [accountId, token, toast]);
 
     const handleSave = async () => {
         if (!currentAccount || !token || error || !hasPermission('manage_email_settings')) return;

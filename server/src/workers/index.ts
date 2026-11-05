@@ -14,7 +14,6 @@ import { MarketingService } from '../services/MarketingService';
 import { normalizeOrderStatus } from '../constants/orderStatus';
 import { FeedMappingService } from '../services/feedMapping';
 import { canonicalInvoiceService } from '../services/CanonicalInvoiceService';
-import { assertJobLease } from '../services/queue/JobLease';
 
 /** Track all workers for graceful shutdown */
 const activeWorkers: Worker[] = [];
@@ -126,24 +125,8 @@ export async function startWorkers() {
 
 
     try {
-        const { BOMInventorySyncService } = await import('../services/BOMInventorySyncService');
-        activeWorkers.push(QueueFactory.createWorker(QUEUES.BOM_SYNC, async (job) => {
-            const { accountId } = job.data;
-            const { SyncCancellationService } = await import('../services/sync/SyncCancellationService');
-            try {
-                await SyncCancellationService.assertNotRequested(job);
-                await assertJobLease(job);
-                const result = await BOMInventorySyncService.syncAllBOMProducts(accountId, job, { assertLease: () => assertJobLease(job) });
-                Logger.info(`[BOM Worker] Completed BOM sync`, {
-                    accountId,
-                    synced: result.synced,
-                    skipped: result.skipped,
-                    failed: result.failed
-                });
-            } finally {
-                await SyncCancellationService.clear(job.queueName, String(job.id));
-            }
-        }));
+        const { processBOMSyncJob } = await import('../services/bom/processBOMSyncJob');
+        activeWorkers.push(QueueFactory.createWorker(QUEUES.BOM_SYNC, processBOMSyncJob));
         Logger.info('[Workers] BOM Inventory Sync worker registered');
     } catch (err: any) {
         Logger.error('[Workers] FAILED to register BOM Inventory Sync worker', { error: err.message, stack: err.stack });

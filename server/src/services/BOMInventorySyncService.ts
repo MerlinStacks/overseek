@@ -14,6 +14,7 @@ import { prisma } from '../utils/prisma';
 import { StockValidationService } from './StockValidationService';
 import type { Prisma } from '@prisma/client';
 import { JobLeaseLostError } from './queue/JobLease';
+import { bomManifestSchema, targetKey, MAX_BOM_SYNC_TARGETS, type BOMSyncTarget, type BOMSyncCheckpoint } from './bom/BOMSyncCheckpoint';
 
 /** Shared local stock inputs for single-product reads and bulk previews. */
 export const localBOMItems = {
@@ -949,8 +950,8 @@ export class BOMInventorySyncService {
      */
     static async syncAllBOMProducts(
         accountId: string,
-        job: { id?: string | number; queueName?: string; updateProgress: (progress: any) => Promise<void> } | null = null,
-        options?: { assertLease: () => Promise<void> }
+        job: { id?: string | number; queueName?: string; data: Record<string, unknown>; updateData: (data: Record<string, unknown>) => Promise<void>; updateProgress: (progress: Record<string, unknown>) => Promise<void> } | null = null,
+        options?: { assertLease: () => Promise<void>; targets?: BOMSyncTarget[] }
     ): Promise<{
         total: number;
         synced: number;
@@ -977,12 +978,26 @@ export class BOMInventorySyncService {
                 select: {
                     productId: true,
                     variationId: true
-                }
+                },
+                take: MAX_BOM_SYNC_TARGETS + 1
             }),
             { context: 'Find BOMs for bulk sync' }
         );
 
-        const total = bomsWithChildProducts.length;
+        if (bomsWithChildProducts.length > MAX_BOM_SYNC_TARGETS) throw new Error('BOM sync exceeds the checkpoint target limit');
+        const allowed = options?.targets ? new Set(options.targets.map(targetKey)) : null;
+        const targets = bomsWithChildProducts.filter(bom => !allowed || allowed.has(targetKey(bom)))
+            .sort((a, b) => targetKey(a).localeCompare(targetKey(b)));
+        if (targets.length > MAX_BOM_SYNC_TARGETS) throw new Error('BOM sync exceeds the checkpoint target limit');
+        const manifest = bomManifestSchema.parse({ version: 1, targets });
+        if (job) {
+            // A processor must never replay an existing occurrence after a crash.
+            if (job.data.bomManifest) throw new Error('Existing BOM execution requires reconciliation, not replay');
+            await options?.assertLease();
+            await job.updateData({ ...job.data, bomManifest: manifest });
+        }
+        const checkpoint: BOMSyncCheckpoint = { version: 1, nextIndex: 0, inFlightIndex: null, uncertainIndexes: [] };
+        const total = targets.length;
         Logger.info(`[BOMInventorySync] Starting bulk sync for ${total} products`, { accountId });
 
         // Only track counters — accumulating full SyncResult[] caused unbounded
@@ -993,21 +1008,26 @@ export class BOMInventorySyncService {
         let failed = 0;
 
         if (job) {
-            await job.updateProgress({ current: 0, total, synced: 0, skipped: 0, failed: 0 });
+            await job.updateProgress({ current: 0, total, synced: 0, skipped: 0, failed: 0, checkpoint: { ...checkpoint } });
         }
 
-        for (const bom of bomsWithChildProducts) {
+        for (const bom of targets) {
             // A worker can keep executing after losing its BullMQ lock. Stop at
             // each boundary and recheck immediately before any provider write.
             await options?.assertLease();
             if (job) {
                 const { SyncCancellationService } = await import('./sync/SyncCancellationService');
                 await SyncCancellationService.assertNotRequested(job);
+                checkpoint.inFlightIndex = processed;
+                // Persist BEFORE any calculation/write; an interrupted target is
+                // uncertain even if the request never reached WooCommerce.
+                await job.updateProgress({ current: processed, total, synced, skipped, failed, checkpoint: { ...checkpoint, uncertainIndexes: [...checkpoint.uncertainIndexes] } });
+                await options?.assertLease();
             }
             // Wrap each product sync in try/catch so one failure doesn't crash the entire job
             try {
                 const result = await this.syncProductToWoo(accountId, bom.productId, bom.variationId,
-                    options ? { beforeWrite: options.assertLease } : undefined);
+                    options ? { beforeWrite: options.assertLease, requireLiveStock: Boolean(options.targets) } : undefined);
 
                 if (result.success) {
                     if (result.previousStock === result.newStock) {
@@ -1017,6 +1037,7 @@ export class BOMInventorySyncService {
                     }
                 } else {
                     failed++;
+                    checkpoint.uncertainIndexes.push(processed);
                 }
             } catch (err: any) {
                 if (err instanceof JobLeaseLostError) throw err;
@@ -1027,16 +1048,20 @@ export class BOMInventorySyncService {
                     error: err.message
                 });
                 failed++;
+                checkpoint.uncertainIndexes.push(processed);
             }
 
             processed++;
+            checkpoint.nextIndex = processed;
+            checkpoint.inFlightIndex = null;
             if (job) {
                 await job.updateProgress({
                     current: processed,
                     total,
                     synced,
                     skipped,
-                    failed
+                    failed,
+                    checkpoint: { ...checkpoint, uncertainIndexes: [...checkpoint.uncertainIndexes] }
                 });
             }
         }

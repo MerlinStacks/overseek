@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-    lock: vi.fn(), findFirst: vi.fn(), update: vi.fn(), count: vi.fn(), create: vi.fn(), settings: vi.fn(), contactCount: vi.fn()
+    lock: vi.fn(), findFirst: vi.fn(), update: vi.fn(), count: vi.fn(), create: vi.fn(), settings: vi.fn(), settingsUpsert: vi.fn(), contactCount: vi.fn()
 }));
 vi.mock('../utils/prisma', () => ({ prisma: {
     $transaction: (run: any) => run({
         $executeRaw: mocks.lock,
         emailLog: { findFirst: mocks.findFirst, update: mocks.update, count: mocks.contactCount },
         emailSendAttempt: { count: mocks.count, create: mocks.create },
-        emailSettings: { upsert: mocks.settings }
+        emailSettings: { findUnique: mocks.settings, upsert: mocks.settingsUpsert }
     })
 } }));
 import { classifySendFailure, reserveEmailSend } from './emailSendLifecycle';
@@ -36,6 +36,20 @@ describe('email capacity reservation', () => {
         expect(retryAt!.getUTCHours()).toBe(0);
         expect(mocks.create).not.toHaveBeenCalled();
         expect(mocks.update).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        [0, 0, false],
+        [6000, 0, true],
+        [0, 1, true],
+    ])('uses unpersisted defaults for capacity (daily=%i, recent=%i)', async (daily, recent, deferred) => {
+        mocks.settings.mockResolvedValue(null);
+        mocks.count.mockResolvedValueOnce(daily).mockResolvedValueOnce(recent);
+        const retryAt = await reserveEmailSend('a', 'mail', true);
+        expect(retryAt instanceof Date).toBe(deferred);
+        expect(mocks.settings).toHaveBeenCalledWith({ where: { accountId: 'a' } });
+        expect(mocks.settingsUpsert).not.toHaveBeenCalled();
+        expect(mocks.create).toHaveBeenCalledTimes(deferred ? 0 : 1);
     });
 
     it('counts retry attempts for the per-second limit', async () => {

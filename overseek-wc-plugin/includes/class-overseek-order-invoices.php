@@ -29,7 +29,7 @@ class OverSeek_Order_Invoices
     private const META_INVOICE_RETRY_COUNT = '_overseek_invoice_retry_count';
     private const META_INVOICE_RENDERER_VERSION = '_overseek_invoice_renderer_version';
     private const CURRENT_RENDERER_VERSION = 'operational-a4-v5';
-    private const INVOICE_ALLOWED_ORDER_STATUSES = ['processing'];
+    private const INVOICE_ALLOWED_ORDER_STATUSES = ['processing', 'completed'];
     private const MAX_INVOICE_RETRY_ATTEMPTS = 6;
     private const MAX_INVOICE_PDF_BYTES = 10485760;
     private const MAX_INVOICE_RESPONSE_BYTES = 15728640;
@@ -233,16 +233,8 @@ class OverSeek_Order_Invoices
             }
         }
 
-        if ($force_regenerate || $revalidate_remote) {
-            $existing_path = (string) $order->get_meta(self::META_INVOICE_PATH);
-            if ($existing_path !== '' && file_exists($existing_path)) {
-                wp_delete_file($existing_path);
-            }
-
-            $order->delete_meta_data(self::META_INVOICE_PATH);
-            $order->delete_meta_data(self::META_INVOICE_FILE);
-            $order->save();
-        }
+        // Keep the last usable PDF until its replacement has been safely stored.
+        $previous_path = (string) $order->get_meta(self::META_INVOICE_PATH);
 
         if ($this->api_url === '' || $this->account_id === '' || $this->relay_api_key === '') {
             $this->set_invoice_status($order, 'failed', 'Invoice relay is not configured.');
@@ -383,7 +375,7 @@ class OverSeek_Order_Invoices
         }
 
         $safe_order_number = preg_replace('/[^a-zA-Z0-9_-]/', '-', (string) $order->get_order_number());
-        $file_name = 'invoice-order-' . ($safe_order_number ?: (string) $order_id) . '-' . gmdate('YmdHis') . '.pdf';
+        $file_name = wp_unique_filename($private_dir, 'invoice-order-' . ($safe_order_number ?: (string) $order_id) . '-' . gmdate('YmdHis') . '.pdf');
         $file_path = trailingslashit($private_dir) . $file_name;
 
         if ($decoded === false) {
@@ -434,6 +426,10 @@ class OverSeek_Order_Invoices
         $order->delete_meta_data(self::META_INVOICE_ERROR);
         $order->update_meta_data(self::META_INVOICE_GENERATED_AT, gmdate('c'));
         $order->save();
+
+        if ($previous_path !== '' && $previous_path !== $file_path && file_exists($previous_path)) {
+            wp_delete_file($previous_path);
+        }
 
         return true;
     }

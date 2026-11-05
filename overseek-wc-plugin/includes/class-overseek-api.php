@@ -54,7 +54,6 @@ class OverSeek_API {
 	private const MAX_BOT_PATTERNS = 1000;
 	private const MAX_BOT_PATTERN_LENGTH = 200;
 	private const MAX_BOT_BLOCK_HTML_LENGTH = 100000;
-	private const INVOICE_CUSTOMER_REGENERATE_COOLDOWN = 45;
 
 	/**
 	 * Register REST API routes.
@@ -714,36 +713,26 @@ class OverSeek_API {
 			$status = $available ? 'ready' : 'pending';
 		}
 
-		if ( ! $available && in_array( $status, [ 'pending', 'ready' ], true ) && method_exists( $service, 'try_generate_invoice_now' ) ) {
-			$service->try_generate_invoice_now( $order_id, 12, false, false );
+		$admin_regenerate = (string) $request->get_param( 'force_regenerate' ) === '1'
+			&& get_current_user_id() > 0
+			&& current_user_can( 'manage_woocommerce' );
+		if ( ! $available && ! $admin_regenerate && method_exists( $service, 'try_generate_invoice_now' ) ) {
+			// Retrieve/queue the canonical invoice, including recovery of old local
+			// failures. Customer links must never force a new financial artifact.
+			$service->try_generate_invoice_now( $order_id, 25, false, false );
 			$available = $service->invoice_is_available( $order_id );
+			$order->read_meta_data( true );
 			$status = (string) $order->get_meta( '_overseek_invoice_status' );
 			if ( $status === '' ) {
 				$status = $available ? 'ready' : 'pending';
 			}
 		}
 
-		$customer_retry_after = 0;
 		if ( method_exists( $service, 'try_generate_invoice_now' ) ) {
-			$customer_regenerate = (string) $request->get_param( 'regenerate_invoice' ) === '1';
-			$admin_regenerate    = (string) $request->get_param( 'force_regenerate' ) === '1'
-				&& get_current_user_id() > 0
-				&& current_user_can( 'manage_woocommerce' );
-			$force_regenerate    = $admin_regenerate || $customer_regenerate;
-
-			if ( $force_regenerate ) {
-				if ( $customer_regenerate && ! $admin_regenerate ) {
-					$retry_after = $this->get_invoice_customer_regenerate_retry_after( $order_id );
-					if ( $retry_after > 0 ) {
-						$this->render_invoice_recovery_page( $order, 'rate_limited', 'Please wait a moment before regenerating this invoice again.', $retry_after, 429 );
-				}
-				}
-
+			if ( $admin_regenerate ) {
 				$service->try_generate_invoice_now( $order_id, 30, true, true );
-				if ( $customer_regenerate && ! $admin_regenerate ) {
-					$customer_retry_after = self::INVOICE_CUSTOMER_REGENERATE_COOLDOWN;
-				}
 				$available = $service->invoice_is_available( $order_id );
+				$order->read_meta_data( true );
 				$status = (string) $order->get_meta( '_overseek_invoice_status' );
 				if ( $status === '' ) {
 					$status = $available ? 'ready' : 'pending';
@@ -751,18 +740,12 @@ class OverSeek_API {
 			}
 		}
 
-		if ( $status === 'pending' ) {
-			$this->render_invoice_recovery_page( $order, 'pending', 'Invoice is still being prepared. You can try generating it again now.', $customer_retry_after, 409 );
+		if ( ! $available && $status === 'pending' ) {
+			$this->render_invoice_recovery_page( $order, 'pending', 'We are preparing your invoice. This page will check automatically and open the PDF when it is ready. There is no need to regenerate it.', 202 );
 		}
 
-		if ( $status === 'failed' ) {
-			$payload = method_exists( $service, 'get_invoice_for_authorized_order' )
-				? $service->get_invoice_for_authorized_order( $order_id )
-				: $service->get_invoice_for_order( $order_id, get_current_user_id() );
-			$failure_message = is_array( $payload ) && isset( $payload['error_message'] ) && is_string( $payload['error_message'] ) && $payload['error_message'] !== ''
-				? $payload['error_message']
-				: 'Invoice generation failed.';
-			$this->render_invoice_recovery_page( $order, 'failed', $failure_message, $customer_retry_after, 409 );
+		if ( ! $available && $status === 'failed' ) {
+			$this->render_invoice_recovery_page( $order, 'failed', 'We could not prepare your invoice automatically. Please contact the store with your order number so we can help. Your order has not been affected.', 409 );
 		}
 
 		if ( ! $available ) {
@@ -786,38 +769,18 @@ class OverSeek_API {
 	}
 
 	/**
-	 * Return customer regenerate cooldown, or reserve a new regenerate slot.
-	 *
-	 * @param int $order_id Order ID.
-	 * @return int Seconds remaining before retry is allowed.
-	 */
-	private function get_invoice_customer_regenerate_retry_after( int $order_id ): int {
-		$key     = 'overseek_invoice_customer_regenerate_' . $order_id;
-		$expires = (int) get_transient( $key );
-		$now     = time();
-
-		if ( $expires > $now ) {
-			return $expires - $now;
-		}
-
-		set_transient( $key, $now + self::INVOICE_CUSTOMER_REGENERATE_COOLDOWN, self::INVOICE_CUSTOMER_REGENERATE_COOLDOWN );
-		return 0;
-	}
-
-	/**
 	 * Render a friendly invoice recovery page for storefront invoice links.
 	 *
 	 * @param WC_Order $order Order object.
 	 * @param string   $state Recovery state.
 	 * @param string   $message Customer-facing message.
-	 * @param int      $retry_after Seconds remaining for retry.
 	 * @param int      $status_code HTTP status code.
 	 * @return void
 	 */
-	private function render_invoice_recovery_page( WC_Order $order, string $state, string $message, int $retry_after = 0, int $status_code = 409 ): void {
+	private function render_invoice_recovery_page( WC_Order $order, string $state, string $message, int $status_code = 409 ): void {
 		$order_id       = (int) $order->get_id();
 		$order_number   = (string) $order->get_order_number();
-		$retry_url      = add_query_arg( 'regenerate_invoice', '1', rest_url( 'overseek/v1/invoices/download' ) );
+		$retry_url      = rest_url( 'overseek/v1/invoices/download' );
 		$invoice_token  = isset( $_GET['invoice_token'] ) ? sanitize_text_field( wp_unslash( $_GET['invoice_token'] ) ) : '';
 		$order_key      = isset( $_GET['order_key'] ) ? sanitize_text_field( wp_unslash( $_GET['order_key'] ) ) : '';
 		$retry_url      = add_query_arg( 'order_id', $order_id, $retry_url );
@@ -831,9 +794,9 @@ class OverSeek_API {
 		}
 
 		$title       = $state === 'pending' ? __( 'Your invoice is almost ready', 'overseek' ) : __( 'We could not open this invoice yet', 'overseek' );
-		$button_text = $retry_after > 0
-			? sprintf( /* translators: %d: seconds remaining. */ __( 'Try again in %ds', 'overseek' ), $retry_after )
-			: __( 'Regenerate invoice', 'overseek' );
+		$button_text = __( 'Check invoice', 'overseek' );
+		$contact_url = 'mailto:' . sanitize_email( get_option( 'woocommerce_email_from_address', get_option( 'admin_email' ) ) )
+			. '?subject=' . rawurlencode( 'Invoice help for order #' . $order_number );
 
 		status_header( $status_code );
 		nocache_headers();
@@ -855,16 +818,38 @@ class OverSeek_API {
 					<span class="os-kicker"><?php esc_html_e( 'Invoice recovery', 'overseek' ); ?></span>
 					<div class="os-icon" aria-hidden="true">!</div>
 					<h1 class="os-title"><?php echo esc_html( $title ); ?></h1>
-					<p class="os-message"><?php echo esc_html( $message ); ?></p>
+					<p class="os-message" id="invoice-progress" role="status"><?php echo esc_html( $message ); ?></p>
 					<div class="os-detail">
-						<?php echo esc_html( sprintf( /* translators: %s: order number. */ __( 'Order #%s is safe. We just need to rebuild the PDF before it can be downloaded.', 'overseek' ), $order_number ) ); ?>
+						<?php echo esc_html( sprintf( /* translators: %s: order number. */ __( 'Order #%s is safe. Checking your invoice does not place another order or take another payment.', 'overseek' ), $order_number ) ); ?>
 					</div>
 					<div class="os-actions">
-						<a class="os-button" href="<?php echo esc_url( $retry_url ); ?>" <?php echo $retry_after > 0 ? 'aria-disabled="true"' : ''; ?>><?php echo esc_html( $button_text ); ?></a>
+						<?php if ( $state === 'pending' ) : ?>
+						<a class="os-button" href="<?php echo esc_url( $retry_url ); ?>"><?php echo esc_html( $button_text ); ?></a>
+						<?php endif; ?>
+						<a class="os-secondary" href="<?php echo esc_url( $contact_url ); ?>"><?php esc_html_e( 'Contact the store', 'overseek' ); ?></a>
 						<a class="os-secondary" href="<?php echo esc_url( wc_get_page_permalink( 'myaccount' ) ); ?>"><?php esc_html_e( 'Back to my account', 'overseek' ); ?></a>
 					</div>
 				</div>
 			</main>
+			<?php if ( $state === 'pending' ) : ?>
+			<script>
+			(function () {
+				// Bound automatic checks across reloads; never loop forever or replay
+				// regenerate_invoice/force_regenerate from an old email/browser URL.
+				var key = <?php echo wp_json_encode( 'overseek-invoice-wait-' . $order_id ); ?>;
+				var url = <?php echo wp_json_encode( esc_url_raw( $retry_url ), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT ); ?>;
+				try {
+					var started = Number(sessionStorage.getItem(key)) || Date.now();
+					sessionStorage.setItem(key, String(started));
+					if (Date.now() - started < 120000) {
+						window.setTimeout(function () { window.location.replace(url); }, 5000);
+					} else {
+						document.getElementById('invoice-progress').textContent = <?php echo wp_json_encode( __( 'This is taking longer than expected. You can check again later using this link, or contact the store for help. Your order is safe.' , 'overseek' ) ); ?>;
+					}
+				} catch (error) { /* Manual check remains available without storage. */ }
+			}());
+			</script>
+			<?php endif; ?>
 		</body>
 		</html>
 		<?php

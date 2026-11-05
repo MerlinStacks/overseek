@@ -86,6 +86,7 @@ describe('SyncService dispatch', () => {
         mocks.queue.getJob.mockResolvedValue(null);
         await new SyncService().runSync('account-1', { types: ['bom'] });
         expect(mocks.queue.add.mock.calls[0][2].removeOnFail).toBe(false);
+        expect(mocks.queue.add.mock.calls[0][2].removeOnComplete).toBe(false);
     });
     it('does not let unrelated BOM backlog block order queue admission', async () => {
         mocks.queue.getJob.mockResolvedValue(null);
@@ -93,5 +94,14 @@ describe('SyncService dispatch', () => {
         await new SyncService().runSync('account-1', { types: ['orders'] });
         expect(mocks.enforceMaxQueueDepth).toHaveBeenCalledExactlyOnceWith('sync-orders');
         expect(mocks.queue.add).toHaveBeenCalledOnce();
+    });
+    it.each(['active', 'completed'])('does not bypass a %s recovery through shared sync dispatch', async state => {
+        const recovery = { id: 'bom_recovery_account-1', getState: vi.fn().mockResolvedValue(state), remove: vi.fn() };
+        mocks.queue.getJob.mockImplementation(async id => id === recovery.id ? recovery : null);
+        const run = new SyncService().runSync('account-1', { types: ['bom'] });
+        if (state === 'active') await run;
+        else await expect(run).rejects.toMatchObject({ code: 'BOM_SYNC_RECONCILIATION_REQUIRED' });
+        expect(mocks.queue.add).not.toHaveBeenCalled();
+        expect(recovery.remove).not.toHaveBeenCalled();
     });
 });

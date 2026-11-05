@@ -133,7 +133,11 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                             queue: name,
                             state: await job.getState(),
                             progress: normalizeJobProgress(job.progress),
-                            data: job.data
+                            // Keep compact observers from downloading the durable
+                            // target manifest or operator recovery evidence.
+                            data: name === 'bom-inventory-sync'
+                                ? { accountId: job.data.accountId, triggerSource: job.data.triggerSource, isRecovery: Boolean(job.data.bomRecovery) }
+                                : job.data
                         });
                     }
                 }
@@ -183,7 +187,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                             return reply.code(403).send({ error: 'Cannot cancel jobs for another account' });
                         }
                         const state = await job.getState();
-                        if (queueName === 'bom-inventory-sync' && state === 'failed') return reply.code(409).send({ error: 'Failed BOM stock-sync evidence must be reconciled, not removed through cancellation', code: 'BOM_SYNC_RECONCILIATION_REQUIRED' });
+                        if (queueName === 'bom-inventory-sync' && (state === 'failed' || (state === 'completed' && job.data.bomRecovery))) return reply.code(409).send({ error: 'BOM stock-sync recovery evidence must be reconciled, not removed through cancellation', code: 'BOM_SYNC_RECONCILIATION_REQUIRED' });
                         let cancellationRequested = state === 'active';
                         if (state === 'active') {
                             await SyncCancellationService.request(queueName, String(jobId));

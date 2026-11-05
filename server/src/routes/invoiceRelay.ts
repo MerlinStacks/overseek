@@ -112,6 +112,10 @@ async function mergeWooTaxDisplaySettings(accountId: string, orderId: string, se
         ? order.rawData as Record<string, unknown>
         : {};
 
+    // Order.updatedAt is part of the immutable invoice identity. A read/retry
+    // must not invalidate an in-flight artifact when settings have not changed.
+    if (Object.entries(incomingSettings).every(([key, value]) => rawData[key] === value)) return;
+
     await prisma.wooOrder.update({
         where: { id: order.id },
         data: { rawData: { ...rawData, ...incomingSettings } as any },

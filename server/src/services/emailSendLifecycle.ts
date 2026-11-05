@@ -55,10 +55,9 @@ export async function reserveEmailSend(accountId: string, logId: string, marketi
                     return 'CONTACT_CAPPED' as const;
                 }
             }
-            const settings = await tx.emailSettings.upsert({
-                where: { accountId }, update: {},
-                create: { accountId, bounceTrackingEnabled: false, maxSendPerSecond: 1, maxSendPerDay: 6000 }
-            });
+            // Sending must not materialize defaults and invalidate an open settings draft.
+            const settings = await tx.emailSettings.findUnique({ where: { accountId } })
+                ?? { maxSendPerSecond: 1, maxSendPerDay: 6000 };
             const dayStart = new Date(now);
             dayStart.setUTCHours(0, 0, 0, 0);
             const sentToday = await tx.emailSendAttempt.count({ where: { accountId, createdAt: { gte: dayStart } } });

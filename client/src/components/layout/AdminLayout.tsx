@@ -8,12 +8,12 @@ interface AdminLayoutProps {
 
 export function AdminLayout({ children }: AdminLayoutProps) {
     return (
-        <div className="min-h-screen bg-slate-50 flex font-sans text-slate-900">
+        <div className="min-h-screen bg-slate-50 flex font-sans text-slate-900 dark:bg-slate-950 dark:text-slate-100">
             {/* Force default blue theme for Admin Panel to differentiate from Whitelabel app */}
             <ThemeInjector />
             <AdminSidebar />
             <div className="flex-1 flex flex-col min-w-0">
-                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-100/50">
+                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-100/50 dark:bg-slate-950">
                     <div className="max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8">
                         {children}
                     </div>

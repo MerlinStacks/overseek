@@ -7,6 +7,13 @@ import { AuditActions, AuditService } from '../../services/AuditService';
 
 const defaults = { bounceTrackingEnabled: false, maxSendPerSecond: 1, maxSendPerDay: 6000, version: 'default' };
 const schema = z.object({ bounceTrackingEnabled: z.boolean(), maxSendPerSecond: z.number().int().min(1).max(1000), maxSendPerDay: z.number().int().min(1).max(1000000), version: z.union([z.literal('default'), z.string().datetime()]) }).strict();
+// Read and save responses must round-trip through the strict write contract.
+const serializeSettings = (settings: Omit<z.infer<typeof schema>, 'version'> & { updatedAt: Date }) => ({
+    bounceTrackingEnabled: settings.bounceTrackingEnabled,
+    maxSendPerSecond: settings.maxSendPerSecond,
+    maxSendPerDay: settings.maxSendPerDay,
+    version: settings.updatedAt.toISOString(),
+});
 const emailSettingsRoutes: FastifyPluginAsync = async fastify => {
     fastify.addHook('preHandler', requireAuthFastify);
     fastify.addHook('preHandler', async (request, reply) => {
@@ -15,7 +22,7 @@ const emailSettingsRoutes: FastifyPluginAsync = async fastify => {
     });
     fastify.get('/settings', async request => {
         const settings = await prisma.emailSettings.findUnique({ where: { accountId: request.accountId! } });
-        return settings ? { ...settings, version: settings.updatedAt.toISOString() } : defaults;
+        return settings ? serializeSettings(settings) : defaults;
     });
     fastify.post('/settings', async (request, reply) => {
         const parsed = schema.safeParse(request.body); if (!parsed.success) return reply.code(400).send({ error: 'Valid limits and current version required' });
@@ -28,7 +35,7 @@ const emailSettingsRoutes: FastifyPluginAsync = async fastify => {
                 return tx.emailSettings.findUniqueOrThrow({ where: { accountId } });
             });
             await AuditService.log(accountId, request.user!.id, AuditActions.EMAIL_SETTINGS_UPDATED, 'EMAIL_SETTINGS', updated.id, data);
-            return { success: true, settings: { ...updated, version: updated.updatedAt.toISOString() } };
+            return { success: true, settings: serializeSettings(updated) };
         } catch (error) {
             if ((error as { code?: string }).code === 'P2002' || (error as { statusCode?: number }).statusCode === 409) return reply.code(409).send({ error: 'Settings changed; reload before writing' });
             throw error;

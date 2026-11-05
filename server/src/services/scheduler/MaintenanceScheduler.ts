@@ -239,10 +239,22 @@ export class MaintenanceScheduler {
             Logger.info(`[Scheduler] Dispatching BOM sync for ${accountIds.length} accounts`);
 
             const queue = QueueFactory.getQueue(QUEUES.BOM_SYNC);
+            const { bomSyncJobIds } = await import('../bom/BOMSyncRecovery');
 
             for (const accountId of accountIds) {
                 const jobId = `bom_sync_${accountId.replace(/:/g, '_')}`;
 
+                let blocked = false;
+                for (const candidateId of bomSyncJobIds(accountId)) {
+                    const candidate = await queue.getJob(candidateId);
+                    if (!candidate) continue;
+                    const state = await candidate.getState();
+                    if (state !== 'completed' || candidateId === bomSyncJobIds(accountId)[2] || candidate.data?.accountId !== accountId) { blocked = true; break; }
+                }
+                if (blocked) {
+                    Logger.info('[Scheduler] BOM work retained; running work or reconciliation blocks new admission', { accountId });
+                    continue;
+                }
                 const existingJob = await queue.getJob(jobId);
                 if (existingJob) {
                     const state = await existingJob.getState();
@@ -250,14 +262,14 @@ export class MaintenanceScheduler {
                         Logger.info(`[Scheduler] Skipping BOM sync for ${accountId} - job already ${state}`);
                         continue;
                     }
-                    try { await existingJob.remove(); } catch { /* ignore */ }
+                    try { await existingJob.remove(); } catch { continue; }
                 }
 
                 await queue.add(QUEUES.BOM_SYNC, { accountId }, {
                     jobId,
                     priority: 1,
-                    removeOnComplete: true,
-                    removeOnFail: 100
+                    removeOnComplete: false,
+                    removeOnFail: false
                 });
             }
 

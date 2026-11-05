@@ -9,12 +9,15 @@ const mocks = vi.hoisted(() => ({
     },
     queue: { getJob: vi.fn(), add: vi.fn() },
     requestCancellation: vi.fn(),
+    hasPermission: vi.fn(),
+    enforceMaxQueueDepth: vi.fn(),
     forAccount: vi.fn()
 }));
 vi.mock('../../utils/prisma', () => ({ prisma: mocks.prisma }));
 vi.mock('../../middleware/auth', () => ({
-    requireAuthFastify: async (request: any) => { request.accountId = 'account:one'; }
+    requireAuthFastify: async (request: any) => { request.accountId = 'account:one'; request.user = { id: 'operator' }; }
 }));
+vi.mock('../../services/PermissionService', () => ({ PermissionService: { hasPermission: mocks.hasPermission } }));
 vi.mock('../../utils/logger', () => ({
     Logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
 }));
@@ -24,7 +27,7 @@ vi.mock('../../services/sync/SyncCancellationService', () => ({
     SyncCancellationService: { request: mocks.requestCancellation }
 }));
 vi.mock('../../services/queue/QueueFactory', () => ({
-    QueueFactory: { getQueue: () => mocks.queue },
+    QueueFactory: { getQueue: () => mocks.queue, enforceMaxQueueDepth: mocks.enforceMaxQueueDepth },
     QUEUES: { BOM_SYNC: 'bom-inventory-sync' }
 }));
 
@@ -64,6 +67,7 @@ describe('BOM local preview', () => {
         app = Fastify();
         await app.register(bomSyncRoutes);
         mocks.prisma.bOM.count.mockResolvedValue(3);
+        mocks.hasPermission.mockResolvedValue(true);
     });
     afterEach(async () => { await app.close(); });
 
@@ -180,7 +184,7 @@ describe('BOM local preview', () => {
         const response = await app.inject({ method: 'POST', url: '/bom/sync-all' });
         expect(response.json()).toMatchObject({ status: 'queued', jobId: 'bom_sync_account_one' });
         expect(mocks.queue.add).toHaveBeenCalledWith('bom-inventory-sync', { accountId: 'account:one' },
-            expect.objectContaining({ jobId: 'bom_sync_account_one', removeOnFail: false }));
+            expect.objectContaining({ jobId: 'bom_sync_account_one', removeOnComplete: false, removeOnFail: false }));
     });
     it.each(['bom_sync_account_one', 'sync_bom_account_one'])('preserves failed stock-write evidence and surfaces reconciliation at %s', async id => {
         const job = { getState: vi.fn().mockResolvedValue('failed'), remove: vi.fn(), progress: { current: 2, total: 3, failed: 1 } };
@@ -245,7 +249,7 @@ describe('BOM local preview', () => {
     it('cancels both IDs if legacy and shared work coexist', async () => {
         const legacy = queueJob('active');
         const shared = queueJob('prioritized');
-        mocks.queue.getJob.mockImplementation(async (id) => id.startsWith('bom_sync_') ? legacy : shared);
+        mocks.queue.getJob.mockImplementation(async (id) => id.startsWith('bom_sync_') ? legacy : id.startsWith('sync_bom_') ? shared : null);
         const response = await app.inject({ method: 'DELETE', url: '/bom/sync-cancel' });
         expect(response.json()).toMatchObject({ success: true, cancellationRequested: true });
         expect(mocks.requestCancellation).toHaveBeenCalledExactlyOnceWith('bom-inventory-sync', 'bom_sync_account_one');
@@ -256,7 +260,7 @@ describe('BOM local preview', () => {
     it('does not let a completed legacy job hide active shared work from cancellation', async () => {
         const legacy = queueJob('completed');
         const shared = queueJob('active');
-        mocks.queue.getJob.mockImplementation(async (id) => id.startsWith('bom_sync_') ? legacy : shared);
+        mocks.queue.getJob.mockImplementation(async (id) => id.startsWith('bom_sync_') ? legacy : id.startsWith('sync_bom_') ? shared : null);
         const response = await app.inject({ method: 'DELETE', url: '/bom/sync-cancel' });
         expect(response.json()).toMatchObject({ success: true, cancellationRequested: true, previousState: 'active' });
         expect(mocks.requestCancellation).toHaveBeenCalledExactlyOnceWith('bom-inventory-sync', 'sync_bom_account_one');
@@ -299,5 +303,91 @@ describe('BOM local preview', () => {
         const response = await app.inject({ method: 'DELETE', url: '/bom/sync-cancel' });
         expect(response.json()).toEqual({ success: true, message: 'No active sync job found to cancel' });
         expect(mocks.requestCancellation).not.toHaveBeenCalled();
+    });
+
+    function recoverySource() {
+        const targets = ['done', 'uncertain', 'safe'].map(productId => ({ productId, variationId: 0 }));
+        const source = {
+            id: 'bom_sync_account_one', data: { accountId: 'account:one', bomManifest: { version: 1, targets } },
+            timestamp: 100, processedOn: 110, finishedOn: 200,
+            progress: { checkpoint: { version: 1, nextIndex: 1, inFlightIndex: 1, uncertainIndexes: [] } },
+            getState: vi.fn().mockResolvedValue('failed'), remove: vi.fn()
+        };
+        mocks.prisma.bOM.findMany.mockResolvedValue(targets.map(target => ({ ...target, items: [] })));
+        mocks.queue.getJob.mockImplementation(async id => id === source.id ? source : null);
+        return source;
+    }
+
+    it('offers a passive plan and queues only one retained continuation without deleting failed evidence', async () => {
+        const source = recoverySource();
+        const preview = await app.inject('/bom/sync-recovery');
+        expect(preview.statusCode).toBe(200);
+        expect(preview.json()).toMatchObject({ eligibleProducts: 1, uncertainProducts: 1, sourceJobIds: [source.id] });
+        expect(preview.json()).not.toHaveProperty('targets');
+        expect(mocks.queue.add).not.toHaveBeenCalled();
+        const payload = { fingerprint: preview.json().fingerprint, confirmedStoppedAndSettled: true };
+        const response = await app.inject({ method: 'POST', url: '/bom/sync-recovery', payload });
+        expect(response.statusCode).toBe(200);
+        expect(response.json().status).toBe('queued');
+        expect(mocks.queue.add).toHaveBeenCalledWith('bom-inventory-sync', expect.objectContaining({
+            accountId: 'account:one', bomRecovery: expect.objectContaining({ fingerprint: payload.fingerprint, requestedBy: 'operator', sourceJobIds: [source.id] })
+        }), expect.objectContaining({ jobId: 'bom_recovery_account_one', attempts: 1, removeOnComplete: false, removeOnFail: false }));
+        expect(source.remove).not.toHaveBeenCalled();
+        const recovery = { id: 'bom_recovery_account_one', data: mocks.queue.add.mock.calls[0][1], getState: vi.fn().mockResolvedValue('active') };
+        mocks.queue.getJob.mockImplementation(async id => id === source.id ? source : id === recovery.id ? recovery : null);
+        expect((await app.inject({ method: 'POST', url: '/bom/sync-recovery', payload })).json().status).toBe('already_running');
+        expect(mocks.queue.add).toHaveBeenCalledTimes(1);
+        expect((await app.inject('/bom/sync-status')).json()).toMatchObject({ isSyncing: true, isRecovery: true });
+        expect((await app.inject({ method: 'POST', url: '/bom/sync-all' })).json().status).toBe('already_running');
+        recovery.getState.mockResolvedValue('completed');
+        expect((await app.inject('/bom/sync-status')).json()).toMatchObject({ isSyncing: false, requiresReconciliation: true });
+        expect((await app.inject({ method: 'POST', url: '/bom/sync-all' })).statusCode).toBe(409);
+    });
+
+    it('requires current inventory management permission for both recovery routes', async () => {
+        mocks.hasPermission.mockResolvedValue(false);
+        for (const method of ['GET', 'POST'] as const) {
+            expect((await app.inject({ method, url: '/bom/sync-recovery' })).statusCode).toBe(403);
+        }
+        expect(mocks.queue.getJob).not.toHaveBeenCalled();
+        expect(mocks.queue.add).not.toHaveBeenCalled();
+    });
+
+    it('rejects stale plans, missing confirmations and caller-supplied target lists', async () => {
+        const source = recoverySource();
+        const fingerprint = (await app.inject('/bom/sync-recovery')).json().fingerprint;
+        for (const payload of [{ fingerprint }, { fingerprint, confirmedStoppedAndSettled: false }, { fingerprint, confirmedStoppedAndSettled: true, targets: ['uncertain'] }]) {
+            expect((await app.inject({ method: 'POST', url: '/bom/sync-recovery', payload })).statusCode).toBe(400);
+        }
+        source.processedOn++;
+        expect((await app.inject({ method: 'POST', url: '/bom/sync-recovery', payload: { fingerprint, confirmedStoppedAndSettled: true } })).json().code).toBe('BOM_RECOVERY_CHANGED');
+        expect(mocks.queue.add).not.toHaveBeenCalled();
+    });
+
+    it('does not offer continuation for legacy counters or unavailable Redis evidence', async () => {
+        const source = recoverySource(); source.data.bomManifest = undefined as any;
+        expect((await app.inject('/bom/sync-recovery')).json().code).toBe('BOM_RECOVERY_LEGACY_CHECKPOINT');
+        mocks.queue.getJob.mockRejectedValue(new Error('Redis unavailable'));
+        expect((await app.inject('/bom/sync-recovery')).statusCode).toBe(503);
+        expect(mocks.queue.add).not.toHaveBeenCalled();
+    });
+
+    it('cooperatively cancels active recovery without removing source evidence', async () => {
+        const source = recoverySource();
+        const recovery = { id: 'bom_recovery_account_one', ...queueJob('active') };
+        mocks.queue.getJob.mockImplementation(async id => id === source.id ? source : id === recovery.id ? recovery : null);
+        const response = await app.inject({ method: 'DELETE', url: '/bom/sync-cancel' });
+        expect(response.json().cancellationRequested).toBe(true);
+        expect(mocks.requestCancellation).toHaveBeenCalledExactlyOnceWith('bom-inventory-sync', recovery.id);
+        expect(source.remove).not.toHaveBeenCalled();
+        expect(recovery.remove).not.toHaveBeenCalled();
+    });
+
+    it('reports unavailable status instead of falsely reporting a stopped worker', async () => {
+        mocks.queue.getJob.mockRejectedValue(new Error('Redis unavailable'));
+        const response = await app.inject('/bom/sync-status');
+        expect(response.statusCode).toBe(503);
+        expect(response.json().code).toBe('BOM_SYNC_STATUS_UNAVAILABLE');
+        expect(response.json()).not.toHaveProperty('isSyncing');
     });
 });
