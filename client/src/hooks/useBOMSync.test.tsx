@@ -6,8 +6,10 @@ import { BOMSyncPage } from '../pages/BOMSyncPage';
 let accountId = 'account-1';
 let token = 'token';
 let canManageInventory = true;
-vi.mock('../context/AuthContext', () => ({ useAuth: () => ({ token }) }));
-vi.mock('../context/AccountContext', () => ({ useAccount: () => ({ currentAccount: { id: accountId }, activePermissions: { manage_inventory: canManageInventory } }) }));
+let permissions: Record<string, boolean> | null = null;
+let isSuperAdmin = false;
+vi.mock('../context/AuthContext', () => ({ useAuth: () => ({ token, user: { id: 'operator', isSuperAdmin } }) }));
+vi.mock('../context/AccountContext', () => ({ useAccount: () => ({ currentAccount: { id: accountId }, activePermissions: permissions ?? { manage_inventory: canManageInventory } }) }));
 vi.mock('../utils/logger', () => ({ Logger: { error: vi.fn() } }));
 
 const response = (data: unknown, status = 200) => ({ ok: status < 400, status, json: async () => data }) as Response;
@@ -37,6 +39,8 @@ describe('useBOMSync', () => {
         accountId = 'account-1';
         token = 'token';
         canManageInventory = true;
+        permissions = null;
+        isSuperAdmin = false;
         statusReply = async () => response({ isSyncing: false });
         previewReply = async () => response(preview());
         mutationReply = async () => response({ status: 'queued' });
@@ -260,6 +264,18 @@ describe('useBOMSync', () => {
         render(<BOMSyncPage />); await flush();
         expect(screen.queryByRole('button', { name: 'Review continuation' })).toBeNull();
         expect(count('sync-recovery')).toBe(0);
+    });
+    it.each(['account admin', 'super admin'])('shows recovery controls to an %s without an explicit inventory grant', async role => {
+        permissions = role === 'account admin' ? { '*': true } : {};
+        isSuperAdmin = role === 'super admin';
+        statusReply = async () => response({ isSyncing: false, requiresReconciliation: true });
+        render(<BOMSyncPage />); await flush();
+        expect(screen.getByRole('button', { name: 'Repair & resume' })).toBeTruthy();
+        expect(screen.queryByText(/Ask an administrator with inventory management permission to run/)).toBeNull();
+        await act(async () => screen.getByText('Advanced: continue untouched products only').click());
+        await act(async () => screen.getByRole('button', { name: 'Review continuation' }).click());
+        expect(count('sync-recovery')).toBe(1);
+        expect(screen.getByRole('button', { name: 'Continue unaffected products (5)' })).toBeTruthy();
     });
 
     it('serializes continuation clicks and preserves the plan after an unacknowledged request', async () => {

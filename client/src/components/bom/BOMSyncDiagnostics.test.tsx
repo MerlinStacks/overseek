@@ -4,8 +4,10 @@ import { BOMSyncDiagnostics } from './BOMSyncDiagnostics';
 
 let accountId = 'account';
 let canManage = true;
-vi.mock('../../context/AuthContext', () => ({ useAuth: () => ({ token: 'token' }) }));
-vi.mock('../../context/AccountContext', () => ({ useAccount: () => ({ currentAccount: { id: accountId }, activePermissions: { manage_inventory: canManage } }) }));
+let permissions: Record<string, boolean> | null = null;
+let isSuperAdmin = false;
+vi.mock('../../context/AuthContext', () => ({ useAuth: () => ({ token: 'token', user: { id: 'operator', isSuperAdmin } }) }));
+vi.mock('../../context/AccountContext', () => ({ useAccount: () => ({ currentAccount: { id: accountId }, activePermissions: permissions ?? { manage_inventory: canManage } }) }));
 const response = (data: unknown, status = 200) => ({ ok: status < 400, json: async () => data }) as Response;
 const details = {
     fingerprint: 'a'.repeat(64), canReconcile: true,
@@ -16,7 +18,7 @@ describe('BOM reconciliation UI', () => {
     let fetchMock: ReturnType<typeof vi.fn>;
     const onReconciled = vi.fn();
     beforeEach(() => {
-        accountId = 'account'; canManage = true; onReconciled.mockClear();
+        accountId = 'account'; canManage = true; permissions = null; isSuperAdmin = false; onReconciled.mockClear();
         fetchMock = vi.fn(async (url: string) => response(url.endsWith('sync-diagnostics') ? details : { success: true, auditId: 'audit' }));
         vi.stubGlobal('fetch', fetchMock);
     });
@@ -114,5 +116,27 @@ describe('BOM reconciliation UI', () => {
         expect(screen.getByText(/Last repair: 1 repaired/)).toBeTruthy();
         expect(screen.getByText(/Variation: 54535/)).toBeTruthy();
         expect(screen.getByText('Check the target’s stock-management settings.')).toBeTruthy();
+    });
+    it.each(['account admin', 'super admin'])('lets an %s start repair without an explicit inventory grant', async role => {
+        permissions = role === 'account admin' ? { '*': true } : {};
+        isSuperAdmin = role === 'super admin';
+        const onRepair = vi.fn().mockResolvedValue(undefined);
+        fetchMock.mockResolvedValue(response({ ...details, repair: { canStart: true, requiresStoppedConfirmation: false } }));
+        render(<BOMSyncDiagnostics onReconciled={onReconciled} onRepair={onRepair} />);
+        const button = await screen.findByRole('button', { name: 'Repair & resume' });
+        await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+        expect(screen.queryByText(/Ask an administrator with inventory management permission to run/)).toBeNull();
+        fireEvent.click(button);
+        await waitFor(() => expect(onRepair).toHaveBeenCalledExactlyOnceWith(details.fingerprint, false));
+    });
+    it('lets a wildcard admin complete the manual fallback too', async () => {
+        permissions = { '*': true };
+        render(<BOMSyncDiagnostics onReconciled={onReconciled} />);
+        await screen.findByText(/Run: bom_sync_account/);
+        fireEvent.change(screen.getByLabelText('Inventory review notes (required)'), { target: { value: 'Reviewed all affected inventory and verified outstanding requests finished.' } });
+        screen.getAllByRole('checkbox').forEach(box => fireEvent.click(box));
+        fireEvent.click(screen.getByRole('button', { name: 'Complete inventory review & unlock' }));
+        await waitFor(() => expect(onReconciled).toHaveBeenCalledOnce());
+        expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('sync-reconcile'))).toBe(true);
     });
 });

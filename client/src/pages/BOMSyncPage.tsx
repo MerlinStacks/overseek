@@ -27,10 +27,11 @@ import { SyncProductRow } from '../components/bom/SyncProductRow';
 import { DeactivatedItemsBanner } from '../components/bom/DeactivatedItemsBanner';
 import { BOMRecoveryControls } from '../components/bom/BOMRecoveryControls';
 import { BOMSyncDiagnostics } from '../components/bom/BOMSyncDiagnostics';
-import { useAccount } from '../context/AccountContext';
+import { usePermissions } from '../hooks/usePermissions';
 
 export function BOMSyncPage() {
-    const { activePermissions } = useAccount();
+    const { hasPermission } = usePermissions();
+    const canManageInventory = hasPermission('manage_inventory');
     const {
         pendingChanges,
         deactivatedItems,
@@ -169,7 +170,7 @@ export function BOMSyncPage() {
                     <p className="mt-1 text-sm">{syncError.message}</p>
                     {syncError.code && <p className="mt-1 text-xs">Reference: {syncError.code}</p>}
                     {syncError.code === 'BOM_SYNC_RECONCILIATION_REQUIRED' && <BOMSyncDiagnostics onReconciled={handleRefresh} onRepair={handleRepair} syncing={isSyncing} />}
-                    {syncError.code === 'BOM_SYNC_RECONCILIATION_REQUIRED' && activePermissions?.manage_inventory && (
+                    {syncError.code === 'BOM_SYNC_RECONCILIATION_REQUIRED' && canManageInventory && (
                         <details className="mt-3 text-sm">
                         <summary className="cursor-pointer font-semibold">Advanced: continue untouched products only</summary>
                         <BOMRecoveryControls

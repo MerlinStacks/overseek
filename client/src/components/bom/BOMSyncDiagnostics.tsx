@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { usePermissions } from '../../hooks/usePermissions';
 import type { BOMRepairSummary } from '../../hooks/useBOMSync';
 
 interface Run {
@@ -25,7 +26,9 @@ export function BOMSyncDiagnostics({ onReconciled, onRepair, syncing = false }: 
     syncing?: boolean;
 }) {
     const { token } = useAuth();
-    const { currentAccount, activePermissions } = useAccount();
+    const { currentAccount } = useAccount();
+    const { hasPermission } = usePermissions();
+    const canManageInventory = hasPermission('manage_inventory');
     const accountId = currentAccount?.id;
     const [details, setDetails] = useState<Diagnostics | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -71,7 +74,7 @@ export function BOMSyncDiagnostics({ onReconciled, onRepair, syncing = false }: 
     const reconcile = async () => {
         const controller = lifecycle.current;
         if (!controller || controller.signal.aborted || !accountId || !details?.canReconcile || syncing
-            || !activePermissions?.manage_inventory || !stopped || !reviewed || notes.trim().length < 20 || submitting.current) return;
+            || !canManageInventory || !stopped || !reviewed || notes.trim().length < 20 || submitting.current) return;
         submitting.current = true; setSaving(true); setError(null);
         try {
             const res = await fetch('/api/inventory/bom/sync-reconcile', {
@@ -100,7 +103,7 @@ export function BOMSyncDiagnostics({ onReconciled, onRepair, syncing = false }: 
     const repair = async () => {
         const controller = lifecycle.current;
         if (!onRepair || !controller || controller.signal.aborted || !details?.repair?.canStart || syncing
-            || !activePermissions?.manage_inventory || submitting.current
+            || !canManageInventory || submitting.current
             || (details.repair.requiresStoppedConfirmation && !repairStopped)) return;
         submitting.current = true; setRepairing(true); setError(null);
         try {
@@ -132,7 +135,7 @@ export function BOMSyncDiagnostics({ onReconciled, onRepair, syncing = false }: 
                     </ul>
                     {details.repairResult.issues.length > issueLimit && <button type="button" className="font-semibold underline" onClick={() => setIssueLimit(value => value + 100)}>Show more exceptions ({details.repairResult.issues.length - issueLimit} remaining)</button>}
                 </div>}
-                {activePermissions?.manage_inventory ? <div className="space-y-3">
+                {canManageInventory ? <div className="space-y-3">
                     {details?.repair?.requiresStoppedConfirmation && <label className="flex items-start gap-2 text-sm">
                         <input type="checkbox" checked={repairStopped} disabled={saving || repairing || syncing} onChange={event => setRepairStopped(event.target.checked)} className="mt-1" />
                         <span>The older run cannot prove its pending writes have stopped. I have verified its previous worker is stopped and outstanding WooCommerce requests have finished. No manual catalogue-wide stock review is needed.</span>
@@ -178,7 +181,7 @@ export function BOMSyncDiagnostics({ onReconciled, onRepair, syncing = false }: 
                 <li>Use Total BOM Products below to review components and quantities. Compare actual WooCommerce stock with verified component/physical stock, including internal products, variations and dependent BOMs. Correct discrepancies in the system that owns that stock, then refresh product data. This page’s preview is cached, not a live stock check.</li>
                 <li>Record what you checked and corrected. Complete the review below to archive the old execution and unlock bulk/scheduled BOM sync. This action does not change stock or start a sync.</li>
             </ol>
-            {activePermissions?.manage_inventory ? (
+            {canManageInventory ? (
                 <div className="space-y-3">
                     <label className="block text-sm font-medium">Inventory review notes (required)
                         <textarea value={notes} onChange={event => setNotes(event.target.value)} disabled={saving} minLength={20} maxLength={4000} rows={3} placeholder="Products/components checked, live stock evidence, corrections, and worker shutdown verification…" className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-white" />
