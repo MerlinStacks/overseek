@@ -54,6 +54,21 @@ describe('ProductSearchService sorting', () => {
         }));
     });
 
+    it('preserves product type for supplemental partial variant SKU matches', async () => {
+        mocks.variationFindMany.mockImplementation(async (args: any) => args.distinct ? [{ productId: 'hoodie' }] : []);
+        mocks.wooProductFindMany.mockImplementation(async (args: any) => args.select?.wooId ? [{
+            id: 'hoodie', wooId: 12, name: 'Zip Hoodie', sku: 'ZIP-HOODIE',
+            rawData: { type: 'variable' }, boms: [], images: []
+        }] : []);
+
+        const result = await ProductSearchService.searchProducts('account-1', 'hoodie');
+
+        expect(result.products).toEqual([expect.objectContaining({ id: 'hoodie', wooId: 12, type: 'variable' })]);
+        expect(mocks.variationFindMany).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({ sku: { contains: 'hoodie', mode: 'insensitive' } })
+        }));
+    });
+
     it('searches Elasticsearch by an exact WooCommerce product ID', async () => {
         await ProductSearchService.searchProducts('account-1', '93144');
 

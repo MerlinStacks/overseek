@@ -172,6 +172,7 @@ async function supplementWithVariantMatches(
             wooId: p.wooId,
             name: p.name,
             sku: p.sku,
+            type: raw.type,
             stock_status: p.stockStatus,
             stock_quantity: p.stockQuantity ?? null,
             price: p.price ? Number(p.price) : 0,
