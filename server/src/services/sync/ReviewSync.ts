@@ -93,9 +93,23 @@ export class ReviewSync extends BaseSync {
 
         const syncStartedAt = new Date();
 
+        let targetedReview: unknown;
+        if (targeted) {
+            try {
+                targetedReview = (await woo.getReview(reviewId!)).data;
+            } catch (error: any) {
+                // A delayed webhook may refer to a review already removed in Woo.
+                // Only trust Woo's explicit invalid-ID response, not a proxy/route
+                // 404. Preserve local evidence for normal reconciliation.
+                if (error?.response?.status !== 404 || !['woocommerce_rest_invalid_id', 'woocommerce_rest_comment_invalid_id'].includes(error?.response?.data?.code)) throw error;
+                Logger.info('Targeted review no longer exists in WooCommerce', { accountId, syncId, reviewId });
+                return { itemsProcessed: 0, itemsDeleted: 0 };
+            }
+        }
+
         while (hasMore) {
             const { data: rawReviews, totalPages } = targeted
-                ? { data: [(await woo.getReview(reviewId!)).data], totalPages: 1 }
+                ? { data: [targetedReview as any], totalPages: 1 }
                 : await woo.getReviews({ page, after, per_page: 50, status: 'all' });
             if (targeted && rawReviews[0]?.id !== reviewId) throw new Error('Targeted review unavailable or identity mismatch');
             if (!rawReviews.length) {

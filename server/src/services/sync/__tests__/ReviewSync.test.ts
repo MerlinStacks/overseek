@@ -64,4 +64,24 @@ describe('targeted review sync', () => {
         await expect((new ReviewSync() as any).sync(woo, accountId, true, undefined, undefined, { accountId, wooReviewId: 42 })).rejects.toThrow();
         expect(prisma.wooReview.upsert).not.toHaveBeenCalled();
     });
+
+    it('settles a stale webhook for an explicitly missing review without deleting local evidence', async () => {
+        const woo = { getReview: vi.fn().mockRejectedValue({ response: { status: 404, data: { code: 'woocommerce_rest_invalid_id' } } }) };
+        await expect((new ReviewSync() as any).sync(woo, accountId, true, undefined, undefined, { accountId, wooReviewId: 42 })).resolves.toEqual({ itemsProcessed: 0, itemsDeleted: 0 });
+        expect(prisma.wooReview.deleteMany).not.toHaveBeenCalled();
+        expect(prisma.wooReview.upsert).not.toHaveBeenCalled();
+        expect(recordCriticalEvent).not.toHaveBeenCalled();
+        expect(IndexingService.bulkIndexReviews).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        { status: 404, data: { code: 'rest_no_route' } },
+        { status: 404, data: '<html>Not found</html>' },
+        { status: 403, data: { code: 'woocommerce_rest_invalid_id' } },
+        { status: 503 }
+    ])('still fails on route, permission and infrastructure errors: %j', async response => {
+        const error = { response };
+        const woo = { getReview: vi.fn().mockRejectedValue(error) };
+        await expect((new ReviewSync() as any).sync(woo, accountId, true, undefined, undefined, { accountId, wooReviewId: 42 })).rejects.toBe(error);
+    });
 });

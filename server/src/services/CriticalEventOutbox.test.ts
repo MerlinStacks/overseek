@@ -140,3 +140,43 @@ it('uses bounded pending-only SQL matching the partial index with stable orderin
     expect(text).toContain('ORDER BY "createdAt" ASC, "id" ASC');
     expect(limit).toBe(3);
 });
+
+it('stores large UTF-8 order snapshots in bounded chunks and dispatches them exactly once', async () => {
+    const metadata = '🙂'.repeat(300000);
+    const payload = { accountId: 'a', order: { id: 7, meta_data: [{ key: 'plugin', value: metadata }] } };
+    await recordCriticalEvent(prisma as any, 'order:paid', payload, 'large');
+    const receipt = [...m.rows.values()].find(row => row.kind === 'critical-event-outbox');
+    expect(receipt.result.payloadChunks).toBeGreaterThan(1);
+    expect([...m.rows.values()].every(row => Buffer.byteLength(JSON.stringify(row.result)) < 1024 * 1024)).toBe(true);
+    const size = m.rows.size;
+    await recordCriticalEvent(prisma as any, 'order:paid', payload, 'large');
+    expect(m.rows.size).toBe(size);
+    await expect(recordCriticalEvent(prisma as any, 'order:paid', { ...payload, order: { id: 8 } }, 'large')).rejects.toThrow('conflict');
+    payload.order.meta_data[0].value = 'changed';
+    await drainCriticalEvents();
+    await drainCriticalEvents();
+    expect(m.publish).toHaveBeenCalledExactlyOnceWith('order:paid', expect.objectContaining({ order: { id: 7, meta_data: [{ key: 'plugin', value: metadata }] } }));
+    expect(receipt.result.state).toBe('complete');
+});
+
+it.each(['missing', 'corrupt', 'wrong-account'])('leaves unattempted large events pending when a chunk is %s', async failure => {
+    await recordCriticalEvent(prisma as any, 'order:paid', { accountId: 'a', order: { metadata: 'x'.repeat(1100000) } }, 'large');
+    const chunk = [...m.rows.values()].find(row => row.kind === 'critical-event-payload-chunk');
+    const receipt = [...m.rows.values()].find(row => row.kind === 'critical-event-outbox');
+    if (failure === 'missing') m.rows.delete(chunk.id);
+    else if (failure === 'corrupt') chunk.result.data = Buffer.from('corrupt').toString('base64');
+    else chunk.accountId = 'b';
+    await expect(drainCriticalEvents()).rejects.toThrow('Critical event snapshot');
+    expect(receipt.result.state).toBe('pending');
+    expect(m.publish).not.toHaveBeenCalled();
+});
+
+it('retains chunked snapshots on uncertain delivery without replaying them', async () => {
+    await recordCriticalEvent(prisma as any, 'order:paid', { accountId: 'a', order: { metadata: 'x'.repeat(1100000) } }, 'large');
+    m.publish.mockRejectedValue(new Error('lost acknowledgement'));
+    await drainCriticalEvents();
+    await drainCriticalEvents();
+    expect(m.publish).toHaveBeenCalledOnce();
+    expect([...m.rows.values()].find(row => row.kind === 'critical-event-outbox').result.state).toBe('uncertain');
+    expect([...m.rows.values()].some(row => row.kind === 'critical-event-payload-chunk')).toBe(true);
+});
