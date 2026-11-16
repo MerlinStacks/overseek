@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { z } from 'zod';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -17,16 +17,18 @@ export function ProductSearchInput(props: Props) {
 function SearchScope({ onSelect, onClear, placeholder = 'Search by SKU or product name', disabled = false, initialValue = '', token, accountId }: Props & { token: string; accountId: string }) {
     const { hasPermission } = usePermissions(), allowed = !disabled && !!token && !!accountId && hasPermission('view_products');
     const [query, setQuery] = useState(initialValue), [committed, setCommitted] = useState(!!initialValue), [open, setOpen] = useState(false), [selected, setSelected] = useState(-1);
-    const [result, setResult] = useState<{ query: string; items: ProductSelection[]; state: string }>({ query: '', items: [], state: 'idle' });
+    const [page, setPage] = useState(1), [attempt, setAttempt] = useState(0);
+    const dropdown = useRef<HTMLDivElement>(null);
+    const [result, setResult] = useState<{ query: string; items: ProductSelection[]; state: string; page: number; hasMore: boolean }>({ query: '', items: [], state: 'idle', page: 0, hasMore: false });
     const listId = useId(), inputId = useId();
     useEffect(() => {
         if (!allowed || query.trim().length < 2 || committed) return;
         const controller = new AbortController(); let disposed = false;
         const timer = setTimeout(() => {
-            setResult({ query, items: [], state: 'loading' });
+            setResult(previous => ({ query, items: page > 1 && previous.query === query ? previous.items : [], state: 'loading', page: previous.query === query ? previous.page : 0, hasMore: previous.query === query && previous.hasMore }));
             void (async () => {
                 try {
-                    const response = await fetch(`/api/products?q=${encodeURIComponent(query.trim())}&limit=20`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]), headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId } });
+                    const response = await fetch(`/api/products?q=${encodeURIComponent(query.trim())}&limit=20&page=${page}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]), headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId } });
                     if (!response.ok) { await response.body?.cancel().catch(() => undefined); throw new Error('Unavailable'); } const data = JSON.parse(new TextDecoder().decode(await readBoundedBytes(response, 1048576)));
                     // Search can supplement the requested page with variant matches.
                     // Keep the byte bound, but do not reject a successful search because
@@ -44,18 +46,53 @@ function SearchScope({ onSelect, onClear, placeholder = 'Search by SKU or produc
                             for (const variation of product.searchableVariants ?? []) items.push({ productId: product.id, wooId: (product.woo_id ?? product.wooId)!, variationWooId: variation.wooId, name: `${product.name} — ${variation.attributeString || `Variation ${variation.wooId}`}`, sku: variation.sku ?? undefined });
                         } else if (product.type === 'simple') items.push({ productId: product.id, wooId: (product.woo_id ?? product.wooId)!, name: product.name, sku: product.sku ?? undefined });
                     }
-                    const uniqueItems = [...new Map(items.map(item => [`${item.productId}:${item.variationWooId ?? ''}`, item])).values()];
-                    uniqueItems.sort((a, b) => Number(b.sku?.toLowerCase() === query.trim().toLowerCase()) - Number(a.sku?.toLowerCase() === query.trim().toLowerCase()));
-                    if (!disposed) setResult({ query, items: uniqueItems.slice(0, 50), state: 'observed' });
-                } catch { if (!disposed) setResult({ query, items: [], state: 'unavailable' }); }
+                    const totalPages = z.number().int().nonnegative().safeParse(data?.totalPages);
+                    if (!disposed) setResult(previous => {
+                        const combined = page > 1 && previous.query === query ? [...previous.items, ...items] : items;
+                        const uniqueItems = [...new Map(combined.map(item => [`${item.productId}:${item.variationWooId ?? ''}`, item])).values()];
+                        uniqueItems.sort((a, b) => Number(b.sku?.toLowerCase() === query.trim().toLowerCase()) - Number(a.sku?.toLowerCase() === query.trim().toLowerCase()));
+                        return { query, items: uniqueItems, state: 'observed', page, hasMore: totalPages.success && page < totalPages.data };
+                    });
+                } catch { if (!disposed) setResult(previous => ({ ...previous, query, items: page > 1 && previous.query === query ? previous.items : [], state: 'unavailable' })); }
             })();
-        }, 300);
+        }, page === 1 ? 300 : 0);
         return () => { disposed = true; clearTimeout(timer); controller.abort(); };
-    }, [query, allowed, committed, token, accountId]);
+    }, [query, allowed, committed, token, accountId, page, attempt]);
     const items = allowed && result.query === query && !committed ? result.items : [];
-    const status = result.query !== query || result.state === 'loading' ? 'Searching…' : result.state === 'unavailable' ? 'Unable to search products. Please try again.' : items.length ? `${items.length} matches shown (up to 50). Products with BOMs and unresolved product types or variants are excluded.` : 'No selectable products found. Try another SKU or product name. Products with BOMs and unresolved product types or variants are excluded.';
+    const loading = result.query !== query || result.state === 'loading' || (result.state !== 'unavailable' && result.page < page);
+    const more = result.query === query && result.hasMore;
+    const status = loading ? 'Searching…' : result.state === 'unavailable' ? 'Unable to search products. Please try again.' : items.length ? `${items.length} matches shown. Products with BOMs and unresolved product types or variants are excluded.` : more ? 'Searching…' : 'No selectable products found. Try another SKU or product name. Products with BOMs and unresolved product types or variants are excluded.';
+    const loadMore = () => {
+        if (!loading && result.state === 'observed' && more) setPage(result.page + 1);
+    };
+    // Fill the dropdown automatically, including when a whole page was excluded.
+    // Further results stream in near the bottom, without pagination controls.
+    useEffect(() => {
+        const element = dropdown.current;
+        if (open && allowed && !committed && element && element.scrollHeight <= element.clientHeight + 80 && !loading && result.state === 'observed' && more) setPage(result.page + 1);
+    }, [open, allowed, committed, loading, more, result]);
+    useEffect(() => {
+        if (selected >= 0) document.getElementById(`${listId}-${selected}`)?.scrollIntoView?.({ block: 'nearest' });
+    }, [selected, listId]);
     const choose = (index: number) => { if (!allowed || !items[index]) return; const item = items[index]; onSelect(item); setQuery(item.name); setCommitted(true); setOpen(false); setSelected(-1); };
-    return <div className="relative min-w-0 text-slate-900 dark:text-slate-100"><label htmlFor={inputId} className="sr-only">Search products</label><Search size={16} aria-hidden="true" className="pointer-events-none absolute left-3 top-3 text-slate-400" /><input id={inputId} role="combobox" aria-autocomplete="list" aria-controls={listId} aria-expanded={open && allowed} aria-activedescendant={open && items[selected] ? `${listId}-${selected}` : undefined} className={`${ui.input} pl-9 pr-10`} maxLength={200} value={query} placeholder={placeholder} disabled={!allowed} onFocus={() => setOpen(true)} onBlur={event => { if (!event.currentTarget.parentElement?.contains(event.relatedTarget as Node)) setOpen(false); }} onChange={event => { if (committed) onClear?.(); setCommitted(false); setQuery(event.target.value); setSelected(-1); setOpen(true); }} onKeyDown={event => { if (event.key === 'Escape') { setOpen(false); setSelected(-1); } if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true); setSelected(value => items.length ? (value + (event.key === 'ArrowDown' ? 1 : items.length - 1) + items.length) % items.length : -1); } if (event.key === 'Enter' && open) { event.preventDefault(); choose(selected); } }} /><button className="absolute right-2 top-2 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-700 dark:hover:text-slate-200" type="button" aria-label="Clear product selection" disabled={!allowed} onClick={() => { setQuery(''); setCommitted(false); setOpen(false); setSelected(-1); onClear?.(); }}><X size={16} /></button>
-        {open && allowed && !committed && query.trim().length >= 2 && <div className="absolute z-50 mt-1 max-h-80 w-full overflow-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"><p role="status" className={`border-b border-slate-100 px-3 py-2 dark:border-slate-700 ${ui.muted}`}>{status}</p><div role="listbox" id={listId}>{items.map((item, index) => <button type="button" role="option" aria-selected={selected === index} id={`${listId}-${index}`} key={`${item.productId}:${item.variationWooId ?? ''}`} className={`flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left transition-colors ${selected === index ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)] ' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`} onMouseDown={event => event.preventDefault()} onClick={() => choose(index)}><Package size={16} className="mt-0.5 shrink-0 text-slate-400" /><span className="min-w-0"><span className="block break-words text-sm font-medium">{item.name}</span>{item.sku && <span className={`mt-1 block break-all font-mono ${ui.muted}`}>{item.sku}</span>}</span></button>)}</div></div>}
+    const resetSearch = (value: string) => { setQuery(value); setPage(1); setSelected(-1); };
+    return <div className="relative min-w-0 text-slate-900 dark:text-slate-100">
+        <label htmlFor={inputId} className="sr-only">Search products</label>
+        <Search size={16} aria-hidden="true" className="pointer-events-none absolute left-3 top-3 text-slate-400" />
+        <input id={inputId} role="combobox" aria-autocomplete="list" aria-controls={listId} aria-expanded={open && allowed} aria-activedescendant={open && items[selected] ? `${listId}-${selected}` : undefined} className={`${ui.input} pl-9 pr-10`} maxLength={200} value={query} placeholder={placeholder} disabled={!allowed}
+            onFocus={() => setOpen(true)}
+            onBlur={event => { if (!event.currentTarget.parentElement?.contains(event.relatedTarget as Node)) setOpen(false); }}
+            onChange={event => { if (committed) onClear?.(); setCommitted(false); resetSearch(event.target.value); setOpen(true); }}
+            onKeyDown={event => {
+                if (event.key === 'Escape') { setOpen(false); setSelected(-1); }
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true); setSelected(value => items.length ? (value + (event.key === 'ArrowDown' ? 1 : items.length - 1) + items.length) % items.length : -1); }
+                if (event.key === 'Enter' && open) { event.preventDefault(); choose(selected); }
+            }} />
+        <button className="absolute right-2 top-2 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-700 dark:hover:text-slate-200" type="button" aria-label="Clear product selection" disabled={!allowed} onClick={() => { resetSearch(''); setCommitted(false); setOpen(false); onClear?.(); }}><X size={16} /></button>
+        {open && allowed && !committed && query.trim().length >= 2 && <div ref={dropdown} onScroll={event => { const element = event.currentTarget; if (element.scrollHeight - element.scrollTop <= element.clientHeight + 80) loadMore(); }} className="absolute z-50 mt-1 max-h-80 w-full overflow-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+            <p role="status" className={`border-b border-slate-100 px-3 py-2 dark:border-slate-700 ${ui.muted}`}>{status}</p>
+            <div role="listbox" id={listId}>{items.map((item, index) => <button type="button" role="option" aria-selected={selected === index} id={`${listId}-${index}`} key={`${item.productId}:${item.variationWooId ?? ''}`} className={`flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left transition-colors ${selected === index ? 'bg-[var(--brand-subtle)] text-[var(--brand-text)] ' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`} onMouseDown={event => event.preventDefault()} onClick={() => choose(index)}><Package size={16} className="mt-0.5 shrink-0 text-slate-400" /><span className="min-w-0"><span className="block break-words text-sm font-medium">{item.name}</span>{item.sku && <span className={`mt-1 block break-all font-mono ${ui.muted}`}>{item.sku}</span>}</span></button>)}</div>
+            {result.state === 'unavailable' && <button type="button" className={`${ui.secondary} m-2`} onClick={() => setAttempt(value => value + 1)}>Retry search</button>}
+        </div>}
     </div>;
 }

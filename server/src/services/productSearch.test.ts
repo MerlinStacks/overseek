@@ -89,6 +89,25 @@ describe('ProductSearchService sorting', () => {
         }));
     });
 
+    it('marks a product as BOM-derived even when its first BOM is empty', async () => {
+        mocks.wooProductFindMany.mockResolvedValue([{ id: 'product-1', boms: [{ items: [] }, { items: [{ id: 'component' }] }] }]);
+        const result = await ProductSearchService.searchProducts('account-1');
+        expect(result.products[0]).toMatchObject({ id: 'product-1', hasBOM: true });
+    });
+
+    it('reports real BOM status in the database fallback instead of allowing finished products', async () => {
+        mocks.wooProductCount.mockResolvedValue(2);
+        mocks.wooProductFindMany.mockResolvedValueOnce([
+            { id: 'finished', wooId: 1, name: 'Finished', rawData: { type: 'simple' }, boms: [{ items: [] }, { items: [{ id: 'component' }] }] },
+            { id: 'base', wooId: 2, name: 'Base', rawData: { type: 'simple' }, boms: [] }
+        ]);
+        const result = await ProductSearchService.searchProductsFromDB('account-1', '', 1, 20);
+        expect(result.products).toEqual([
+            expect.objectContaining({ id: 'finished', hasBOM: true }),
+            expect.objectContaining({ id: 'base', hasBOM: false })
+        ]);
+    });
+
     it('searches the database by product and variation WooCommerce IDs', async () => {
         mocks.variationFindMany.mockResolvedValue([{ productId: 'parent-product' }]);
 
@@ -155,7 +174,7 @@ describe('ProductSearchService filters', () => {
         mocks.variationFindMany.mockResolvedValueOnce([{ productId: 'matching-parent' }]);
         mocks.wooProductCount.mockResolvedValue(5);
         mocks.wooProductFindMany.mockResolvedValueOnce([
-            { id: 'matching-parent', name: 'Parent', wooId: 10, rawData: { type: 'variable' } }
+            { id: 'matching-parent', name: 'Parent', wooId: 10, rawData: { type: 'variable' }, boms: [] }
         ]);
 
         const result = await ProductSearchService.searchProducts(

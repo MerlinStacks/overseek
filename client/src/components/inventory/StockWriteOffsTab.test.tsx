@@ -62,10 +62,14 @@ describe('stock write-off workflow', () => {
         await screen.findByText('Finalize write-off');
         expect(JSON.parse(writes()[0][1].body)).toEqual({ reason: 'DAMAGED', notes: 'Broken in storage', items: [{ internalProductId: 'component', quantity: 1, unitCostOverride: 0 }, { productId: 'product', variationId: 42, quantity: 2 }] });
         expect(writes()).toHaveLength(1);
+        expect(writes()[0][1].headers['Content-Type']).toBe('application/json');
         fireEvent.click(screen.getByText('Finalize write-off'));
         expect(writes()).toHaveLength(1);
         fireEvent.click(screen.getByText('Confirm finalize'));
         expect(await screen.findByText('Finalized · Read-only')).toBeInTheDocument();
+        const finalize = writes().find(([url]) => url.endsWith('/finalize'))![1];
+        expect(finalize.headers).not.toHaveProperty('Content-Type');
+        expect(finalize.body).toBeUndefined();
         const dialog = within(screen.getByRole('dialog'));
         expect(dialog.getByText('Stock sync pending')).toBeInTheDocument();
         expect(dialog.queryByText('Save draft')).not.toBeInTheDocument();
@@ -89,6 +93,7 @@ describe('stock write-off workflow', () => {
         fireEvent.click(screen.getByText('Confirm delete'));
         await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
         expect(writes().at(-1)?.[1].method).toBe('DELETE');
+        expect(writes().at(-1)?.[1].headers).not.toHaveProperty('Content-Type');
     });
 
     it('clears the previous account editor immediately and ignores late detail responses', async () => {

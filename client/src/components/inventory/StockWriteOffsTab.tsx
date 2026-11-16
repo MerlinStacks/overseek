@@ -28,7 +28,7 @@ function WriteOffWorkspace({ accountId, token, currency }: { accountId: string; 
         const signal = lifetime.current?.signal;
         if (!signal || signal.aborted) throw new Error('Account changed. Reopen the write-off.');
         const response = await fetch(`/api/inventory/write-offs${path}`, {
-            method, signal, headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId, 'Content-Type': 'application/json' },
+            method, signal, headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
             ...(body === undefined ? {} : { body: JSON.stringify(body) })
         });
         const data = await response.json();

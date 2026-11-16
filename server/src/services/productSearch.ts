@@ -160,13 +160,13 @@ async function supplementWithVariantMatches(
             mainImage: true,
             images: true,
             rawData: true,
-            boms: { select: { id: true, items: { take: 1 } }, take: 1 }
+            boms: { select: { id: true, items: { take: 1 } } }
         }
     });
 
     return additionalProducts.map(p => {
         const raw = p.rawData as any || {};
-        const hasBOM = p.boms.length > 0 && p.boms[0].items.length > 0;
+        const hasBOM = p.boms.some(bom => bom.items.length > 0);
         return {
             id: p.id,
             wooId: p.wooId,
@@ -200,8 +200,7 @@ async function enrichWithBomStatus(accountId: string, products: any[]): Promise<
             id: true,
             cogs: true,
             boms: {
-                select: { id: true, items: { take: 1 } },
-                take: 1
+                select: { id: true, items: { take: 1 } }
             }
         }
     });
@@ -210,7 +209,7 @@ async function enrichWithBomStatus(accountId: string, products: any[]): Promise<
 
     return products.filter(p => productMap.has(p.id)).map(p => {
         const info = productMap.get(p.id);
-        const hasBOM = info ? (info.boms.length > 0 && info.boms[0].items.length > 0) : false;
+        const hasBOM = info ? info.boms.some(bom => bom.items.length > 0) : false;
         return {
             ...p,
             cogs: info?.cogs ? Number(info.cogs) : 0,
@@ -431,7 +430,8 @@ export class ProductSearchService {
                         seoScore: true,
                         merchantCenterScore: true,
                         rawData: true,
-                        createdAt: true
+                        createdAt: true,
+                        boms: { select: { items: { take: 1 } } }
                     }
                 })
             ]);
@@ -459,7 +459,7 @@ export class ProductSearchService {
                     merchantCenterScore: p.merchantCenterScore || 0,
                     cogs: p.cogs ? Number(p.cogs) : 0,
                     variations: raw.variations || [],
-                    hasBOM: false,
+                    hasBOM: p.boms.some(bom => bom.items.length > 0),
                     searchableVariants: []
                 };
             });
