@@ -16,7 +16,7 @@ export class InventoryService {
         scope(accountId, productId, variationId);
         if (variationId > 0 && !await prisma.productVariation.findFirst({ where: { productId, wooId: variationId, product: { accountId } }, select: { id: true } })) return null;
         const bom = await prisma.bOM.findFirst({ where: { productId, variationId, product: { accountId } }, include: { items: { where: { isActive: true }, take: 201, include: {
-            childProduct: { include: { boms: { select: { id: true }, take: 1 } } }, childVariation: true, internalProduct: true,
+            childProduct: { include: { boms: { where: { items: { some: { isActive: true, OR: [{ childProductId: { not: null } }, { internalProductId: { not: null } }] } } }, select: { id: true }, take: 1 } } }, childVariation: true, internalProduct: true,
         } } } });
         if (!bom || !bom.items.length || bom.items.length > 200) return null;
         let capacity: number | null = null; const required = new Map<string, { units: number; available: number }>();
@@ -53,7 +53,9 @@ export class InventoryService {
         scope(accountId, productId);
         const product = await prisma.wooProduct.findFirst({ where: { id: productId, accountId }, select: { stockQuantity: true, manageStock: true, rawData: true,
             variations: { orderBy: { wooId: 'asc' }, take: 101, select: { wooId: true, sku: true, stockQuantity: true, stockStatus: true, manageStock: true, rawData: true } },
-            boms: { where: { product: { accountId } }, orderBy: { variationId: 'asc' }, take: 102, select: { id: true, variationId: true } },
+            // An empty saved BOM (or being used by another product's BOM) does
+            // not make this product's own stock component-derived.
+            boms: { where: { product: { accountId }, items: { some: { isActive: true, OR: [{ childProductId: { not: null } }, { internalProductId: { not: null } }] } } }, orderBy: { variationId: 'asc' }, take: 102, select: { id: true, variationId: true } },
         } });
         if (!product) throw Object.assign(new Error('Product not found'), { statusCode: 404 });
         const raw = object(product.rawData), variable = raw.type === 'variable' || product.variations.length > 0;

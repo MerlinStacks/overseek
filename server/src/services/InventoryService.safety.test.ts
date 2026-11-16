@@ -18,3 +18,28 @@ it('combines repeated component demand and rejects foreign or unknown components
     m.bom.mockResolvedValue({ items: [{ ...item, internalProduct: { accountId: 'foreign', stockQuantity: 10 } }] }); expect(await InventoryService.calculateBOMStock('a', 'p')).toBeNull();
 });
 it('rejects missing scope before querying and does not pretend unknown composite cost is zero', async () => { await expect(InventoryService.getProductStock('', 'p')).rejects.toThrow(); expect(m.product).not.toHaveBeenCalled(); expect(await InventoryService.calculateCompositeCOGS('a', 'p')).toBeNull(); });
+
+it('reads base stock and filters empty/inactive BOM records rather than locking a component product', async () => {
+    m.product.mockResolvedValue({ manageStock: true, stockQuantity: 17, rawData: { type: 'simple' }, variations: [], boms: [] });
+    const result = await InventoryService.getProductStock('a', 'base');
+    expect(result).toMatchObject({ stockQuantity: 17, isBOMBased: false, manageStock: true });
+    expect(m.bom).not.toHaveBeenCalled();
+    expect(m.product.mock.calls[0][0].select.boms.where).toEqual({
+        product: { accountId: 'a' },
+        items: { some: { isActive: true, OR: [{ childProductId: { not: null } }, { internalProductId: { not: null } }] } }
+    });
+});
+
+it('keeps genuinely derived simple products read-only and calculates their stock', async () => {
+    m.product.mockResolvedValue({ manageStock: true, stockQuantity: 17, rawData: { type: 'simple' }, variations: [], boms: [{ id: 'bom', variationId: 0 }] });
+    m.bom.mockResolvedValue({ items: [{ internalProductId: 'i', internalProduct: { accountId: 'a', stockQuantity: 10 }, childProductId: null, childVariationId: null, supplierItemId: null, quantity: 2, wasteFactor: 0 }] });
+    expect(await InventoryService.getProductStock('a', 'finished')).toMatchObject({ stockQuantity: 5, isBOMBased: true });
+});
+
+it('allows a base component with an empty BOM record in another product buildability calculation', async () => {
+    m.bom.mockResolvedValue({ items: [{ childProductId: 'base', childProduct: { id: 'base', accountId: 'a', stockQuantity: 12, manageStock: true, rawData: {}, boms: [] }, internalProductId: null, childVariationId: null, supplierItemId: null, quantity: 2, wasteFactor: 0 }] });
+    expect(await InventoryService.calculateBOMStock('a', 'finished')).toBe(6);
+    expect(m.bom.mock.calls[0][0].include.items.include.childProduct.include.boms.where).toEqual({
+        items: { some: { isActive: true, OR: [{ childProductId: { not: null } }, { internalProductId: { not: null } }] } }
+    });
+});

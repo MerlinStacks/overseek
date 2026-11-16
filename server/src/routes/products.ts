@@ -688,7 +688,7 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
             }
             const { stockQuantity } = parseResult.data;
 
-            // Find local product with BOM items that have child products
+            // Only active stock-bearing components make this product BOM-derived.
             const product = await prisma.wooProduct.findUnique({
                 where: { accountId_wooId: { accountId, wooId } },
                 include: {
@@ -696,7 +696,7 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                         select: {
                             id: true,
                             items: {
-                                where: { childProductId: { not: null } },
+                                where: { isActive: true, OR: [{ childProductId: { not: null } }, { internalProductId: { not: null } }] },
                                 select: { id: true }
                             }
                         }
@@ -708,7 +708,7 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(404).send({ error: 'Product not found' });
             }
 
-            // Block updates only for products with BOMs that have child product components
+            // Empty BOM records and usage as another product's component do not block edits.
             if (product.status === 'trash') return reply.code(409).send({ error: 'Cannot update stock for a trashed product' });
             const hasBOMWithChildProducts = product.boms.some(bom => bom.items.length > 0);
             if (hasBOMWithChildProducts) {
