@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
 import productsRoutes from './products';
 import { ProductsService } from '../services/products';
+import { ProductSearchService } from '../services/productSearch';
 import { cacheAside } from '../utils/cache';
 
 vi.mock('zod', async () => {
@@ -12,6 +13,7 @@ vi.mock('../services/products', () => ({
     ProductValidationError: class extends Error {},
     ProductsService: { searchProducts: vi.fn() }
 }));
+vi.mock('../services/productSearch', () => ({ ProductSearchService: { searchPurchaseOrderProducts: vi.fn() } }));
 vi.mock('../middleware/auth', () => ({ requireAuthFastify: async (request: any) => { request.accountId = 'account-1'; } }));
 vi.mock('../utils/prisma', () => ({ prisma: {} }));
 vi.mock('../utils/logger', () => ({ Logger: { error: vi.fn() } }));
@@ -34,6 +36,28 @@ describe('product list filters', () => {
         await app.register(productsRoutes, { prefix: '/products' });
     });
     afterEach(async () => { await app.close(); });
+
+    it('uses tenant-scoped compact PO search instead of the cached catalog search', async () => {
+        const result = { products: [{ id: 'hoodie', wooId: 12, name: 'Hoodie', type: 'simple' }], total: 21, page: 2, totalPages: 2 };
+        vi.mocked(ProductSearchService.searchPurchaseOrderProducts).mockResolvedValue(result);
+        const response = await app.inject('/products/purchase-order-search?q=hoodie&page=2&limit=20');
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toEqual(result);
+        expect(ProductSearchService.searchPurchaseOrderProducts).toHaveBeenCalledWith('account-1', 'hoodie', 2, 20);
+        expect(ProductsService.searchProducts).not.toHaveBeenCalled();
+        expect(cacheAside).not.toHaveBeenCalled();
+    });
+
+    it('validates PO pagination before searching', async () => {
+        const response = await app.inject('/products/purchase-order-search?q=hoodie&page=0');
+        expect(response.statusCode).toBe(400);
+        expect(ProductSearchService.searchPurchaseOrderProducts).not.toHaveBeenCalled();
+    });
+
+    it('reports PO search failures rather than returning a successful empty list', async () => {
+        vi.mocked(ProductSearchService.searchPurchaseOrderProducts).mockRejectedValue(new Error('Database unavailable'));
+        expect((await app.inject('/products/purchase-order-search?q=hoodie')).statusCode).toBe(500);
+    });
 
     it.each(['publish', 'private', 'draft', 'pending', 'future'])('accepts %s and numeric taxonomy IDs', async status => {
         const response = await app.inject(`/products/?status=${status}&category=12&tag=34&stockStatus=onbackorder&q=shirt&page=2&limit=5&sortField=name&sortDirection=desc`);

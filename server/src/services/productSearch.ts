@@ -220,6 +220,63 @@ async function enrichWithBomStatus(accountId: string, products: any[]): Promise<
 
 export class ProductSearchService {
     /**
+     * The PO picker needs authoritative identities, not full catalog documents.
+     * Match parent and variation SKUs in one DB query so they share pagination;
+     * never send variation rawData (which can exceed the picker's byte bound).
+     */
+    static async searchPurchaseOrderProducts(accountId: string, query: string, page: number, limit: number): Promise<SearchResult> {
+        const term = query.trim();
+        const wooId = /^\d+$/.test(term) && Number.isSafeInteger(Number(term)) ? Number(term) : null;
+        const where: Prisma.WooProductWhereInput = {
+            accountId,
+            AND: [activeProductWhere],
+            OR: [
+                { name: { contains: term, mode: 'insensitive' } },
+                { sku: { contains: term, mode: 'insensitive' } },
+                ...(wooId !== null ? [{ wooId }] : []),
+                { variations: { some: { OR: [
+                    { sku: { contains: term, mode: 'insensitive' } },
+                    ...(wooId !== null ? [{ wooId }] : [])
+                ] } } }
+            ]
+        };
+        const [total, products] = await Promise.all([
+            prisma.wooProduct.count({ where }),
+            prisma.wooProduct.findMany({
+                where,
+                skip: (page - 1) * limit,
+                take: limit,
+                orderBy: [{ name: 'asc' }, { id: 'asc' }],
+                select: {
+                    id: true, wooId: true, name: true, sku: true, rawData: true,
+                    boms: { select: { items: { take: 1, select: { id: true } } } },
+                    variations: { select: { wooId: true, sku: true, rawData: true }, orderBy: { wooId: 'asc' } }
+                }
+            })
+        ]);
+        return {
+            products: products.map(product => {
+                const raw = product.rawData as any;
+                return {
+                    id: product.id, wooId: product.wooId, name: product.name, sku: product.sku,
+                    type: typeof raw?.type === 'string' ? raw.type : undefined,
+                    hasBOM: product.boms.some(bom => bom.items.length > 0),
+                    searchableVariants: product.variations.map(variation => {
+                        const attributes = (variation.rawData as any)?.attributes;
+                        return {
+                            wooId: variation.wooId, sku: variation.sku,
+                            attributeString: Array.isArray(attributes)
+                                ? attributes.map(attribute => attribute?.option || attribute?.value).filter(value => typeof value === 'string').join(' / ')
+                                : ''
+                        };
+                    })
+                };
+            }),
+            total, page, totalPages: Math.ceil(total / limit)
+        };
+    }
+
+    /**
      * Search products using Elasticsearch with database fallback
      */
     static async searchProducts(

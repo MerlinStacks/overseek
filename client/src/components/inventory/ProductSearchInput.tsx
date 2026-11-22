@@ -28,11 +28,10 @@ function SearchScope({ onSelect, onClear, placeholder = 'Search by SKU or produc
             setResult(previous => ({ query, items: page > 1 && previous.query === query ? previous.items : [], state: 'loading', page: previous.query === query ? previous.page : 0, hasMore: previous.query === query && previous.hasMore }));
             void (async () => {
                 try {
-                    const response = await fetch(`/api/products?q=${encodeURIComponent(query.trim())}&limit=20&page=${page}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]), headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId } });
+                    const response = await fetch(`/api/products/purchase-order-search?q=${encodeURIComponent(query.trim())}&limit=20&page=${page}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]), headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId } });
                     if (!response.ok) { await response.body?.cancel().catch(() => undefined); throw new Error('Unavailable'); } const data = JSON.parse(new TextDecoder().decode(await readBoundedBytes(response, 1048576)));
-                    // Search can supplement the requested page with variant matches.
-                    // Keep the byte bound, but do not reject a successful search because
-                    // its result count or a product's variation count exceeds the page size.
+                    // The picker endpoint omits full catalog/variation metadata.
+                    // A parent may still contain more variants than the page size.
                     const rows = z.array(z.unknown()).parse(Array.isArray(data) ? data : data?.products);
                     const products = rows.flatMap(row => {
                         const parsed = productSchema.safeParse(row);

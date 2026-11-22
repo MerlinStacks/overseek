@@ -29,6 +29,67 @@ import { ProductSearchService } from './productSearch';
 import type { ProductSearchFilters } from './productSearch';
 const active = { OR: [{ status: null }, { status: { not: 'trash' } }] };
 
+describe('purchase order product search', () => {
+    beforeEach(() => {
+        vi.resetAllMocks();
+        mocks.wooProductCount.mockResolvedValue(0);
+        mocks.wooProductFindMany.mockResolvedValue([]);
+    });
+
+    it('paginates all parent and variation SKU matches together without relying on ES', async () => {
+        mocks.wooProductCount.mockResolvedValue(45);
+        const result = await ProductSearchService.searchPurchaseOrderProducts('account-1', ' hoodie ', 2, 20);
+        const where = {
+            accountId: 'account-1', AND: [active], OR: [
+                { name: { contains: 'hoodie', mode: 'insensitive' } },
+                { sku: { contains: 'hoodie', mode: 'insensitive' } },
+                { variations: { some: { OR: [{ sku: { contains: 'hoodie', mode: 'insensitive' } }] } } }
+            ]
+        };
+        expect(mocks.wooProductCount).toHaveBeenCalledWith({ where });
+        expect(mocks.wooProductFindMany).toHaveBeenCalledWith(expect.objectContaining({
+            where, skip: 20, take: 20, orderBy: [{ name: 'asc' }, { id: 'asc' }]
+        }));
+        expect(result).toEqual({ products: [], total: 45, page: 2, totalPages: 3 });
+        expect(mocks.search).not.toHaveBeenCalled();
+        expect(mocks.variationFindMany).not.toHaveBeenCalled();
+    });
+
+    it('keeps hundreds of variants selectable without sending megabytes of raw metadata', async () => {
+        const metadata = 'x'.repeat(12000);
+        mocks.wooProductCount.mockResolvedValue(1);
+        mocks.wooProductFindMany.mockResolvedValue([{
+            id: 'hoodie', wooId: 12, name: 'Hoodie', sku: 'HOODIE', boms: [{ items: [] }, { items: [{ id: 'component' }] }],
+            rawData: { type: 'variable', description: metadata },
+            variations: Array.from({ length: 120 }, (_, index) => ({
+                wooId: 100 + index, sku: `HOODIE-${index}`,
+                rawData: { meta_data: metadata, attributes: [{ option: `Size ${index}` }, { value: 'Blue' }] }
+            }))
+        }]);
+        const result = await ProductSearchService.searchPurchaseOrderProducts('account-1', 'hoodie', 1, 20);
+        expect(result.products[0]).toMatchObject({ type: 'variable', hasBOM: true });
+        expect(result.products[0].searchableVariants).toHaveLength(120);
+        expect(result.products[0].searchableVariants[119]).toEqual({ wooId: 219, sku: 'HOODIE-119', attributeString: 'Size 119 / Blue' });
+        expect(JSON.stringify(result)).not.toContain(metadata);
+        expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThan(1048576);
+    });
+
+    it('matches WooCommerce product and variation IDs as well as SKUs', async () => {
+        await ProductSearchService.searchPurchaseOrderProducts('account-1', '93144', 1, 20);
+        expect(mocks.wooProductCount).toHaveBeenCalledWith({ where: expect.objectContaining({
+            OR: expect.arrayContaining([
+                { wooId: 93144 },
+                { variations: { some: { OR: [{ sku: { contains: '93144', mode: 'insensitive' } }, { wooId: 93144 }] } } }
+            ])
+        }) });
+    });
+
+    it('propagates DB errors so the picker offers retry instead of claiming no matches', async () => {
+        mocks.wooProductFindMany.mockRejectedValue(new Error('Database unavailable'));
+        await expect(ProductSearchService.searchPurchaseOrderProducts('account-1', 'hoodie', 1, 20)).rejects.toThrow('Database unavailable');
+    });
+});
+
 describe('ProductSearchService sorting', () => {
     beforeEach(() => {
         vi.clearAllMocks();

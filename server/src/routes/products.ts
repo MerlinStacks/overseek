@@ -4,6 +4,7 @@
 
 import { FastifyPluginAsync } from 'fastify';
 import { ProductsService, ProductValidationError } from '../services/products';
+import { ProductSearchService } from '../services/productSearch';
 import { requireAuthFastify } from '../middleware/auth';
 import { WooService } from '../services/woo';
 import { persistWooProduct } from '../services/persistWooProduct';
@@ -152,6 +153,19 @@ const termsQuerySchema = z.object({
 
 const productsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
+
+    fastify.get('/purchase-order-search', async (request, reply) => {
+        try {
+            const { q, page, limit } = searchQuerySchema.parse(request.query);
+            return await ProductSearchService.searchPurchaseOrderProducts(request.accountId!, q, page, limit);
+        } catch (error) {
+            if (error instanceof z.ZodError) {
+                return reply.code(400).send({ error: 'Invalid product search parameters', details: error.issues });
+            }
+            Logger.error('Purchase order product search failed', { error });
+            return reply.code(500).send({ error: 'Failed to search purchase order products' });
+        }
+    });
 
     // GET / - Search products (cached for 60s)
     fastify.get('/', async (request, reply) => {

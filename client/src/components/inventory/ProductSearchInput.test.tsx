@@ -23,7 +23,7 @@ describe('ProductSearchInput partial SKU results', () => {
         const { fetch, onSelect } = search(Array.from({ length: 25 }, (_, index) => product(index)));
         const options = await screen.findAllByRole('option');
         expect(options).toHaveLength(25);
-        expect(fetch).toHaveBeenCalledWith('/api/products?q=hoodie&limit=20&page=1', expect.objectContaining({ headers: { Authorization: 'Bearer token', 'X-Account-ID': 'account' } }));
+        expect(fetch).toHaveBeenCalledWith('/api/products/purchase-order-search?q=hoodie&limit=20&page=1', expect.objectContaining({ headers: { Authorization: 'Bearer token', 'X-Account-ID': 'account' } }));
         fireEvent.click(options[24]);
         expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ productId: 'product-24', wooId: 25, sku: 'ZIP-HOODIE-24' }));
     });
@@ -53,7 +53,7 @@ describe('ProductSearchInput partial SKU results', () => {
         fireEvent.change(screen.getByRole('combobox'), { target: { value: 'shirt' } });
         expect(screen.queryByRole('option')).not.toBeInTheDocument();
         await screen.findByText('Hoodie 0');
-        expect(fetch.mock.calls.at(-1)?.[0]).toBe('/api/products?q=shirt&limit=20&page=1');
+        expect(fetch.mock.calls.at(-1)?.[0]).toBe('/api/products/purchase-order-search?q=shirt&limit=20&page=1');
     });
 
     it('can advance past an entirely excluded page', async () => {
@@ -94,7 +94,7 @@ describe('ProductSearchInput partial SKU results', () => {
         fireEvent.click(await screen.findByRole('button', { name: 'Retry search' }));
         expect(await screen.findByText('Hoodie 1')).toBeInTheDocument();
         expect(screen.getAllByRole('option')).toHaveLength(2);
-        expect(fetch.mock.calls.slice(1).map(([url]) => url)).toEqual(Array(2).fill('/api/products?q=hoodie&limit=20&page=2'));
+        expect(fetch.mock.calls.slice(1).map(([url]) => url)).toEqual(Array(2).fill('/api/products/purchase-order-search?q=hoodie&limit=20&page=2'));
     });
 
     it('does not let a malformed or duplicate product hide valid matches', async () => {
