@@ -46,6 +46,14 @@ function getLayoutHash(layout: any): string {
         .digest('hex');
 }
 
+function scopedOrderWhere(accountId: string, orderId: string) {
+    const wooId = Number(orderId);
+    return {
+        accountId,
+        OR: [{ id: orderId }, ...(/^\d+$/.test(orderId) && Number.isSafeInteger(wooId) ? [{ wooId }] : [])],
+    };
+}
+
 export class CanonicalInvoiceService {
     private getInvalidateBeforeDate(): Date | null {
         const raw = String(process.env.INVOICE_CANONICAL_INVALIDATE_BEFORE || '').trim();
@@ -70,6 +78,32 @@ export class CanonicalInvoiceService {
         return null;
     }
 
+    async findIssuedInvoice(accountId: string, orderId: string) {
+        const order = await prisma.wooOrder.findFirst({
+            where: scopedOrderWhere(accountId, orderId),
+            select: { id: true },
+        });
+        if (!order) throw new InvoiceOrderUnavailableError();
+
+        // Downloads should return the issued document, even after a sync touches
+        // the order or the invoice template changes. Neither event reissues it.
+        const issued = await prisma.invoiceArtifact.findFirst({
+            where: { accountId, orderId: order.id, status: 'ready' },
+            orderBy: [{ generatedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }, { id: 'desc' }],
+        });
+        if (!issued) return null;
+
+        const reason = this.getStaleReason(issued, false);
+        if (reason) {
+            Logger.warn('[CanonicalInvoiceService] Issued invoice requires reconciliation', {
+                accountId, orderId: order.id, artifactId: issued.id, reason,
+            });
+            // Do not silently issue a new invoice or fall back to an older one.
+            throw Object.assign(new Error('Issued invoice requires reconciliation'), { statusCode: 409 });
+        }
+        return issued;
+    }
+
     async getOrQueue(accountId: string, orderId: string, options: { forceRegenerate?: boolean } = {}) {
         const forceRegenerate = options.forceRegenerate === true;
         const template = await prisma.invoiceTemplate.findFirst({
@@ -82,7 +116,7 @@ export class CanonicalInvoiceService {
             throw new MissingInvoiceTemplateError();
         }
 
-        const order = await prisma.wooOrder.findFirst({ where: { accountId, OR: [{ id: orderId }, ...(/^\d+$/.test(orderId) && Number.isSafeInteger(Number(orderId)) ? [{ wooId: Number(orderId) }] : [])] }, select: { id: true, updatedAt: true } });
+        const order = await prisma.wooOrder.findFirst({ where: scopedOrderWhere(accountId, orderId), select: { id: true, updatedAt: true } });
         if (!order) throw new InvoiceOrderUnavailableError();
         orderId = order.id;
         const templateVersion = normalizeTemplateVersion(template.layout);

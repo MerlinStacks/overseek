@@ -7,6 +7,10 @@ import { authenticateRelayEmailAccount } from './email/helpers';
 import { InvoiceOrderUnavailableError, MissingInvoiceTemplateError, canonicalInvoiceService } from '../services/CanonicalInvoiceService';
 import { prisma } from '../utils/prisma';
 
+// The installed plugin's background request times out after 8 seconds. Leave
+// room for database work, transport and PHP to receive the pending response.
+const RELAY_WAIT_MS = 4000;
+
 function isCanonicalRenderer(renderer: string | null | undefined): boolean {
     return renderer === 'pdfkit-primary'
         || renderer === 'pdfkit-fallback';
@@ -185,16 +189,21 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         try {
-            await mergeWooTaxDisplaySettings(accountId, orderId, {
-                prices_include_tax: parsed.data.prices_include_tax,
-                tax_display_cart: parsed.data.tax_display_cart,
-                tax_display_shop: parsed.data.tax_display_shop,
-            });
+            let settled = forceRegenerate ? null : await canonicalInvoiceService.findIssuedInvoice(accountId, orderId);
+            let artifactId = settled?.id;
+            if (!settled) {
+                await mergeWooTaxDisplaySettings(accountId, orderId, {
+                    prices_include_tax: parsed.data.prices_include_tax,
+                    tax_display_cart: parsed.data.tax_display_cart,
+                    tax_display_shop: parsed.data.tax_display_shop,
+                });
 
-            const artifact = await canonicalInvoiceService.getOrQueue(accountId, orderId, {
-                forceRegenerate: forceRegenerate === true,
-            });
-            const settled = await canonicalInvoiceService.waitForReady(artifact, 15000, 300);
+                const artifact = await canonicalInvoiceService.getOrQueue(accountId, orderId, {
+                    forceRegenerate: forceRegenerate === true,
+                });
+                artifactId = artifact.id;
+                settled = await canonicalInvoiceService.waitForReady(artifact, RELAY_WAIT_MS, 300);
+            }
             const diagnosticReason = computeRelayDiagnostic(settled, forceRegenerate === true);
 
             if (canonicalInvoiceService.isReadableReady(settled)) {
@@ -210,10 +219,12 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
                 };
             }
 
-            if (settled?.status === 'failed' || settled?.status === 'uncertain') {
+            if (settled && ['ready', 'failed', 'uncertain'].includes(settled.status)) {
+                const status = settled.status === 'ready' ? 'reconciliation_required' : settled.status;
+                Logger.warn('Relay invoice requires reconciliation', { accountId, orderId, artifactId: settled.id, status, diagnosticReason });
                 return reply.code(409).send({
                     success: false,
-                    status: settled.status,
+                    status,
                     invoice_ref: settled.id,
                     error: 'Invoice generation requires reconciliation before retrying',
                     renderer_used: settled.renderer,
@@ -225,7 +236,7 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(202).send({
                 success: false,
                 status: 'pending',
-                invoice_ref: settled?.id ?? artifact.id,
+                invoice_ref: settled?.id ?? artifactId,
                 error: 'Invoice generation is pending',
                 diagnostic_reason: diagnosticReason,
                 generated_at: settled?.generatedAt ?? null,
