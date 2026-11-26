@@ -7,6 +7,7 @@ import { QueueFactory, QUEUES } from './queue/QueueFactory';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { InvoiceService } from './InvoiceService';
+import { INVOICE_SOURCE_CHANGED, InvoicePreReservationConflict, isLegacyPreReservationConflict } from './invoiceGenerationErrors';
 
 const invoiceService = new InvoiceService();
 const OPERATIONAL_A4_RENDERER_VERSION = 'operational-a4-v6';
@@ -52,6 +53,11 @@ function scopedOrderWhere(accountId: string, orderId: string) {
         accountId,
         OR: [{ id: orderId }, ...(/^\d+$/.test(orderId) && Number.isSafeInteger(wooId) ? [{ wooId }] : [])],
     };
+}
+
+function canRetryBeforeReservation(artifact: InvoiceArtifact): boolean {
+    return artifact.renderer === 'pending' && artifact.storagePath === null && artifact.fileSize === null && artifact.generatedAt === null
+        && (artifact.status === 'retryable' || (artifact.status === 'uncertain' && isLegacyPreReservationConflict(artifact.errorMessage)));
 }
 
 export class CanonicalInvoiceService {
@@ -133,12 +139,6 @@ export class CanonicalInvoiceService {
             }
         });
 
-        const staleReason = this.getStaleReason(artifact, forceRegenerate);
-        const readyAndReadable = !staleReason;
-        if (readyAndReadable) {
-            return artifact;
-        }
-
         if (!artifact) {
             artifact = await prisma.invoiceArtifact.upsert({
                 where: { accountId_orderId_templateVersion_layoutHash: { accountId, orderId, templateVersion, layoutHash } },
@@ -153,42 +153,54 @@ export class CanonicalInvoiceService {
                     status: 'pending'
                 }
             });
-        } else if (artifact.status !== 'pending') {
+        }
+
+        if (canRetryBeforeReservation(artifact)) {
+            const previous = artifact;
+            await prisma.invoiceArtifact.updateMany({
+                where: {
+                    id: previous.id, accountId, orderId, templateId: template.id, templateVersion, layoutHash,
+                    status: previous.status, updatedAt: previous.updatedAt, errorMessage: previous.errorMessage,
+                    renderer: 'pending', storagePath: null, fileSize: null, generatedAt: null,
+                },
+                data: {
+                    status: 'pending', errorMessage: null,
+                    updatedAt: new Date(Math.max(Date.now(), previous.updatedAt.getTime() + 1)),
+                },
+            });
+            // Read the winner's revision, even when another caller re-admitted it.
+            artifact = await prisma.invoiceArtifact.findUniqueOrThrow({ where: { accountId_orderId_templateVersion_layoutHash: { accountId, orderId, templateVersion, layoutHash } } });
+        }
+
+        if (artifact.status !== 'pending') {
+            if (!this.getStaleReason(artifact, forceRegenerate)) return artifact;
             // Never reset an in-flight or uncertain generation to retry it blindly.
             if (forceRegenerate || artifact.status === 'ready') throw Object.assign(new Error('Existing artifact requires explicit reconciliation; automatic regeneration is disabled'), { statusCode: 409 });
             return artifact;
         }
 
-        await this.enqueueGeneration(artifact.id, accountId, orderId, template.id, { forceRegenerate });
+        await this.enqueueGeneration(artifact);
         return artifact;
     }
 
-    async enqueueGeneration(
-        artifactId: string,
-        accountId: string,
-        orderId: string,
-        templateId: string,
-        options: { forceRegenerate?: boolean } = {}
-    ): Promise<void> {
+    private async enqueueGeneration(artifact: InvoiceArtifact): Promise<void> {
         const queue = QueueFactory.getQueue(QUEUES.INVOICE_CANONICAL_GENERATE);
-        const safeArtifactId = artifactId.replace(/[^a-zA-Z0-9_-]/g, '_');
-        const forceRegenerate = options.forceRegenerate === true;
-        const jobId = forceRegenerate
-            ? `invoice-canonical_${safeArtifactId}_force_${Date.now()}`
-            : `invoice-canonical_${safeArtifactId}`;
+        const safeArtifactId = artifact.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const revision = artifact.updatedAt.getTime();
+        const jobId = `invoice-canonical_${safeArtifactId}_${revision}`;
 
         await queue.add('generate-canonical-invoice', {
-            artifactId,
-            accountId,
-            orderId,
-            templateId,
-            forceRegenerate
+            artifactId: artifact.id,
+            accountId: artifact.accountId,
+            orderId: artifact.orderId,
+            templateId: artifact.templateId,
+            revision,
         }, {
             jobId
         });
     }
 
-    async processGenerationJob(data: { artifactId: string; accountId: string; orderId: string; templateId: string }): Promise<void> {
+    async processGenerationJob(data: { artifactId: string; accountId: string; orderId: string; templateId: string; revision?: number }): Promise<void> {
         const artifact = await prisma.invoiceArtifact.findFirst({
             where: {
                 id: data.artifactId,
@@ -202,13 +214,16 @@ export class CanonicalInvoiceService {
             Logger.warn('[CanonicalInvoiceService] Artifact missing for generation job', data);
             return;
         }
+        if (data.revision !== undefined && artifact.updatedAt.getTime() !== data.revision) return;
 
         const scope = { id: artifact.id, accountId: artifact.accountId, orderId: artifact.orderId, templateId: artifact.templateId, templateVersion: artifact.templateVersion, layoutHash: artifact.layoutHash };
         const claim = await prisma.invoiceArtifact.updateMany({ where: { ...scope, status: 'pending', updatedAt: artifact.updatedAt }, data: { status: 'generating' } });
         if (claim.count !== 1) return;
         try {
             const [template, order] = await Promise.all([prisma.invoiceTemplate.findFirst({ where: { id: artifact.templateId, accountId: artifact.accountId } }), prisma.wooOrder.findFirst({ where: { id: artifact.orderId, accountId: artifact.accountId } })]);
-            if (!template || !order || normalizeTemplateVersion(template.layout) !== artifact.templateVersion || createHash('sha256').update(`${template.id}:${getLayoutHash(template.layout)}:${order.updatedAt.toISOString()}`).digest('hex') !== artifact.layoutHash) throw new Error('Invoice source changed; request a current artifact');
+            if (!template || !order || normalizeTemplateVersion(template.layout) !== artifact.templateVersion || createHash('sha256').update(`${template.id}:${getLayoutHash(template.layout)}:${order.updatedAt.toISOString()}`).digest('hex') !== artifact.layoutHash) {
+                throw new InvoicePreReservationConflict(INVOICE_SOURCE_CHANGED);
+            }
             let generatedPath = '';
             let rendererUsed = 'pdfkit-primary';
 
@@ -243,14 +258,23 @@ export class CanonicalInvoiceService {
             });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
+            const retryable = error instanceof InvoicePreReservationConflict;
             await prisma.invoiceArtifact.updateMany({
                 where: { ...scope, status: 'generating' },
                 data: {
-                    status: 'uncertain',
+                    status: retryable ? 'retryable' : 'uncertain',
                     renderer: artifact.renderer,
-                    errorMessage: message
+                    errorMessage: message,
+                    updatedAt: new Date(Math.max(Date.now(), artifact.updatedAt.getTime() + 1)),
                 }
             });
+
+            if (retryable) {
+                Logger.warn('[CanonicalInvoiceService] Invoice generation deferred before reservation', {
+                    artifactId: artifact.id, accountId: data.accountId, orderId: data.orderId, reason: message,
+                });
+                return;
+            }
 
             Logger.error('[CanonicalInvoiceService] Failed to generate invoice artifact', {
                 artifactId: artifact.id,
@@ -275,7 +299,7 @@ export class CanonicalInvoiceService {
         while (Date.now() - start < maxWaitMs) {
             const artifact = await read();
             if (!artifact) return null;
-            if (['ready', 'failed', 'uncertain'].includes(artifact.status)) {
+            if (['ready', 'failed', 'uncertain', 'retryable'].includes(artifact.status)) {
                 return artifact;
             }
             await new Promise((resolve) => setTimeout(resolve, intervalMs));

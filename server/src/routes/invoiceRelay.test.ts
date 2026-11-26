@@ -79,6 +79,13 @@ it('preserves reconciliation requirements instead of blindly retrying uncertain 
     expect(response.json().status).toBe('uncertain');
 });
 
+it('lets the installed plugin retry when generation stopped before reserving a number', async () => {
+    m.wait.mockResolvedValue({ id: 'artifact', status: 'retryable' });
+    const response = await request();
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({ status: 'pending', invoice_ref: 'artifact' });
+});
+
 it('rejects another account before reading or changing an order', async () => {
     m.authenticate.mockResolvedValue({ accountId: 'other' });
     expect((await request()).statusCode).toBe(403);

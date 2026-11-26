@@ -107,11 +107,12 @@ export async function startWorkers() {
     }));
 
     activeWorkers.push(QueueFactory.createWorker(QUEUES.INVOICE_CANONICAL_GENERATE, async (job) => {
-        const { artifactId, accountId, orderId, templateId } = job.data as {
+        const { artifactId, accountId, orderId, templateId, revision } = job.data as {
             artifactId?: string;
             accountId?: string;
             orderId?: string;
             templateId?: string;
+            revision?: number;
         };
 
         if (!artifactId || !accountId || !orderId || !templateId) {
@@ -119,7 +120,7 @@ export async function startWorkers() {
             return;
         }
 
-        await canonicalInvoiceService.processGenerationJob({ artifactId, accountId, orderId, templateId });
+        await canonicalInvoiceService.processGenerationJob({ artifactId, accountId, orderId, templateId, revision });
     }));
 
 

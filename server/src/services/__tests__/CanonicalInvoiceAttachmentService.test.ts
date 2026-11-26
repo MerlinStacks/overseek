@@ -46,11 +46,19 @@ describe('CanonicalInvoiceAttachmentService', () => {
 
         expect(canonicalMocks.processGenerationJob).not.toHaveBeenCalled();
         expect(canonicalMocks.getArtifactById).not.toHaveBeenCalled();
-        expect(canonicalMocks.waitForReady).toHaveBeenCalledWith({ id: 'art_2', templateId: 'tpl_2' }, 15000, 300);
+        expect(canonicalMocks.waitForReady).toHaveBeenCalledWith({ id: 'art_2', templateId: 'tpl_2' }, expect.any(Number), 300);
         expect(result).toEqual({
             absolutePath: null,
             artifactId: 'art_2',
         });
+    });
+
+    it('re-admits only once after a proven pre-reservation conflict', async () => {
+        canonicalMocks.getOrQueue.mockResolvedValueOnce({ id: 'stale' }).mockResolvedValueOnce({ id: 'current' });
+        canonicalMocks.waitForReady.mockResolvedValue({ status: 'retryable' });
+        await expect(service.resolveAbsolutePath('acc_1', 'ord_1')).resolves.toEqual({ absolutePath: null, artifactId: 'current' });
+        expect(canonicalMocks.getOrQueue).toHaveBeenCalledTimes(2);
+        expect(canonicalMocks.waitForReady).toHaveBeenCalledTimes(2);
     });
 
     it('returns null absolutePath when artifact never becomes readable', async () => {

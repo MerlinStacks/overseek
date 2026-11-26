@@ -21,6 +21,7 @@ import {
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { getUploadsDir } from '../utils/uploadPaths';
+import { INVOICE_SEQUENCE_CHANGED, INVOICE_SOURCE_CHANGED_BEFORE_RENDER, InvoicePreReservationConflict } from './invoiceGenerationErrors';
 
 const INVOICE_DIR = path.join(getUploadsDir(), 'invoices');
 
@@ -447,7 +448,9 @@ export class InvoiceService {
         });
 
         if (!template) throw new Error("Invoice Template not found");
-        if (options.expectedTemplateUpdatedAt && template.updatedAt.getTime() !== options.expectedTemplateUpdatedAt.getTime() || options.expectedOrderUpdatedAt && order.updatedAt.getTime() !== options.expectedOrderUpdatedAt.getTime()) throw new Error('Invoice source changed before rendering');
+        if (options.expectedTemplateUpdatedAt && template.updatedAt.getTime() !== options.expectedTemplateUpdatedAt.getTime() || options.expectedOrderUpdatedAt && order.updatedAt.getTime() !== options.expectedOrderUpdatedAt.getTime()) {
+            throw new InvoicePreReservationConflict(INVOICE_SOURCE_CHANGED_BEFORE_RENDER);
+        }
 
         const normalizedLayout = this.normalizeLayout(template.layout);
         const settings = normalizedLayout.settings;
@@ -520,7 +523,8 @@ export class InvoiceService {
             }
         });
 
-        if (reserved.count !== 1) throw new Error('Invoice sequence changed; generation requires reconciliation');
+        if (reserved.count === 0) throw new InvoicePreReservationConflict(INVOICE_SEQUENCE_CHANGED);
+        if (reserved.count !== 1) throw new Error('Unexpected invoice sequence reservation count');
         if (!/^[a-zA-Z0-9_-]{1,200}$/.test(accountId)) throw new Error('Invalid invoice account identity');
         const fileName = `invoice-${randomUUID()}.pdf`;
         const accountDir = path.join(INVOICE_DIR, accountId);
